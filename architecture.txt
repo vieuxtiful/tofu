@@ -1,0 +1,80 @@
+## ToFU architecture
+## vieuxtiful
+
+project-tofu/
+│
+├── README.md
+├── LICENSE
+├── setup.py / pyproject.toml
+├── requirements.txt
+│
+├── docs/
+│   ├── architecture/
+│   │   ├── overview.md
+│   │   ├── layers.md
+│   │   └── data-contracts.md
+│   ├── api/
+│   │   ├── rest-api.md
+│   │   └── python-sdk.md
+│   └── technical-paper/
+│       └── semantic-weave-architecture.md
+│
+├── src/
+│   └── cicero/
+│       ├── __init__.py
+│       │
+│       ├── core/
+│       │   ├── __init__.py
+│       │   ├── pipeline.py          # Main orchestrator
+│       │   ├── config.py            # Configuration management
+│       │   └── types.py             # Shared data types (TextManifest, VldtnReport, etc.)
+│       │
+│       ├── layers/
+│       │   ├── __init__.py
+│       │   ├── tofu.py              # Layer 0: Pre-flight validation
+│       │   ├── cicerone.py          # Layer 1: Text detection & localization
+│       │   ├── scene.py             # Layer 2: Semantic context & style analysis
+│       │   ├── cleanse.py           # Layer 3: Text erasure & inpainting
+│       │   ├── scribe.py            # Layer 4: Style-aware text regeneration
+│       │   ├── verify.py            # Layer 5: Quality verification
+│       │   └── memory.py            # Layer 6: Visual translation memory
+│       │
+│       ├── models/
+│       │   ├── __init__.py
+│       │   ├── detection.py         # OCR / text detection wrappers
+│       │   ├── inpainting.py        # Inpainting model wrappers
+│       │   ├── rendering.py         # Text rendering / generation wrappers
+│       │   └── grounding.py         # Visual grounding / semantic understanding
+│       │
+│       ├── utils/
+│       │   ├── __init__.py
+│       │   ├── image.py             # Image processing utilities
+│       │   ├── video.py             # Video frame handling
+│       │   ├── fonts.py             # Font management
+│       │   └── validation.py        # Validation helpers (glyph support, etc.)
+│       │
+│       └── api/
+│           ├── __init__.py
+│           ├── routes.py            # FastAPI / Flask routes
+│           └── schemas.py           # Pydantic models for API
+│
+├── tests/
+│   ├── __init__.py
+│   ├── test_tofu.py
+│   ├── test_cicerone.py
+│   ├── test_scene.py
+│   ├── test_cleanse.py
+│   ├── test_scribe.py
+│   ├── test_verify.py
+│   └── test_memory.py
+│
+├── examples/
+│   ├── basic_usage.py
+│   ├── custom_pipeline.py
+│   └── notebooks/
+│       └── demo.ipynb
+│
+└── assets/
+    ├── sample_images/
+    ├── sample_videos/
+    └── fonts/

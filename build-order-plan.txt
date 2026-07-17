@@ -1,0 +1,9 @@
+plan:
+0. Core types & data contracts (types.py) — establishes the data flow
+    >> qa_report (pending definition 7.16.26)
+1. ToFU layer (tofu.py) — the validation mechanism is your novel contribution
+2. Cicerone layer (cicerone.py) — text detection is foundational for everything else
+3. Cleanse layer (cleanse.py) — text removal is the next critical step
+4. Scribe layer (scribe.py) — rendering completes the core loop
+5. Pipeline orchestration (pipeline.py) — ties it all together
+6. Verify & Memory — QA and leverage
