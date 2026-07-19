@@ -758,6 +758,83 @@ phase, now that the backend contract it depends on (`progress`,
 `per_asset_instance_score`, `recommendations`, the SSE stage sequence) is
 landed and live-verified.
 
+## Part 3i — Phase 5: QA Inspector frontend (landed 2026-07-19)
+
+New Stepper step 4 "Verify" (`Stepper.tsx`, `App.tsx`), matching the
+pilot scope from Part 4's risk note (overlay + compare + recommendations +
+approve; annotation/commenting tools deferred):
+
+1. **Coverage banner** — overall QA score badge, `regions_total/rendered/
+   dnt/untranslated/fallback_font` chips, red warning styling on gaps.
+2. **Recommendations checklist** — `qa_report.recommendations[]` rendered
+   as a persistent list, plus the first three surfaced as toasts the
+   moment a streamed verification completes.
+3. **Source↔localized compare** — side-by-side images.
+4. **Per-region QA cards** — score chip (green/amber/red) per region,
+   click-to-expand metric breakdown (OCR round-trip, ring SSIM, residual
+   source text, style color/size match — all four Phase 5a scorers),
+   each with a **per-region re-render** button.
+5. **Coverage-gated Approve** — disabled until `untranslated === 0`;
+   posts to a new `POST /api/render/approve` endpoint that logs a
+   `qa-approved` event (score + coverage snapshot) into project history
+   (`HistoryPanel.tsx` already renders it via a new `EVENT_LABEL` entry).
+
+**Backend additions to support the above:**
+- `/api/render/stream` gained an optional `region_ids` (comma-separated)
+  query param: when given, cleanse+scribe run ONLY on that instance
+  subset, and the starting image is the asset's existing localized
+  output (if one exists) rather than the raw source — untouched regions
+  keep their prior render instead of reverting to source text. Verified
+  live: re-rendering `r1` alone left `r2`-`r5` untouched and produced a
+  consistent r1 score (0.9782 → 0.9782 across two partial re-renders).
+- `POST /api/render/approve` — records the sign-off; verified live via
+  curl, confirmed the `qa-approved` event appears correctly in
+  `GET /api/projects/{id}/history`.
+
+**One real bug found via live verification** (not caught by the existing
+157 unit tests, including 17 dedicated Phase 5 tests): `POST /api/render`
+500'd with `TypeError: 'numpy.bool' object is not iterable` the moment
+ANY region had `style_profile.color` set — a normal state, since color is
+populated at capture time for every detected region. Root cause:
+`_style_color_score()` (`verify.py`) computed `ink_color =
+crop[mask].reshape(-1, 3).mean(axis=0)`, a numpy array, and passed it
+through `_delta_e_cie76()` → `_rgb_to_lab()` without ever casting back to
+Python floats; the final `max(0.0, 1.0 - delta_e / COLOR_DELTA_E_SCALE)`
+returned the numpy.float64 operand as-is (Python's `max()`/`and` return
+operands unchanged, they don't coerce), and FastAPI's `jsonable_encoder`
+has no handler for numpy scalars. This is the SAME class of bug as the
+Phase 4/5 float()-casting bugs, but this one only manifests once a real
+captured manifest (not a synthetic unit-test fixture) reaches the scorer
+— the existing style-color tests built `StyleProfil(color=...)` fixtures
+too, but apparently never happened to compare a value where `max()`
+returned the numpy-typed operand specifically. Fixed by casting
+`ink_color` to a plain float tuple before it enters `_delta_e_cie76`, and
+added a defense-in-depth `float()` cast on every `per_instance` score and
+`overall_score` at `QAReport` construction — this closes the bug class
+generally, not just this one call site. Two regression tests added:
+one asserting `type(score) is float` on `_style_color_score`'s return,
+and one exercising the full `verify.assess()` → `json.dumps()` path the
+way FastAPI actually serializes a response. Confirmed fixed via a fresh
+`POST /api/render` against the exact manifest that 500'd before the fix
+(now 200 OK, QA 0.60, coverage correct) and via the live browser Verify
+step end-to-end (coverage banner, recommendations, compare, per-region
+breakdown incl. non-zero style color/size scores, gated Approve all
+render correctly).
+
+**One more bug found via live browser interaction** (React dev-mode
+console warning, not a crash): the per-region row was a `<button>`
+containing the re-render `<button>` — invalid HTML that made click
+targeting on the row unreliable (the browser silently reparents nested
+buttons). Fixed by making the row a `<div role="button" tabIndex={0}>`
+with an `onKeyDown` handler for Enter/Space, keeping the inner
+`<button>` for re-render. Confirmed fixed by checking the live DOM
+ancestor chain of the re-render button (now `DIV > DIV > DIV > SECTION`,
+no `<button>` ancestor) and by successfully expanding a region's score
+breakdown via click.
+
+159 unit tests pass (2 new). Task 25 complete — Phase 5 (backend + QA
+Inspector frontend) is fully landed and live-verified end to end.
+
 ## Part 4 — Risks & mitigations
 - **easyocr/torch on the dev host** (currently absent): Phase 0 gate; if
   installation is blocked, pin PaddleOCR as the dev default via `OCR_ENGINE` and

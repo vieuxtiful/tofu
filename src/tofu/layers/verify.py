@@ -287,9 +287,9 @@ def _style_color_score(np, localized_np, inst) -> Optional[float]:
     x0, y0 = max(0, b.x), max(0, b.y)
     x1, y1 = min(w, b.x + b.width), min(h, b.y + b.height)
     crop = localized_np[y0:y1, x0:x1]
-    ink_color = crop[mask].reshape(-1, 3).mean(axis=0)
+    ink_color = tuple(float(c) for c in crop[mask].reshape(-1, 3).mean(axis=0))
     delta_e = _delta_e_cie76(ink_color, target)
-    return max(0.0, 1.0 - delta_e / COLOR_DELTA_E_SCALE)
+    return float(max(0.0, 1.0 - delta_e / COLOR_DELTA_E_SCALE))
 
 
 def _style_size_score(np, localized_np, inst) -> Optional[float]:
@@ -464,12 +464,18 @@ def assess(
                     "— check cleanse output."
                 )
 
-        per_instance[inst.id] = raw_score
+        per_instance[inst.id] = float(raw_score)
 
+    # per-instance scores must be plain python floats -- a numpy scalar
+    # (e.g. from a mean()/max() chain in one of the pixel-based scorers)
+    # is JSON-unserializable and would 500 the whole render response;
+    # this normalizes regardless of which scorer produced the value
+    per_instance = {k: float(v) for k, v in per_instance.items()}
     overall = (
         sum(per_instance.values()) / len(per_instance)
         if per_instance else NEUTRAL_SCORE
     )
+    overall = float(overall)
 
     scorer = []
     if ocr_scores:

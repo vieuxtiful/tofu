@@ -148,6 +148,25 @@ class TestStyleColorScore:
         inst = text_inst(target="HELLO", style_profile=StyleProfil())
         assert verify._style_color_score(np, img, inst) is None
 
+    def test_score_is_a_plain_python_float(self):
+        """regression: crop[mask].mean(axis=0) is a numpy ndarray, and
+        _delta_e_cie76 propagated numpy.float64 all the way through
+        max(0.0, ...) -- Python's max() returns the operand AS-IS, so a
+        numpy scalar came out the other end instead of a python float.
+        FastAPI's jsonable_encoder has no isinstance branch for
+        numpy.bool_/numpy.float64 and 500s the whole render response the
+        moment ANY region has style_profile.color set (a normal state:
+        color is populated at capture time) -- caught only via a live
+        POST /api/render against a real captured manifest, not by any
+        unit test, because every existing fixture here builds img as a
+        plain np.uint8 array where the failure mode still doesn't surface
+        without a genuine numpy chain like the real pixel-mean path."""
+        img = np.full((200, 300, 3), 240, dtype=np.uint8)
+        img[60:80, 60:160] = (20, 20, 20)
+        inst = text_inst(target="HELLO", style_profile=StyleProfil(color="#141414"))
+        score = verify._style_color_score(np, img, inst)
+        assert type(score) is float
+
 
 class TestStyleSizeScore:
     def test_matching_size_scores_high(self):
@@ -168,6 +187,29 @@ class TestStyleSizeScore:
         img = np.full((200, 300, 3), 240, dtype=np.uint8)
         inst = text_inst(target="HELLO", characteristics=None)
         assert verify._style_size_score(np, img, inst) is None
+
+
+class TestJsonSerializable:
+    def test_full_report_is_json_serializable_with_color_hint(self):
+        """regression: the numpy.float64 leak (see
+        TestStyleColorScore.test_score_is_a_plain_python_float) only
+        showed up once a real InstText had style_profile.color set --
+        exercise assess() end to end the same way, through json.dumps,
+        so a future scorer with the same mistake fails a fast unit test
+        instead of only a live server 500."""
+        import dataclasses
+        import json
+
+        asset = make_asset()
+        img = np.asarray(asset).copy()
+        img[60:80, 60:160] = (20, 20, 20)
+        localized = Image.fromarray(img)
+        inst = text_inst(
+            target="HELLO", style_profile=StyleProfil(color="#141414"),
+            characteristics=CharactText(size=20),
+        )
+        qa = verify.assess(localized, make_manifest([inst]), asset)
+        json.dumps(dataclasses.asdict(qa))  # must not raise
 
 
 class TestColorMath:

@@ -5,10 +5,10 @@ import {
 } from "lucide-react";
 import {
   BBox, FontFamily, FontOption, ImportResult, InstText, LanguageOption, Project,
-  RenderResult, SceneRegion, TextManifest, UploadResponse, ValidationReport,
-  addRegion, deleteProjectAsset, deleteRegion, detectAssetStream, fetchFonts,
+  RenderResult, RenderStreamEvent, SceneRegion, TextManifest, UploadResponse, ValidationReport,
+  addRegion, approveRender, deleteProjectAsset, deleteRegion, detectAssetStream, fetchFonts,
   fetchLanguages, getManifest, getProject, importFile, ocrRegion, putManifest, refineRegion,
-  renderAsset, scanAssetLanguage, snapshotAsset, updateProject, uploadAsset,
+  renderAsset, renderAssetStream, scanAssetLanguage, snapshotAsset, updateProject, uploadAsset,
   validateAsset,
 } from "./api";
 import { FcCollapse } from "react-icons/fc";
@@ -161,6 +161,14 @@ export default function App() {
   const [styleCollapsed, setStyleCollapsed] = useState(false);
   const [canvasExpandedH, setCanvasExpandedH] = useState(false);
 
+  // --- verify step (QA inspector) ---
+  const [verifyBusy, setVerifyBusy] = useState<string | null>(null); // stage label while streaming
+  const [verifyStage, setVerifyStage] = useState<string | null>(null);
+  const [verifySelId, setVerifySelId] = useState<string | null>(null);
+  const [reRenderingId, setReRenderingId] = useState<string | null>(null);
+  const [approved, setApproved] = useState(false);
+  const cancelVerifyRef = useRef<(() => void) | null>(null);
+
   // auto-expand the style panel when a region is selected
   useEffect(() => {
     if (renderSelId) setStyleCollapsed(false);
@@ -292,6 +300,11 @@ export default function App() {
     setImgSize(null);
     setReport(null);
     setRenderResult(null);
+    setVerifyBusy(null);
+    setVerifyStage(null);
+    setVerifySelId(null);
+    setReRenderingId(null);
+    setApproved(false);
     setImportedHash(null);
     setHasEditsAfterImport(false);
     setSaveStatus("idle");
@@ -971,6 +984,7 @@ export default function App() {
       // no request-level font override
       const result = await renderAsset(asset.asset_id, targLang);
       setRenderResult(result);
+      setApproved(false);
       addToast("success", "render complete");
     } catch (e) {
       setErrorWithNotif(String(e));
@@ -978,6 +992,117 @@ export default function App() {
       setBusy(null);
     }
   }, [asset, targLang, hasEditsAfterImport, addToast]);
+
+  const renderResultFromEvent = (ev: RenderStreamEvent): RenderResult => ({
+    output_url: ev.output_url ?? null,
+    qa_report: ev.qa_report ?? null,
+    qa_passed: !!ev.qa_passed,
+    qa_threshold: ev.qa_threshold ?? 0.8,
+    validation_report: ev.validation_report ?? null,
+    text_manifest: ev.text_manifest ?? null,
+    logs: ev.logs ?? [],
+    errors: ev.errors ?? [],
+  });
+
+  const STAGE_LABEL: Record<string, string> = {
+    tofu: "pre-flight check…",
+    scene: "re-reading scene context…",
+    tofu_regions: "validating per-region fit…",
+    cleanse: "erasing source text…",
+    scribe: "rendering target text…",
+    verify: "scoring quality…",
+    save: "saving output…",
+  };
+
+  /** the QA Inspector's streamed render: same pipeline as onRender, but
+   * over SSE so per-stage progress and recommendations surface live
+   * instead of behind one spinner */
+  const runVerifyRender = useCallback(() => {
+    if (!asset) return;
+    setError(null);
+    setApproved(false);
+    setVerifyBusy("rendering");
+    setVerifyStage("tofu");
+    cancelVerifyRef.current = renderAssetStream(asset.asset_id, targLang, (ev) => {
+      if (ev.stage === "complete") {
+        cancelVerifyRef.current = null;
+        setVerifyBusy(null);
+        setVerifyStage(null);
+        const result = renderResultFromEvent(ev);
+        setRenderResult(result);
+        if (result.text_manifest) setManifest(result.text_manifest.instances);
+        const recs = result.qa_report?.recommendations ?? [];
+        recs.slice(0, 3).forEach((r) => addToast("warning", r, false));
+        if (result.errors.length > 0) {
+          result.errors.forEach((e) => addToast("error", e, false));
+        } else if (recs.length === 0) {
+          addToast("success", "verification complete — no issues flagged");
+        }
+      } else if (ev.stage === "error") {
+        cancelVerifyRef.current = null;
+        setVerifyBusy(null);
+        setVerifyStage(null);
+        setErrorWithNotif(ev.message ?? "render failed");
+      } else {
+        setVerifyStage(ev.stage);
+      }
+    }, (message) => {
+      cancelVerifyRef.current = null;
+      setVerifyBusy(null);
+      setVerifyStage(null);
+      setErrorWithNotif(message);
+    });
+  }, [asset, targLang, addToast]);
+
+  const cancelVerify = useCallback(() => {
+    if (cancelVerifyRef.current) {
+      cancelVerifyRef.current();
+      cancelVerifyRef.current = null;
+    }
+    setVerifyBusy(null);
+    setVerifyStage(null);
+    addToast("info", "verification cancelled.");
+  }, [addToast]);
+
+  /** per-region re-render: composites onto the existing output instead of
+   * reverting untouched regions to source text (server: region_ids) */
+  const onReRenderRegion = useCallback((id: string) => {
+    if (!asset) return;
+    setReRenderingId(id);
+    setApproved(false);
+    renderAssetStream(asset.asset_id, targLang, (ev) => {
+      if (ev.stage === "complete") {
+        setReRenderingId(null);
+        const result = renderResultFromEvent(ev);
+        setRenderResult(result);
+        if (result.text_manifest) setManifest(result.text_manifest.instances);
+        addToast("success", `region ${id} re-rendered`);
+      } else if (ev.stage === "error") {
+        setReRenderingId(null);
+        setErrorWithNotif(ev.message ?? "re-render failed");
+      }
+    }, (message) => {
+      setReRenderingId(null);
+      setErrorWithNotif(message);
+    }, { regionIds: [id] });
+  }, [asset, targLang, addToast]);
+
+  const onApprove = useCallback(async () => {
+    if (!asset || !renderResult?.qa_report) return;
+    try {
+      await approveRender(asset.asset_id, targLang, {
+        overall_score: renderResult.qa_report.overall_score,
+        regions_total: renderResult.qa_report.progress?.regions_total,
+        rendered: renderResult.qa_report.progress?.rendered,
+        dnt: renderResult.qa_report.progress?.dnt,
+      });
+      setApproved(true);
+      addToast("success", "QA sign-off recorded in project history");
+      refreshProject();
+    } catch (e) {
+      setErrorWithNotif(String(e));
+    }
+  }, [asset, targLang, renderResult, addToast, refreshProject]);
 
   const translatableCount = manifest.filter((i) => !i.dnt).length;
   const translatedCount = manifest.filter((i) => !i.dnt && i.target_text).length;
@@ -1102,6 +1227,7 @@ export default function App() {
           canCapture={!!asset && !scanBlocked}
           canTranslate={!!asset && manifest.length > 0 && !scanBlocked}
           canRender={translatedCount > 0 && !scanBlocked}
+          canVerify={!!renderResult && !scanBlocked}
           theme={theme}
         />
       </div>
@@ -1686,13 +1812,23 @@ export default function App() {
                 target: <span className="text-zinc-700 dark:text-zinc-300">{langDisplayName(targLang)}</span>
               </span>
             </div>
-            <PressButton
-              onClick={onRender}
-              disabled={busy !== null}
-              title="Render localized image"
-            >
-              {busy === "rendering" ? "Rendering…" : "Render"}
-            </PressButton>
+            <div className="flex items-center gap-2">
+              <PressButton
+                onClick={onRender}
+                disabled={busy !== null}
+                title="Render localized image"
+              >
+                {busy === "rendering" ? "Rendering…" : "Render"}
+              </PressButton>
+              {renderResult && (
+                <PressButton
+                  onClick={() => setStep(4)}
+                  title="Inspect QA results"
+                >
+                  Verify
+                </PressButton>
+              )}
+            </div>
           </div>
 
           {/* Text + Appearance styling panels */}
@@ -2158,6 +2294,206 @@ export default function App() {
               )}
             </Section>
           )}
+        </div>
+      )}
+
+      {/* STEP 4: Verify — QA inspector: coverage, per-region scores, recommendations, approve */}
+      {step === 4 && (
+        <div key="step-4" className="step-fade space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <FlipButton
+                label="render"
+                tooltip="return to render"
+                icon={<ArrowLeft size={20} />}
+                onClick={() => setStep(3)}
+                reversed
+              />
+              <span className="subtext text-[8.4px] text-zinc-500">
+                target: <span className="text-zinc-700 dark:text-zinc-300">{langDisplayName(targLang)}</span>
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              {verifyBusy && (
+                <button
+                  onClick={cancelVerify}
+                  className="rounded-lg bg-zinc-200 px-3 py-2 text-sm text-zinc-600 transition hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"
+                >
+                  cancel
+                </button>
+              )}
+              <PressButton onClick={runVerifyRender} disabled={verifyBusy !== null} title="Run full QA render">
+                {verifyBusy ? "Verifying…" : renderResult ? "Re-verify" : "Run Verification"}
+              </PressButton>
+            </div>
+          </div>
+
+          {verifyBusy && (
+            <div className="bezier-card soft-shadow flex items-center gap-2 rounded-lg bg-white/60 px-4 py-2 text-sm text-cyan-600 dark:bg-zinc-900/60 dark:text-cyan-400">
+              <SquareLoader size="xs" />
+              <span>{verifyStage ? (STAGE_LABEL[verifyStage] ?? verifyStage) : "starting…"}</span>
+            </div>
+          )}
+
+          {!renderResult && !verifyBusy && (
+            <p className="subtext flex items-center gap-1.5 text-sm text-zinc-500">
+              <PiWarningCircleFill size={15} className="text-[#2d8cf0]" />
+              run verification to score this render against the source image.
+            </p>
+          )}
+
+          {renderResult && (() => {
+            const qa = renderResult.qa_report;
+            const cov = qa?.progress;
+            const per = qa?.per_asset_instance_score ? Object.values(qa.per_asset_instance_score)[0] ?? {} : {};
+            const metrics = qa?.metrics ?? {};
+            const asDict = (k: string): Record<string, number> => (metrics[k] as Record<string, number>) ?? {};
+            const fallbackIds = new Set(
+              (renderResult.text_manifest?.instances ?? []).filter((i) => i.glyph_fallback).map((i) => i.id)
+            );
+            const coverageComplete = cov ? cov.untranslated === 0 : false;
+            return (
+              <>
+                {/* overall + coverage banner */}
+                <Section title="Coverage" icon={<ShieldCheck size={14} />}>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {qa?.overall_score != null && (
+                      <Badge ok={renderResult.qa_passed}>
+                        QA: {(qa.overall_score * 100).toFixed(0)}% (gate {(renderResult.qa_threshold * 100).toFixed(0)}%)
+                      </Badge>
+                    )}
+                    {cov && (
+                      <>
+                        <span className="subtext rounded-full bg-zinc-200 px-2 py-0.5 text-xs text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
+                          {cov.rendered}/{cov.regions_total} rendered
+                        </span>
+                        {cov.dnt > 0 && (
+                          <span className="subtext rounded-full bg-zinc-200 px-2 py-0.5 text-xs text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
+                            {cov.dnt} DNT
+                          </span>
+                        )}
+                        {cov.untranslated > 0 && (
+                          <span className="subtext flex items-center gap-1 rounded-full bg-red-500/15 px-2 py-0.5 text-xs text-red-600 dark:text-red-400">
+                            <AlertTriangle size={11} /> {cov.untranslated} untranslated
+                          </span>
+                        )}
+                        {cov.fallback_font > 0 && (
+                          <span className="subtext flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs text-amber-600 dark:text-amber-400">
+                            <AlertTriangle size={11} /> {cov.fallback_font} font fallback
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </Section>
+
+                {/* recommendations checklist */}
+                {qa?.recommendations && qa.recommendations.length > 0 && (
+                  <Section title="Recommendations" icon={<MdTipsAndUpdates size={14} />}>
+                    <ul className="space-y-1.5 text-sm">
+                      {qa.recommendations.map((r, i) => (
+                        <li key={i} className="flex items-start gap-1.5 text-zinc-700 dark:text-zinc-300">
+                          <MdTipsAndUpdates size={14} className="mt-0.5 shrink-0 text-[#2d8cf0]" />
+                          <span>{r}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </Section>
+                )}
+
+                {/* source <-> localized compare */}
+                {renderResult.output_url && (
+                  <Section title="Compare" icon={<FileImage size={14} />}>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div>
+                        <p className="subtext mb-1 text-xs text-zinc-500">source</p>
+                        {previewUrl && <img src={previewUrl} alt="source" className="rounded-lg border border-zinc-300 dark:border-zinc-800" />}
+                      </div>
+                      <div>
+                        <p className="subtext mb-1 text-xs text-zinc-500">localized ({langDisplayName(targLang)})</p>
+                        <img src={renderResult.output_url} alt="localized" className="rounded-lg border border-zinc-300 dark:border-zinc-800" />
+                      </div>
+                    </div>
+                  </Section>
+                )}
+
+                {/* per-region scores + re-render */}
+                {Object.keys(per).length > 0 && (
+                  <Section title="Per-Region QA" icon={<ScanText size={14} />}>
+                    <div className="space-y-1.5">
+                      {Object.entries(per).map(([rid, score]) => {
+                        const isSel = verifySelId === rid;
+                        return (
+                          <div key={rid} className="rounded-lg border border-zinc-200 dark:border-zinc-800">
+                            <div
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => setVerifySelId(isSel ? null : rid)}
+                              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setVerifySelId(isSel ? null : rid); }}
+                              className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left"
+                            >
+                              <span
+                                className={`flex items-center gap-1 rounded px-2 py-0.5 font-mono text-xs ${
+                                  score >= 0.8 ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                                  : score >= 0.6 ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                                  : "bg-red-500/15 text-red-600 dark:text-red-400"
+                                }`}
+                              >
+                                {fallbackIds.has(rid) && <AlertTriangle size={10} className="text-amber-500 dark:text-amber-400" />}
+                                {rid} {(score * 100).toFixed(0)}%
+                              </span>
+                              <span className="flex-1" />
+                              <button
+                                onClick={(e) => { e.stopPropagation(); onReRenderRegion(rid); }}
+                                disabled={reRenderingId !== null || verifyBusy !== null}
+                                title="re-render just this region"
+                                className="flex items-center gap-1 rounded px-2 py-1 text-xs text-zinc-500 transition hover:bg-zinc-200 disabled:opacity-40 dark:hover:bg-zinc-800"
+                              >
+                                {reRenderingId === rid ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
+                                re-render
+                              </button>
+                            </div>
+                            {isSel && (
+                              <div className="subtext space-y-0.5 border-t border-zinc-200 px-3 py-2 text-xs text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
+                                {asDict("ocr_roundtrip")[rid] != null && <p>OCR round-trip: {(asDict("ocr_roundtrip")[rid] * 100).toFixed(0)}%</p>}
+                                {asDict("ring_ssim")[rid] != null && <p>ring SSIM: {(asDict("ring_ssim")[rid] * 100).toFixed(0)}%</p>}
+                                {asDict("residual_text")[rid] != null && <p>residual source text: {(asDict("residual_text")[rid] * 100).toFixed(0)}%</p>}
+                                {asDict("style_color")[rid] != null && <p>style color match: {(asDict("style_color")[rid] * 100).toFixed(0)}%</p>}
+                                {asDict("style_size")[rid] != null && <p>style size match: {(asDict("style_size")[rid] * 100).toFixed(0)}%</p>}
+                                {fallbackIds.has(rid) && <p className="text-amber-600 dark:text-amber-400">font swapped: the requested font lacked characters for this text.</p>}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </Section>
+                )}
+
+                {/* double-confirmation approve gate */}
+                <div className="bezier-card soft-shadow flex flex-wrap items-center gap-3 rounded-lg bg-white/60 px-4 py-3 dark:bg-zinc-900/60">
+                  <span className="subtext text-sm text-zinc-600 dark:text-zinc-400">
+                    {cov ? `${cov.regions_total}/${cov.regions_total} region(s) addressed — ${cov.rendered} rendered, ${cov.dnt} DNT` : "coverage unavailable"}
+                    {!coverageComplete && cov && cov.untranslated > 0 && (
+                      <span className="text-red-600 dark:text-red-400"> ({cov.untranslated} still untranslated)</span>
+                    )}
+                  </span>
+                  <div className="flex-1" />
+                  {approved ? (
+                    <Badge ok>approved</Badge>
+                  ) : (
+                    <PressButton
+                      onClick={onApprove}
+                      disabled={!coverageComplete}
+                      title={coverageComplete ? "Sign off on this render" : "All non-DNT regions must be translated and rendered first"}
+                    >
+                      Approve
+                    </PressButton>
+                  )}
+                </div>
+              </>
+            );
+          })()}
         </div>
       )}
 

@@ -212,9 +212,22 @@ export interface RenderLogEntry {
   duration_ms?: number;
 }
 
+export interface QACoverage {
+  instances_assessed: number;
+  regions_total: number;
+  dnt: number;
+  translated: number;
+  untranslated: number;
+  rendered: number;
+  fallback_font: number;
+}
+
 export interface QAReport {
   overall_score: number | null;
   per_asset_instance_score?: Record<string, Record<string, number>>;
+  progress?: QACoverage;
+  metrics?: Record<string, unknown>;
+  recommendations?: string[];
 }
 
 export interface RenderResult {
@@ -575,6 +588,73 @@ export async function renderAsset(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ asset_id: assetId, targ_lang: targLang, font, qa_threshold: qaThreshold }),
+    })
+  );
+}
+
+export interface RenderStreamEvent {
+  stage: "tofu" | "scene" | "tofu_regions" | "cleanse" | "scribe" | "verify" | "save" | "complete" | "error";
+  status?: "running" | "complete";
+  passed?: boolean;          // tofu: complete
+  issues?: number;           // tofu_regions: complete
+  languages?: string[];      // tofu_regions: complete
+  score?: number | null;     // verify: complete
+  message?: string;          // error
+  // "complete" stage mirrors RenderResult
+  output_url?: string | null;
+  qa_report?: QAReport | null;
+  qa_passed?: boolean;
+  qa_threshold?: number;
+  validation_report?: ValidationReport | null;
+  text_manifest?: TextManifest | null;
+  logs?: RenderLogEntry[];
+  errors?: string[];
+}
+
+/** SSE render, mirroring detectAssetStream. `regionIds`, when given, scopes
+ * cleanse+scribe to that subset (per-region re-render from the QA Inspector)
+ * — the server composites onto the asset's existing localized output rather
+ * than reverting untouched regions to source text. */
+export function renderAssetStream(
+  assetId: string,
+  targLang: string,
+  onEvent: (ev: RenderStreamEvent) => void,
+  onFailure: (message: string) => void,
+  opts?: { font?: string; qaThreshold?: number; regionIds?: string[] }
+): () => void {
+  const qs = new URLSearchParams({ asset_id: assetId, targ_lang: targLang });
+  if (opts?.font) qs.set("font", opts.font);
+  if (opts?.qaThreshold != null) qs.set("qa_threshold", String(opts.qaThreshold));
+  if (opts?.regionIds?.length) qs.set("region_ids", opts.regionIds.join(","));
+  const es = new EventSource(`/api/render/stream?${qs.toString()}`);
+  es.onmessage = (e) => {
+    const ev = JSON.parse(e.data) as RenderStreamEvent;
+    if (ev.stage === "complete" || ev.stage === "error") es.close();
+    onEvent(ev);
+  };
+  es.onerror = () => {
+    es.close();
+    onFailure("render stream failed");
+  };
+  return () => es.close();
+}
+
+export async function approveRender(
+  assetId: string,
+  targLang: string,
+  coverage?: { overall_score?: number | null; regions_total?: number; rendered?: number; dnt?: number }
+): Promise<{ ok: boolean }> {
+  return json(
+    await fetch("/api/render/approve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        asset_id: assetId, targ_lang: targLang,
+        overall_score: coverage?.overall_score,
+        regions_total: coverage?.regions_total,
+        rendered: coverage?.rendered,
+        dnt: coverage?.dnt,
+      }),
     })
   );
 }

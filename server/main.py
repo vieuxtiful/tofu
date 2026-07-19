@@ -228,6 +228,14 @@ class RenderRequest(BaseModel):
     font: Optional[str] = None
     qa_threshold: Optional[float] = None
 
+class ApproveRequest(BaseModel):
+    asset_id: str
+    targ_lang: str
+    overall_score: Optional[float] = None
+    regions_total: Optional[int] = None
+    rendered: Optional[int] = None
+    dnt: Optional[int] = None
+
 class ProjectCreate(BaseModel):
     name: str
     target_lang: str
@@ -1167,6 +1175,7 @@ def render_stream(
     targ_lang: str,
     font: Optional[str] = None,
     qa_threshold: Optional[float] = None,
+    region_ids: Optional[str] = None,
 ):
     """SSE variant of /api/render: emits progress per layer (tofu, scene,
     tofu_regions, cleanse, scribe, verify) + a final payload shaped like
@@ -1183,7 +1192,16 @@ def render_stream(
     the original pre-flight only ever validated the single request-level
     target language, never a region override, and never with the size/
     effects context that makes the render-quality prediction meaningful.
+
+    region_ids (comma-separated, optional): the QA Inspector's per-region
+    re-render action. When given, cleanse+scribe run ONLY on that instance
+    subset, and the starting image is the asset's existing localized output
+    (if one is on disk) rather than the raw source — so untouched regions
+    keep their prior render instead of reverting to source text. Falls back
+    to the raw source when no prior output exists yet (nothing to composite
+    onto).
     """
+    import dataclasses as _dc
     import json as _json
     from fastapi.responses import StreamingResponse
     from tofu.layers import scene, cleanse, scribe, verify
@@ -1194,6 +1212,13 @@ def render_stream(
         raise HTTPException(404, f"no manifest for asset '{asset_id}'")
     manifest.targ_lang = targ_lang
     threshold = qa_threshold if qa_threshold is not None else 0.8
+
+    target_ids = set(region_ids.split(",")) if region_ids else None
+    render_path = path
+    if target_ids is not None:
+        prior_output = OUTPUT_DIR / f"{asset_id}-{targ_lang}.png"
+        if prior_output.exists():
+            render_path = prior_output
 
     def event(data: Dict[str, Any]) -> str:
         return f"data: {_json.dumps(data, ensure_ascii=False)}\n\n"
@@ -1300,11 +1325,21 @@ def render_stream(
                         ),
                     )
 
+            # partial re-render: only the requested regions get cleansed +
+            # re-scribed; everything else in render_path (the prior output,
+            # when one exists) is left untouched
+            erase_manifest = manifest2
+            if target_ids is not None:
+                erase_manifest = _dc.replace(
+                    manifest2,
+                    instances=[i for i in manifest2.instances if i.id in target_ids],
+                )
+
             # -- cleanse --
             yield event({"stage": "cleanse", "status": "running"})
             t0 = time.time()
             try:
-                cleansed_asset = cleanse.erase(str(path), manifest2)
+                cleansed_asset = cleanse.erase(str(render_path), erase_manifest)
                 log("cleanse", "erased region(s)", t0=t0)
             except Exception as exc:
                 log("cleanse", f"failed: {type(exc).__name__}: {exc}", "error", t0=t0)
@@ -1323,7 +1358,7 @@ def render_stream(
             t0 = time.time()
             try:
                 localized = scribe.render(
-                    cleansed_asset, manifest2, targ_lang, render_params,
+                    cleansed_asset, erase_manifest, targ_lang, render_params,
                     font_registry=validator.font_registry,
                 )
                 log("scribe", f"rendered target text for '{targ_lang}'", t0=t0)
@@ -1409,6 +1444,29 @@ def render_stream(
         gen(), media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@app.post("/api/render/approve")
+def approve_render(req: ApproveRequest):
+    """QA Inspector sign-off: records the coverage/score snapshot the user
+    approved into project history. A human decision, not a derived fact —
+    logged as its own event kind so it's distinguishable from an ordinary
+    render in History."""
+    _asset_path(req.asset_id)  # 404s on a missing asset
+    pid = db.project_for_asset(req.asset_id)
+    if not pid:
+        raise HTTPException(404, f"asset '{req.asset_id}' is not attached to a project")
+    score_str = f"{req.overall_score:.2f}" if req.overall_score is not None else "n/a"
+    coverage_str = (
+        f"{req.rendered}/{req.regions_total} rendered"
+        + (f", {req.dnt} DNT" if req.dnt else "")
+        if req.regions_total is not None else "coverage n/a"
+    )
+    db.log_event(
+        pid, "qa-approved",
+        f"approved {req.asset_id} → {req.targ_lang}: QA {score_str} ({coverage_str})",
+    )
+    return {"ok": True}
 
 
 # --- legacy process (backwards compat) ---
