@@ -26,7 +26,7 @@ scene has two jobs:
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from tofu.core.types import (
     TextManifest, StyleProfil, BgProfil, SceneRegion, BBox, CharactText,
@@ -104,6 +104,9 @@ class ClassicalCVBackend(SceneBackend):
         mser_min_area: int = 60,
         mser_max_area: int = 14400,
         mser_merge_dist: int = 12,
+        max_region_frac: float = 0.85,
+        swt_cv_max: float = 0.65,
+        mser_cluster_max_frac: float = 0.12,
     ):
         self.max_regions = max_regions
         self.min_area_frac = min_area_frac
@@ -113,6 +116,23 @@ class ClassicalCVBackend(SceneBackend):
         self.mser_min_area = mser_min_area
         self.mser_max_area = mser_max_area
         self.mser_merge_dist = mser_merge_dist
+        # a region covering ~the whole frame IS the frame, not a surface —
+        # worse, the largest-first containment dedup would swallow every
+        # real surface inside it (measured: both street photos returned
+        # exactly one frame-sized region and nothing else)
+        self.max_region_frac = max_region_frac
+        # stroke-width coefficient-of-variation gate for MSER components
+        # (SWT cascade — Epshtein 2010 / Neumann & Matas 2012): text
+        # strokes have near-uniform width; blobs do not
+        self.swt_cv_max = swt_cv_max
+        # hard cap on a merged MSER cluster's envelope AREA, as a fraction
+        # of the frame — single-linkage clustering over hundreds of
+        # stroke-like components in a dense signage scene chains
+        # transitively regardless of how the pairwise distance is defined;
+        # only refusing merges that would exceed a real-sign-sized envelope
+        # stops the snowball (measured: gemini-street collapsed 703
+        # surviving components into one 1406x766 blob without this cap)
+        self.mser_cluster_max_frac = mser_cluster_max_frac
 
     def _contour_regions(self, work, scale: float) -> List[SceneRegion]:
         import cv2
@@ -160,6 +180,32 @@ class ClassicalCVBackend(SceneBackend):
             ))
         return regions
 
+    def _stroke_like(self, np, cv2, pts, bx, by, bw, bh) -> bool:
+        """SWT-style component gate: keep only components whose stroke
+        width is near-uniform (coefficient of variation of the distance-
+        transform core below swt_cv_max) — the classical text/non-text
+        discriminator over MSER components."""
+        comp = np.zeros((bh, bw), np.uint8)
+        comp[pts[:, 1] - by, pts[:, 0] - bx] = 255
+        dt = cv2.distanceTransform(comp, cv2.DIST_L2, 3)
+        vals = dt[comp > 0]
+        if vals.size == 0:
+            return False
+        peak = float(vals.max())
+        if peak <= 0:
+            return False
+        core = vals[vals >= 0.5 * peak]
+        if core.size < 4:
+            return False
+        mean = float(core.mean())
+        if mean <= 0:
+            return False
+        # stroke must also be thin relative to the component — a solid
+        # blob has stroke width ~ its own smaller dimension
+        if 2.0 * mean > 0.7 * min(bw, bh) and min(bw, bh) > 8:
+            return False
+        return float(core.std()) / mean <= self.swt_cv_max
+
     def _mser_regions(self, work, scale: float) -> List[SceneRegion]:
         import cv2
         import numpy as np
@@ -176,31 +222,79 @@ class ClassicalCVBackend(SceneBackend):
         if bboxes is None or len(bboxes) == 0:
             return []
         inv = 1.0 / scale
-        raw = [
-            (int(bx * inv), int(by * inv), int(bw * inv), int(bh * inv))
-            for bx, by, bw, bh in bboxes
-            if bw >= 4 and bh >= 4
-        ]
+        raw = []
+        for pts, (bx, by, bw, bh) in zip(msers, bboxes):
+            if bw < 4 or bh < 4:
+                continue
+            try:
+                if not self._stroke_like(np, cv2, pts, bx, by, bw, bh):
+                    continue
+            except Exception:
+                pass  # gate is best-effort; never drop on internal error
+            raw.append(
+                (int(bx * inv), int(by * inv), int(bw * inv), int(bh * inv))
+            )
         if not raw:
             return []
-        raw.sort(key=lambda b: (b[1], b[0]))
+
+        # union-find over the RAW components with an envelope-area growth
+        # cap. single-linkage clustering (any two "close" components merge,
+        # transitively) is what naturally chains through hundreds of small
+        # stroke-like components in a dense signage scene — no pairwise
+        # distance definition avoids that on its own. refusing any merge
+        # whose resulting envelope would exceed a real-sign-sized area
+        # bounds cluster growth directly, regardless of how many nearby
+        # components exist or in what order they're visited.
+        n = len(raw)
+        parent = list(range(n))
+        envelope = [
+            (raw[i][0], raw[i][1], raw[i][0] + raw[i][2], raw[i][1] + raw[i][3])
+            for i in range(n)
+        ]
+        frame_area = (work.shape[0] * work.shape[1]) / max(scale * scale, 1e-9)
+        cluster_cap = self.mser_cluster_max_frac * frame_area
+
+        def find(i: int) -> int:
+            while parent[i] != i:
+                parent[i] = parent[parent[i]]
+                i = parent[i]
+            return i
+
+        def close(a, b) -> bool:
+            ax, ay, aw, ah = a
+            bx, by, bw, bh = b
+            dx = max(0, max(ax, bx) - min(ax + aw, bx + bw))
+            dy = max(0, max(ay, by) - min(ay + ah, by + bh))
+            return dx <= self.mser_merge_dist and dy <= self.mser_merge_dist
+
+        for i in range(n):
+            for j in range(i + 1, n):
+                if not close(raw[i], raw[j]):
+                    continue
+                ri, rj = find(i), find(j)
+                if ri == rj:
+                    continue
+                ex0 = min(envelope[ri][0], envelope[rj][0])
+                ey0 = min(envelope[ri][1], envelope[rj][1])
+                ex1 = max(envelope[ri][2], envelope[rj][2])
+                ey1 = max(envelope[ri][3], envelope[rj][3])
+                if (ex1 - ex0) * (ey1 - ey0) > cluster_cap:
+                    continue  # would form an oversized blob — refuse
+                parent[rj] = ri
+                envelope[ri] = (ex0, ey0, ex1, ey1)
+
+        groups: Dict[int, List[int]] = {}
+        for i in range(n):
+            groups.setdefault(find(i), []).append(i)
+
         merged: List[Tuple[int, int, int, int]] = []
-        for x, y, w, h in raw:
-            cx, cy = x + w // 2, y + h // 2
-            placed = False
-            for i, (mx, my, mw, mh) in enumerate(merged):
-                mcx, mcy = mx + mw // 2, my + mh // 2
-                if (abs(cx - mcx) <= (w + mw) // 2 + self.mser_merge_dist and
-                    abs(cy - mcy) <= (h + mh) // 2 + self.mser_merge_dist):
-                    nx = min(x, mx)
-                    ny = min(y, my)
-                    nx2 = max(x + w, mx + mw)
-                    ny2 = max(y + h, my + mh)
-                    merged[i] = (nx, ny, nx2 - nx, ny2 - ny)
-                    placed = True
-                    break
-            if not placed:
-                merged.append((x, y, w, h))
+        for members in groups.values():
+            xs0 = min(raw[i][0] for i in members)
+            ys0 = min(raw[i][1] for i in members)
+            xs1 = max(raw[i][0] + raw[i][2] for i in members)
+            ys1 = max(raw[i][1] + raw[i][3] for i in members)
+            merged.append((xs0, ys0, xs1 - xs0, ys1 - ys0))
+
         min_area = self.min_area_frac * work.shape[0] * work.shape[1]
         regions: List[SceneRegion] = []
         for x, y, w, h in merged:
@@ -246,6 +340,15 @@ class ClassicalCVBackend(SceneBackend):
         contour_regions = self._contour_regions(work, scale)
         mser_regions = self._mser_regions(work, scale)
         all_regions = contour_regions + mser_regions
+
+        # frame-sized regions are the frame, not surfaces — and since the
+        # dedup below keeps largest-first, one of them would swallow every
+        # real surface it contains
+        frame_area = float(h * w)
+        all_regions = [
+            r for r in all_regions
+            if (r.bbox.width * r.bbox.height) / frame_area <= self.max_region_frac
+        ]
 
         all_regions.sort(key=lambda r: r.bbox.width * r.bbox.height, reverse=True)
         kept: List[SceneRegion] = []

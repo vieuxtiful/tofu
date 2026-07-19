@@ -411,6 +411,44 @@ Conclusions:
    2.x API. japan-street needs a 2× upscale pass or better scene recall
    regardless of engine.
 
+## Part 3d — Phase 2 scene pre-pass hardening (measured 2026-07-19)
+
+Two fixes to `ClassicalCVBackend`, both regression-tested (72 unit tests +
+full eval_detect sweep, byte-identical F1 on every synthetic fixture):
+
+1. **Frame-sized region filter** (`max_region_frac=0.85`): both street photos
+   previously returned exactly ONE scene region — the frame itself — because
+   contour analysis finds the outer image boundary as a "bordered_region", and
+   the largest-first containment dedup then swallowed every real surface
+   inside it. Regions covering more of the frame than this fraction are
+   dropped before dedup.
+2. **MSER cluster single-linkage snowball (real bug, not a tuning issue)**:
+   the original merge test grew its own catchment tolerance with the
+   accumulating cluster's size (`(w+mw)//2 + merge_dist`), so a cluster's
+   reach expanded with every absorption — on dense signage this collapsed
+   hundreds of stroke-like components into one near-frame blob. Fixed with
+   (a) an SWT-style stroke-width coefficient-of-variation gate on MSER
+   components before clustering (Epshtein 2010 / Neumann & Matas 2012 —
+   text strokes are near-uniform width, blobs are not) and (b) replacing the
+   growing-tolerance merge with union-find over a FIXED pairwise gap that
+   additionally **refuses any merge whose resulting envelope would exceed
+   12% of the frame area** — single-linkage clustering chains transitively
+   regardless of how the pairwise distance is defined, so only a hard
+   envelope-growth cap stops the snowball. Verified directly against
+   `images/gemini-street.png` in `tests/test_scene_regions.py`.
+
+| Scene | scene surfaces before → after | detect regions | detect recall |
+|---|---|---|---|
+| gemini-street | 1 → 16 | 14 → 14 | 0.111 → 0.111 (unchanged) |
+| japan-street | 1 → 12 | 1 → 2 | 0.00 → 0.00 (unchanged) |
+
+Scene recall improved substantially with zero synthetic-fixture regression,
+but street-scene OCR recall did not move — confirms the CP-1 finding
+independently: japan-street's signage is too small/distant for EasyOCR's
+recognizer regardless of how many candidate surfaces the scene pre-pass now
+finds. The remaining lever is the PaddleOCR bridge (in progress), not scene
+recall.
+
 ## Part 4 — Risks & mitigations
 - **easyocr/torch on the dev host** (currently absent): Phase 0 gate; if
   installation is blocked, pin PaddleOCR as the dev default via `OCR_ENGINE` and
