@@ -487,6 +487,88 @@ Not yet done: perspective rectification for rotated crops in
 CP-1 showed already outperforms EasyOCR without it); a v2 worker can add
 `cv2.getPerspectiveTransform` if crop-level accuracy proves to need it.
 
+## Part 3f — Phase 3: cleanse overhaul (landed 2026-07-19)
+
+`cleanse.erase()` rewritten per the plan: per-instance stroke-level glyph
+masks (shared `utils.imaging.text_mask`, dilated) replace the unconditional
+full-bbox-rectangle fill that was the root cause of the measured stylized-
+italic ring-SSIM 0.655 regression; the bbox rectangle is now a fallback used
+only when segmentation genuinely fails. Fill strategy is selected per-region
+from `inst.background_profile.texture` (Scene's Phase 2 classification, so
+the two layers agree on what kind of surface they're looking at): `flat` →
+border-ring median color fill, `smooth_gradient` → a local per-channel
+linear-plane reconstruction re-fit over the actual erasure footprint (same
+shading model Scene classifies with), `textured`/unclassified → batched
+`cv2.INPAINT_TELEA` (no `cv2.xphoto`/PatchMatch in this OpenCV build,
+confirmed by direct check; LaMa remains future opt-in per the original
+plan). Every fill is alpha-feathered at the mask boundary via a distance-
+transform falloff.
+
+**Two real bugs found and fixed during measurement** (both via direct
+apples-to-apples comparison against the pre-Phase-3 code with everything
+else — typography, scene enrichment — held identical, not against the
+stale Phase-0 baseline which predates typography-driven scribe rendering
+entirely):
+
+1. **Mask polarity inversion on multi-color ink.** `text_mask`'s Otsu+
+   GrabCut assumes text is well-separated from a single background color;
+   the stylized-italic fixture's stroke+fill outlined text (dark fill, a
+   very different blue stroke color) has higher internal chromatic variance
+   than its background, and GrabCut's GMM converged on the wrong partition —
+   the mask selected the BACKGROUND, leaving the actual ink completely
+   unerased (residual OCR similarity 1.0, a complete no-op erase, visually
+   confirmed via a mask overlay debug render). Fixed with a polarity gate:
+   a crop's own edge pixels are near-certainly background (OCR boxes are
+   tight around ink, not flush with it), so the masked group must sit
+   farther from the edge color than the unmasked group; when it's the
+   other way around the mask is rejected and the bbox-rectangle fallback
+   fires instead.
+2. **Boundary ghost from under-dilation.** Feathering weakens toward the
+   mask's own boundary by design (full-strength fill only deep inside it);
+   with only 1px of dilation, that taper landed directly on the glyph's own
+   anti-aliased edge instead of past it into real background, leaving a
+   thin but fully OCR-readable outline of the original letterforms —
+   measured on the flat-sign fixture, where EasyOCR still read "MAIN
+   STREET" at full confidence through the outline (residual 1.0 on 4/4
+   regions). This was invisible to the first round of unit tests because
+   they only sampled single pixels, not the whole masked region. Fixed by
+   increasing dilation to ~3px (matching the plan's original spec) so the
+   full-strength fill zone comfortably covers the ink's anti-aliased
+   fringe; a new test checks the ENTIRE dilated mask region, not a spot
+   sample, specifically to catch this class of bug again.
+
+**Final measured results** (apples-to-apples old-vs-new, identical
+typography/scene enrichment on both sides; `scripts/eval_out/*-phase3.*`):
+
+| Fixture | ring-SSIM before → after | residual before → after |
+|---|---|---|
+| flat-sign | 0.999 → 1.000 | 0.0 → 0.0 |
+| gradient-banner | 0.956 → 0.961 | 0.0 → 0.0 |
+| textured-wall | 0.985 → 1.000 | 0.0 → 0.0 |
+| stylized-italic | 0.477 → 0.488 | 0.0 → 0.0 |
+| expansion-en | 0.998 → 1.000 | 0.0 → 0.0 |
+| cjk-vertical | 0.981 → 1.000 | 0.0 → 0.0 |
+| gemini-street | 0.971 → 0.991 | 0.071 → 0.071 (unchanged) |
+| japan-street | 0.822 → 1.000 | 0.0 → 0.0 |
+
+Every fixture improved or held steady — zero regressions anywhere.
+Residual is 0.0 across the board except gemini-street's one pre-existing
+unresolved region (unchanged by cleanse, a detection/font issue, not new).
+stylized-italic's ring-SSIM stays well under the original ≥0.90 exit
+target: isolated by the same comparison methodology, this is caused
+entirely by region r3 ("Italic Emphasis"), whose ring-SSIM is *identical*
+(0.1057/0.1058) whether measured against old or new cleanse — it's scribe
+now rendering an italic shear (fed by Phase 1 typography detection, which
+didn't exist when the 0.655/0.90 targets were set) bleeding pixels past
+the original detection bbox into the verify ring. That's Phase 4 (scribe)
+scope, not a cleanse defect; flagged there rather than chased here.
+
+Deferred by deliberate scope decision, not oversight: the `compositor.py`
+shared-core refactor (Cleanse/Scribe unification) the plan flagged as a
+recommendation-not-requirement — Phase 3's exit criteria are metric-based,
+not structural, and no concrete duplication pain point arose while
+implementing to justify the refactor now.
+
 ## Part 4 — Risks & mitigations
 - **easyocr/torch on the dev host** (currently absent): Phase 0 gate; if
   installation is blocked, pin PaddleOCR as the dev default via `OCR_ENGINE` and
