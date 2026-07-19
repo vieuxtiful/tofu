@@ -1,5 +1,7 @@
 ## 🍢 cicerone pure-logic units (no OCR model required)
+from tofu.core.types import BBox, InstText, SceneRegion
 from tofu.layers.cicerone import (
+    EasyOCRBackend,
     RawDetection,
     ScriptDetector,
     _compose_crop_text,
@@ -7,6 +9,7 @@ from tofu.layers.cicerone import (
     guess_latin_language,
     merge_detections,
     merge_vertical_columns,
+    probe_uncovered_surfaces,
     union_prefer_primary,
     expand_langset,
 )
@@ -121,6 +124,55 @@ class TestMerging:
         primary = [det(0, 0, 100, 40)]
         secondary = [det(500, 500, 100, 40, "far")]
         assert len(union_prefer_primary(primary, secondary)) == 2
+
+
+# -- scene-surface probe gates ------------------------------------------------
+
+def _inst(x, y, w, h, text, conf):
+    return InstText(
+        id="r1", bounding_box=BBox(x=x, y=y, width=w, height=h),
+        text=text, confidence=conf,
+    )
+
+
+def _surface(x, y, w, h, label="panel"):
+    return SceneRegion(
+        bbox=BBox(x=x, y=y, width=w, height=h),
+        semantic_label=label, confidence=0.8,
+    )
+
+
+class TestSurfaceProbeGates:
+    """gates return (None, []) BEFORE any reader init, so these run
+    without an OCR model."""
+
+    def test_healthy_latin_scene_skips_probe(self):
+        # >=2 confident script-bearing reads: no rescue needed
+        instances = [
+            _inst(10, 10, 100, 30, "MAIN STREET", 0.95),
+            _inst(10, 60, 100, 30, "EXIT 25", 0.9),
+        ]
+        surfaces = [_surface(200, 200, 80, 80)]
+        langset, dets = probe_uncovered_surfaces(
+            None, surfaces, instances, EasyOCRBackend.__new__(EasyOCRBackend)
+        )
+        assert langset is None and dets == []
+
+    def test_no_surfaces_skips_probe(self):
+        langset, dets = probe_uncovered_surfaces(
+            None, [], [], EasyOCRBackend.__new__(EasyOCRBackend)
+        )
+        assert langset is None and dets == []
+
+    def test_covered_surfaces_skip_probe(self):
+        # the only surface fully contains a healthy detection: nothing
+        # uncovered remains, so no probe
+        instances = [_inst(20, 20, 60, 20, "맥주", 0.9)]
+        surfaces = [_surface(10, 10, 100, 100)]
+        langset, dets = probe_uncovered_surfaces(
+            None, surfaces, instances, EasyOCRBackend.__new__(EasyOCRBackend)
+        )
+        assert langset is None and dets == []
 
 
 # -- language set expansion ---------------------------------------------------

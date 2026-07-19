@@ -357,6 +357,15 @@ Confirmed, quantified gaps (each maps to a planned phase):
    ja-hinted reader misses the vertical column (CRAFT vertical weakness) while
    reading horizontal ようこそ at conf 1.0. → Phase 1 (probe evidence tuning,
    PaddleOCR vertical evaluation).
+   **RESOLVED 2026-07-18 (Phase 1b): scene-surface probe.** Uncovered scene
+   surfaces are probed per-panel with candidate CJK readers (per-panel reads
+   score conf 1.0 where full-frame vertical detection reads 0.08); the winner
+   supplies both the adaptive-repass langset and authoritative detections that
+   merge_vertical_columns reassembles. cjk-vertical F1 0.00 → **1.00**, edit
+   distance 0.0, src ja; all other fixtures byte-identical (health gate skips
+   healthy scenes). japan-street remains unrescued — its one scene surface is
+   frame-sized (area-capped); needs Phase 2 scene recall and/or PaddleOCR
+   (cp313 wheel confirmed available: paddlepaddle 3.3.1).
 2. **stylized-italic ring-SSIM 0.655** on a *clean synthetic* — the
    full-bbox-rectangle inpaint mask disturbing surroundings, exactly the bbox
    artifact. → Phase 3.

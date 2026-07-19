@@ -726,6 +726,13 @@ def detect_stream(
             # wrong-charset garbage regions become real recall
             if lang_hints is None and isinstance(backend, cicerone.EasyOCRBackend):
                 target = cicerone.refine_langset(manifest.instances, backend)
+                # scene-surface probe: rescues vertical CJK signage whose
+                # fragments carry no usable instance evidence
+                surface_dets = []
+                if target is None and regions:
+                    target, surface_dets = cicerone.probe_uncovered_surfaces(
+                        str(path), regions, manifest.instances, backend
+                    )
                 if target:
                     yield event({
                         "stage": "refine", "status": "running",
@@ -733,6 +740,8 @@ def detect_stream(
                     })
                     tuned = cicerone.EasyOCRBackend(languages=target, gpu=gpu)
                     second = cicerone.run_multipass(tuned, str(path))
+                    if surface_dets:
+                        second = cicerone.union_prefer_primary(surface_dets, second)
                     merged = cicerone.union_prefer_primary(second, detections)
                     manifest = cicerone.build_manifest(
                         str(path), merged,
