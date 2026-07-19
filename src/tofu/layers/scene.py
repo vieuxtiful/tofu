@@ -353,30 +353,85 @@ def analyze_regions(
     return engine.analyze(asset)
 
 
-def _estimate_colors(img, bbox: BBox) -> Tuple[Optional[str], Optional[str], Optional[float]]:
-    """estimate (text_color_hex, bg_color_hex, bg_std) inside a bbox.
+def _estimate_colors(img, bbox: BBox):
+    """estimate (text_color_hex, bg_color_hex, bg_std, glyph_mask, crop)
+    inside a bbox.
 
     segmentation is the shared Otsu+GrabCut glyph mask (utils.imaging.
     text_mask) — the same mask typography and cleanse consume, so color,
-    weight, and erasure all agree on which pixels are strokes.
+    weight, and erasure all agree on which pixels are strokes. the mask
+    and crop are returned so background classification reuses them.
     """
     h, w = img.shape[:2]
     x0, y0 = max(0, bbox.x), max(0, bbox.y)
     x1 = min(w, bbox.x + bbox.width)
     y1 = min(h, bbox.y + bbox.height)
     if x1 - x0 < 3 or y1 - y0 < 3:
-        return None, None, None
+        return None, None, None, None, None
     crop = img[y0:y1, x0:x1]
     mask = _text_mask(img, bbox)
     if mask is None:
         flat = crop.reshape(-1, 3)
-        return None, _hex(flat.mean(axis=0)), float(flat.std())
+        return None, _hex(flat.mean(axis=0)), float(flat.std()), None, crop
     bg_pixels = crop[~mask]
     return (
         _hex(crop[mask].mean(axis=0)),
         _hex(bg_pixels.mean(axis=0)),
         float(bg_pixels.std()),
+        mask,
+        crop,
     )
+
+
+# background classification thresholds (calibrated on the fixture set:
+# flat-sign → flat, gradient-banner → smooth_gradient, textured-wall →
+# textured)
+BG_RESID_STD = 12.0   # max plane-fit residual std for flat/gradient
+BG_GRAD_SPAN = 12.0   # min luminance change across the crop to call gradient
+
+
+def _classify_background(crop, mask) -> Tuple[Optional[str], Optional[List[str]]]:
+    """classify a region's background from its non-glyph pixels.
+
+    method: least-squares planar shading fit over background luminance
+    (the linear shading model). a low-residual fit is either "flat"
+    (negligible luminance span) or "smooth_gradient" (the fitted plane's
+    direction is reported as `linear <angle>°`); high residual means the
+    background carries real structure → "textured".
+
+    returns (texture_label, gradients) — gradients only for
+    smooth_gradient, formatted for BgProfil.gradients.
+    """
+    try:
+        import numpy as np
+    except ImportError:
+        return None, None
+    if crop is None:
+        return None, None
+    bg = ~mask if mask is not None else np.ones(crop.shape[:2], dtype=bool)
+    if bg.sum() < 40:
+        return None, None
+    lum = (
+        0.299 * crop[..., 0].astype(np.float64)
+        + 0.587 * crop[..., 1].astype(np.float64)
+        + 0.114 * crop[..., 2].astype(np.float64)
+    )
+    h, w = lum.shape
+    ys, xs = np.nonzero(bg)
+    a_mat = np.column_stack([xs, ys, np.ones(len(xs))])
+    try:
+        coef, *_ = np.linalg.lstsq(a_mat, lum[ys, xs], rcond=None)
+    except Exception:
+        return None, None
+    resid_std = float((lum[ys, xs] - a_mat @ coef).std())
+    span = float(np.hypot(coef[0] * w, coef[1] * h))
+    if resid_std < BG_RESID_STD:
+        if span < BG_GRAD_SPAN:
+            return "flat", None
+        import math
+        angle = math.degrees(math.atan2(float(coef[1]), float(coef[0])))
+        return "smooth_gradient", [f"linear {angle:.0f}°"]
+    return "textured", None
 
 
 def _containing_region(
@@ -423,7 +478,9 @@ def analyze(asset: Any, text_manifest: TextManifest) -> TextManifest:
         if img is None or inst.bounding_box is None:
             continue
         try:
-            text_hex, bg_hex, bg_std = _estimate_colors(img, inst.bounding_box)
+            text_hex, bg_hex, bg_std, glyph_mask, crop = _estimate_colors(
+                img, inst.bounding_box
+            )
         except Exception:
             continue
         sp, bp = inst.style_profile, inst.background_profile
@@ -431,8 +488,18 @@ def analyze(asset: Any, text_manifest: TextManifest) -> TextManifest:
             sp.color = text_hex
         if bp.dominant_color is None and bg_hex:
             bp.dominant_color = bg_hex
-        if bp.texture is None and bg_std is not None:
-            bp.texture = "flat" if bg_std < 24 else "textured"
+        if bp.texture is None or bp.gradients is None:
+            try:
+                texture, gradients = _classify_background(crop, glyph_mask)
+            except Exception:
+                texture, gradients = None, None
+            if bp.texture is None:
+                if texture is not None:
+                    bp.texture = texture
+                elif bg_std is not None:  # classification unavailable
+                    bp.texture = "flat" if bg_std < 24 else "textured"
+            if bp.gradients is None and gradients:
+                bp.gradients = gradients
         if bp.semantic_label is None:
             region = _containing_region(text_manifest.scene_regions, inst.bounding_box)
             if region is not None:

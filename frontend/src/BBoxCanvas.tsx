@@ -422,6 +422,7 @@ export default function BBoxCanvas({
                       const bgBits = [
                         bp?.semantic_label,
                         bp?.texture,
+                        ...(bp?.gradients ?? []),
                       ].filter(Boolean).join(" · ");
                       if (!sp?.color && !styleBits && !bgBits && !inst.detected_language) return null;
                       return (
