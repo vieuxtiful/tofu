@@ -662,6 +662,102 @@ actual render-time block instead of a pre-flight prediction). Tracked as
 a Phase 5 follow-up alongside the QA Inspector work, which touches the
 same `/api/render` response contract.
 
+## Part 3h — Phase 5: Verify expansion + `/api/render/stream` (landed 2026-07-19)
+
+All planned backend deliverables landed, plus two real bugs found and fixed
+during live end-to-end verification against the running server — not caught
+by 157 passing unit tests, which is itself the finding worth recording (see
+below).
+
+1. **Coverage accounting.** `QAReport.progress` now reports
+   `regions_total/dnt/translated/untranslated/rendered/fallback_font`, so the
+   QA Inspector (Task 25) has a real completeness readout instead of only a
+   score.
+2. **Untranslated regions are a real deduction, not neutral.** A non-DNT
+   region with no `target_text` now scores `UNTRANSLATED_SCORE = 0.0` (was
+   `NEUTRAL_SCORE = 1.0`), with a recommendation surfaced. Closes the
+   loophole where skipping regions could inflate a manifest's own gate score
+   — measured: a 2-region manifest (one good, one untranslated) now scores
+   `< 0.9` overall instead of the old scheme's `1.0`.
+3. **Residual-source-text penalty**, graduated from `eval_render.py`'s
+   Phase-0 standalone OCR-diff into `verify.assess()` proper: OCRs the
+   cleansed crop, compares against the original source text, and
+   *multiplies* the per-instance score down (`score *= 1 - residual`) above
+   `RESIDUAL_PENALTY_THRESHOLD = 0.3`, rather than averaging in as positive
+   evidence — a clean erase can't buy back a bad render, but a dirty erase
+   always costs.
+4. **Style-consistency metric**: CIE76 ΔE color distance
+   (`_style_color_score`) and detected-vs-rendered size ratio
+   (`_style_size_score`), each optional (`None` when no hint exists),
+   weighted at `STYLE_WEIGHT = 0.2` into the per-instance score.
+5. **`/api/render/stream`** (SSE, mirrors `/api/detect/stream`'s pattern):
+   stages `tofu → scene → tofu_regions → cleanse → scribe → verify →
+   complete`. Closes the Phase-4-deferred item: **`tofu_regions`** re-runs
+   `ToFU.validate()` once per distinct effective target language actually
+   present across regions, now with real `font_px`/`effects` context drawn
+   from each region's own typography — the pre-flight check the plan
+   originally scoped for Phase 4, delivered here because it shares the
+   `/api/render` response contract with the SSE work.
+
+**Two real bugs found only by live verification against the running
+server** (unit tests, including 17 new Phase 5 tests, did not catch either
+— the fixtures never happened to exercise `font_family=None` against a real
+registry across two renders of the same manifest in sequence):
+
+- **`glyph_fallback` false-positive for `font_family=None`** (the common
+  "auto" case): `check_glyph_coverage()` only ever matched `current` against
+  the registry when a literal path was set; `None` never matches any
+  registry-keyed path, so every auto-styled region fell into "search for
+  something better" — which always finds *some* path different from `None`
+  and flags it. Measured live: flat-sign's 4 plain-English regions all
+  reported `glyph_fallback=True` despite `arial.ttf` covering the text
+  completely. Fixed by resolving `font_family=None` to the actual first
+  loadable `FALLBACK_FONTS` entry in the registry before checking coverage.
+- **Stale `glyph_fallback` flag persistence**: `render()` only ever *set*
+  `glyph_fallback=True` on failure, never reset it on success — a manifest
+  saved from an earlier (buggy) run kept `fallback_font=4` in the coverage
+  summary even after fix #1 landed, because re-rendering with the fixed
+  code found no gap and simply left the stale `True` untouched. Fixed by
+  unconditionally calling `check_glyph_coverage()` every render and always
+  explicitly setting `inst.glyph_fallback = not all_covered`.
+
+**Live verification** (fresh asset, avoiding the stale-manifest confound of
+the first pass): uploaded `flat-sign.png` fresh, detected 4 regions, set
+translations, streamed `/api/render/stream`. All 7 stages fired in order
+including `tofu_regions` ("re-validated 1 distinct target language(s)");
+final coverage `{regions_total: 4, translated: 4, untranslated: 0, rendered:
+4, fallback_font: 0}` (previously would have reported `fallback_font: 4`);
+overall QA `0.98`.
+
+**Final measured results** (`scripts/eval_out/*-phase5.*`, 8
+fixtures/scenes, all `fallback_font: 0`):
+
+| fixture | QA overall | ring-SSIM | OCR round-trip | style color/size |
+|---|---|---|---|---|
+| flat-sign | 0.981 | 1.0 | 1.0 | 0.866 / 0.909 |
+| gradient-banner | 0.913 | 0.961 | 0.889 | 0.931 / 0.919 |
+| textured-wall | 0.988 | 1.0 | 1.0 | 0.940 / 0.921 |
+| stylized-italic | 0.746 | 0.530 | 0.8 | 0.875 / 0.884 |
+| expansion-en | 0.968 | 1.0 | 1.0 | 0.886 / 0.733 |
+| cjk-vertical | 0.405 | 0.999 | 0.0 | 0.904 / 0.956 |
+| gemini-street | 0.331 | 0.990 | 0.071 | 0.553 / 0.841 |
+| japan-street | 0.663 | 1.0 | 0.5 | 0.603 / 0.850 |
+
+cjk-vertical and gemini-street's low overall scores are OCR-round-trip-
+dominated (0.0 / 0.071) — expected and correctly penalized: these are hard
+real-world CJK/street-scene cases where round-trip OCR on the *rendered*
+localized text (not detection of the original) is the harshest of the four
+scorers, and residual-source-text stays at 0.0–0.071 confirming cleanse
+itself is not the bottleneck. No regressions vs. Phase 4 on any fixture.
+157 unit tests pass (17 new for Phase 5).
+
+Not yet done: Task 25, the QA Inspector frontend step (per-region score
+overlay, source/localized compare, recommendations as guided toasts,
+per-region re-render, coverage-gated Approve sign-off) — scoped as the next
+phase, now that the backend contract it depends on (`progress`,
+`per_asset_instance_score`, `recommendations`, the SSE stage sequence) is
+landed and live-verified.
+
 ## Part 4 — Risks & mitigations
 - **easyocr/torch on the dev host** (currently absent): Phase 0 gate; if
   installation is blocked, pin PaddleOCR as the dev default via `OCR_ENGINE` and

@@ -291,7 +291,7 @@ class TofuPipeline:
         t0 = time.time()
         qa_report: Optional[QAReport] = None
         try:
-            qa_report = self._run_verify(localized_asset, text_manifest, asset)
+            qa_report = self._run_verify(localized_asset, text_manifest, asset, cleansed_asset)
             score = qa_report.overall_score
             self._log("verify", "overall QA "
                       + (f"{score:.2f}" if score is not None else "n/a"), t0=t0)
@@ -413,7 +413,8 @@ class TofuPipeline:
         )
 
     def _run_verify(
-        self, localized_asset, text_manifest: TextManifest, source_asset=None
+        self, localized_asset, text_manifest: TextManifest, source_asset=None,
+        cleansed_asset=None,
     ) -> QAReport:
         if self.config.verify_mode == LayerMode.MANUAL:
             # neutral report pending human sign-off; does NOT auto-pass the gate
@@ -421,7 +422,7 @@ class TofuPipeline:
                 overall_score=None,
                 recommendations=["Manual QA review required."]
             )
-        return verify.assess(localized_asset, text_manifest, source_asset)
+        return verify.assess(localized_asset, text_manifest, source_asset, cleansed_asset)
 
     def _run_memory(
         self,

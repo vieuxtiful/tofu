@@ -46,6 +46,7 @@ from pydantic import BaseModel
 from tofu.core.pipeline import TofuPipeline
 from tofu.core.types import (
     PipelineCfg, LayerMode, infer_asset_info, TextManifest, InstText, BBox,
+    RenderParams, StyleProfil,
 )
 from tofu.layers.tofu import ToFU, lang_to_script
 from tofu.layers import cicerone
@@ -1158,6 +1159,256 @@ def render(req: RenderRequest):
         "logs": logs,
         "errors": errors,
     }
+
+
+@app.get("/api/render/stream")
+def render_stream(
+    asset_id: str,
+    targ_lang: str,
+    font: Optional[str] = None,
+    qa_threshold: Optional[float] = None,
+):
+    """SSE variant of /api/render: emits progress per layer (tofu, scene,
+    tofu_regions, cleanse, scribe, verify) + a final payload shaped like
+    /api/render's response. GET (not POST) so the browser's native
+    EventSource can consume it, mirroring /api/detect/stream. Runs the
+    layers directly rather than through TofuPipeline (same reason
+    /api/detect/stream doesn't use the pipeline either: the pipeline is
+    one synchronous call with no per-stage yield points).
+
+    also closes the Phase-4-deferred item: after scene enrichment, every
+    DISTINCT effective target language across regions (target_language
+    overrides included) gets its own ToFU.validate() pass with the
+    region's real font_px (Phase 1 typography) and effects context —
+    the original pre-flight only ever validated the single request-level
+    target language, never a region override, and never with the size/
+    effects context that makes the render-quality prediction meaningful.
+    """
+    import json as _json
+    from fastapi.responses import StreamingResponse
+    from tofu.layers import scene, cleanse, scribe, verify
+
+    path = _asset_path(asset_id)  # 404s before the stream opens
+    manifest = load_manifest(UPLOAD_DIR, asset_id)
+    if manifest is None:
+        raise HTTPException(404, f"no manifest for asset '{asset_id}'")
+    manifest.targ_lang = targ_lang
+    threshold = qa_threshold if qa_threshold is not None else 0.8
+
+    def event(data: Dict[str, Any]) -> str:
+        return f"data: {_json.dumps(data, ensure_ascii=False)}\n\n"
+
+    def gen():
+        logs: List[Dict[str, Any]] = []
+        errors: List[str] = []
+
+        def log(stage: str, message: str, level: str = "info", t0: Optional[float] = None) -> None:
+            entry = {"ts": datetime.now().strftime("%H:%M:%S"), "stage": stage, "level": level, "message": message}
+            if t0 is not None:
+                entry["duration_ms"] = int((time.time() - t0) * 1000)
+            logs.append(entry)
+
+        try:
+            validator = get_validator()
+
+            # -- tofu pre-flight (primary target language) --
+            yield event({"stage": "tofu", "status": "running"})
+            t0 = time.time()
+            context = {"font": font} if font else None
+            validation_report = validator.validate(str(path), targ_lang, context)
+            log("tofu", f"pre-flight for '{targ_lang}': "
+                        f"{'passed' if validation_report.passed else 'failed'}", t0=t0)
+            yield event({"stage": "tofu", "status": "complete", "passed": validation_report.passed})
+            if not validation_report.passed:
+                yield event({
+                    "stage": "complete", "output_url": None, "qa_report": None,
+                    "qa_passed": False, "qa_threshold": threshold,
+                    "validation_report": jsonable(validation_report),
+                    "text_manifest": jsonable(manifest), "logs": logs,
+                    "errors": [f"tofu {i.code}: {i.message}" for i in validation_report.issues
+                              if i.severity.value == "error"],
+                })
+                return
+
+            # -- scene enrichment --
+            yield event({"stage": "scene", "status": "running"})
+            t0 = time.time()
+            try:
+                manifest2 = scene.analyze(str(path), manifest)
+                log("scene", f"enriched {len(manifest2.instances)} region(s)", t0=t0)
+            except Exception as exc:
+                manifest2 = manifest
+                log("scene", f"enrichment failed ({type(exc).__name__}); "
+                             "continuing with unenriched profiles", "warning", t0=t0)
+            yield event({"stage": "scene", "status": "complete"})
+
+            # -- per-region language re-validation (closes the Phase-4 --
+            # deferred item: every effective target language, with real
+            # per-region font_px/effects context)
+            yield event({"stage": "tofu_regions", "status": "running"})
+            t0 = time.time()
+            lang_groups: Dict[str, List[InstText]] = {}
+            for inst in manifest2.instances:
+                if inst.dnt or not inst.target_text:
+                    continue
+                lang_groups.setdefault(inst.target_language or targ_lang, []).append(inst)
+            region_issues = []
+            for lang, insts in lang_groups.items():
+                for inst in insts:
+                    ctx: Dict[str, Any] = {"font": font} if font else {}
+                    if inst.characteristics and inst.characteristics.size:
+                        ctx["font_px"] = inst.characteristics.size
+                    sp = inst.style_profile
+                    effects = []
+                    if sp:
+                        if sp.shadow: effects.append("shadow")
+                        if sp.stroke_width: effects.append("stroke")
+                        if sp.italic: effects.append("italic")
+                    if effects:
+                        ctx["effects"] = effects
+                    report = validator.validate(str(path), lang, ctx or None)
+                    for issue in report.issues:
+                        if issue.region_id is None:
+                            issue.region_id = inst.id
+                        region_issues.append(issue)
+            log("tofu", f"re-validated {len(lang_groups)} distinct target "
+                        f"language(s) across regions", t0=t0)
+            if region_issues:
+                validation_report.issues = list(validation_report.issues) + region_issues
+                for issue in region_issues:
+                    if issue.severity.value == "error":
+                        errors.append(f"tofu {issue.code} ({issue.region_id}): {issue.message}")
+            yield event({
+                "stage": "tofu_regions", "status": "complete",
+                "issues": len(region_issues), "languages": list(lang_groups.keys()),
+            })
+
+            # per-region font merge (mirrors TofuPipeline._process_static)
+            render_params: Optional[Dict[str, RenderParams]] = None
+            if font:
+                render_params = {}
+                for inst in manifest2.instances:
+                    base = inst.style_profile
+                    render_params[inst.id] = RenderParams(
+                        position=inst.bounding_box,
+                        style=StyleProfil(
+                            font_family=(base.font_family if base and base.font_family else font),
+                            font_weight=base.font_weight if base else None,
+                            color=base.color if base else None,
+                            shadow=base.shadow if base else None,
+                            effects=base.effects if base else None,
+                        ),
+                    )
+
+            # -- cleanse --
+            yield event({"stage": "cleanse", "status": "running"})
+            t0 = time.time()
+            try:
+                cleansed_asset = cleanse.erase(str(path), manifest2)
+                log("cleanse", "erased region(s)", t0=t0)
+            except Exception as exc:
+                log("cleanse", f"failed: {type(exc).__name__}: {exc}", "error", t0=t0)
+                errors.append(f"cleanse failed: {exc}")
+                yield event({
+                    "stage": "complete", "output_url": None, "qa_report": None,
+                    "qa_passed": False, "qa_threshold": threshold,
+                    "validation_report": jsonable(validation_report),
+                    "text_manifest": jsonable(manifest2), "logs": logs, "errors": errors,
+                })
+                return
+            yield event({"stage": "cleanse", "status": "complete"})
+
+            # -- scribe --
+            yield event({"stage": "scribe", "status": "running"})
+            t0 = time.time()
+            try:
+                localized = scribe.render(
+                    cleansed_asset, manifest2, targ_lang, render_params,
+                    font_registry=validator.font_registry,
+                )
+                log("scribe", f"rendered target text for '{targ_lang}'", t0=t0)
+            except Exception as exc:
+                log("scribe", f"failed: {type(exc).__name__}: {exc}", "error", t0=t0)
+                errors.append(f"scribe failed: {exc}")
+                yield event({
+                    "stage": "complete", "output_url": None, "qa_report": None,
+                    "qa_passed": False, "qa_threshold": threshold,
+                    "validation_report": jsonable(validation_report),
+                    "text_manifest": jsonable(manifest2), "logs": logs, "errors": errors,
+                })
+                return
+            fallback_ids = [i.id for i in manifest2.instances if i.glyph_fallback]
+            if fallback_ids:
+                log("tofu", f"glyph fallback applied for region(s) {', '.join(fallback_ids)}: "
+                            "the requested font lacked codepoints for the target text; "
+                            "scribe swapped to the best-covering font it found", "warning")
+            yield event({"stage": "scribe", "status": "complete"})
+
+            # -- verify --
+            yield event({"stage": "verify", "status": "running"})
+            t0 = time.time()
+            qa_report = None
+            try:
+                qa_report = verify.assess(localized, manifest2, str(path), cleansed_asset)
+                score = qa_report.overall_score
+                log("verify", "overall QA " + (f"{score:.2f}" if score is not None else "n/a"), t0=t0)
+            except Exception as exc:
+                log("verify", f"failed: {type(exc).__name__}: {exc}", "warning", t0=t0)
+            qa_passed = (
+                qa_report is not None and qa_report.overall_score is not None
+                and qa_report.overall_score >= threshold
+            )
+            yield event({
+                "stage": "verify", "status": "complete",
+                "score": qa_report.overall_score if qa_report else None,
+            })
+
+            # -- save output --
+            output_url = None
+            t0 = time.time()
+            if localized is not None and hasattr(localized, "save"):
+                try:
+                    out_name = f"{asset_id}-{targ_lang}.png"
+                    save_kwargs = {}
+                    if hasattr(localized, "info"):
+                        if localized.info.get("dpi"): save_kwargs["dpi"] = localized.info["dpi"]
+                        if localized.info.get("exif"): save_kwargs["exif"] = localized.info["exif"]
+                        if localized.info.get("icc_profile"): save_kwargs["icc_profile"] = localized.info["icc_profile"]
+                    localized.save(OUTPUT_DIR / out_name, **save_kwargs)
+                    output_url = f"/outputs/{out_name}"
+                    log("save", f"wrote {out_name}", t0=t0)
+                except Exception as exc:
+                    msg = f"save failed: {type(exc).__name__}: {exc}"
+                    errors.append(msg)
+                    log("save", msg, "error")
+            elif not errors:
+                errors.append("render produced no output image (non-image asset or Pillow missing)")
+                log("save", "no renderable output produced", "error")
+
+            save_manifest(UPLOAD_DIR, asset_id, manifest2)
+            pid = db.project_for_asset(asset_id)
+            if pid:
+                db.log_event(pid, "render",
+                             f"rendered {asset_id} → {targ_lang} ({'ok' if output_url else 'failed'})")
+
+            yield event({
+                "stage": "complete",
+                "output_url": output_url,
+                "qa_report": jsonable(qa_report) if qa_report else None,
+                "qa_passed": qa_passed and output_url is not None,
+                "qa_threshold": threshold,
+                "validation_report": jsonable(validation_report),
+                "text_manifest": jsonable(manifest2),
+                "logs": logs,
+                "errors": errors,
+            })
+        except Exception as exc:
+            yield event({"stage": "error", "message": f"{type(exc).__name__}: {exc}"})
+
+    return StreamingResponse(
+        gen(), media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # --- legacy process (backwards compat) ---

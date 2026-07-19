@@ -73,36 +73,11 @@ def fill_targets(manifest, mode: str, translations: dict) -> None:
                 inst.target_text = translations[inst.id]
 
 
-def residual_source_text(cleansed_np, manifest) -> dict:
-    """OCR each erased region in the CLEANSED image and compare against
-    the source text. similarity ~0 = erase complete; high = text survived.
-
-    the recognition-based erasure protocol from the scene-text-removal
-    literature (EnsNet, Zhang et al. 2019; EraseNet, Liu et al. 2020):
-    an eraser is judged by whether a recognizer still reads the original.
-    """
-    out = {}
-    h, w = cleansed_np.shape[:2]
-    for inst in manifest.instances:
-        if inst.dnt or not inst.text or inst.bounding_box is None:
-            continue
-        b = inst.bounding_box
-        x0, y0 = max(0, b.x - 4), max(0, b.y - 4)
-        x1, y1 = min(w, b.x + b.width + 4), min(h, b.y + b.height + 4)
-        if x1 - x0 < 4 or y1 - y0 < 4:
-            continue
-        reader = verify._get_reader(
-            inst.language or inst.detected_language or manifest.src_lang or "en"
-        )
-        if reader is None:
-            continue
-        try:
-            results = reader.readtext(cleansed_np[y0:y1, x0:x1])
-        except Exception:
-            continue
-        recognized = " ".join(r[1] for r in results)
-        out[inst.id] = round(verify._text_similarity(inst.text, recognized), 4)
-    return out
+# residual-source-text lived here standalone in Phase 0; it graduated
+# into verify.assess(..., cleansed_asset=...) in Phase 5 (same recognition-
+# based erasure protocol: EnsNet, Zhang et al. 2019; EraseNet, Liu et al.
+# 2020) and now also PENALIZES the per-region score, not just reports it.
+# main() reads it from qa.metrics["residual_text"].
 
 
 def triptych(source_path: Path, cleansed, localized, manifest,
@@ -225,18 +200,17 @@ def main() -> None:
     localized = scribe.render(cleansed, manifest, targ_lang, font_registry=font_registry)
     timing["scribe"] = round(time.time() - t0, 1)
 
-    # -- verify + residual ----------------------------------------------------
-    import numpy as np
+    # -- verify (residual-source-text + style-consistency graduated here) ----
     t0 = time.time()
-    qa = verify.assess(localized, manifest, str(image_path))
+    qa = verify.assess(localized, manifest, str(image_path), cleansed_asset=cleansed)
     timing["verify"] = round(time.time() - t0, 1)
-    t0 = time.time()
-    residual = residual_source_text(np.asarray(cleansed.convert("RGB")), manifest)
-    timing["residual"] = round(time.time() - t0, 1)
 
     per_region = qa.per_asset_instance_score.get(manifest.asset_id, {})
     rendered = [i for i in manifest.instances if i.target_text and not i.dnt]
-    residual_vals = list(residual.values())
+    residual_vals = list(qa.metrics.get("residual_text", {}).values())
+
+    def _mean(d: dict):
+        return round(sum(d.values()) / len(d), 4) if d else None
 
     report = {
         "image": str(image_path),
@@ -248,14 +222,11 @@ def main() -> None:
         "rendered_regions": len(rendered),
         "qa_overall": round(qa.overall_score, 4) if qa.overall_score is not None else None,
         "qa_scorer": qa.metrics.get("scorer"),
-        "mean_ring_ssim": (
-            round(sum(qa.metrics["ring_ssim"].values()) / len(qa.metrics["ring_ssim"]), 4)
-            if qa.metrics.get("ring_ssim") else None
-        ),
-        "mean_ocr_roundtrip": (
-            round(sum(qa.metrics["ocr_roundtrip"].values()) / len(qa.metrics["ocr_roundtrip"]), 4)
-            if qa.metrics.get("ocr_roundtrip") else None
-        ),
+        "coverage": qa.progress,
+        "mean_ring_ssim": _mean(qa.metrics.get("ring_ssim", {})),
+        "mean_ocr_roundtrip": _mean(qa.metrics.get("ocr_roundtrip", {})),
+        "mean_style_color": _mean(qa.metrics.get("style_color", {})),
+        "mean_style_size": _mean(qa.metrics.get("style_size", {})),
         "mean_residual_similarity": (
             round(sum(residual_vals) / len(residual_vals), 4) if residual_vals else None
         ),
@@ -275,7 +246,10 @@ def main() -> None:
                 "ocr_roundtrip": qa.metrics.get("ocr_roundtrip", {}).get(i.id),
                 "ring_ssim": qa.metrics.get("ring_ssim", {}).get(i.id),
                 "ink_presence": qa.metrics.get("ink_presence", {}).get(i.id),
-                "residual_similarity": residual.get(i.id),
+                "residual_similarity": qa.metrics.get("residual_text", {}).get(i.id),
+                "style_color": qa.metrics.get("style_color", {}).get(i.id),
+                "style_size": qa.metrics.get("style_size", {}).get(i.id),
+                "glyph_fallback": i.glyph_fallback,
             }
             for i in manifest.instances
         ],
@@ -289,13 +263,16 @@ def main() -> None:
     cleansed.convert("RGB").save(cleansed_path)
     localized.convert("RGB").save(localized_path)
     overlay_path = out_dir / f"{stem}-{args.tag}.render.png"
-    triptych(image_path, cleansed, localized, manifest, per_region, residual, overlay_path)
+    triptych(image_path, cleansed, localized, manifest, per_region,
+             qa.metrics.get("residual_text", {}), overlay_path)
 
     print(f"== {stem} [{args.tag}] mode={args.mode} → {targ_lang} ==")
     print(f"manifest: {manifest_src}")
     print(f"regions: {report['region_count']} ({report['rendered_regions']} rendered)")
+    print(f"coverage: {report['coverage']}")
     print(f"QA overall: {report['qa_overall']}  (scorer: {report['qa_scorer']})")
     print(f"mean ring-SSIM: {report['mean_ring_ssim']}  |  mean OCR round-trip: {report['mean_ocr_roundtrip']}")
+    print(f"mean style color/size: {report['mean_style_color']} / {report['mean_style_size']}")
     print(f"residual source text: mean {report['mean_residual_similarity']}  max {report['max_residual_similarity']}"
           "  (lower = cleaner erase)")
     print(f"timing: {timing}")

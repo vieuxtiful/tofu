@@ -179,12 +179,33 @@ def check_glyph_coverage(
     fonts = getattr(font_registry, "_fonts", {})
     if not fonts:
         return None, True
+
     key = font_registry._key(font_family) if font_family and hasattr(font_registry, "_key") else None
     current = fonts.get(key) if key else None
+    if current is None and font_family is None:
+        # "auto" -- no explicit selection. _get_font(None, ...) resolves
+        # to the first of FALLBACK_FONTS it can load; without checking
+        # THAT font specifically, every auto-styled region looked like a
+        # coverage failure regardless of whether the actual fallback font
+        # covers the text fine (measured: flat-sign's plain English text,
+        # rendered with arial.ttf via the default chain, was flagged
+        # glyph_fallback on all 4 regions). resolve by filename since the
+        # registry keys on full discovered paths, not the bare names in
+        # FALLBACK_FONTS.
+        for fallback_name in FALLBACK_FONTS:
+            match = next(
+                (p for p in fonts if Path(p.split("#")[0]).name.lower() == fallback_name.lower()),
+                None,
+            )
+            if match:
+                key, current = match, fonts[match]
+                break
+
     # only a KNOWN registry font with a confirmed gap counts as evidence
-    # of a real problem; an unrecognized font_family (e.g. a bare
-    # fallback name outside the registry) gives no evidence either way,
-    # so it must not be reported as a coverage failure without proof
+    # of a real problem; an unrecognized font_family (e.g. a bare name
+    # outside the registry, and no fallback match either) gives no
+    # evidence either way, so it must not be reported as a coverage
+    # failure without proof
     known_gap = False
     if current is not None:
         known_gap = any(ord(ch) not in current.codepoints for ch in text)
@@ -571,15 +592,20 @@ def render(
         # is about to draw). swap to the best real coverage match when
         # one improves on the current face, and flag the region either way
         # so the pipeline can log it and the UI can warn the user.
-        if font_registry is not None:
-            covering_path, all_covered = check_glyph_coverage(
-                font_registry, s.font_family, text, effective_lang
-            )
-            if not all_covered:
-                inst.glyph_fallback = True
-                if covering_path:
-                    import dataclasses
-                    s = dataclasses.replace(s, font_family=covering_path)
+        # check_glyph_coverage degrades gracefully with no registry (True,
+        # "assume covered") -- called unconditionally so glyph_fallback is
+        # always explicitly set, never left stale. a manifest persists
+        # across renders, and a previously-flagged region whose gap is
+        # now resolved (font changed, registry attached/detached) must
+        # not keep reporting glyph_fallback=True forever just because
+        # this code path only ever set it, never cleared it.
+        covering_path, all_covered = check_glyph_coverage(
+            font_registry, s.font_family, text, effective_lang
+        )
+        inst.glyph_fallback = not all_covered
+        if not all_covered and covering_path:
+            import dataclasses
+            s = dataclasses.replace(s, font_family=covering_path)
 
         stroke_w = int(s.stroke_width) if s.stroke_width else 0
         fill = _parse_color(s.color, params.opacity)
