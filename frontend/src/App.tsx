@@ -27,7 +27,6 @@ import FontCombobox, { loadFontPreview, fontNameForPath, weightLabel } from "./F
 import BBoxCanvas from "./BBoxCanvas";
 import RegionTable from "./RegionTable";
 import ExportPanel from "./ExportPanel";
-import ImportPanel from "./ImportPanel";
 import ProjectGate from "./ProjectGate";
 import HistoryPanel from "./HistoryPanel";
 import SplashScreen from "./SplashScreen";
@@ -66,7 +65,7 @@ function Badge({ ok, children }: { ok: boolean; children: React.ReactNode }) {
 
 function Section({ title, icon, children }: { title: string; icon?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <section className="bezier-card rounded-xl bg-white/60 p-5 dark:bg-zinc-900/60">
+    <section className="bezier-card soft-shadow rounded-xl bg-white/60 p-5 dark:bg-zinc-900/60">
       <h2 className="subtext mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
         {icon} {title}
       </h2>
@@ -126,6 +125,7 @@ export default function App() {
   const [displayedScreen, setDisplayedScreen] = useState<Screen>("splash");
   const [leaving, setLeaving] = useState(false);
   const [pantryLeaving, setPantryLeaving] = useState(false);
+  const [pantryMode, setPantryMode] = useState<"full" | "pantry" | "create">("full");
   const prevScreen = useRef<Screen>("title");
   const transitionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -209,6 +209,7 @@ export default function App() {
   // project-first session management
   const [project, setProject] = useState<Project | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [historyLeaving, setHistoryLeaving] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showTitleConfirm, setShowTitleConfirm] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -328,7 +329,8 @@ export default function App() {
     return p;
   }, []);
 
-  const goPantry = useCallback(() => {
+  const goPantry = useCallback((mode: "full" | "pantry" | "create" = "full") => {
+    setPantryMode(mode);
     prevScreen.current = displayedScreen;
     setDisplayedScreen("pantry");
     setScreen("pantry");
@@ -1058,16 +1060,17 @@ export default function App() {
             <ChevronDown size={14} className={`transition ${menuOpen ? "rotate-180" : ""}`} />
           </button>
           {/* Dropdown Morph — reusable expand/collapse animation (see .dropdown-morph in uikit.css) */}
-          <div className={`dropdown-morph bezier-card absolute right-0 top-full z-[200] mt-2 w-44 rounded-lg bg-white p-1.5 dark:bg-zinc-900${menuOpen ? " expanded" : ""}`}>
+          <div className={`dropdown-morph bezier-card absolute right-0 top-full z-[200] mt-2 w-44 rounded-lg bg-white p-1.5 dark:bg-zinc-900${menuOpen ? " expanded" : ""}`}
+               style={menuOpen ? { boxShadow: "4px 4px 0 var(--bc-shadow), 8px 8px 16px rgba(0,0,0,0.18)" } : undefined}>
               <button
-                onClick={() => { setMenuOpen(false); goPantry(); }}
+                onClick={() => { setMenuOpen(false); goPantry("create"); }}
                 className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-zinc-700 transition hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
               >
                 <TbCubePlus size={14} className="text-cyan-600 dark:text-cyan-400" />
                 new project
               </button>
               <button
-                onClick={() => { setMenuOpen(false); goPantry(); }}
+                onClick={() => { setMenuOpen(false); goPantry("pantry"); }}
                 className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-zinc-700 transition hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
               >
                 <FaBoxOpen size={14} className="text-cyan-600 dark:text-cyan-400" />
@@ -1139,19 +1142,19 @@ export default function App() {
               </p>
             )}
             {busy === "uploading" && (
-              <p className="subtext mt-2 flex items-center gap-4 text-[10px] text-cyan-600 dark:text-cyan-400">
+              <p className="subtext mt-2 flex items-center gap-2 text-[10px] text-cyan-600 dark:text-cyan-400">
                 <SquareLoader size="xs" /> uploading…
               </p>
             )}
             {scan?.status === "scanning" && (
-              <div className="subtext mt-2 flex items-center gap-4 text-[10px] text-cyan-600 dark:text-cyan-400">
+              <div className="subtext mt-2 flex items-center gap-2 text-[10px] text-cyan-600 dark:text-cyan-400">
                 <SquareLoader size="xs" />(draining...)
               </div>
             )}
             {busy === "detecting" && (
               <div className="mt-2 flex items-center gap-3">
-                <p className="subtext flex items-center gap-4 text-[10px] text-cyan-600 dark:text-cyan-400">
-                  <SquareLoader size="xs" /> <span className="translate-y-0.5">{detectProgress ?? "detecting text regions…"}</span>
+                <p className="subtext flex items-center gap-2 text-[10px] text-cyan-600 dark:text-cyan-400">
+                  <SquareLoader size="xs" /> <span>{detectProgress ?? "detecting text regions…"}</span>
                 </p>
                 <button
                   onClick={cancelDetect}
@@ -1162,8 +1165,8 @@ export default function App() {
               </div>
             )}
             {detectStage === "lang" && detectProgress && busy === null && (
-              <p className="subtext mt-2 flex items-center gap-4 text-[10px] text-cyan-600 dark:text-cyan-400">
-                <SquareLoader size="xs" /> <span className="translate-y-0.5">{detectProgress}</span>
+              <p className="subtext mt-2 flex items-center gap-2 text-[10px] text-cyan-600 dark:text-cyan-400">
+                <SquareLoader size="xs" /> <span>{detectProgress}</span>
               </p>
             )}
             {detectStage === "done" && detectProgress && (
@@ -1296,7 +1299,7 @@ export default function App() {
                     </div>
                   </div>
                 )}
-                <p className="subtext flex items-start gap-1 text-xs text-zinc-500 dark:text-zinc-600">
+                <p className="bezier-impression subtext flex items-start gap-1 px-3 py-2 text-xs text-zinc-500 dark:text-zinc-600">
                   <MdTipsAndUpdates size={14} className="mt-0.5 shrink-0 text-[#2d8cf0]" />
                   Fonts are chosen per region in the Translate step (ranked by
                   verified glyph coverage for each region's target language).
@@ -1379,8 +1382,8 @@ export default function App() {
           )}
 
           <div className="flex items-center justify-between">
-            <p className="subtext text-[8.4px] text-zinc-500 dark:text-zinc-400">
-              A: draw · Del: remove · Esc: deselect
+            <p className="subtext flex items-center gap-1.5 text-[8.4px] text-zinc-500 dark:text-zinc-400">
+              <kbd className="kbd kbd-xs">A</kbd> draw · <kbd className="kbd kbd-xs">Del</kbd> remove · <kbd className="kbd kbd-xs">Esc</kbd> deselect
             </p>
             {srcLang && (
               <span className="subtext text-[8.4px] text-zinc-500 dark:text-zinc-400">
@@ -1426,17 +1429,28 @@ export default function App() {
               defaultTargLang={targLang}
               defaultSrcLang={srcLang}
               fontsByLang={fontsByLang}
+              familiesByLang={familiesByLang}
               onNeedFonts={onNeedFonts}
               lockedLangs={lockedLangs}
               onToggleLangLock={toggleLangLock}
+              footer={canvasExpandedH ? (
+                <ExportPanel
+                  assetId={asset?.asset_id ?? ""}
+                  targLang={targLang}
+                  disabled={translatableCount === 0}
+                  embedded
+                />
+              ) : undefined}
             />
           </div>
 
-          <ExportPanel
-            assetId={asset?.asset_id ?? ""}
-            targLang={targLang}
-            disabled={translatableCount === 0}
-          />
+          {!canvasExpandedH && (
+            <ExportPanel
+              assetId={asset?.asset_id ?? ""}
+              targLang={targLang}
+              disabled={translatableCount === 0}
+            />
+          )}
 
           {report && (
             <Section title="Preflight" icon={<ShieldAlert size={14} />}>
@@ -1474,11 +1488,58 @@ export default function App() {
               )}
               {report.suggested_actions.length > 0 && (
                 <div className="mb-3">
-                  <p className="subtext mb-1 text-xs text-zinc-500">suggested actions:</p>
+                  <p className="subtext mb-1 text-xs text-zinc-500">insights:</p>
                   <ul className="subtext space-y-0.5 text-xs text-zinc-600 dark:text-zinc-400">
-                    {report.suggested_actions.map((a, i) => (
-                      <li key={i}>• {a}</li>
-                    ))}
+                    {report.suggested_actions.map((a, i) => {
+                      const fontMatch = a.match(/^recommended font:\s*(.+)$/i);
+                      if (fontMatch) {
+                        const fontPath = fontMatch[1].trim();
+                        const families = familiesByLang[targLang] ?? [];
+                        const fam = families.find((f) => f.weights.some((w) => w.path === fontPath) || f.best_path === fontPath);
+                        const weight = fam?.weights.find((w) => w.path === fontPath) ?? null;
+                        if (fam) loadFontPreview(fontPath, fam.family);
+                        const previewStyle: React.CSSProperties = {};
+                        if (weight) {
+                          const wc = weight.weight_class;
+                          if (wc <= 100) previewStyle.fontWeight = 100;
+                          else if (wc <= 200) previewStyle.fontWeight = 200;
+                          else if (wc <= 300) previewStyle.fontWeight = 300;
+                          else if (wc <= 400) previewStyle.fontWeight = 400;
+                          else if (wc <= 500) previewStyle.fontWeight = 500;
+                          else if (wc <= 600) previewStyle.fontWeight = 600;
+                          else if (wc <= 700) previewStyle.fontWeight = 700;
+                          else if (wc <= 800) previewStyle.fontWeight = 800;
+                          else previewStyle.fontWeight = 900;
+                          if ((weight.subfamily || "").toLowerCase().includes("italic")) previewStyle.fontStyle = "italic";
+                        }
+                        const displayLabel = fam
+                          ? weight
+                            ? `${fam.family} ${weightLabel(weight)}`
+                            : fam.family
+                          : fontPath.split(/[\\/]/).pop()?.replace(/\.(ttf|otf|ttc|otc)$/i, "") ?? fontPath;
+                        return (
+                          <li key={i} className="flex items-center gap-1.5">
+                            <MdTipsAndUpdates size={12} className="shrink-0 text-[#2d8cf0]" />
+                            <span>recommended font:</span>
+                            <span
+                              className="text-sm text-zinc-800 dark:text-zinc-200"
+                              style={{
+                                ...previewStyle,
+                                fontFamily: fam ? fontNameForPath(fontPath) : undefined,
+                              }}
+                            >
+                              {displayLabel}
+                            </span>
+                          </li>
+                        );
+                      }
+                      return (
+                        <li key={i} className="flex items-start gap-1.5">
+                          <MdTipsAndUpdates size={12} className="mt-0.5 shrink-0 text-[#2d8cf0]" />
+                          <span>{a}</span>
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               )}
@@ -1601,11 +1662,8 @@ export default function App() {
                 defaultTargLang={targLang}
                 defaultSrcLang={srcLang}
                 fontsByLang={fontsByLang}
+                familiesByLang={familiesByLang}
                 onNeedFonts={onNeedFonts}
-              />
-              <ImportPanel
-                assetId={asset?.asset_id ?? ""}
-                onImported={onImported}
               />
             </div>
           </div>
@@ -1974,7 +2032,7 @@ export default function App() {
           )}
 
           {/* decisions summary: what this render will reflect */}
-          <div className="bezier-card subtext flex flex-wrap items-center gap-3 rounded-lg bg-white/60 px-4 py-2 text-xs text-zinc-600 dark:bg-zinc-900/60 dark:text-zinc-400">
+          <div className="bezier-card soft-shadow subtext flex flex-wrap items-center gap-3 rounded-lg bg-white/60 px-4 py-2 text-xs text-zinc-600 dark:bg-zinc-900/60 dark:text-zinc-400">
             <span>{translatedCount}/{translatableCount} region(s) translated</span>
             <span>
               targets:{" "}
@@ -2052,6 +2110,11 @@ export default function App() {
                 const per = renderResult.qa_report?.per_asset_instance_score;
                 const entries = per ? Object.entries(Object.values(per)[0] ?? {}) : [];
                 if (entries.length === 0) return null;
+                const fallbackIds = new Set(
+                  (renderResult.text_manifest?.instances ?? [])
+                    .filter((i) => i.glyph_fallback)
+                    .map((i) => i.id)
+                );
                 return (
                   <div className="mt-3">
                     <p className="subtext mb-1 text-xs text-zinc-500">per-region QA</p>
@@ -2059,12 +2122,14 @@ export default function App() {
                       {entries.map(([rid, score]) => (
                         <span
                           key={rid}
-                          className={`rounded px-2 py-0.5 font-mono text-xs ${
+                          title={fallbackIds.has(rid) ? "font swapped: the requested font lacked characters for this text" : undefined}
+                          className={`flex items-center gap-1 rounded px-2 py-0.5 font-mono text-xs ${
                             score >= 0.8 ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
                             : score >= 0.6 ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
                             : "bg-red-500/15 text-red-600 dark:text-red-400"
                           }`}
                         >
+                          {fallbackIds.has(rid) && <AlertTriangle size={10} className="text-amber-500 dark:text-amber-400" />}
                           {rid} {(score * 100).toFixed(0)}%
                         </span>
                       ))}
@@ -2354,6 +2419,8 @@ export default function App() {
           }}
           theme={theme}
           leaving={pantryLeaving}
+          initialView={pantryMode === "create" ? "create-name" : "list"}
+          listOnly={pantryMode === "pantry"}
         />
       )}
 
@@ -2362,7 +2429,14 @@ export default function App() {
           project={project}
           currentAssetId={asset?.asset_id ?? null}
           onRestored={onHistoryRestored}
-          onClose={() => setShowHistory(false)}
+          onClose={() => {
+            setHistoryLeaving(true);
+            setTimeout(() => {
+              setHistoryLeaving(false);
+              setShowHistory(false);
+            }, 300);
+          }}
+          leaving={historyLeaving}
         />
       )}
 

@@ -108,6 +108,7 @@ export interface InstText {
   reading_order: number | null;
   dnt: boolean;
   target_language: string | null;
+  glyph_fallback?: boolean | null;  // scribe swapped fonts: the requested face lacked codepoints for this text
   segmentation_mask?: { polygon: number[][]; confidence: number } | null;
   style_profile?: {
     font_family: string | null;

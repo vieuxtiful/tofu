@@ -162,6 +162,11 @@ def main() -> None:
     ap.add_argument("--targ-lang", default=None, help="target language (default: inferred source)")
     ap.add_argument("--redetect", action="store_true", help="ignore the cached manifest")
     ap.add_argument("--engine", default="easyocr", choices=("easyocr", "paddleocr"))
+    ap.add_argument("--fonts", default=None,
+                    help="font library dir for FontRegistry-based weight/"
+                         "italic face resolution in scribe (e.g. "
+                         "C:/Windows/Fonts). slow to discover; opt-in only "
+                         "since most iteration doesn't need it.")
     args = ap.parse_args()
 
     import os
@@ -210,8 +215,14 @@ def main() -> None:
     timing["cleanse"] = round(time.time() - t0, 1)
 
     # -- scribe ---------------------------------------------------------------
+    font_registry = None
+    if args.fonts:
+        from tofu.layers.fonts import FontRegistry
+        t0 = time.time()
+        font_registry = FontRegistry(args.fonts)
+        timing["font_discovery"] = round(time.time() - t0, 1)
     t0 = time.time()
-    localized = scribe.render(cleansed, manifest, targ_lang)
+    localized = scribe.render(cleansed, manifest, targ_lang, font_registry=font_registry)
     timing["scribe"] = round(time.time() - t0, 1)
 
     # -- verify + residual ----------------------------------------------------

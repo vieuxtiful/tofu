@@ -1100,7 +1100,7 @@ def render(req: RenderRequest):
     cfg = PipelineCfg(cicerone_mode=LayerMode.MANUAL)
     if req.qa_threshold is not None:
         cfg.qa_threshold = req.qa_threshold
-    pipeline = TofuPipeline(cfg)
+    pipeline = TofuPipeline(cfg, font_registry=get_validator().font_registry)
     pipeline.set_manual_manifest(manifest)
     result = pipeline.process(str(path), req.targ_lang, font=req.font)
 
@@ -1174,7 +1174,9 @@ def process(req: ProcessRequest):
                 if inst.id in req.translations:
                     inst.target_text = req.translations[inst.id]
         return payload
-    pipeline = TofuPipeline(cfg, on_checkpoint=apply_translations)
+    pipeline = TofuPipeline(
+        cfg, on_checkpoint=apply_translations, font_registry=get_validator().font_registry
+    )
     result = pipeline.process(str(path), req.targ_lang)
     output_url = None
     output = result.output_asset

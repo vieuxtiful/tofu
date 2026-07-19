@@ -569,6 +569,99 @@ recommendation-not-requirement — Phase 3's exit criteria are metric-based,
 not structural, and no concrete duplication pain point arose while
 implementing to justify the refactor now.
 
+## Part 3g — Phase 4: scribe fidelity + ToFU render-time guard (landed 2026-07-19)
+
+All five planned deliverables landed, plus three real bugs found and fixed
+during measurement (methodology: apples-to-apples against the immediately
+prior commit on every change, not the stale Phase-0 baseline — the same
+discipline that caught Phase 3's two bugs).
+
+1. **Line wrapping.** `_fit_wrapped()` replaces the old single-line-only
+   `_fit_font`: greedy word-wrap for space-delimited scripts, character-wrap
+   for CJK (no spaces), with the font-size binary search now searching over
+   the WRAPPED block instead of one line — long translations wrap instead
+   of shrinking below legibility.
+2. **Real weight/italic face resolution.** `resolve_face()` searches a
+   supplied `FontRegistry` for a sibling face matching the requested
+   weight/italic before falling back to synthetic bold/shear. Directly
+   closes the Phase 3 follow-up: region r3 (stylized-italic, the only
+   italic region) went from the original broken 0.106 to a clean **1.0**
+   ring-SSIM once a real `ariali.ttf` face is used instead of synthesizing
+   a shear — measured end-to-end with a real font, not just the shear-
+   pivot fix alone (which independently improved it to 0.313; see below).
+3. **Rotation + vertical CJK columns.** Phase 1's detected
+   `rotation_deg` now applies through `RenderParams.rotation` when no
+   explicit override is given (explicit `0.0` correctly wins over a
+   detected rotation — a real off-by-falsy bug caught by test, see below).
+   Narrow-tall CJK-language regions (cicerone's `merge_vertical_columns`
+   output shape) render as stacked glyph columns with tsume compression;
+   verified with a real font — `居酒屋` renders correctly stacked,
+   centered, and evenly spaced, matching the original signage layout.
+4. **Shadow rendering.** `StyleProfil.shadow` (`offset_x/offset_y/blur/
+   color`, all optional with documented defaults) renders as a blurred
+   offset copy composited beneath the main text.
+5. **ToFU render-time glyph-coverage guard.** `check_glyph_coverage()`
+   checks every codepoint in the EXACT target string (not just a generic
+   script sample) against the resolved font; on a gap, searches the
+   registry for the best real covering font and swaps to a working copy
+   (the source `style_profile` is never mutated), flagging the manifest
+   instance `glyph_fallback=True`. The pipeline logs a `tofu`-stage
+   warning naming the affected regions; the render result surfaces a
+   warning badge on the per-region QA chip. Verified end-to-end: a Latin
+   font requested for `居酒屋` renders real kanji via an auto-selected
+   covering font instead of tofu boxes.
+
+**Three real bugs found and fixed during verification, not by inspection:**
+
+- **Italic shear used the wrong pivot** (the actual Phase 3 follow-up
+  cause): the old shear transform applied `x' = x + 0.2*y` to a layer the
+  size of the WHOLE base image, using each pixel's ABSOLUTE y-coordinate —
+  for a region at y≈300 that's a ~60px unwanted sideways shift, not a
+  slant. Fixed by shearing a small layer sized to the line's own extent
+  around its own local origin before compositing. r3 ring-SSIM 0.106 →
+  0.313 from this fix alone (→ 1.0 with real-face resolution on top, above).
+- **Block-height fit check over-estimated for text without descenders**:
+  the fit search used `font.getmetrics()` (ascent+descent, the font's
+  nominal box — sized to accommodate glyphs a string may not even
+  contain) instead of the actual rendered ink extent. Measured on a real
+  cicerone-detected region: "SALE" in a 176×60 box fit at size 53 instead
+  of the correct 69, visibly shrinking a region that fit fine as a single
+  line and needed no wrapping at all (gradient-banner ring-SSIM regressed
+  0.961→0.711 in an intermediate measurement before this was caught).
+  Fixed by measuring with `draw.multiline_textbbox` for both the fit
+  check and the block-centering calculation.
+- **`_get_font` couldn't load FontRegistry's collection-face notation**:
+  the registry keys `.ttc`/`.otc` collection faces as `"path#index"`; PIL
+  takes the face index as a separate `index=` kwarg and raises `OSError`
+  on a literal `#N` suffix in the path string. Undetected, this silently
+  defeated BOTH `resolve_face()` and `check_glyph_coverage()` whenever the
+  matched font was a collection face — common for CJK gothic/mincho
+  families, which frequently ship as `.ttc`. Caught by an end-to-end
+  visual check (the glyph-coverage guard reported success and a covering
+  font, but tofu boxes still rendered); fixed by splitting the `#index`
+  suffix and passing it through PIL's `index=` parameter.
+- **Rotation falsy-zero bug** (caught by test, not measurement): resolving
+  detected vs. explicit rotation with `if not params.rotation` treats an
+  explicit `0.0` (a legitimate "no rotation, I mean it" override) the same
+  as "not given," letting a detected rotation incorrectly win. Fixed with
+  an explicit `is not None` check.
+
+**Final measured results** (`scripts/eval_out/*-phase4.*`, vs. Phase 3):
+zero regressions across all 8 fixtures/scenes; gradient-banner fully
+recovered to Phase 3's 0.961 ring-SSIM after the block-height fix;
+stylized-italic mean ring-SSIM 0.488→0.530 (still dominated by r3's now-
+understood-and-fixable-with-a-real-font italic case, not a residual bug).
+137 unit tests pass, including dedicated regression tests for all three
+bugs above.
+
+Not yet done: per-distinct-target-language `ToFU.validate` re-run during
+`/api/render` with real font_px/effects context (the plan's stated Phase 4
+item) — scoped out given session length; the glyph-coverage guard above
+delivers the higher-value, more concrete half of "closes goal 1" (an
+actual render-time block instead of a pre-flight prediction). Tracked as
+a Phase 5 follow-up alongside the QA Inspector work, which touches the
+same `/api/render` response contract.
+
 ## Part 4 — Risks & mitigations
 - **easyocr/torch on the dev host** (currently absent): Phase 0 gate; if
   installation is blocked, pin PaddleOCR as the dev default via `OCR_ENGINE` and
