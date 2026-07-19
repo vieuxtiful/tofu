@@ -15,7 +15,14 @@ engines are swappable adapters behind the OCRBackend interface:
     4-point polygons + text, mapping directly to InstText.
   - NullBackend: empty results when no engine is installed, so the
     pipeline contract keeps working in dev/test environments.
-  - (future) PaddleOCRBackend: PP-OCRv4 for fast/edge deployment.
+  - PaddleOCRBackend: PP-OCRv5 (DBNet + SVTR), measured 4x recall and
+    4x transcription accuracy over EasyOCR on dense/vertical CJK scenes
+    (CP-1, scripts/eval_paddle.py). runs out-of-process via
+    scripts/paddle_worker.py under an ISOLATED .venv-paddle interpreter
+    — paddlepaddle force-replaces the app venv's numpy/opencv on
+    install, so it can never be imported in this process. select with
+    OCR_ENGINE=paddleocr; falls back to NullBackend when the isolated
+    venv (PaddleOCRBackend.is_available()) isn't present.
 
 stacked vertical CJK signage (characters top-to-bottom, each upright):
 CRAFT's link stage groups characters horizontally only, so columns
@@ -397,7 +404,16 @@ class PaddleOCRBackend(OCRBackend):
         "japan": "ja",
     }
 
-    _readers: Dict[Tuple[str, bool], Any] = {}  # (lang, use_gpu) singleton cache
+    # subprocess bridge, not an in-process reader: paddlepaddle force-
+    # replaces the app venv's numpy/opencv on install (measured in CP-1 —
+    # one attempt corrupted numpy mid-install), so PaddleOCR only ever
+    # runs under the ISOLATED .venv-paddle interpreter, via
+    # scripts/paddle_worker.py. see that module's docstring for the wire
+    # protocol (JSON over stdin, result written to a temp file — never
+    # stdout, which PaddleOCR's own logging pollutes).
+    _CICERONE_DIR = Path(__file__).resolve().parent
+    _PROJECT_ROOT = _CICERONE_DIR.parents[2]  # layers -> tofu -> src -> root
+    WORKER_TIMEOUT_S = 180
 
     @property
     def primary_language(self) -> str:
@@ -420,59 +436,98 @@ class PaddleOCRBackend(OCRBackend):
         self.det_db_thresh = det_db_thresh
         self.drop_score = drop_score
 
-    def _reader(self):
-        from paddleocr import PaddleOCR  # deferred: heavy import
-        key = (self.lang, self.gpu)
-        if key not in self._readers:
-            self._readers[key] = PaddleOCR(
-                use_angle_cls=self.use_angle_cls,
-                lang=self.lang,
-                use_gpu=self.gpu,
-                show_log=False,
-                det_db_thresh=self.det_db_thresh,
-                drop_score=self.drop_score,
-            )
-        return self._readers[key]
-
     def _to_tofu_lang(self) -> str:
         return self.PADDLE_TO_TOFU.get(self.lang, self.lang)
 
-    def _prepare(self, asset: Any) -> Tuple[Any, Tuple[float, float]]:
-        """PaddleOCR does its own internal resizing; pass path/ndarray as-is."""
-        return asset, (1.0, 1.0)
+    @classmethod
+    def _venv_python(cls) -> Path:
+        """path to the isolated paddle interpreter; override with
+        TOFU_PADDLE_VENV (a venv root, i.e. the dir containing Scripts/
+        or bin/) for non-default layouts."""
+        import os
+        import sys
+        override = os.environ.get("TOFU_PADDLE_VENV")
+        venv_root = Path(override) if override else cls._PROJECT_ROOT / ".venv-paddle"
+        exe = "python.exe" if sys.platform == "win32" else "python"
+        subdir = "Scripts" if sys.platform == "win32" else "bin"
+        return venv_root / subdir / exe
 
-    def _boxes_to_polygons(self, result, sx: float, sy: float) -> List[RawDetection]:
-        out: List[RawDetection] = []
-        if result is None:
-            return out
-        for line in result:
-            if line is None:
-                continue
-            # PaddleOCR returns either [[box, (text, conf)], ...] for single
-            # image or [[[box, (text, conf)], ...], ...] for batch. Normalize.
-            if isinstance(line[0], (list, tuple)) and len(line) == 2 and isinstance(line[1], (list, tuple)) and len(line[1]) == 2:
-                items = [line]
-            else:
-                items = line
-            for item in items:
-                if not isinstance(item, (list, tuple)) or len(item) != 2:
-                    continue
-                box, rec = item
-                if not box or not rec:
-                    continue
-                text, conf = rec if isinstance(rec, (list, tuple)) else ("", 0.0)
-                text = str(text or "")
-                conf = float(conf or 0.0)
-                pts = [(int(round(p[0] / sx)), int(round(p[1] / sy))) for p in box]
-                if len(pts) < 3:
-                    continue
-                out.append(RawDetection(
-                    polygon=pts,
-                    text=text,
-                    confidence=conf,
-                    language=self._to_tofu_lang(),
-                ))
-        return out
+    @classmethod
+    def _worker_path(cls) -> Path:
+        return cls._PROJECT_ROOT / "scripts" / "paddle_worker.py"
+
+    @classmethod
+    def is_available(cls) -> bool:
+        """True when the isolated paddle venv + worker script both exist —
+        the availability check callers use in place of `import paddleocr`
+        (which must never happen in the app process)."""
+        return cls._venv_python().is_file() and cls._worker_path().is_file()
+
+    def _resolve_image_path(self, asset: Any) -> Tuple[Optional[str], Optional[str]]:
+        """asset -> (path, temp_path_to_clean_up_or_None).
+
+        a path/str is used directly (no cross-venv object serialization
+        needed — the worker just opens the file). a PIL image or ndarray
+        is written to a temp PNG first, since passing in-memory arrays
+        across the venv boundary risks a numpy ABI mismatch."""
+        if isinstance(asset, (str, Path)):
+            return str(asset), None
+        try:
+            import tempfile
+            from tofu.utils.imaging import load_rgb
+            img = load_rgb(asset)
+            if img is None:
+                return None, None
+            from PIL import Image
+            fd, tmp = tempfile.mkstemp(suffix=".png")
+            import os
+            os.close(fd)
+            Image.fromarray(img).save(tmp)
+            return tmp, tmp
+        except Exception:
+            return None, None
+
+    def _run_worker(self, request: Dict[str, Any]) -> Dict[str, Any]:
+        import json
+        import os
+        import subprocess
+        import tempfile
+
+        fd, out_path = tempfile.mkstemp(suffix=".json")
+        os.close(fd)
+        request = dict(request, out_path=out_path)
+        try:
+            proc = subprocess.run(
+                [str(self._venv_python()), str(self._worker_path())],
+                input=json.dumps(request),
+                capture_output=True, text=True, encoding="utf-8",
+                timeout=self.WORKER_TIMEOUT_S,
+            )
+            try:
+                with open(out_path, "r", encoding="utf-8") as f:
+                    result = json.load(f)
+            except Exception:
+                stderr_tail = (proc.stderr or "")[-500:]
+                return {"ok": False, "error": f"worker produced no result "
+                                              f"(rc={proc.returncode}): {stderr_tail}"}
+            return result
+        except subprocess.TimeoutExpired:
+            return {"ok": False, "error": "paddleocr worker timed out"}
+        except OSError as exc:
+            # e.g. the isolated venv vanished after is_available() passed
+            return {"ok": False, "error": f"could not launch paddleocr worker: {exc}"}
+        finally:
+            try:
+                os.remove(out_path)
+            except OSError:
+                pass
+
+    def _det_to_raw(self, det: Dict[str, Any]) -> RawDetection:
+        pts = [(int(round(p[0])), int(round(p[1]))) for p in det["polygon"]]
+        return RawDetection(
+            polygon=pts, text=det["text"], confidence=float(det["confidence"]),
+            language=self._to_tofu_lang(),
+        )
 
     def detect(
         self,
@@ -480,13 +535,25 @@ class PaddleOCRBackend(OCRBackend):
         text_threshold: Optional[float] = None,
         low_text: Optional[float] = None,
     ) -> List[RawDetection]:
-        reader = self._reader()
-        prepared, (sx, sy) = self._prepare(asset)
-        # text_threshold / low_text are ignored because PaddleOCR exposes
-        # det_db_thresh, not identical knobs. We preserve the signature
-        # to satisfy OCRBackend and use our configured det_db_thresh.
-        result = reader.ocr(prepared, cls=self.use_angle_cls, rec=True)
-        return self._boxes_to_polygons(result, sx, sy)
+        # text_threshold / low_text: PaddleOCR exposes det_db_thresh, not
+        # identical knobs; signature preserved to satisfy OCRBackend.
+        image_path, tmp = self._resolve_image_path(asset)
+        if image_path is None:
+            return []
+        try:
+            result = self._run_worker({
+                "op": "detect", "image_path": image_path, "lang": self.lang,
+            })
+        finally:
+            if tmp:
+                import os
+                try:
+                    os.remove(tmp)
+                except OSError:
+                    pass
+        if not result.get("ok"):
+            return []
+        return [self._det_to_raw(d) for d in result.get("detections", [])]
 
     def detect_in_regions(
         self,
@@ -495,39 +562,32 @@ class PaddleOCRBackend(OCRBackend):
         pad: int = 4,
         polygons: Optional[List[Optional[Polygon]]] = None,
     ) -> List[List[RawDetection]]:
-        from tofu.utils.imaging import load_rgb
-        img = load_rgb(asset)
-        if img is None:
+        # polygons (perspective rectification) are not yet applied by the
+        # worker — PaddleOCR's own detector/angle-classifier already
+        # handles a meaningful amount of rotation natively; a v2 worker
+        # can add cv2 rectification if crops prove to need it.
+        image_path, tmp = self._resolve_image_path(asset)
+        if image_path is None:
             return [[] for _ in regions]
-        reader = self._reader()
-        h, w = img.shape[:2]
-        out: List[List[RawDetection]] = []
         try:
-            import numpy as np
-            from PIL import Image
-        except ImportError:
+            result = self._run_worker({
+                "op": "detect_regions", "image_path": image_path, "lang": self.lang,
+                "regions": [[b.x, b.y, b.width, b.height] for b in regions],
+                "pad": pad,
+            })
+        finally:
+            if tmp:
+                import os
+                try:
+                    os.remove(tmp)
+                except OSError:
+                    pass
+        if not result.get("ok"):
             return [[] for _ in regions]
-        polys = polygons or [None] * len(regions)
-        for bbox, poly in zip(regions, polys):
-            x0, y0 = max(0, bbox.x - pad), max(0, bbox.y - pad)
-            x1 = min(w, bbox.x + bbox.width + pad)
-            y1 = min(h, bbox.y + bbox.height + pad)
-            if x1 - x0 < 3 or y1 - y0 < 3:
-                out.append([])
-                continue
-            crop = img[y0:y1, x0:x1]
-            if poly is not None:
-                rel_poly = [(px - x0, py - y0) for px, py in poly if (x0 <= px < x1 and y0 <= py < y1)]
-                if len(rel_poly) >= 4:
-                    crop = _rectify_crop(crop, rel_poly)
-            crop_pil = Image.fromarray(crop)
-            result = reader.ocr(crop_pil, cls=self.use_angle_cls, rec=True)
-            dets = self._boxes_to_polygons(result, 1.0, 1.0)
-            # map crop-local coords back to full-image
-            for d in dets:
-                d.polygon = [(x + x0, y + y0) for x, y in d.polygon]
-            out.append(dets)
-        return out
+        return [
+            [self._det_to_raw(d) for d in region_dets]
+            for region_dets in result.get("per_region", [])
+        ]
 
 
 # -- script identification ----------------------------------------------------
@@ -947,11 +1007,10 @@ def get_backend() -> OCRBackend:
     if _default_backend is None or _default_engine_name != engine:
         _default_engine_name = engine
         if engine == "paddleocr":
-            try:
-                import paddleocr  # noqa: F401
-                _default_backend = PaddleOCRBackend()
-            except ImportError:
-                _default_backend = NullBackend()
+            _default_backend = (
+                PaddleOCRBackend() if PaddleOCRBackend.is_available()
+                else NullBackend()
+            )
         else:
             try:
                 import easyocr  # noqa: F401
@@ -1623,11 +1682,10 @@ def detect(
     if engine is None:
         if languages:
             if _engine_from_env() == "paddleocr":
-                try:
-                    import paddleocr  # noqa: F401
-                    engine = PaddleOCRBackend(languages=languages, gpu=False)
-                except ImportError:
-                    engine = NullBackend()
+                engine = (
+                    PaddleOCRBackend(languages=languages, gpu=False)
+                    if PaddleOCRBackend.is_available() else NullBackend()
+                )
             else:
                 try:
                     import easyocr  # noqa: F401

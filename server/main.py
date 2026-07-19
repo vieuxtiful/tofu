@@ -567,15 +567,21 @@ def detect(req: DetectRequest):
     info = infer_asset_info(str(path))
     hints = req.languages or _project_lang_hints(req.asset_id)
     backend = None
-    try:
-        import easyocr  # noqa: F401
-        langset = cicerone.expand_langset(hints) if hints else ("en",)
-        backend = cicerone.EasyOCRBackend(
-            languages=langset,
-            gpu=req.gpu if req.gpu is not None else False,
+    if cicerone._engine_from_env() == "paddleocr":
+        backend = (
+            cicerone.PaddleOCRBackend(languages=hints or ["en"], gpu=False)
+            if cicerone.PaddleOCRBackend.is_available() else cicerone.NullBackend()
         )
-    except ImportError:
-        backend = cicerone.NullBackend()
+    else:
+        try:
+            import easyocr  # noqa: F401
+            langset = cicerone.expand_langset(hints) if hints else ("en",)
+            backend = cicerone.EasyOCRBackend(
+                languages=langset,
+                gpu=req.gpu if req.gpu is not None else False,
+            )
+        except ImportError:
+            backend = cicerone.NullBackend()
 
     # scene pre-pass: candidate surfaces constrain text detection
     from tofu.layers import scene
@@ -603,8 +609,12 @@ def detect(req: DetectRequest):
 
 def _engine_name(backend) -> str:
     """which OCR engine actually ran — the UI warns when detection was a
-    silent no-op because easyocr is missing on the server."""
-    return "easyocr" if isinstance(backend, cicerone.EasyOCRBackend) else "null"
+    silent no-op because no real engine is installed on the server."""
+    if isinstance(backend, cicerone.EasyOCRBackend):
+        return "easyocr"
+    if isinstance(backend, cicerone.PaddleOCRBackend):
+        return "paddleocr"
+    return "null"
 
 
 def _record_detection(asset_id: str, manifest: TextManifest) -> None:
@@ -676,13 +686,12 @@ def detect_stream(
 
             # choose backend via env or default factory
             if cicerone._engine_from_env() == "paddleocr":
-                try:
-                    import paddleocr  # noqa: F401
-                    if lang_hints:
-                        backend = cicerone.PaddleOCRBackend(languages=lang_hints, gpu=gpu)
-                    else:
-                        backend = cicerone.get_backend()
-                except ImportError:
+                if cicerone.PaddleOCRBackend.is_available():
+                    backend = (
+                        cicerone.PaddleOCRBackend(languages=lang_hints, gpu=gpu)
+                        if lang_hints else cicerone.get_backend()
+                    )
+                else:
                     backend = cicerone.NullBackend()
             else:
                 try:
@@ -975,12 +984,10 @@ def refine_region(req: RefineRegionRequest):
     src_lang = manifest.src_lang if manifest else None
 
     if cicerone._engine_from_env() == "paddleocr":
-        try:
-            import paddleocr  # noqa: F401
-            langset = [src_lang] if src_lang else ["en"]
-            backend = cicerone.PaddleOCRBackend(languages=langset, gpu=False)
-        except ImportError:
-            raise HTTPException(500, "PaddleOCR is not installed")
+        if not cicerone.PaddleOCRBackend.is_available():
+            raise HTTPException(500, "PaddleOCR is not available (isolated venv missing)")
+        langset = [src_lang] if src_lang else ["en"]
+        backend = cicerone.PaddleOCRBackend(languages=langset, gpu=False)
     else:
         try:
             import easyocr  # noqa: F401

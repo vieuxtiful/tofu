@@ -446,8 +446,46 @@ Scene recall improved substantially with zero synthetic-fixture regression,
 but street-scene OCR recall did not move — confirms the CP-1 finding
 independently: japan-street's signage is too small/distant for EasyOCR's
 recognizer regardless of how many candidate surfaces the scene pre-pass now
-finds. The remaining lever is the PaddleOCR bridge (in progress), not scene
-recall.
+finds. The remaining lever is the PaddleOCR bridge, landed next.
+
+## Part 3e — PaddleOCR subprocess bridge (landed 2026-07-19)
+
+`PaddleOCRBackend` in cicerone.py rewritten from an in-process reader
+(targeting paddleocr's dead 2.x `.ocr()` API, would have crashed on any
+install) to a subprocess bridge: `scripts/paddle_worker.py` runs under the
+**isolated** `.venv-paddle` interpreter — never imported into the app
+process, per the CP-1 numpy/opencv-conflict finding — communicating over a
+JSON-over-stdin / JSON-file-out protocol (never stdout, which PaddleOCR's
+own logging pollutes). `PaddleOCRBackend.is_available()` replaces every
+`try: import paddleocr / except ImportError` call site (cicerone.py x3,
+server/main.py x2); `TOFU_PADDLE_VENV` env var overrides the venv location
+for non-default deployments. In-memory assets (PIL/ndarray) are written to
+a temp PNG before crossing the venv boundary — no numpy objects are ever
+pickled across the process split.
+
+Verified: 12 unit tests against the bridge's path resolution and
+graceful-degradation (venv missing → empty results, never an exception) run
+unconditionally; 4 live round-trip tests (self-skip without `.venv-paddle`)
+confirm `detect()`, `detect_in_regions()`, and — critically — the *full*
+`cicerone.build_manifest()` pipeline (column merge, script ID, hallucination
+pruning) all work correctly against PaddleOCR's `RawDetection` output, not
+just EasyOCR's. Live end-to-end through the real FastAPI server via
+`/api/detect/stream?engine=paddleocr`: cjk-vertical resolves both regions
+correctly (居酒屋, ようこそ) with `src_lang: ja` and full Phase-1 typography
+enrichment attached.
+
+**Bug found and fixed during verification**: `_engine_name()` in
+server/main.py only recognized `EasyOCRBackend`, so a successful PaddleOCR
+detection was reported to the frontend as `engine: "null"` — the exact
+signal the UI uses to show "OCR engine unavailable" and block capture.
+Fixed to recognize `PaddleOCRBackend` too; `/api/detect` (the non-streaming
+endpoint) was also hardcoded to EasyOCR regardless of `OCR_ENGINE`, now
+matches the SSE endpoint's engine-selection logic for consistency.
+
+Not yet done: perspective rectification for rotated crops in
+`detect_in_regions` (v1 relies on PaddleOCR's own angle classifier, which
+CP-1 showed already outperforms EasyOCR without it); a v2 worker can add
+`cv2.getPerspectiveTransform` if crop-level accuracy proves to need it.
 
 ## Part 4 — Risks & mitigations
 - **easyocr/torch on the dev host** (currently absent): Phase 0 gate; if

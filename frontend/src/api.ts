@@ -235,7 +235,7 @@ export interface DetectStreamEvent {
   langset?: string[];               // refine: the language-tuned charset in use
   manifest?: TextManifest;
   message?: string;
-  engine?: "easyocr" | "null";  // which OCR engine actually ran
+  engine?: "easyocr" | "paddleocr" | "null";  // which OCR engine actually ran
 }
 
 export interface OcrRegionResult {
