@@ -1,0 +1,60 @@
+{
+  "regions": [
+    {
+      "bbox": [
+        100,
+        98,
+        301,
+        41
+      ],
+      "text": "Regular Weight",
+      "style": {
+        "weight": "regular",
+        "italic": false,
+        "stroked": false
+      }
+    },
+    {
+      "bbox": [
+        100,
+        198,
+        322,
+        32
+      ],
+      "text": "Bold Statement",
+      "style": {
+        "weight": "bold",
+        "italic": false,
+        "stroked": false
+      }
+    },
+    {
+      "bbox": [
+        100,
+        298,
+        295,
+        41
+      ],
+      "text": "Italic Emphasis",
+      "style": {
+        "weight": "regular",
+        "italic": true,
+        "stroked": false
+      }
+    },
+    {
+      "bbox": [
+        100,
+        398,
+        363,
+        46
+      ],
+      "text": "Stroked Display",
+      "style": {
+        "weight": "bold",
+        "italic": false,
+        "stroked": true
+      }
+    }
+  ]
+}
