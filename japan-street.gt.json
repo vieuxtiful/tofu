@@ -1,0 +1,14 @@
+{
+  "partial": true,
+  "note": "major legible signage only (partial GT: recall-focused). 627x489 photo, most signage tiny; text null = box legible, transcription uncertain. Annotated 2026-07-18 by crop verification.",
+  "regions": [
+    {"bbox": [183, 120, 254, 45], "text": "歌舞伎町一番街", "lang": "ja"},
+    {"bbox": [166, 208, 34, 80],  "text": "バンタイ",       "lang": "ja", "vertical": true},
+    {"bbox": [184, 286, 34, 18],  "text": "焼肉",           "lang": "ja"},
+    {"bbox": [52, 328, 30, 70],   "text": "劇場通り",       "lang": "ja", "vertical": true},
+    {"bbox": [424, 208, 48, 70],  "text": null,             "lang": "ja", "vertical": true},
+    {"bbox": [455, 250, 50, 145], "text": "お好み焼本陣",   "lang": "ja", "vertical": true},
+    {"bbox": [520, 10, 48, 35],   "text": null,             "lang": "ja"},
+    {"bbox": [356, 210, 26, 112], "text": null,             "lang": "ja", "vertical": true}
+  ]
+}

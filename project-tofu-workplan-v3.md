@@ -378,6 +378,39 @@ Confirmed, quantified gaps (each maps to a planned phase):
 5. Real-scene GT annotation is outstanding (street scenes report no
    detect-F1); annotate during Phase 1 CJK work.
 
+## Part 3c — CP-1 results (measured 2026-07-19)
+
+Street-scene partial GT annotated by crop verification (major legible signage
+only; recall-focused): `images/gemini-street.gt.json` (18 regions),
+`japan-street.gt.json` (8 regions). PaddleOCR evaluated standalone under an
+**isolated** `.venv-paddle` (paddlepaddle 3.3.1 + paddleocr 3.7.0/PP-OCRv5,
+`scripts/eval_paddle.py`) — installing paddle into the app venv is forbidden:
+it force-replaces numpy/opencv (one attempt corrupted numpy mid-flight and was
+rolled back; app venv now pins numpy 2.3.5, all tests green).
+Windows-CPU quirk: paddle 3.3 oneDNN/PIR crash — fixed with
+`FLAGS_use_mkldnn=0` + `enable_mkldnn=False`.
+
+| Scene (recall / mean norm-ED) | EasyOCR + surface probe | PaddleOCR PP-OCRv5 |
+|---|---|---|
+| cjk-vertical | 1.00 / 0.00 (~60 s with probes) | 1.00 / 0.00 in **3.8 s** |
+| gemini-street | 0.111 / 0.83 | **0.444 / 0.19** (korean; 60 dets, 22 s) |
+| japan-street | 0.00 / — | 0.125 (ja; low-res signage) |
+
+Conclusions:
+1. **PaddleOCR is the engine for dense/vertical CJK scenes** — 4× recall and
+   4× transcription accuracy on gemini-street; native vertical handling makes
+   the surface-probe rescue unnecessary on scenes it covers. EasyOCR stays the
+   default for latin/simple scenes (zero extra deps).
+2. Language arbitration remains cicerone's job: the japan model on the same
+   korean image scores ED 0.917 vs korean's 0.19 — engine choice does not
+   replace per-language recognition + script arbitration.
+3. **Integration decision needed (Phase 2/3): paddleocr cannot live in the app
+   venv** (numpy/opencv pin conflict). Recommended: subprocess bridge behind
+   the existing OCRBackend adapter (`.venv-paddle` worker, JSON over stdio),
+   replacing the current in-process PaddleOCRBackend that targets the dead
+   2.x API. japan-street needs a 2× upscale pass or better scene recall
+   regardless of engine.
+
 ## Part 4 — Risks & mitigations
 - **easyocr/torch on the dev host** (currently absent): Phase 0 gate; if
   installation is blocked, pin PaddleOCR as the dev default via `OCR_ENGINE` and

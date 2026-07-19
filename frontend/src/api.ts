@@ -131,6 +131,13 @@ export interface InstText {
     stroke_color: string | null;
     stroke_width: number | null;
   } | null;
+  background_profile?: {
+    semantic_label: string | null;  // containing scene surface: "panel" | "bordered_region" | ...
+    texture: string | null;         // "flat" | "textured"
+    gradients: string[] | null;
+    patterns: string[] | null;
+    dominant_color: string | null;  // hex
+  } | null;
   characteristics?: {
     font_style: string | null;   // detected descriptor: "bold" | "italic" | "bold italic" | "regular"
     color: string | null;

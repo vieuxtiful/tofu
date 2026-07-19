@@ -80,14 +80,24 @@ def _norm_ed(s1: str, s2: str) -> float:
 
 
 def evaluate(image_path: Path, manifest, gt_path: Path | None):
-    """compute detection and transcription metrics against ground truth."""
+    """compute detection and transcription metrics against ground truth.
+
+    partial GT ({"partial": true}): only the MAJOR signage is annotated,
+    so detections outside the GT are not false positives — precision/F1
+    are reported as None and recall is the headline metric. GT regions
+    with null text contribute to recall but are skipped for edit
+    distance (box legible, transcription uncertain).
+    """
     gt = []
+    partial = False
     if gt_path is None:
         auto = image_path.parent / f"{image_path.stem}.gt.json"
         if auto.exists():
             gt_path = auto
     if gt_path and gt_path.exists():
-        gt = json.loads(gt_path.read_text(encoding="utf-8")).get("regions", [])
+        data = json.loads(gt_path.read_text(encoding="utf-8"))
+        gt = data.get("regions", [])
+        partial = bool(data.get("partial", False))
 
     preds = [
         {
@@ -149,10 +159,15 @@ def evaluate(image_path: Path, manifest, gt_path: Path | None):
         if best_gi >= 0:
             matched_gt.add(best_gi)
             matched_pred.add(pi)
+            gt_text = gt[best_gi].get("text")
             matches.append({
                 "pred_idx": pi, "gt_idx": best_gi, "iou": round(best_iou, 3),
-                "pred_text": p["text"], "gt_text": gt[best_gi].get("text", ""),
-                "norm_ed": round(_norm_ed(p["text"], gt[best_gi].get("text", "")), 3),
+                "pred_text": p["text"], "gt_text": gt_text,
+                # null gt text: box annotated, transcription uncertain — no ED
+                "norm_ed": (
+                    round(_norm_ed(p["text"], gt_text), 3)
+                    if gt_text else None
+                ),
             })
 
     tp = len(matched_gt)
@@ -161,15 +176,17 @@ def evaluate(image_path: Path, manifest, gt_path: Path | None):
     precision = tp / (tp + fp) if (tp + fp) else 0.0
     recall = tp / (tp + fn) if (tp + fn) else 0.0
     f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
-    mean_ed = sum(m["norm_ed"] for m in matches) / len(matches) if matches else 0.0
+    scored = [m["norm_ed"] for m in matches if m["norm_ed"] is not None]
+    mean_ed = sum(scored) / len(scored) if scored else 0.0
 
     return {
         "ground_truth_path": str(gt_path) if gt_path and gt_path.exists() else None,
         "gt_regions": len(gt),
-        "tp": tp, "fp": fp, "fn": fn,
-        "precision": round(precision, 3),
+        "partial": partial,
+        "tp": tp, "fp": fp if not partial else None, "fn": fn,
+        "precision": round(precision, 3) if not partial else None,
         "recall": round(recall, 3),
-        "f1": round(f1, 3),
+        "f1": round(f1, 3) if not partial else None,
         "mean_norm_ed": round(mean_ed, 3),
         "matches": matches,
         "threshold_sweep": [

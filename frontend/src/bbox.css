@@ -1,0 +1,324 @@
+/* 🍢 ToFU — bounding box visual styles */
+
+/* base bbox container */
+.bbox {
+  position: absolute;
+  border: 1.5px solid;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: box-shadow 0.15s, border-color 0.15s;
+  pointer-events: auto;
+}
+
+/* scan line overlay inside each bbox */
+.bbox::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent 0px,
+    transparent 3px,
+    rgba(255, 255, 255, 0.03) 3px,
+    rgba(255, 255, 255, 0.03) 4px
+  );
+  pointer-events: none;
+  border-radius: 2px;
+}
+
+/* animated scan sweep */
+.bbox::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.15),
+    transparent
+  );
+  animation: bbox-scan 3s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes bbox-scan {
+  0% { top: 0%; opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { top: 100%; opacity: 0; }
+}
+
+/* corner accents — viewfinder brackets */
+.bbox-corners {
+  position: absolute;
+  inset: -1px;
+  pointer-events: none;
+}
+.bbox-corners::before,
+.bbox-corners::after {
+  content: "";
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-style: solid;
+  border-width: 0;
+}
+.bbox-corners::before {
+  top: 0; left: 0;
+  border-top-width: 2px;
+  border-left-width: 2px;
+}
+.bbox-corners::after {
+  bottom: 0; right: 0;
+  border-bottom-width: 2px;
+  border-right-width: 2px;
+}
+
+/* entity type colors */
+.bbox-text {
+  border-color: #22d3ee;
+  background: rgba(34, 211, 238, 0.06);
+}
+.bbox-text .bbox-corners::before,
+.bbox-text .bbox-corners::after {
+  border-color: #22d3ee;
+}
+
+.bbox-logo {
+  border-color: #a855f7;
+  background: rgba(168, 85, 247, 0.06);
+}
+.bbox-logo .bbox-corners::before,
+.bbox-logo .bbox-corners::after {
+  border-color: #a855f7;
+}
+
+.bbox-sign {
+  border-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.06);
+}
+.bbox-sign .bbox-corners::before,
+.bbox-sign .bbox-corners::after {
+  border-color: #f59e0b;
+}
+
+.bbox-ui {
+  border-color: #22c55e;
+  background: rgba(34, 197, 94, 0.06);
+}
+.bbox-ui .bbox-corners::before,
+.bbox-ui .bbox-corners::after {
+  border-color: #22c55e;
+}
+
+.bbox-manual {
+  border-color: #ffffff;
+  border-style: dashed;
+  background: rgba(255, 255, 255, 0.04);
+}
+.bbox-manual .bbox-corners::before,
+.bbox-manual .bbox-corners::after {
+  border-color: #ffffff;
+}
+
+.bbox-low-conf {
+  border-color: #ef4444;
+  border-style: dashed;
+  background: rgba(239, 68, 68, 0.06);
+  animation: bbox-pulse 2s ease-in-out infinite;
+}
+.bbox-low-conf .bbox-corners::before,
+.bbox-low-conf .bbox-corners::after {
+  border-color: #ef4444;
+}
+
+@keyframes bbox-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.3); }
+  50% { box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.1); }
+}
+
+/* selected state */
+.bbox.selected {
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.3);
+  z-index: 10;
+}
+
+/* hovered state (from table row hover) */
+.bbox.hovered {
+  box-shadow: 0 0 0 2px rgba(34, 211, 238, 0.4);
+  z-index: 5;
+}
+
+/* DNT overlay */
+.bbox.dnt {
+  background: repeating-linear-gradient(
+    45deg,
+    transparent 0px,
+    transparent 6px,
+    rgba(128, 128, 128, 0.1) 6px,
+    rgba(128, 128, 128, 0.1) 8px
+  );
+  opacity: 0.6;
+}
+
+/* reading order badge */
+.bbox-badge {
+  position: absolute;
+  top: -10px;
+  left: -10px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #000;
+  pointer-events: none;
+  z-index: 11;
+}
+
+/* confidence indicator */
+.bbox-conf {
+  position: absolute;
+  bottom: -16px;
+  right: 0;
+  font-size: 9px;
+  font-family: monospace;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* DNT badge */
+.bbox-dnt-badge {
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  font-size: 8px;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: #71717a;
+  color: #fff;
+  pointer-events: none;
+}
+
+/* resize handles */
+.bbox-handle {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: #fff;
+  border: 1px solid #000;
+  border-radius: 2px;
+  z-index: 12;
+}
+.bbox-handle.nw { top: -4px; left: -4px; cursor: nwse-resize; }
+.bbox-handle.ne { top: -4px; right: -4px; cursor: nesw-resize; }
+.bbox-handle.sw { bottom: -4px; left: -4px; cursor: nesw-resize; }
+.bbox-handle.se { bottom: -4px; right: -4px; cursor: nwse-resize; }
+.bbox-handle.n { top: -4px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+.bbox-handle.s { bottom: -4px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+.bbox-handle.w { left: -4px; top: 50%; transform: translateY(-50%); cursor: ew-resize; }
+.bbox-handle.e { right: -4px; top: 50%; transform: translateY(-50%); cursor: ew-resize; }
+
+/* surface label — scene region semantic labels on the canvas */
+.bbox-surface-label {
+  position: absolute;
+  top: 1px;
+  left: 4px;
+  font-size: 9px;
+  color: rgba(34, 211, 238, 0.55);
+  user-select: none;
+}
+html.dark .bbox-surface-label {
+  color: rgba(34, 211, 238, 0.85);
+}
+
+/* preview tooltip — shown on hover in translate preview mode */
+.bbox-preview-tooltip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 10px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: rgba(9, 9, 11, 0.92);
+  color: #d4d4d8;
+  border: 1px solid rgba(34, 211, 238, 0.3);
+  pointer-events: none;
+  z-index: 20;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+html.dark .bbox-preview-tooltip {
+  background: rgba(24, 24, 27, 0.95);
+  color: #f4f4f5;
+}
+
+/* capture-mode metadata tooltip: detected style + background per region */
+.bbox-meta-tooltip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 150px;
+  max-width: 260px;
+  font-size: 10px;
+  line-height: 1.5;
+  padding: 6px 9px;
+  border-radius: 5px;
+  background: rgba(9, 9, 11, 0.94);
+  color: #d4d4d8;
+  border: 1px solid rgba(34, 211, 238, 0.3);
+  pointer-events: none;
+  z-index: 20;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  text-align: left;
+}
+html.dark .bbox-meta-tooltip {
+  background: rgba(24, 24, 27, 0.96);
+  color: #f4f4f5;
+}
+.bbox-meta-tooltip .meta-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+.bbox-meta-tooltip .meta-key {
+  color: #71717a;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 8.5px;
+  min-width: 32px;
+}
+.bbox-meta-tooltip .meta-swatch {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  flex-shrink: 0;
+}
+
+/* hide horizontal scrollbar on the canvas container — a synced separate
+   scrollbar is rendered at the very bottom of the component instead */
+.bbox-canvas-scroll {
+  overflow-y: auto;
+  overflow-x: scroll;
+  scrollbar-width: thin;
+}
+.bbox-canvas-scroll::-webkit-scrollbar:horizontal {
+  display: none;
+}
+.bbox-canvas-scroll::-webkit-scrollbar:vertical {
+  width: 6px;
+}
