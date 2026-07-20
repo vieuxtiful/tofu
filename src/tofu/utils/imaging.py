@@ -32,6 +32,28 @@ def load_rgb(asset: Any):
     return None
 
 
+def crop_region(asset: Any, bbox, pad: int = 0) -> Optional[Any]:
+    """crop a bbox out of an asset as a PIL RGB image, or None when the
+    asset can't be loaded or the crop is degenerate. shared by memory
+    (thumbnail + phash source) and anything else that needs a plain
+    region crop without the glyph-segmentation logic of text_mask()."""
+    try:
+        from PIL import Image
+    except ImportError:
+        return None
+    img = load_rgb(asset)
+    if img is None:
+        return None
+    h, w = img.shape[:2]
+    x0 = max(0, bbox.x - pad)
+    y0 = max(0, bbox.y - pad)
+    x1 = min(w, bbox.x + bbox.width + pad)
+    y1 = min(h, bbox.y + bbox.height + pad)
+    if x1 - x0 < 2 or y1 - y0 < 2:
+        return None
+    return Image.fromarray(img[y0:y1, x0:x1])
+
+
 def text_mask(img, bbox, refine: bool = True) -> Optional[Any]:
     """binary glyph mask for the text inside a bbox of a full RGB image.
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  AlertTriangle, AlignCenter, AlignEndHorizontal, AlignEndVertical, AlignJustify, AlignLeft, AlignRight, AlignStartHorizontal, AlignStartVertical, ArrowLeft, ArrowUpFromLine, Baseline, Bold, Box, Check, ChevronDown, FileImage, FolderOpen, Hexagon, History, Home, Italic, Languages, Loader2,
+  AlertTriangle, AlignCenter, AlignEndHorizontal, AlignEndVertical, AlignJustify, AlignLeft, AlignRight, AlignStartHorizontal, AlignStartVertical, ArrowLeft, ArrowUpFromLine, Baseline, Bold, BookmarkCheck, Box, Check, ChevronDown, FileImage, FolderOpen, Hexagon, History, Home, Italic, Languages, Loader2,
   Play, Plus, RotateCcw, ScanText, ShieldAlert, ShieldCheck, Sparkles, SquareStack, Subscript, Superscript, Type, Underline, X,
 } from "lucide-react";
 import {
@@ -29,6 +29,7 @@ import RegionTable from "./RegionTable";
 import ExportPanel from "./ExportPanel";
 import ProjectGate from "./ProjectGate";
 import HistoryPanel from "./HistoryPanel";
+import MemoryPanel from "./MemoryPanel";
 import SplashScreen from "./SplashScreen";
 import TitleScreen from "./TitleScreen";
 import ThemeToggle from "./ThemeToggle";
@@ -110,6 +111,36 @@ function TitleConfirmOverlay({ onYes, onNo }: { onYes: () => void; onNo: () => v
     >
       <div className="title-confirm-card" onClick={(e) => e.stopPropagation()}>
         <p className="title-confirm-message">return to title?</p>
+        <div className="title-confirm-actions">
+          <button className="title-confirm-btn yes" onClick={handleYes}>Yes</button>
+          <button className="title-confirm-btn no" onClick={handleNo}>No</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AssetDeleteConfirmOverlay({ filename, onYes, onNo }: { filename: string; onYes: () => void; onNo: () => void }) {
+  const [leaving, setLeaving] = useState(false);
+
+  const handleNo = () => {
+    setLeaving(true);
+    setTimeout(onNo, 300);
+  };
+
+  const handleYes = () => {
+    setLeaving(true);
+    setTimeout(onYes, 300);
+  };
+
+  return (
+    <div
+      className={`title-confirm-backdrop${leaving ? " leaving" : ""}`}
+      onClick={handleNo}
+    >
+      <div className="title-confirm-card" onClick={(e) => e.stopPropagation()}>
+        <p className="title-confirm-message">are you sure you want to remove this asset?</p>
+        <p className="subtext mt-1 text-center text-xs text-zinc-500">snapshots are taken—nothing is permanently lost.</p>
         <div className="title-confirm-actions">
           <button className="title-confirm-btn yes" onClick={handleYes}>Yes</button>
           <button className="title-confirm-btn no" onClick={handleNo}>No</button>
@@ -218,8 +249,11 @@ export default function App() {
   const [project, setProject] = useState<Project | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [historyLeaving, setHistoryLeaving] = useState(false);
+  const [showMemory, setShowMemory] = useState(false);
+  const [memoryLeaving, setMemoryLeaving] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showTitleConfirm, setShowTitleConfirm] = useState(false);
+  const [pendingAssetDelete, setPendingAssetDelete] = useState<{ assetId: string; filename: string | null } | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
@@ -588,6 +622,13 @@ export default function App() {
             ? "seasoning… (style & background analysis)"
             : `enriched ${ev.regions} region(s)`
         );
+      } else if (ev.stage === "memory") {
+        setDetectStage("lang");
+        setDetectProgress(
+          ev.status === "running"
+            ? "checking translation memory…"
+            : (ev.matched ?? 0) > 0 ? `seen before: ${ev.matched} region(s)` : "no memory matches"
+        );
       } else if (ev.stage === "complete" && ev.manifest) {
         const m = ev.manifest;
         const detected = langs?.[0] ?? m.src_lang;
@@ -611,6 +652,9 @@ export default function App() {
           );
         } else if (m.instances.length > 0) {
           addToast("success", `detected ${m.instances.length} regions`);
+          if ((ev.tm_matched ?? 0) > 0) {
+            addToast("info", `seen before: ${ev.tm_matched} region(s) matched translation memory — suggestions ready in Translate.`);
+          }
         } else {
           addToast("info", "no text regions detected. you can draw them manually.");
         }
@@ -888,7 +932,12 @@ export default function App() {
    * snapshot ledger and file on disk survive. */
   const onDeleteAsset = useCallback(async (assetId: string, filename: string | null) => {
     if (!project) return;
-    if (!confirm(`Remove "${filename ?? assetId}" from this project?\nSnapshots are kept — nothing is permanently lost.`)) return;
+    setPendingAssetDelete({ assetId, filename });
+  }, [project]);
+
+  const confirmDeleteAsset = useCallback(async () => {
+    if (!project || !pendingAssetDelete) return;
+    const { assetId, filename } = pendingAssetDelete;
     try {
       await deleteProjectAsset(project.id, assetId);
       if (asset?.asset_id === assetId) resetSession();
@@ -897,7 +946,7 @@ export default function App() {
     } catch (e) {
       setErrorWithNotif(String(e));
     }
-  }, [project, asset, resetSession, refreshProject, addToast]);
+  }, [project, pendingAssetDelete, asset, resetSession, refreshProject, addToast]);
 
   const onHistoryRestored = useCallback(() => {
     setShowHistory(false);
@@ -1208,6 +1257,14 @@ export default function App() {
               >
                 <SquareStack size={14} className="text-cyan-600 dark:text-cyan-400" />
                 history
+              </button>
+              <button
+                onClick={() => { setMenuOpen(false); setShowMemory(true); }}
+                disabled={!project}
+                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-zinc-700 transition hover:bg-zinc-100 disabled:opacity-40 dark:text-zinc-300 dark:hover:bg-zinc-800"
+              >
+                <BookmarkCheck size={14} className="text-cyan-600 dark:text-cyan-400" />
+                memory
               </button>
               <button
                 onClick={() => { setMenuOpen(false); setShowSettings(true); }}
@@ -2776,6 +2833,20 @@ export default function App() {
         />
       )}
 
+      {showMemory && project && (
+        <MemoryPanel
+          project={project}
+          onClose={() => {
+            setMemoryLeaving(true);
+            setTimeout(() => {
+              setMemoryLeaving(false);
+              setShowMemory(false);
+            }, 300);
+          }}
+          leaving={memoryLeaving}
+        />
+      )}
+
       {showSettings && (
         <div className="title-confirm-backdrop" onClick={() => setShowSettings(false)}>
           <div className="bezier-card title-confirm-card step-fade" style={{ maxWidth: "420px" }} onClick={(e) => e.stopPropagation()}>
@@ -2800,6 +2871,14 @@ export default function App() {
         <TitleConfirmOverlay
           onYes={() => { setShowTitleConfirm(false); setScreen("title"); }}
           onNo={() => setShowTitleConfirm(false)}
+        />
+      )}
+
+      {pendingAssetDelete && (
+        <AssetDeleteConfirmOverlay
+          filename={pendingAssetDelete.filename ?? pendingAssetDelete.assetId}
+          onYes={() => { confirmDeleteAsset(); setPendingAssetDelete(null); }}
+          onNo={() => setPendingAssetDelete(null)}
         />
       )}
 

@@ -315,7 +315,7 @@ class TofuPipeline:
             t0 = time.time()
             try:
                 memory_updates = self._run_memory(
-                    text_manifest, targ_lang, localized_asset, qa_report
+                    text_manifest, targ_lang, localized_asset, qa_report, asset
                 )
                 self._log("memory", f"{len(memory_updates)} TM record(s) stored", t0=t0)
             except Exception as exc:
@@ -430,10 +430,11 @@ class TofuPipeline:
         targ_lang: str,
         localized_asset,
         qa_report: QAReport,
+        source_asset=None,
     ) -> List[Dict[str, Any]]:
         if self.config.memory_mode == LayerMode.MANUAL:
             return []  # user curates the TM by hand
         return memory.update(
-            text_manifest, targ_lang, localized_asset,
+            text_manifest, targ_lang, localized_asset, source_asset,
             qa_report, self.config.qa_threshold
         )

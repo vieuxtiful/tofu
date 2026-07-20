@@ -49,7 +49,7 @@ from tofu.core.types import (
     RenderParams, StyleProfil,
 )
 from tofu.layers.tofu import ToFU, lang_to_script
-from tofu.layers import cicerone
+from tofu.layers import cicerone, memory
 from tofu.layers.cicerone import _to_easyocr_lang
 from tofu.utils.manifest_store import save_manifest, load_manifest
 from tofu.utils import interchange
@@ -58,8 +58,10 @@ import db
 
 UPLOAD_DIR = ROOT / "server" / "uploads"
 OUTPUT_DIR = ROOT / "server" / "outputs"
+TM_THUMB_DIR = ROOT / "server" / "tm_thumbs"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+TM_THUMB_DIR.mkdir(parents=True, exist_ok=True)
 db.init_db()
 
 
@@ -104,6 +106,54 @@ def _asset_path(asset_id: str) -> Path:
     if not matches:
         raise HTTPException(404, f"asset '{asset_id}' not found")
     return matches[0]
+
+
+def _persist_tm_updates(pid: Optional[str], drafts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """endpoint-owned I/O for memory.update()'s draft records: save each
+    thumbnail crop to disk, write the row to tm_records, and return a
+    JSON-safe summary (the raw PIL 'thumb_crop' never survives past this
+    function -- jsonable_encoder has no handler for it, the same class of
+    bug as Phase 5's numpy-scalar leak). no-ops (but still strips
+    thumb_crop) when the asset isn't attached to a project, since
+    tm_records requires a project_id."""
+    out: List[Dict[str, Any]] = []
+    for d in drafts:
+        thumb_crop = d.get("thumb_crop")
+        record_id = None
+        thumb_path = None
+        if pid is not None:
+            if thumb_crop is not None:
+                thumb_name = f"{uuid.uuid4().hex}.png"
+                try:
+                    thumb_crop.save(TM_THUMB_DIR / thumb_name)
+                    thumb_path = thumb_name
+                except Exception:
+                    thumb_path = None
+            record_id = db.store_tm_record(
+                pid, d["asset_id"], d["region_id"], d["source_text"],
+                d["normalized_text"], d.get("source_lang"), d["target_lang"],
+                d["target_text"], d.get("style_fingerprint"), d.get("phash"),
+                thumb_path, d["qa_score"],
+            )
+        out.append({k: v for k, v in d.items() if k != "thumb_crop"} | {"record_id": record_id})
+    return out
+
+
+def _attach_tm_suggestions(pid: Optional[str], manifest: TextManifest, source_path) -> int:
+    """post-detect TM lookup: populates InstText.tm_suggestion for regions
+    with a confident memory match. returns the number of regions matched
+    (the 'seen before' signal). no-ops outside a project (no TM to
+    search) or a manifest with no source language recorded yet."""
+    if pid is None:
+        return 0
+    candidates = db.find_tm_candidates(pid, manifest.targ_lang or "en", manifest.src_lang)
+    if not candidates:
+        return 0
+    matches = memory.lookup(manifest, str(source_path), manifest.targ_lang or "en", candidates)
+    for inst in manifest.instances:
+        m = matches.get(inst.id)
+        inst.tm_suggestion = m
+    return len(matches)
 
 
 def _infer_src_lang(manifest: TextManifest) -> str:
@@ -155,6 +205,7 @@ app.add_middleware(
 )
 app.mount("/outputs", StaticFiles(directory=OUTPUT_DIR), name="outputs")
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+app.mount("/tm_thumbs", StaticFiles(directory=TM_THUMB_DIR), name="tm_thumbs")
 
 FRONTEND_URL = os.environ.get("TOFU_FRONTEND_URL", "http://localhost:5173")
 
@@ -427,6 +478,25 @@ def project_history(pid: str, asset_id: Optional[str] = None):
     }
 
 
+@app.get("/api/projects/{pid}/memory")
+def project_memory(pid: str):
+    """translation-memory browser panel: every stored record for this
+    project, newest first, with a thumb_url for the crop preview."""
+    if db.get_project(pid) is None:
+        raise HTTPException(404, f"project '{pid}' not found")
+    records = db.list_tm_records(pid)
+    for r in records:
+        r["thumb_url"] = f"/tm_thumbs/{r['thumb_path']}" if r.get("thumb_path") else None
+    return {"records": records, "count": len(records)}
+
+
+@app.delete("/api/memory/{record_id}")
+def delete_memory_record(record_id: int):
+    if not db.delete_tm_record(record_id):
+        raise HTTPException(404, f"TM record '{record_id}' not found")
+    return {"ok": True}
+
+
 @app.post("/api/projects/{pid}/snapshots")
 def create_snapshot(pid: str, req: SnapshotCreate):
     """snapshot the asset's current manifest on demand — called before any
@@ -609,11 +679,29 @@ def detect(req: DetectRequest):
         manifest = scene.analyze(str(path), manifest)
     except Exception:
         pass  # enrichment is best-effort; detection results stand alone
+    tm_matched = _lookup_tm_for_manifest(req.asset_id, manifest, path)
     save_manifest(UPLOAD_DIR, req.asset_id, manifest)
     _record_detection(req.asset_id, manifest)
     payload = jsonable(manifest)
     payload["engine"] = _engine_name(backend)
+    payload["tm_matched"] = tm_matched
     return payload
+
+
+def _lookup_tm_for_manifest(asset_id: str, manifest: TextManifest, source_path) -> int:
+    """wraps _attach_tm_suggestions with the project's target language
+    (detect-time manifests don't carry a targ_lang yet -- that's chosen
+    at render time -- so the project default stands in as the language
+    a capture-time 'seen before' suggestion is most useful for)."""
+    pid = db.project_for_asset(asset_id)
+    if not pid:
+        return 0
+    project = db.get_project(pid)
+    targ_lang = project["target_lang"] if project else None
+    if not targ_lang:
+        return 0
+    manifest.targ_lang = manifest.targ_lang or targ_lang
+    return _attach_tm_suggestions(pid, manifest, source_path)
 
 
 def _engine_name(backend) -> str:
@@ -813,12 +901,20 @@ def detect_stream(
                 })
 
             manifest.src_lang = _infer_src_lang(manifest)
+
+            tm_matched = 0
+            if manifest.instances:
+                yield event({"stage": "memory", "status": "running"})
+                tm_matched = _lookup_tm_for_manifest(asset_id, manifest, path)
+                yield event({"stage": "memory", "status": "complete", "matched": tm_matched})
+
             save_manifest(UPLOAD_DIR, asset_id, manifest)
             _record_detection(asset_id, manifest)
             yield event({
                 "stage": "complete",
                 "manifest": jsonable(manifest),
                 "engine": _engine_name(backend),
+                "tm_matched": tm_matched,
             })
         except Exception as exc:
             yield event({"stage": "error", "message": f"{type(exc).__name__}: {exc}"})
@@ -1154,6 +1250,10 @@ def render(req: RenderRequest):
         db.log_event(pid, "render",
                      f"rendered {req.asset_id} → {req.targ_lang}"
                      f" ({'ok' if output_url else 'failed'})")
+        if result.memory_updates:
+            # pipeline.py already logged the draft count via _run_memory;
+            # this just does the actual db/thumbnail persistence
+            _persist_tm_updates(pid, result.memory_updates)
 
     return {
         "output_url": output_url,
@@ -1398,6 +1498,22 @@ def render_stream(
                 "score": qa_report.overall_score if qa_report else None,
             })
 
+            # -- memory: only QA-approved regions are remembered --
+            pid = db.project_for_asset(asset_id)
+            tm_saved_count = 0
+            if qa_passed and pid:
+                t0 = time.time()
+                try:
+                    drafts = memory.update(
+                        manifest2, targ_lang, localized, str(path),
+                        qa_report, threshold,
+                    )
+                    tm_saved = _persist_tm_updates(pid, drafts)
+                    tm_saved_count = len(tm_saved)
+                    log("memory", f"{tm_saved_count} TM record(s) stored", t0=t0)
+                except Exception as exc:
+                    log("memory", f"failed: {type(exc).__name__}: {exc}", "warning", t0=t0)
+
             # -- save output --
             output_url = None
             t0 = time.time()
@@ -1421,7 +1537,6 @@ def render_stream(
                 log("save", "no renderable output produced", "error")
 
             save_manifest(UPLOAD_DIR, asset_id, manifest2)
-            pid = db.project_for_asset(asset_id)
             if pid:
                 db.log_event(pid, "render",
                              f"rendered {asset_id} → {targ_lang} ({'ok' if output_url else 'failed'})")
@@ -1434,6 +1549,7 @@ def render_stream(
                 "qa_threshold": threshold,
                 "validation_report": jsonable(validation_report),
                 "text_manifest": jsonable(manifest2),
+                "tm_saved": tm_saved_count,
                 "logs": logs,
                 "errors": errors,
             })
@@ -1493,6 +1609,11 @@ def process(req: ProcessRequest):
         out_name = f"{req.asset_id}-{req.targ_lang}.png"
         output.save(OUTPUT_DIR / out_name)
         output_url = f"/outputs/{out_name}"
+    # memory_updates carries raw PIL thumb_crop images (jsonable() has no
+    # handler for them, same bug class as Phase 5's numpy-scalar leak) --
+    # persist_tm_updates strips it and does the actual db/thumbnail write
+    pid = db.project_for_asset(req.asset_id)
+    result.memory_updates = _persist_tm_updates(pid, result.memory_updates)
     payload = jsonable(result)
     payload.pop("output_asset", None)
     payload["output_url"] = output_url

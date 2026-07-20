@@ -97,6 +97,32 @@ export interface BBox {
   height: number;
 }
 
+export interface TMSuggestion {
+  target_text: string;
+  score: number;
+  method: "exact" | "fuzzy" | "visual";
+  source_asset_id: string;
+  record_id: number | null;
+}
+
+export interface TMRecord {
+  id: number;
+  project_id: string;
+  asset_id: string;
+  region_id: string;
+  source_text: string;
+  normalized_text: string;
+  source_lang: string | null;
+  target_lang: string;
+  target_text: string;
+  style_fingerprint: string | null;
+  phash: string | null;
+  thumb_path: string | null;
+  thumb_url: string | null;
+  qa_score: number;
+  created_at: number;
+}
+
 export interface InstText {
   id: string;
   bounding_box: BBox;
@@ -109,6 +135,7 @@ export interface InstText {
   dnt: boolean;
   target_language: string | null;
   glyph_fallback?: boolean | null;  // scribe swapped fonts: the requested face lacked codepoints for this text
+  tm_suggestion?: TMSuggestion | null;  // translation-memory match from a prior approved render
   segmentation_mask?: { polygon: number[][]; confidence: number } | null;
   style_profile?: {
     font_family: string | null;
@@ -242,7 +269,7 @@ export interface RenderResult {
 }
 
 export interface DetectStreamEvent {
-  stage: "scene" | "cicerone" | "finalize" | "refine" | "zoom" | "polish" | "enrich" | "complete" | "error";
+  stage: "scene" | "cicerone" | "finalize" | "refine" | "zoom" | "polish" | "enrich" | "memory" | "complete" | "error";
   status?: "running" | "complete";
   pass?: number;
   regions?: SceneRegion[] | number;  // scene: region list; cicerone/refine: running count
@@ -250,6 +277,8 @@ export interface DetectStreamEvent {
   manifest?: TextManifest;
   message?: string;
   engine?: "easyocr" | "paddleocr" | "null";  // which OCR engine actually ran
+  matched?: number;    // memory: complete -- regions with a TM suggestion this pass
+  tm_matched?: number; // complete -- same count, mirrored onto the terminal event
 }
 
 export interface OcrRegionResult {
@@ -357,6 +386,14 @@ export async function deleteProject(id: string): Promise<{ ok: boolean }> {
 export async function getProjectHistory(id: string, assetId?: string): Promise<ProjectHistory> {
   const qs = assetId ? `?asset_id=${encodeURIComponent(assetId)}` : "";
   return json(await fetch(`/api/projects/${encodeURIComponent(id)}/history${qs}`));
+}
+
+export async function getProjectMemory(id: string): Promise<{ records: TMRecord[]; count: number }> {
+  return json(await fetch(`/api/projects/${encodeURIComponent(id)}/memory`));
+}
+
+export async function deleteMemoryRecord(recordId: number): Promise<{ ok: boolean }> {
+  return json(await fetch(`/api/memory/${recordId}`, { method: "DELETE" }));
 }
 
 export async function snapshotAsset(

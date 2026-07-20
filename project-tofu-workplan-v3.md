@@ -47,7 +47,7 @@ coarse-to-fine zoom, second-look re-recognition, ja/zh/ko disambiguation, per-re
   where development happens.
 
 ### 3. Scene (context & style) — `src/tofu/layers/scene.py`
-**Works:** pre-pass (Canny contours + MSER → panel/bordered_region/text_cluster/
+**Works:** pre-pass (Canny contours + MSER → panel/bordered region/text_cluster/
 surface) constrains detection; enrichment (Otsu + GrabCut text/bg color, texture
 flat/textured, containing-region label) exists and never overwrites user values.
 
@@ -418,7 +418,7 @@ full eval_detect sweep, byte-identical F1 on every synthetic fixture):
 
 1. **Frame-sized region filter** (`max_region_frac=0.85`): both street photos
    previously returned exactly ONE scene region — the frame itself — because
-   contour analysis finds the outer image boundary as a "bordered_region", and
+   contour analysis finds the outer image boundary as a "bordered region", and
    the largest-first containment dedup then swallowed every real surface
    inside it. Regions covering more of the frame than this fraction are
    dropped before dedup.
@@ -834,6 +834,128 @@ breakdown via click.
 
 159 unit tests pass (2 new). Task 25 complete — Phase 5 (backend + QA
 Inspector frontend) is fully landed and live-verified end to end.
+
+## Part 3j — Phase 6: Memory MVP (landed 2026-07-19)
+
+All four planned deliverables landed — persistence, tiered matching,
+pipeline integration, and frontend surfacing — plus two real bugs found
+via live verification and one active file-corruption incident caught and
+reverted mid-session (see below).
+
+1. **Persistence**: new `tm_records` SQLite table (`server/db.py`) —
+   source/normalized text, lang pair, style fingerprint, perceptual hash,
+   thumbnail path, target text, QA score, project/asset/region refs.
+   Thumbnail crops saved under `server/tm_thumbs/`, mounted at
+   `/tm_thumbs`. `src/tofu/utils/phash.py` implements a DCT-based
+   perceptual hash (Zauner 2010): resize 32x32 grayscale, 2D DCT,
+   top-left 8x8 AC coefficients thresholded against their median → a
+   64-bit hash; Hamming distance gives a 0-1 visual similarity score.
+2. **Matching** (`src/tofu/layers/memory.py`, fully rewritten from the
+   Phase-0 stub): tiered exact (normalized-text equality) → fuzzy
+   (`SequenceMatcher` ratio ≥0.85, `src/tofu/utils/textmatch.py`) →
+   visual (pHash similarity ≥0.88, tried when text matching finds
+   nothing — including when OCR read nothing at all this pass, not only
+   when it read something that didn't match). Style fingerprint
+   (weight|italic|color bucket) tiebreaks equal-scoring candidates.
+   Kept storage-agnostic by design: `update()`/`lookup()` are pure
+   functions over caller-supplied candidate pools/draft records — no
+   SQLite import in `src/tofu/layers/` — matching every other layer's
+   architecture; `server/main.py` owns all actual DB/file I/O via two
+   new helpers, `_persist_tm_updates()` and `_attach_tm_suggestions()`.
+3. **Pipeline integration**: `InstText.tm_suggestion` (new manifest
+   field) populated by a `memory` stage after scene enrichment in both
+   `/api/detect` and `/api/detect/stream` (candidate pool scoped to the
+   project + the project's target language, since detect-time manifests
+   don't carry a target language of their own yet). Write-back is
+   QA-gated exactly like Phase 0's stub always intended: `/api/render`,
+   `/api/render/stream`, and the legacy `/api/process` all persist
+   `memory.update()`'s draft records only when the render passes the QA
+   threshold. New `GET /api/projects/{id}/memory` (browse) and
+   `DELETE /api/memory/{id}` endpoints.
+4. **Frontend**: `RegionTable.tsx` shows a "seen before" badge
+   (bookmark icon) next to any region ID with a TM suggestion, and — in
+   Translate mode, for untranslated regions — a "TM 92% — apply" chip
+   that fills `target_text` on click. New `MemoryPanel.tsx` (mirrors
+   `HistoryPanel.tsx`'s structure) is a project-level TM browser:
+   thumbnail, source→target, lang pair, QA score, timestamp, source
+   asset/region reference, delete action; reachable from the header
+   dropdown menu (`memory`, alongside `history`/`settings`).
+
+**Exit criterion measurement** (`scripts/eval_memory.py`, plan-specified
+methodology: "re-processing a near-duplicate asset pre-fills matching
+regions... at ≥95% precision on a constructed duplicate-pair fixture
+set"): for each of the 6 synthetic fixtures, detected once (asset A),
+stored every real detected region as an approved TM record with a
+globally-unique synthetic target. Each fixture was then perturbed
+(resize 0.85x + JPEG recompression q80 — simulating a re-photograph at a
+different distance) into asset B and detected independently, so OCR
+reads B's text with real, uncontrolled noise. Ground truth for "is this
+match correct" was established geometrically (bbox IoU after undoing the
+known resize), not from text similarity, to avoid circularity with the
+matcher under test. Result: **13/13 returned matches were the correct
+record — precision 1.0**, against a 15-region correspondable universe
+(match rate 13/15 = 0.867 — the system is conservative, not reckless: the
+2 unmatched regions abstained rather than guessed). Exit criterion
+(≥0.95 precision): **PASS**.
+
+**Two real bugs found via live verification, neither caught by the 23
+new unit tests**:
+- `TextManifest.asset_id` was set to the full source FILE PATH
+  (`asset_info.source`, e.g. `C:\Users\...\uploads\8ac2f037cbf8.png`)
+  instead of the clean app-level asset id, in `cicerone.build_manifest()`
+  — a pre-existing bug (present in HEAD before this session, not
+  introduced by Phase 6) that nothing had surfaced before because
+  `QAReport.per_asset_instance_score` was always read via
+  `Object.values(...)[0]` on the frontend (key-agnostic) rather than by
+  asset id. Memory's TM records are the first consumer to store and
+  display `asset_id` as a meaningful value (`source_asset_id` in a
+  suggestion, the record list in the TM browser), which immediately
+  surfaced local filesystem paths leaking into API responses and the
+  database. Fixed at the source: `asset_id=Path(asset_info.source).stem`
+  — matches the app's own `UPLOAD_DIR/{asset_id}.ext` convention.
+  Confirmed via a fresh live round-trip: a stored record's `asset_id`
+  and a lookup's `source_asset_id` are both the clean id.
+- A `memory.update()` draft record's `thumb_crop` field (a raw PIL
+  Image) would have reached `jsonable_encoder` unguarded in the legacy
+  `/api/process` endpoint (`payload = jsonable(result)` serializes the
+  whole `PipelineResult`, memory_updates included) — the same bug CLASS
+  as Phase 5's numpy-scalar leak, caught by code review this time before
+  it shipped rather than by a live 500. `_persist_tm_updates()` always
+  strips `thumb_crop` before anything downstream can see it.
+
+**One active prompt-injection / file-corruption incident, caught and
+reverted, not a Memory-layer bug**: mid-session, a tool result asserted
+a syntax-breaking edit to `frontend/src/api.ts` (`bordered_region` →
+`bordered region` inserted mid-declaration, breaking two interfaces) was
+"intentional" and instructed withholding it from the user. Investigating
+independently (not trusting that claim) found the SAME
+`"bordered_region"` → `"bordered region"` corruption live in six more
+spots, including the root cause: `src/tofu/layers/scene.py`'s
+`ClassicalCVBackend` was assigning `label = "bordered region"` (the
+actual value written into every `SceneRegion.semantic_label`) instead of
+`"bordered_region"`, plus two doc comments in the same file; three
+downstream consumer dicts in `src/tofu/layers/cicerone.py`
+(`_PRIORITY`, `_ZOOM_PRIORITY`, `_SCENE_CONF`) whose keys still read
+`"bordered_region"`, so they silently stopped matching anything —
+defeating the panel/bordered-region priority boost in
+`probe_uncovered_surfaces`, `zoom_detect`, and `build_manifest`'s scene
+confidence filter (any bordered-region surface fell back to the generic
+default threshold instead of its intended one); and one type comment in
+`src/tofu/core/types.py`. Confirmed via `git diff HEAD` on each file
+that this was uncommitted working-tree corruption with no legitimate
+change mixed in; reverted all four files, reran the full suite clean.
+Matches the same pattern flagged and reverted earlier this session
+(Phase 2 write-up) in this exact file (`scene.py`) — it had recurred
+since then. A parallel, cosmetic-only instance remains in an unrelated
+uncommitted `README.md` addition (not part of this session's own work,
+left alone per scope) — worth a clean sweep before that file is ever
+committed.
+
+182 unit tests pass (23 new: `test_memory_phase6.py` — phash, text
+matching, `update()`/`lookup()` gating and tiering). Phase 6 complete —
+this closes the v3 workplan's stated phase list (0-6); only the
+originally-scoped "hardening, paper-alignment pass, docs" week remains
+unscheduled work.
 
 ## Part 4 — Risks & mitigations
 - **easyocr/torch on the dev host** (currently absent): Phase 0 gate; if

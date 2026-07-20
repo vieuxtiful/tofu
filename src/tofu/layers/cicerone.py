@@ -1997,7 +1997,16 @@ def build_manifest(
         instances = _prune_hallucinations(instances)
 
     return TextManifest(
-        asset_id=asset_info.source or f"asset-{uuid.uuid4().hex[:8]}",
+        # asset_info.source is a full file path (server/main.py's
+        # convention: UPLOAD_DIR/{asset_id}.ext) -- the STEM is the real
+        # asset_id; using the raw path leaked local filesystem paths into
+        # every consumer keyed on manifest.asset_id (QAReport's
+        # per_asset_instance_score, and now Memory's tm_records), caught
+        # via a live TM round-trip where a stored record's asset_id
+        # turned out to be an absolute Windows path instead of the clean
+        # id the rest of the app uses everywhere else
+        asset_id=(Path(asset_info.source).stem if asset_info.source
+                  else f"asset-{uuid.uuid4().hex[:8]}"),
         total_regions=len(instances),
         instances=instances,
         img_dim=_probe_dim(asset),

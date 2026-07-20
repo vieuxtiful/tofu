@@ -119,6 +119,7 @@ class InstText:
     dnt: bool = False                            ## do-not-translate flag: excluded from export and scribe
     target_language: Optional[str] = None        ## per-region override of target language (None = use manifest default)
     glyph_fallback: Optional[bool] = None         ## True: scribe swapped the requested font for a codepoint-covering one
+    tm_suggestion: Optional[Dict[str, Any]] = None  ## Memory lookup match: {target_text, score, method, source_asset_id, record_id}
 
 @dataclass
 class CharactText:
