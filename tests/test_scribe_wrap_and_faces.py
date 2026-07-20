@@ -61,10 +61,32 @@ class TestResolveFace:
         assert path == "thin.ttf"
         assert synth_italic is True  # no real italic sibling; must synthesize
 
-    def test_no_font_family_passes_through(self):
+    def test_no_font_family_no_weight_or_italic_stays_true_auto(self):
+        # nothing requested: font_family=None passes straight through --
+        # there's nothing to resolve towards, so "auto" stays "auto"
+        reg = make_registry(ARIAL_FAMILY)
+        path, synth_italic = scribe.resolve_face(reg, None, None, False)
+        assert path is None and synth_italic is False
+
+    def test_no_font_family_but_bold_italic_requested_anchors_on_fallback(self):
+        # "auto" family left as None, but weight/italic IS requested --
+        # e.g. typography detected bold source text and the region was
+        # never given an explicit font pick. must anchor the sibling
+        # search on the FALLBACK_FONTS default (arial.ttf) and find a
+        # real bold-italic sibling, not silently drop the request the
+        # way font_family=None used to be treated unconditionally.
         reg = make_registry(ARIAL_FAMILY)
         path, synth_italic = scribe.resolve_face(reg, None, "bold", True)
-        assert path is None and synth_italic is True
+        assert path == "arialbi.ttf"
+        assert synth_italic is False
+
+    def test_no_font_family_weight_requested_no_fallback_installed(self):
+        # weight/italic requested but the registry has none of the
+        # FALLBACK_FONTS names at all -- nothing to anchor on, passes
+        # through unchanged rather than erroring
+        reg = make_registry([("thin.ttf", "Thin Family", "Thin", 200)])
+        path, synth_italic = scribe.resolve_face(reg, None, "bold", False)
+        assert path is None and synth_italic is False
 
 
 class TestLineWrapping:

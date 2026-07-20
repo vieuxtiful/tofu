@@ -143,7 +143,14 @@ export default function TargetPreviewCanvas({
       if (fontStyleHint.includes("italic")) fontStyle = "italic";
     }
     const color = inst.style_profile?.color ?? inst.characteristics?.color ?? undefined;
-    const explicitSizePx = inst.style_profile?.font_size ?? inst.characteristics?.size ?? null;
+    // render() passes style_profile.font_size ALONE as _fit_wrapped's
+    // explicit_size -- None means true binary-search auto-fit. falling
+    // back to characteristics.size (the DETECTED source-text size) here
+    // would skip that auto-fit entirely and draw at the source's own
+    // size, which is tuned for the SOURCE string's length, not the
+    // (usually different-length) translation -- a real mismatch for any
+    // region where the translation runs longer or shorter than source.
+    const explicitSizePx = inst.style_profile?.font_size ?? null;
     const sp = inst.style_profile;
     return {
       fontPath, fontWeight, fontStyle, cssFontFamily, color, explicitSizePx,
@@ -186,12 +193,16 @@ export default function TargetPreviewCanvas({
         if (!inst.target_text || inst.dnt) continue;
         const spec = resolveTextSpec(inst);
         const fontSpecTemplate = `${spec.fontStyle} ${spec.fontWeight} {size}px ${spec.cssFontFamily}`;
-        // fit against the REGION'S OWN natural-pixel bbox (matching
-        // scribe.py's units exactly), scaled to display size afterward —
-        // keeps MIN_FONT_PX etc. meaningful at any zoom level
+        // fit against the REGION'S OWN natural-pixel bbox, UNPADDED —
+        // scribe._fit_wrapped() fits against bbox.width/height directly
+        // with zero inset (render() draws flush to the bbox edges; see
+        // its line-position math), so subtracting any margin here before
+        // the fit search would systematically pick a smaller font than
+        // the server does. scaled to display size afterward — keeps
+        // MIN_FONT_PX etc. meaningful at any zoom level
         next[inst.id] = fitWrappedText(
           ctx, inst.target_text,
-          Math.max(1, inst.bounding_box.width - 4),
+          Math.max(1, inst.bounding_box.width),
           Math.max(1, inst.bounding_box.height),
           fontSpecTemplate, spec.explicitSizePx, spec.leadingPx,
         );
@@ -280,7 +291,12 @@ export default function TargetPreviewCanvas({
                         flexDirection: "column",
                         justifyContent: spec.alignV === "top" ? "flex-start" : spec.alignV === "bottom" ? "flex-end" : "center",
                         alignItems: defaultAlignItems,
-                        padding: `0 ${2 * scale}px`,
+                        // zero horizontal inset, matching render()'s own
+                        // flush-to-bbox line positioning — the fit above
+                        // was computed against the bbox's full width, so
+                        // any padding here would make the box narrower
+                        // than what was actually fit and cause visible
+                        // clipping/wrap the server wouldn't produce
                         overflow: "hidden",
                         pointerEvents: "none",
                         transform: [

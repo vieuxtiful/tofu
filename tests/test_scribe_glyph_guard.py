@@ -117,6 +117,32 @@ class TestResolveAutoFont:
         reg = make_registry([(r"C:\Windows\Fonts\cjk.ttc#0", "CJK Gothic", "Regular", 400, CJK_SAMPLE)])
         assert scribe.resolve_auto_font(reg, "en", "HELLO") is None
 
+    def test_bold_weight_resolves_to_the_real_bold_sibling(self):
+        # regression: a region left on "auto" font selection but with
+        # style_profile.font_weight="bold" (typography-detected bold
+        # source text, the common case for signage) must resolve to a
+        # real bold FILE -- not the plain arial.ttf regular fallback,
+        # which is what render() itself used to draw before resolve_face
+        # learned to anchor a sibling search on the fallback family when
+        # font_family is None but weight/italic is requested.
+        reg = make_registry([
+            (r"C:\Windows\Fonts\arial.ttf", "Arial", "Regular", 400, LATIN_ONLY),
+            (r"C:\Windows\Fonts\arialbd.ttf", "Arial", "Bold", 700, LATIN_ONLY),
+        ])
+        path = scribe.resolve_auto_font(reg, "en", "MAIN STREET", weight="bold")
+        assert path == r"C:\Windows\Fonts\arialbd.ttf"
+
+    def test_no_bold_sibling_falls_back_to_the_regular_default(self):
+        # weight="bold" requested but the registry has no bold face in
+        # the fallback family -- resolve_face's own no-sibling-found path
+        # returns the ORIGINAL (None) family unchanged, so this still
+        # lands on the plain regular fallback rather than erroring
+        reg = make_registry([
+            (r"C:\Windows\Fonts\arial.ttf", "Arial", "Regular", 400, LATIN_ONLY),
+        ])
+        path = scribe.resolve_auto_font(reg, "en", "MAIN STREET", weight="bold")
+        assert path == r"C:\Windows\Fonts\arial.ttf"
+
 
 class TestGetFontHandlesCollectionIndex:
     """regression: FontRegistry keys collection faces as 'path#index'

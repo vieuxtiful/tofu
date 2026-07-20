@@ -98,6 +98,22 @@ def _get_font(font_family: Optional[str], size: int):
     return ImageFont.load_default()
 
 
+def _default_fallback_path(fonts: Dict[str, Any]) -> Optional[str]:
+    """first installed FALLBACK_FONTS entry, as a registry key — what
+    _get_font(None, ...) resolves to structurally, before any per-text
+    glyph-coverage override. shared by resolve_face/check_glyph_coverage/
+    resolve_auto_font so the three "what does auto mean" call sites can't
+    drift against each other."""
+    for fallback_name in FALLBACK_FONTS:
+        match = next(
+            (p for p in fonts if Path(p.split("#")[0]).name.lower() == fallback_name.lower()),
+            None,
+        )
+        if match:
+            return match
+    return None
+
+
 def resolve_face(
     font_registry, font_family: Optional[str], weight: Optional[str], italic: bool,
 ) -> Tuple[Optional[str], bool]:
@@ -113,17 +129,33 @@ def resolve_face(
     file the user picked, or matches what's requested) — that combination
     is returned as-is without a family search. Otherwise siblings of
     font_family's own family are searched for a subfamily name containing
-    the requested weight/italic keywords. no registry, no font_family, or
-    no match: returns (font_family, italic) unchanged — the caller's
-    existing behavior (literal path + synthetic shear) is the contract.
+    the requested weight/italic keywords.
+
+    font_family=None ("auto") with weight or italic actually requested
+    (e.g. typography detected bold/italic source text but the region was
+    left on auto font selection — the common case) anchors the sibling
+    search on whichever FALLBACK_FONTS entry _get_font(None, ...) would
+    otherwise draw with, so a detected bold/italic lands on a real bold/
+    italic FILE of that same fallback family instead of being silently
+    dropped. font_family=None with NEITHER weight nor italic requested
+    stays a true no-op (nothing to resolve towards). no registry, no
+    match, or nothing requested: returns (font_family, italic) unchanged
+    — the caller's existing behavior (literal path + synthetic shear) is
+    the contract.
     """
     if not font_registry or not getattr(font_registry, "fonts", None):
         return font_family, italic
     fonts = getattr(font_registry, "_fonts", {})
-    if not font_family:
-        return font_family, italic
 
-    key = font_registry._key(font_family) if hasattr(font_registry, "_key") else font_family
+    lookup_family = font_family
+    if not lookup_family:
+        if not (weight or italic):
+            return font_family, italic
+        lookup_family = _default_fallback_path(fonts)
+        if not lookup_family:
+            return font_family, italic
+
+    key = font_registry._key(lookup_family) if hasattr(font_registry, "_key") else lookup_family
     current = fonts.get(key)
     if current is None:
         return font_family, italic  # not a registry-known font; nothing to resolve
@@ -192,14 +224,9 @@ def check_glyph_coverage(
         # glyph_fallback on all 4 regions). resolve by filename since the
         # registry keys on full discovered paths, not the bare names in
         # FALLBACK_FONTS.
-        for fallback_name in FALLBACK_FONTS:
-            match = next(
-                (p for p in fonts if Path(p.split("#")[0]).name.lower() == fallback_name.lower()),
-                None,
-            )
-            if match:
-                key, current = match, fonts[match]
-                break
+        match = _default_fallback_path(fonts)
+        if match:
+            key, current = match, fonts[match]
 
     # only a KNOWN registry font with a confirmed gap counts as evidence
     # of a real problem; an unrecognized font_family (e.g. a bare name
@@ -238,17 +265,24 @@ def check_glyph_coverage(
     return best_path, False
 
 
-def resolve_auto_font(font_registry, lang: Optional[str], text: str) -> Optional[str]:
+def resolve_auto_font(
+    font_registry, lang: Optional[str], text: str,
+    weight: Optional[str] = None, italic: bool = False,
+) -> Optional[str]:
     """what does "auto" (font_family=None) actually resolve to for THIS
-    region's own text/language? render() resolves auto in two composed
-    steps — _get_font(None, ...)'s FALLBACK_FONTS chain, then
-    check_glyph_coverage()'s override when that pick can't cover the
-    text — and this helper performs the exact same two steps so its
-    answer is guaranteed to agree with what actually gets drawn. exists
-    for callers (capture-time enrichment, manifest autosave) that need
-    to SHOW the user what "auto" means before a render ever happens —
-    e.g. the Translate-tab preview and the Font column label — without
-    duplicating glyph-coverage rules in a second language.
+    region's own text/language/weight/italic? render() resolves auto in
+    two composed steps — resolve_face(None, weight, italic)'s sibling
+    search anchored on the FALLBACK_FONTS chain (so a detected/requested
+    bold or italic on an "auto" font selection lands on a real bold/
+    italic FILE rather than being silently dropped), then
+    check_glyph_coverage()'s override — using THAT resolved path, exactly
+    as render() does once resolve_face has reassigned it — when the pick
+    can't cover the text. this helper performs the exact same steps so
+    its answer is guaranteed to agree with what actually gets drawn.
+    exists for callers (capture-time enrichment, manifest autosave) that
+    need to SHOW the user what "auto" means before a render ever happens
+    — e.g. the Translate-tab preview and the Font column label — without
+    duplicating font-resolution rules in a second language.
 
     returns a FontRegistry path (matching what familiesByLang lookups
     expect, not a bare filename), or None when there's no font_registry
@@ -261,16 +295,12 @@ def resolve_auto_font(font_registry, lang: Optional[str], text: str) -> Optional
         return None
 
     default_path = None
-    for fallback_name in FALLBACK_FONTS:
-        match = next(
-            (p for p in fonts if Path(p.split("#")[0]).name.lower() == fallback_name.lower()),
-            None,
-        )
-        if match:
-            default_path = match
-            break
+    if weight or italic:
+        default_path, _ = resolve_face(font_registry, None, weight, italic)
+    if default_path is None:
+        default_path = _default_fallback_path(fonts)
 
-    replacement, all_covered = check_glyph_coverage(font_registry, None, text, lang)
+    replacement, all_covered = check_glyph_coverage(font_registry, default_path, text, lang)
     if not all_covered and replacement:
         return replacement
     return default_path

@@ -159,9 +159,11 @@ def _attach_tm_suggestions(pid: Optional[str], manifest: TextManifest, source_pa
 def _resolve_auto_fonts(manifest: TextManifest, default_targ_lang: Optional[str] = None) -> int:
     """populate InstText.resolved_font_family for every region left on
     "auto" (style_profile.font_family is None/unset): what does auto
-    ACTUALLY render with, right now, for this region's own text? uses
-    scribe.resolve_auto_font() -- the identical two-step resolution
-    render() itself performs -- so the Font column label and the
+    ACTUALLY render with, right now, for this region's own text/weight/
+    italic? uses scribe.resolve_auto_font() -- the identical resolution
+    render() itself performs, including picking a real bold/italic
+    sibling face when style_profile.font_weight/italic asks for one on
+    an otherwise-auto family -- so the Font column label and the
     Translate-tab preview both show something guaranteed to match the
     real render, not a guess. cheap (registry codepoint lookups, no font
     file I/O), so it's safe to recompute on every call rather than
@@ -182,7 +184,9 @@ def _resolve_auto_fonts(manifest: TextManifest, default_targ_lang: Optional[str]
             continue  # explicit pick -- nothing to resolve
         text = inst.target_text or inst.text or ""
         lang = inst.target_language or default_targ_lang or manifest.targ_lang
-        path = scribe.resolve_auto_font(registry, lang, text)
+        weight = inst.style_profile.font_weight if inst.style_profile else None
+        italic = bool(inst.style_profile.italic) if inst.style_profile else False
+        path = scribe.resolve_auto_font(registry, lang, text, weight=weight, italic=italic)
         if path != inst.resolved_font_family:
             inst.resolved_font_family = path
         if path:

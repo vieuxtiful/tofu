@@ -1132,6 +1132,101 @@ family), out of scope for this task and not a regression it introduced.
 No console errors from the new canvas-measurement/font-loading code
 path during live use.
 
+## Preview-fidelity follow-up: "auto" font never actually went bold, and a size-fit mismatch
+
+User report against `tm-smoke-test2`: bold source text (`style_profile.
+font_weight="bold"`, family left on "auto") showed as PLAIN Arial in
+both the Translate-tab preview AND the actual Render-tab output, despite
+the manifest/UI correctly indicating bold; separately, the Translate-tab
+preview's fitted size for a longer translation ("Abierto de 9am a 5pm")
+was visibly smaller than what the real render produced.
+
+**Root cause 1 — a real render() bug, not just a preview gap.**
+`scribe.resolve_face()` early-returned `(font_family, italic)` UNCHANGED
+whenever `font_family` was `None` ("auto") — even when `weight`/`italic`
+WAS explicitly requested via `style_profile.font_weight`/`italic`. Since
+render()'s own call site (`if font_registry and (s.font_family or
+s.font_weight or s.italic): resolve_face(...)`) already fires on
+`font_weight="bold"` alone, this meant EVERY "auto family + detected/
+requested bold" region — the common case, since typography detection
+sets `font_weight` independently of the font FAMILY pick — silently
+rendered as regular weight in the actual server output, not just the
+preview. The Translate-tab preview and Font column were *faithfully
+mirroring this same bug* (by design, per the earlier preview-fidelity
+work), which is why fixing the preview alone would have been wrong —
+the real render needed the fix.
+
+Fixed `resolve_face()` to anchor its sibling-face search on whichever
+`FALLBACK_FONTS` entry `_get_font(None, ...)` would otherwise draw with,
+whenever `font_family` is `None` but weight/italic IS requested — so a
+detected bold on an auto-styled region now resolves to a real
+`arialbd.ttf`-class sibling instead of being silently dropped. Extracted
+the FALLBACK_FONTS matching loop (previously duplicated in
+`check_glyph_coverage` and `resolve_auto_font`) into a shared
+`_default_fallback_path()` helper as part of this change. `scribe.
+resolve_auto_font()` (the preview/Font-column helper) updated to accept
+`weight`/`italic` and call `resolve_face()` first — exactly mirroring
+render()'s new two-step composition, including running
+`check_glyph_coverage()` against the RESOLVED (bold) path rather than
+always `None`. `server/main.py`'s `_resolve_auto_fonts()` now passes
+`style_profile.font_weight`/`italic` through. No frontend change was
+needed beyond that — `RegionTable.tsx`'s Font column and
+`TargetPreviewCanvas.tsx` already keyed off `resolved_font_family`'s
+path, so once that path correctly pointed at `arialbd.ttf` both
+automatically started rendering/labeling bold correctly.
+
+**Root cause 2 — two independent frontend bugs in the fit computation,
+found by direct comparison against `_fit_wrapped()`'s actual server
+semantics:**
+1. `TargetPreviewCanvas.tsx` fed `fitWrappedText()` a box narrowed by
+   `bounding_box.width - 4`, matching a `padding: 0 2px` on the render
+   container — but `_fit_wrapped()` server-side fits against
+   `bbox.width`/`bbox.height` directly with ZERO inset (render() draws
+   text flush to the bbox edges). This systematically picked a smaller
+   font than the server for every region. Fixed by removing both the
+   `-4` and the container's padding, matching the server's flush
+   geometry exactly.
+2. `resolveTextSpec()` computed `explicitSizePx = style_profile.
+   font_size ?? characteristics.size ?? null` — falling back to the
+   DETECTED source-text size when no explicit override was set. render()
+   passes `style_profile.font_size` ALONE as `_fit_wrapped()`'s
+   `explicit_size`; `None` there means a full binary-search auto-fit,
+   which render() always does for the common "auto size" case. The
+   preview's fallback meant any auto-sized region skipped the real
+   auto-fit algorithm entirely and instead drew at the SOURCE text's own
+   detected size — tuned for the source string's length, not the
+   (usually different-length) translation. Fixed by dropping the
+   `characteristics.size` fallback from the fit input (kept it only in
+   the separate "fonts still loading" placeholder render, which is
+   legitimately transient and unrelated to the fit algorithm's input).
+
+**Verification.** New/updated unit tests: `TestResolveFace` gained 3
+tests replacing the one that asserted the OLD (buggy) pass-through
+behavior — bold+italic on auto family now resolves to a real
+`arialbi.ttf`-class sibling anchored on the fallback family;
+`TestResolveAutoFont` gained 2 tests for the weight-aware path. 48
+scribe-related tests pass (`test_scribe_wrap_and_faces.py` +
+`test_scribe_glyph_guard.py` + `test_render_layers.py`). `tsc --noEmit`
+clean. (Note: an unrelated ~30-test pre-existing failure cluster exists
+across `test_cleanse_strategies.py`/`test_typography.py`/
+`test_memory_phase6.py`/etc. on this machine — confirmed via `git
+stash` that it predates this session's changes entirely; not
+investigated further as out of scope.)
+
+Live-verified end-to-end against `tm-smoke-test2`: backfilled
+`resolved_font_family` via a manifest PUT round-trip, confirmed
+`r1`/`r2`/`r3` (bold) now resolve to `arialbd.ttf` and `r4` (regular)
+stays `arial.ttf`. Font column now reads "Arial Bold" (previously
+"Arial Regular", contradicting the manifest's own `font_weight="bold"`)
+for the three bold regions. Translate-tab preview now visibly renders
+"CALLE PRINCIPAL"/"SALIDA 25"/"ALTO" in bold. Re-ran an actual render:
+the localized output ALSO now shows bold Arial for those three regions
+— confirming the fix landed in the real render path, not just the
+preview. `r4`'s preview fit for "Abierto de 9am a 5pm" now visibly fills
+its box width comparably to the source text and to the real render's
+own output, versus the previously narrower/smaller preview render. No
+console errors from the change.
+
 ## Part 4 — Risks & mitigations
 - **easyocr/torch on the dev host** (currently absent): Phase 0 gate; if
   installation is blocked, pin PaddleOCR as the dev default via `OCR_ENGINE` and
