@@ -10,6 +10,7 @@ from tofu.layers.cicerone import (
     _compose_crop_text,
     _disambiguate_ja_zh,
     _polygon_bbox,
+    _prune_hallucinations,
     _segment_vertical_bands,
     _split_tall_detections,
     build_manifest,
@@ -470,3 +471,96 @@ class TestPrepareUpscale:
         engine = EasyOCRBackend(max_dim=2560, min_upscale_dim=850)
         prepared, scale = engine._prepare(str(p))
         assert scale[0] < 1.0 and scale[1] < 1.0
+
+
+# -- high-containment bypass (bbox-placement follow-up) ----------------------
+# even after the two-phase scene_filter fix, a detection can be near-
+# perfectly contained in a genuine panel/bordered_region surface and
+# still fail every confidence bar, because neon glow/bloom caps
+# EasyOCR's own confidence regardless of charset (measured on
+# japan-street's banner: 6/7 characters correct at confidence 0.015-0.09,
+# 95% contained in its contour region). total containment in a
+# deliberately-bounded sign shape should be trusted over an unreliable
+# confidence score.
+
+class TestHighContainmentBypass:
+    def test_near_total_containment_in_bordered_region_survives_low_confidence(self):
+        # far below every _SCENE_CONF bar (0.30-0.50), but >85% contained
+        # in a bordered_region surface
+        banner = det(193, 125, 240, 40, text="banner text", conf=0.015)
+        surfaces = [_surface(191, 125, 242, 39, label="bordered_region")]
+        m = build_manifest(
+            "fake.png", [banner], scene_regions=surfaces,
+            identify_languages=False, prune_garbage=False,
+        )
+        assert m.total_regions == 1
+
+    def test_partial_containment_in_bordered_region_still_pruned(self):
+        # same low confidence, but only ~21% contained (matching the
+        # measured japan-street MSER-surface case that motivated phase
+        # A/B in the first place) -- must NOT bypass at this containment
+        low_conf = det(193, 125, 240, 40, text="banner text", conf=0.015)
+        surfaces = [_surface(362, 130, 66, 31, label="bordered_region")]
+        m = build_manifest(
+            "fake.png", [low_conf], scene_regions=surfaces,
+            identify_languages=False, prune_garbage=False,
+        )
+        assert m.total_regions == 0
+
+    def test_high_containment_in_text_cluster_does_not_bypass(self):
+        # the bypass is scoped to panel/bordered_region (deliberately
+        # bounded sign shapes) -- a text_cluster (MSER pixel-statistics
+        # blob) must still go through the normal confidence bar
+        low_conf = det(10, 10, 50, 20, text="x", conf=0.015)
+        surfaces = [_surface(0, 0, 100, 100, label="text_cluster")]
+        m = build_manifest(
+            "fake.png", [low_conf], scene_regions=surfaces,
+            identify_languages=False, prune_garbage=False,
+        )
+        assert m.total_regions == 0
+
+
+# -- hallucination-pruning size floor (bbox-placement follow-up) ------------
+
+class TestHallucinationSizeFloor:
+    def test_confident_tiny_symbol_only_read_is_dropped(self):
+        # measured live: a 10x10px box on a decorative emblem logo read
+        # "~" at confidence 0.50 -- clears the old confidence-only bar
+        # but no legible symbol exists at 10x10px
+        inst = InstText(
+            id="r1", bounding_box=BBox(x=0, y=0, width=10, height=10),
+            text="~", confidence=0.50,
+        )
+        kept = _prune_hallucinations([inst])
+        assert kept == []
+
+    def test_confident_large_symbol_only_read_survives(self):
+        # a real signage symbol (e.g. a degree sign, a currency symbol)
+        # confidently read at a real-text scale must still survive --
+        # the size floor must not become a blanket symbol ban
+        inst = InstText(
+            id="r1", bounding_box=BBox(x=0, y=0, width=40, height=40),
+            text="°C", confidence=0.9,
+        )
+        kept = _prune_hallucinations([inst])
+        assert len(kept) == 1
+
+    def test_low_confidence_tiny_symbol_still_dropped_as_before(self):
+        # unchanged existing behavior: low confidence alone already
+        # dropped this regardless of size
+        inst = InstText(
+            id="r1", bounding_box=BBox(x=0, y=0, width=100, height=100),
+            text="...", confidence=0.1,
+        )
+        kept = _prune_hallucinations([inst])
+        assert kept == []
+
+    def test_tiny_digit_bearing_read_survives_regardless_of_size(self):
+        # digit-only content is always real localizable content (prices,
+        # phone numbers, address plates) regardless of box size
+        inst = InstText(
+            id="r1", bounding_box=BBox(x=0, y=0, width=10, height=10),
+            text="5", confidence=0.5,
+        )
+        kept = _prune_hallucinations([inst])
+        assert len(kept) == 1

@@ -1473,6 +1473,109 @@ mostly-correct signage text and correctly-inferred source languages in
 the Capture step's region table, replacing the earlier single-fragment
 garbage reads this task's own diagnostic pass first identified.
 
+## Bounding-box placement fixes (2026-07-20, same session)
+
+Direct follow-up to the dense-CJK capture-perf fixes above: user
+re-tested both live projects and correctly flagged that box *placement*
+was still poor — the dominant, legible signage was still being thrown
+away, and what survived was scattered noise-sized fragments. Live
+pipeline tracing found the actual root cause was upstream of anything
+touched in the previous round: `src/tofu/layers/scene.py`'s scene
+pre-pass, not `cicerone.py`.
+
+**Root cause**: `ClassicalCVBackend._contour_regions()` (Canny-edge +
+`findContours`, meant to catch large rectangular signs — exactly what
+japan-street's banner is) produced **zero usable candidates** for
+japan-street. Measured: the default Canny(50,150)+dilate(1) settings
+produce a dilated edge map **61% dense across the ENTIRE frame** (not
+just busy sub-areas) — the scene is so visually cluttered that edge
+detection saturates everywhere, `findContours` returns one contour
+matching the whole frame (correctly discarded by the existing
+`max_region_frac` filter), and the banner — despite being a giant,
+unmistakable, high-contrast rectangle — never emerges as its own
+contour. This is why the scene-filter containment logic fixed last
+round had nothing good to contain the banner detection *in* — the
+surface never existed, independent of any confidence question.
+
+Three fixes:
+
+1. **Adaptive contour-detection rescue pass** (`scene.py`): following
+   this codebase's own established pattern (cicerone's adaptive
+   stage-2, surface probe, auto-probe language — try cheap first,
+   escalate only on failure), `_contour_regions()` now retries with
+   Gaussian blur + `Canny(100,200)` + no dilation, but ONLY when the
+   default pass found zero real (non-frame-sized) quad candidates.
+   Validated: recovers a near-pixel-perfect banner match,
+   `(191,125,242x39)` vs. the true `(193,125,240x40)`, 94% rect-fill,
+   4 corners. Scoped tightly enough that only `stylized-italic` among
+   the 6 synthetic fixtures could have been affected (it already finds
+   a quad on the default pass, so the rescue never fires for it) —
+   confirmed byte-identical after the change.
+2. **High-containment bypass** (`cicerone.py`, `build_manifest()`'s
+   Phase B): Fix 1 alone wasn't sufficient end-to-end — even with the
+   banner now covered by a real contour region, its rescued recognition
+   confidence stayed ~0.001-0.24 (the neon-glow-caps-confidence problem
+   from last round), below every existing confidence bar. A detection
+   contained >70% in a `panel`/`bordered_region` surface (the *contour*
+   detector's labels — a deliberately bounded rectangular sign, a
+   stronger signal than an MSER `text_cluster` blob's pixel statistics)
+   now bypasses the confidence requirement entirely. Threshold tuned
+   down from an initially-planned 0.85 to 0.70 after live measurement
+   showed the SAME banner's own containment naturally varies 82.6%-95%
+   across this pipeline's own re-detection stages (raw multipass vs.
+   the 2x zoom pass's own re-detected box) — a stricter cutoff would
+   have flipped on and off between stages for the exact case the bypass
+   exists to rescue.
+3. **Hallucination-pruning size floor** (`cicerone.py`,
+   `_prune_hallucinations()`): two of china-street's five detections
+   were on non-text decorative shapes — a 10x10px box on a circular
+   emblem logo (`"~"`, conf 0.50) and a 20x22px box on a horse-carriage
+   silhouette (`"‥"`, conf 0.96) — both PURE SYMBOL reads that survived
+   only because of high confidence (the existing junk filter drops
+   symbol-only text below 0.4 confidence, but these cleared that bar).
+   Added `MIN_SYMBOL_JUNK_AREA=450px²`: a confident symbol-only read
+   below this floor is dropped regardless of confidence (every
+   ground-truth region across all fixtures is ≥500px²), while
+   confidently-read REAL symbols at legible scale (°, €, →) still
+   survive — verified both directions with new tests.
+
+**Testing**: 5 new tests in `tests/test_scene_regions.py`
+(`TestContourRescuePass`), 7 new tests in `tests/test_cicerone_logic.py`
+(`TestHighContainmentBypass`, `TestHallucinationSizeFloor`). 232 backend
+tests pass.
+
+**Regression guard**: all 6 synthetic fixtures + cjk-vertical
+byte-identical to the documented baseline after both threshold
+iterations; gemini-street held at its 0.111 recall baseline throughout.
+
+**Measured results**:
+- **japan-street**: recall **0.125 → 0.25** (doubled). The banner
+  region — the single most legible, highest-value piece of text in the
+  scene — now matches its ground-truth box at **IoU 0.843**, reading
+  `歌舞皮町一番` (6/7 characters correct, edit distance 0.286) versus
+  the true `歌舞伎町一番街`, up from being completely absent from every
+  detected region.
+- **china-street**: recall held at 0.125, but the two false-positive
+  regions (emblem logo, horse-carriage silhouette) are confirmed gone
+  from the output.
+
+Live-verified end-to-end in the actual UI: the banner now gets a
+visibly tight, correctly-positioned bounding box in the Capture step,
+directly resolving the reported placement complaint.
+
+**Known follow-up, not chased further this session**: a *repeat*
+`POST /api/detect` call against an asset whose project has since
+acquired a `source_lang` hint (from an earlier detect) takes a
+different, non-adaptive code path (`languages` given → `detect()`'s
+`adaptive` block is skipped entirely) and was observed producing a
+duplicate detection — two separate instances at the identical bbox
+both reading a garbled `"OPTC"` for china-street's `OPTICAL` text. This
+is a distinct, narrower dedup issue from the placement problem this
+round fixed (the box position itself is correct; it's just listed
+twice) and appears specific to the hinted/non-adaptive path, which the
+cold-auto-detect testing methodology used throughout both this and the
+previous round doesn't exercise by default.
+
 ## Part 4 — Risks & mitigations
 - **easyocr/torch on the dev host** (currently absent): Phase 0 gate; if
   installation is blocked, pin PaddleOCR as the dev default via `OCR_ENGINE` and

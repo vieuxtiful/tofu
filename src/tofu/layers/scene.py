@@ -135,17 +135,55 @@ class ClassicalCVBackend(SceneBackend):
         self.mser_cluster_max_frac = mser_cluster_max_frac
 
     def _contour_regions(self, work, scale: float) -> List[SceneRegion]:
+        """quad-shaped surfaces (panels/bordered signs), with a rescue
+        pass for visually dense scenes.
+
+        the default Canny+dilate pass can saturate: a busy street scene
+        (countless small signs, neon, texture) produces an edge map so
+        dense that findContours returns one blob approximating the whole
+        frame, and even a large, unmistakable rectangular sign never
+        emerges as its own contour — measured on japan-street.jpeg, the
+        dilated edge map was 61% dense ACROSS THE ENTIRE FRAME (not just
+        busy sub-areas), hiding a giant high-contrast banner in the
+        noise entirely. only escalate to a second, more conservative
+        pass (Gaussian blur suppresses fine background texture while
+        preserving strong large-scale contrast edges; higher thresholds
+        + no dilation avoid re-bridging noise back together) when the
+        cheap default demonstrably found nothing real — mirrors this
+        project's own established pattern of trying cheap first and
+        escalating only on failure (cicerone's adaptive stage-2, surface
+        probe, auto-probe language).
+        """
+        regions, found_real_quad = self._contour_pass(
+            work, scale, blur=False, canny=(50, 150), dilate_iters=1,
+        )
+        if not found_real_quad:
+            rescue, _ = self._contour_pass(
+                work, scale, blur=True, canny=(100, 200), dilate_iters=0,
+            )
+            regions = regions + rescue
+        return regions
+
+    def _contour_pass(
+        self, work, scale: float, blur: bool,
+        canny: Tuple[int, int], dilate_iters: int,
+    ) -> Tuple[List[SceneRegion], bool]:
         import cv2
         import numpy as np
         gray = cv2.cvtColor(work, cv2.COLOR_RGB2GRAY)
-        edges = cv2.Canny(gray, 50, 150)
-        edges = cv2.dilate(edges, np.ones((3, 3), np.uint8), iterations=1)
+        if blur:
+            gray = cv2.GaussianBlur(gray, (5, 5), 0)
+        edges = cv2.Canny(gray, canny[0], canny[1])
+        if dilate_iters > 0:
+            edges = cv2.dilate(edges, np.ones((3, 3), np.uint8), iterations=dilate_iters)
         contours, _ = cv2.findContours(
             edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
         )
         min_area = self.min_area_frac * work.shape[0] * work.shape[1]
+        frame_area = work.shape[0] * work.shape[1]
         inv = 1.0 / scale
         regions: List[SceneRegion] = []
+        found_real_quad = False
         for cnt in contours:
             area = cv2.contourArea(cnt)
             if area < min_area:
@@ -156,6 +194,14 @@ class ClassicalCVBackend(SceneBackend):
             rect_fill = area / float(bw * bh)
             approx = cv2.approxPolyDP(cnt, 0.02 * cv2.arcLength(cnt, True), True)
             is_quad = len(approx) == 4 and rect_fill > 0.6
+            # a quad approximating the whole frame is the frame, not a
+            # real sign (analyze()'s own max_region_frac filter would
+            # discard it downstream anyway) — it must not count as
+            # evidence that this pass "found something," or the rescue
+            # pass below would never fire for exactly the dense scenes
+            # it exists to rescue
+            if is_quad and (bw * bh) / frame_area <= self.max_region_frac:
+                found_real_quad = True
             roi = work[y:y + bh, x:x + bw].reshape(-1, 3)
             mean = roi.mean(axis=0)
             std = float(roi.std())
@@ -178,7 +224,7 @@ class ClassicalCVBackend(SceneBackend):
                 border_detected=is_quad,
                 polygon=[(int(p[0][0] * inv), int(p[0][1] * inv)) for p in approx],
             ))
-        return regions
+        return regions, found_real_quad
 
     def _stroke_like(self, np, cv2, pts, bx, by, bw, bh) -> bool:
         """SWT-style component gate: keep only components whose stroke

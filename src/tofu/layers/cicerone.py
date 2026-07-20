@@ -1246,6 +1246,14 @@ MIN_DISAMBIGUATION_EVIDENCE = 2
 # must not be trusted as a definitive Japanese signal.
 MIN_KANA_CONFIDENCE = 0.3
 
+# minimum px^2 area for a symbol-only (no script, no digit) read to
+# survive _prune_hallucinations purely on confidence — below this, no
+# legible symbol exists at that scale regardless of how confidently it
+# was (mis)read. every ground-truth region across this project's
+# fixtures is >=500px^2; measured false positives (a decorative emblem
+# logo, a silhouette edge) were 100px^2 and 440px^2.
+MIN_SYMBOL_JUNK_AREA = 450
+
 
 def _script_bearing_conf(det: RawDetection, target_scripts: set) -> float:
     """confidence of a detection, counted only if its text actually
@@ -2132,8 +2140,17 @@ def _prune_hallucinations(instances: List[InstText]) -> List[InstText]:
     """drop symbol-noise regions and renumber the survivors.
 
     a region is a hallucination when its text is empty, or contains no
-    script characters AND no digits AND was recognized below 0.4 —
-    pure punctuation/symbol junk. digit-only regions are KEPT: prices,
+    script characters AND no digits, AND EITHER was recognized below
+    0.4 confidence OR its box is too small to hold a legible symbol at
+    all (MIN_SYMBOL_JUNK_AREA) — pure punctuation/symbol junk. the size
+    check exists because a confidently-misread decorative SHAPE is just
+    as much a hallucination as a low-confidence one: measured live on
+    china-street, a 10x10px box on a circular emblem logo read "~" at
+    confidence 0.50, and a 20x22px box on a horse-carriage silhouette
+    read "‥" at confidence 0.96 — both comfortably clear the confidence
+    bar alone despite no legible symbol existing at that scale (every
+    ground-truth region across this project's fixtures is >=500px²).
+    digit-only regions are KEPT regardless of size/confidence: prices,
     phone numbers, and address plates are real localizable content.
     """
     detector = ScriptDetector()
@@ -2144,8 +2161,13 @@ def _prune_hallucinations(instances: List[InstText]) -> List[InstText]:
             continue
         has_script = detector.detect_script(text) is not None
         has_digit = any(ch.isdigit() for ch in text)
-        if not has_script and not has_digit and (inst.confidence or 0) < 0.4:
-            continue
+        if not has_script and not has_digit:
+            area = (
+                inst.bounding_box.width * inst.bounding_box.height
+                if inst.bounding_box else 0
+            )
+            if (inst.confidence or 0) < 0.4 or area < MIN_SYMBOL_JUNK_AREA:
+                continue
         kept.append(inst)
     for order, inst in enumerate(kept):
         inst.id = f"r{order + 1}"
@@ -2336,6 +2358,29 @@ def build_manifest(
     # bar (0.30) because text is very likely inside them — the scene
     # detector already confirmed a text-bearing surface. "bordered_region"
     # and "surface" keep the standard 0.50 bar.
+    #
+    # high-containment bypass: even with the confidence-floor fix above,
+    # a detection can still be near-perfectly contained in a genuine
+    # PANEL/BORDERED_REGION surface (the contour detector's labels — a
+    # deliberately bounded rectangular sign a human built, a strictly
+    # stronger signal than a TEXT_CLUSTER blob's pixel statistics) and
+    # still fail every confidence bar, because neon glow/bloom caps
+    # EasyOCR's own confidence estimate regardless of charset (measured:
+    # japan-street's banner reads 6/7 characters correctly at confidence
+    # 0.015-0.09, comfortably below every bar above). when containment
+    # is this total, trust the geometry over an unreliable confidence
+    # score — scoped to panel/bordered_region specifically, not
+    # text_cluster/surface, since those are the two labels that
+    # actually mean "this is a deliberately bounded sign."
+    #
+    # threshold is 0.70, not a stricter-looking 0.85+: the SAME banner's
+    # own containment varies 82.6%-95% across this pipeline's own
+    # detection/re-detection stages (raw multipass vs the 2x zoom
+    # pass's own re-detected box, which is a legitimately different
+    # crop, not a worse one) — a cutoff much above that natural
+    # variance would flip on and off between stages for the exact case
+    # this bypass exists to rescue.
+    _HIGH_CONTAINMENT_LABELS = {"panel", "bordered_region"}
     if scene_filter and scene_regions:
         _SCENE_CONF = {"panel": 0.30, "text_cluster": 0.30, "bordered_region": 0.40}
         instances = [
@@ -2344,6 +2389,11 @@ def build_manifest(
             or any(
                 _containment_frac(inst.bounding_box, region.bbox) > 0.5
                 and (inst.confidence or 0) >= _SCENE_CONF.get(region.semantic_label, 0.50)
+                for region in scene_regions
+            )
+            or any(
+                region.semantic_label in _HIGH_CONTAINMENT_LABELS
+                and _containment_frac(inst.bounding_box, region.bbox) > 0.70
                 for region in scene_regions
             )
         ]
