@@ -957,6 +957,78 @@ this closes the v3 workplan's stated phase list (0-6); only the
 originally-scoped "hardening, paper-alignment pass, docs" week remains
 unscheduled work.
 
+## Part 3k — Post-Phase-6: Cicerone digit/letter post-correction (landed 2026-07-19)
+
+Not a numbered phase — a targeted Cicerone hardening item that surfaced
+from a real observed misrecognition (`flat-sign.png` r4: "Open 9am to
+5pm" read as "Open 9am to Spm" at confidence 0.958, a CRNN+CTC glyph
+confusion no existing safeguard catches — `second_look()`'s re-read
+threshold is 0.55, `_prune_hallucinations()` only drops symbol junk).
+
+An initial fix was proposed as a regex-triggered confusion-pair
+substitution (swap `S`→`5` etc. wherever a digit-expecting context like
+"am"/"pm" appears). Assessed before building: **the substitution-only
+version is unsafe as specified** — walking its own confusion map against
+the token `"Sam"` (ends in "am", preceding char `S`) fires the rule and
+silently rewrites it to `"5am"`. Context alone can't distinguish "OCR was
+wrong" from "OCR was right and the context pattern is coincidental";
+names/brands ending near trigger suffixes are exactly what real signage
+is full of.
+
+Built instead as three explicitly separated stages
+(`src/tofu/layers/recognition_correct.py`, new), called from
+`cicerone.build_manifest()` right after `_prune_hallucinations()`:
+
+1. **Stage A** (`find_candidates`): grammar-anchored — proposes a
+   correction only for a whole token matching a digit-expected shape
+   (currently: a 1-2 char hour prefix + "am"/"pm") where substituting a
+   confusable letter yields a *valid* hour (1-12). Proposes only; never
+   touches text. Multi-position ambiguity (more than one letter needing
+   substitution) is skipped, not guessed — Stage B can only verify one
+   glyph at a time.
+2. **Stage B** (`verify_candidate`): pixel evidence — segments the
+   ambiguous glyph via connected-component analysis of the shared
+   `imaging.text_mask()`, renders both candidate characters as reference
+   glyphs via `scribe._get_font()` sized to the extracted glyph's own
+   height, and compares shapes by IoU. Only a clear margin resolves the
+   candidate (`GLYPH_MATCH_MARGIN=0.12`); anything closer, or where glyph
+   segmentation doesn't line up 1:1 with the recognized text (e.g. a
+   connected/cursive script), returns "inconclusive" rather than guessing.
+3. **Stage C** (orchestration in `correct_instances`): a candidate is
+   only ever *applied* when Stage B resolves `True`. An inconclusive
+   candidate is never guessed into the text — it's recorded on the new
+   `InstText.ocr_correction` field (`applied=False`) so it surfaces as a
+   reviewable signal instead of silently vanishing or silently rewriting
+   something wrong.
+
+No character-level bboxes exist upstream (`EasyOCRBackend.detect()` uses
+`reader.readtext()`, word/line-level only) — Stage B derives its own via
+connected-component segmentation of the existing glyph mask, reusing
+infrastructure rather than adding a dependency.
+
+**Verification** (per the plan's own required methodology — measure, not
+assume): unit tests (`tests/test_recognition_correct.py`, 15 new)
+directly demonstrate the safety property the naive fix lacked —
+`test_sam_is_never_rewritten` renders an actual "Sam" glyph and confirms
+`correct_instances` leaves it untouched (`verify_candidate` resolves
+`False` there, confirmed via direct inspection, not just an aggregate
+pass/fail), while `test_confirms_a_real_digit_misread_as_letter` renders
+an actual "5" glyph labeled with the misread text "Spm" and confirms
+Stage B resolves `True` and the correction applies. A regression sweep
+(`scripts/eval_ocr_correction.py`) ran `cicerone.detect()` — correction
+enabled, the default — across all 6 synthetic fixtures + both real
+photos (65 regions total): **exactly 1 correction applied (the target
+case), 0 unresolved candidates, 0 unintended changes anywhere else** —
+`stylized-italic.png`'s pre-existing unrelated OCR noise ("Suoked
+Dkplay" for "Stroked Display") was correctly left alone, since it has no
+am/pm-shaped token to trigger Stage A at all. Live-verified via a fresh
+`POST /api/detect` against the running server: r4 returns `"Open 9am to
+5pm"` with `ocr_correction: {applied: true, original_text: "Open 9am to
+Spm", ...}` correctly round-tripped through the manifest JSON API.
+
+197 unit tests pass (15 new). `InstText.ocr_correction` also wired
+through `manifest_store.py`'s serialization (mirrors `tm_suggestion`).
+
 ## Part 4 — Risks & mitigations
 - **easyocr/torch on the dev host** (currently absent): Phase 0 gate; if
   installation is blocked, pin PaddleOCR as the dev default via `OCR_ENGINE` and

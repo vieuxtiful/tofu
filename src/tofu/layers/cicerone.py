@@ -1818,6 +1818,7 @@ def build_manifest(
     max_extra_readers: int = 2,
     prune_garbage: bool = True,
     merge_columns: bool = True,
+    correct_recognition: bool = True,
     start: Optional[float] = None,
 ) -> TextManifest:
     """assemble a TextManifest from raw detections.
@@ -1995,6 +1996,16 @@ def build_manifest(
     # that were salvageable got their chance first
     if prune_garbage:
         instances = _prune_hallucinations(instances)
+
+    # digit/letter post-correction (5/S, 0/O, ...) runs LAST, on the
+    # final surviving text — see recognition_correct.py's module
+    # docstring for why this never rewrites without pixel-level evidence
+    if correct_recognition and instances:
+        try:
+            from tofu.layers.recognition_correct import correct_instances
+            correct_instances(asset, instances)
+        except Exception:
+            pass  # best-effort: a correction failure must not fail detection
 
     return TextManifest(
         # asset_info.source is a full file path (server/main.py's
