@@ -1626,6 +1626,7 @@ def detect(
     adaptive: bool = True,
     zoom: bool = True,
     polish: bool = True,
+    savor: bool = True,
 ) -> TextManifest:
     """detect and localize text instances in the asset.
 
@@ -1667,6 +1668,13 @@ def detect(
         polish: second-look recognition — re-read low-confidence regions
             from upscaled crops with the final engine and keep the
             better read.
+        savor: taste-test the FINAL recognized text for digit/letter
+            glyph confusion a CRNN can be confidently wrong about (5/S,
+            0/O, 1/I, 8/B, 2/Z, 6/G — e.g. "5pm" read as "Spm"). unlike
+            `polish`, this never re-runs the recognizer (the same model
+            on the same pixels reproduces the same mistake); it verifies
+            a candidate correction against the glyph's own pixel shape
+            before ever rewriting anything. see `savor.taste()`.
 
     returns:
         TextManifest with one InstText per detected region, sorted into
@@ -1779,6 +1787,16 @@ def detect(
     if polish and manifest.instances and not isinstance(final_engine, NullBackend):
         second_look(asset, manifest.instances, final_engine)
 
+    # Savor's taste test runs LAST, once, on the FINAL text — after
+    # every detection/refinement/re-read pass above has had its say.
+    # best-effort: a tasting failure must never fail detection itself.
+    if savor and manifest.instances:
+        try:
+            from tofu.layers.savor import taste
+            taste(asset, manifest.instances)
+        except Exception:
+            pass
+
     return manifest
 
 
@@ -1818,7 +1836,6 @@ def build_manifest(
     max_extra_readers: int = 2,
     prune_garbage: bool = True,
     merge_columns: bool = True,
-    correct_recognition: bool = True,
     start: Optional[float] = None,
 ) -> TextManifest:
     """assemble a TextManifest from raw detections.
@@ -1996,16 +2013,6 @@ def build_manifest(
     # that were salvageable got their chance first
     if prune_garbage:
         instances = _prune_hallucinations(instances)
-
-    # digit/letter post-correction (5/S, 0/O, ...) runs LAST, on the
-    # final surviving text — see recognition_correct.py's module
-    # docstring for why this never rewrites without pixel-level evidence
-    if correct_recognition and instances:
-        try:
-            from tofu.layers.recognition_correct import correct_instances
-            correct_instances(asset, instances)
-        except Exception:
-            pass  # best-effort: a correction failure must not fail detection
 
     return TextManifest(
         # asset_info.source is a full file path (server/main.py's

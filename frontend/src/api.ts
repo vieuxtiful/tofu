@@ -269,7 +269,7 @@ export interface RenderResult {
 }
 
 export interface DetectStreamEvent {
-  stage: "scene" | "cicerone" | "finalize" | "refine" | "zoom" | "polish" | "enrich" | "memory" | "complete" | "error";
+  stage: "scene" | "cicerone" | "finalize" | "refine" | "zoom" | "polish" | "savor" | "enrich" | "memory" | "complete" | "error";
   status?: "running" | "complete";
   pass?: number;
   regions?: SceneRegion[] | number;  // scene: region list; cicerone/refine: running count
@@ -277,6 +277,7 @@ export interface DetectStreamEvent {
   manifest?: TextManifest;
   message?: string;
   engine?: "easyocr" | "paddleocr" | "null";  // which OCR engine actually ran
+  corrected?: number;  // savor: complete -- regions Savor's taste test actually rewrote
   matched?: number;    // memory: complete -- regions with a TM suggestion this pass
   tm_matched?: number; // complete -- same count, mirrored onto the terminal event
 }

@@ -1,10 +1,12 @@
-## 🍢 eval_ocr_correction — regression sweep for recognition_correct.py
+## 🍢 eval_savor — regression sweep for Savor (src/tofu/layers/savor.py)
 """
-runs cicerone.detect() (correction enabled, the default) over the full
-existing fixture set + real photos and reports every instance where
-Stage A proposed a candidate — applied (Stage B confirmed) or flagged
-unresolved (Stage C, inconclusive) — so a human can eyeball each one for
-an unintended change, per the plan's stated regression-sweep methodology.
+runs cicerone.detect() (savor=True, the default -- Savor's taste test
+runs as the final step) over the full existing fixture set + real photos
+and reports every instance with an ocr_correction verdict: applied
+(chew_on confirmed and the Morsel was swallowed) or flagged unresolved
+(chew_on was still chewing -- inconclusive, left on the plate) -- so a
+human can eyeball each one for an unintended change, per the plan's
+stated regression-sweep methodology.
 """
 import sys
 import time

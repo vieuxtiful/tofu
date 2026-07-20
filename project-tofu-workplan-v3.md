@@ -957,7 +957,7 @@ this closes the v3 workplan's stated phase list (0-6); only the
 originally-scoped "hardening, paper-alignment pass, docs" week remains
 unscheduled work.
 
-## Part 3k — Post-Phase-6: Cicerone digit/letter post-correction (landed 2026-07-19)
+## Part 3k — Post-Phase-6: Savor, Cicerone's taste-test layer (landed 2026-07-19)
 
 Not a numbered phase — a targeted Cicerone hardening item that surfaced
 from a real observed misrecognition (`flat-sign.png` r4: "Open 9am to
@@ -975,56 +975,85 @@ wrong" from "OCR was right and the context pattern is coincidental";
 names/brands ending near trigger suffixes are exactly what real signage
 is full of.
 
-Built instead as three explicitly separated stages
-(`src/tofu/layers/recognition_correct.py`, new), called from
-`cicerone.build_manifest()` right after `_prune_hallucinations()`:
+Built instead as three explicitly separated stages, named and commented
+around a taste-test metaphor consistent with this project's existing
+culinary naming (Cicerone's own passes are already "draining/pressing/
+slicing"; ToFU, Cicerone, Cleanse, Scribe, Memory) — **Savor**
+(`src/tofu/layers/savor.py`, new), Cicerone's quality-control taste
+tester:
 
-1. **Stage A** (`find_candidates`): grammar-anchored — proposes a
-   correction only for a whole token matching a digit-expected shape
+1. **Sniff** (`sniff_out`): a quick, cheap smell test — proposes a
+   `Morsel` only for a whole token matching a digit-expected shape
    (currently: a 1-2 char hour prefix + "am"/"pm") where substituting a
    confusable letter yields a *valid* hour (1-12). Proposes only; never
    touches text. Multi-position ambiguity (more than one letter needing
-   substitution) is skipped, not guessed — Stage B can only verify one
+   substitution) is skipped, not guessed — chewing can only verify one
    glyph at a time.
-2. **Stage B** (`verify_candidate`): pixel evidence — segments the
-   ambiguous glyph via connected-component analysis of the shared
-   `imaging.text_mask()`, renders both candidate characters as reference
-   glyphs via `scribe._get_font()` sized to the extracted glyph's own
-   height, and compares shapes by IoU. Only a clear margin resolves the
-   candidate (`GLYPH_MATCH_MARGIN=0.12`); anything closer, or where glyph
-   segmentation doesn't line up 1:1 with the recognized text (e.g. a
-   connected/cursive script), returns "inconclusive" rather than guessing.
-3. **Stage C** (orchestration in `correct_instances`): a candidate is
-   only ever *applied* when Stage B resolves `True`. An inconclusive
-   candidate is never guessed into the text — it's recorded on the new
-   `InstText.ocr_correction` field (`applied=False`) so it surfaces as a
-   reviewable signal instead of silently vanishing or silently rewriting
-   something wrong.
+2. **Chew** (`chew_on`): the actual bite — segments the ambiguous glyph
+   via connected-component analysis of the shared `imaging.text_mask()`,
+   renders both candidate characters as reference glyphs via
+   `scribe._get_font()` sized to the extracted glyph's own height, and
+   compares shapes by IoU. Only a clear margin settles it
+   (`BITE_MARGIN=0.12`); anything closer, or where the glyph count
+   doesn't line up 1:1 with the recognized text (e.g. a connected/
+   cursive script), is left "still chewing" rather than guessed.
+3. **Swallow or spit out** (`taste`, the course orchestrator — Savor's
+   single public entry point, mirroring every other layer's one-verb
+   API): a Morsel is only ever *swallowed* (text rewritten) when
+   chewing confirms the digit. A still-chewing Morsel is never guessed
+   into the text — it's recorded on the new `InstText.ocr_correction`
+   field (`applied=False`) so it surfaces as a reviewable signal instead
+   of silently vanishing or silently rewriting something wrong.
 
 No character-level bboxes exist upstream (`EasyOCRBackend.detect()` uses
-`reader.readtext()`, word/line-level only) — Stage B derives its own via
+`reader.readtext()`, word/line-level only) — chewing derives its own via
 connected-component segmentation of the existing glyph mask, reusing
 infrastructure rather than adding a dependency.
 
+**Integration, and a mid-build architectural fix.** Savor was first
+wired inline inside `cicerone.build_manifest()`, which turned out to be
+the wrong call site: `build_manifest()` is invoked up to 3x per
+`cicerone.detect()` call (initial pass, language-adaptive stage 2, zoom
+refinement), so Savor was re-tasting the same text redundantly — wasteful
+(each candidate does real glyph-rendering work) though not incorrect
+(idempotent). Moved to run exactly once, as `detect()`'s own final step
+(a new `savor: bool = True` parameter), right after `second_look()`'s
+polish pass — mirroring `polish` itself as one more toggle on
+`cicerone.detect()`, not a new `PipelineCfg` layer with its own
+`LayerMode` (there's no MANUAL-mode "user provides annotations" concept
+for a pure QC pass). Re-measured after the move: identical results (65
+regions, 1 correction, 0 unresolved), **~24% faster** (82.1s vs 107.6s on
+the same 8-asset sweep) — confirming the redundant-execution diagnosis.
+`server/main.py`'s `/api/detect/stream` SSE endpoint calls
+`build_manifest()`/`second_look()` directly (to interleave progress
+events per pass) rather than through `cicerone.detect()`, so it needed
+its own explicit `"savor"` stage added alongside `"polish"`/`"enrich"`/
+`"memory"` for parity — live-verified via the actual streaming endpoint
+the frontend uses (see below), not just the non-streaming one.
+
 **Verification** (per the plan's own required methodology — measure, not
-assume): unit tests (`tests/test_recognition_correct.py`, 15 new)
-directly demonstrate the safety property the naive fix lacked —
-`test_sam_is_never_rewritten` renders an actual "Sam" glyph and confirms
-`correct_instances` leaves it untouched (`verify_candidate` resolves
-`False` there, confirmed via direct inspection, not just an aggregate
-pass/fail), while `test_confirms_a_real_digit_misread_as_letter` renders
-an actual "5" glyph labeled with the misread text "Spm" and confirms
-Stage B resolves `True` and the correction applies. A regression sweep
-(`scripts/eval_ocr_correction.py`) ran `cicerone.detect()` — correction
-enabled, the default — across all 6 synthetic fixtures + both real
-photos (65 regions total): **exactly 1 correction applied (the target
-case), 0 unresolved candidates, 0 unintended changes anywhere else** —
-`stylized-italic.png`'s pre-existing unrelated OCR noise ("Suoked
-Dkplay" for "Stroked Display") was correctly left alone, since it has no
-am/pm-shaped token to trigger Stage A at all. Live-verified via a fresh
-`POST /api/detect` against the running server: r4 returns `"Open 9am to
-5pm"` with `ocr_correction: {applied: true, original_text: "Open 9am to
-Spm", ...}` correctly round-tripped through the manifest JSON API.
+assume): unit tests (`tests/test_savor.py`, 15 new) directly demonstrate
+the safety property the naive fix lacked — `test_sam_is_never_swallowed`
+renders an actual "Sam" glyph and confirms `taste()` leaves it untouched
+(`chew_on` resolves `False` there, confirmed via direct inspection, not
+just an aggregate pass/fail), while
+`test_confirms_a_real_digit_misread_as_letter` renders an actual "5"
+glyph labeled with the misread text "Spm" and confirms chewing resolves
+`True` and the correction applies. A regression sweep
+(`scripts/eval_savor.py`) ran `cicerone.detect()` — Savor enabled, the
+default — across all 6 synthetic fixtures + both real photos (65 regions
+total): **exactly 1 correction applied (the target case), 0 unresolved
+candidates, 0 unintended changes anywhere else** — `stylized-italic.png`'s
+pre-existing unrelated OCR noise ("Suoked Dkplay" for "Stroked Display")
+was correctly left alone, since it has no am/pm-shaped token to trigger
+sniffing at all. Live-verified against BOTH detect paths: a fresh
+`POST /api/detect` returns r4 as `"Open 9am to 5pm"` with
+`ocr_correction: {applied: true, original_text: "Open 9am to Spm", ...}`
+correctly round-tripped through the manifest JSON API, and a fresh
+`GET /api/detect/stream` (the SSE endpoint the frontend's live capture
+flow actually uses) shows an explicit `savor` stage
+(`{"corrected": 1}`) and the same corrected r4 text in its terminal
+`complete` event.
 
 197 unit tests pass (15 new). `InstText.ocr_correction` also wired
 through `manifest_store.py`'s serialization (mirrors `tm_suggestion`).

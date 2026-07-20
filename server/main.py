@@ -888,6 +888,17 @@ def detect_stream(
                     "regions": improved,
                 })
 
+            # Savor's taste test on the FINAL recognized text -- this
+            # endpoint calls build_manifest()/second_look() directly
+            # (not cicerone.detect(), which already runs Savor as its
+            # own last step) to interleave progress events per pass, so
+            # Savor needs its own explicit stage here for parity
+            if manifest.instances:
+                yield event({"stage": "savor", "status": "running"})
+                from tofu.layers.savor import taste
+                swallowed = taste(str(path), manifest.instances)
+                yield event({"stage": "savor", "status": "complete", "corrected": swallowed})
+
             # scene enrichment at capture time: profiles + typography
             if manifest.instances:
                 yield event({"stage": "enrich", "status": "running"})

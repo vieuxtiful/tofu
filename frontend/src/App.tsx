@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle, AlignCenter, AlignEndHorizontal, AlignEndVertical, AlignJustify, AlignLeft, AlignRight, AlignStartHorizontal, AlignStartVertical, ArrowLeft, ArrowUpFromLine, Baseline, Bold, BookmarkCheck, Box, Check, ChevronDown, FileImage, FolderOpen, Hexagon, History, Home, Italic, Languages, Loader2,
-  Play, Plus, RotateCcw, ScanText, ShieldAlert, ShieldCheck, Sparkles, SquareStack, Subscript, Superscript, Type, Underline, X,
+  Play, Plus, RotateCcw, ScanText, ShieldAlert, Sparkles, SquareStack, Subscript, Superscript, Type, Underline, X,
 } from "lucide-react";
 import {
   BBox, FontFamily, FontOption, ImportResult, InstText, LanguageOption, Project,
@@ -14,7 +14,7 @@ import {
 import { FcCollapse } from "react-icons/fc";
 import { LiaSpellCheckSolid } from "react-icons/lia";
 import { RiCheckboxFill } from "react-icons/ri";
-import { TbCubePlus } from "react-icons/tb";
+import { TbCubePlus, TbPhotoScan } from "react-icons/tb";
 import { FaBoxOpen } from "react-icons/fa";
 import { FaFileImport } from "react-icons/fa6";
 import { PiWarningCircleFill } from "react-icons/pi";
@@ -150,6 +150,35 @@ function AssetDeleteConfirmOverlay({ filename, onYes, onNo }: { filename: string
   );
 }
 
+function UnsavedChangesOverlay({ onYes, onNo }: { onYes: () => void; onNo: () => void }) {
+  const [leaving, setLeaving] = useState(false);
+
+  const handleNo = () => {
+    setLeaving(true);
+    setTimeout(onNo, 300);
+  };
+
+  const handleYes = () => {
+    setLeaving(true);
+    setTimeout(onYes, 300);
+  };
+
+  return (
+    <div
+      className={`title-confirm-backdrop${leaving ? " leaving" : ""}`}
+      onClick={handleNo}
+    >
+      <div className="title-confirm-card" onClick={(e) => e.stopPropagation()}>
+        <p className="title-confirm-message">Proceed with unsaved changes?</p>
+        <div className="title-confirm-actions">
+          <button className="title-confirm-btn yes" onClick={handleYes}>Yes</button>
+          <button className="title-confirm-btn no" onClick={handleNo}>No</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const { theme, toggle: toggleTheme } = useTheme();
   const [screen, setScreen] = useState<Screen>("splash");
@@ -159,6 +188,8 @@ export default function App() {
   const [pantryMode, setPantryMode] = useState<"full" | "pantry" | "create">("full");
   const prevScreen = useRef<Screen>("title");
   const transitionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [pendingBackNav, setPendingBackNav] = useState(false);
+  const navGuardRef = useRef(false);
 
   const transitionTo = useCallback((next: Screen) => {
     if (next === displayedScreen) return;
@@ -233,6 +264,35 @@ export default function App() {
   const [importLoading, setImportLoading] = useState(false);
   const [dragOverTranslate, setDragOverTranslate] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // push history state on screen transitions so browser back works
+  useEffect(() => {
+    if (displayedScreen === "splash") return;
+    if (navGuardRef.current) {
+      navGuardRef.current = false;
+      return;
+    }
+    window.history.pushState({ screen: displayedScreen }, "");
+  }, [displayedScreen]);
+
+  // listen for browser back; if unsaved changes, prompt before navigating
+  useEffect(() => {
+    const onPopState = () => {
+      if (displayedScreen === "main" && (saveStatus === "saving" || hasEditsAfterImport)) {
+        setPendingBackNav(true);
+      } else {
+        navGuardRef.current = true;
+        const prev = prevScreen.current;
+        if (prev && prev !== displayedScreen) {
+          setScreen(prev);
+        } else {
+          setScreen("title");
+        }
+      }
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [displayedScreen, saveStatus, hasEditsAfterImport]);
 
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [nameTyped, setNameTyped] = useState(0);
@@ -389,6 +449,7 @@ export default function App() {
     setProject(p);
     setTargLang(p.target_lang);
     setSrcLang(p.source_lang);
+    prevScreen.current = displayedScreen;
     setScreen("main");
     loadProjectSession(p.id)
       .then((full) => {
@@ -397,7 +458,7 @@ export default function App() {
         }
       })
       .catch(() => {});
-  }, [resetSession, loadProjectSession, addToast]);
+  }, [resetSession, loadProjectSession, addToast, displayedScreen]);
 
   // on load: silently rehydrate the last project while the splash plays
   useEffect(() => {
@@ -614,6 +675,13 @@ export default function App() {
           ev.status === "running"
             ? "second-look recognition on weak regions…"
             : `polished ${ev.regions} region(s)`
+        );
+      } else if (ev.stage === "savor") {
+        setDetectStage("lang");
+        setDetectProgress(
+          ev.status === "running"
+            ? "taste-testing recognized text…"
+            : (ev.corrected ?? 0) > 0 ? `savored: ${ev.corrected} correction(s)` : "tastes right"
         );
       } else if (ev.stage === "enrich") {
         setDetectStage("lang");
@@ -1182,7 +1250,7 @@ export default function App() {
       <>
         <div className={`screen-fade screen-fade-fixed${leaving ? " leaving" : ""}`}>
           <TitleScreen
-            onEnter={() => setScreen(project ? "main" : "pantry")}
+            onEnter={() => { prevScreen.current = "title"; setScreen(project ? "main" : "pantry"); }}
             onSelectProject={openProject}
             theme={theme}
             onToggleTheme={toggleTheme}
@@ -2412,7 +2480,7 @@ export default function App() {
             return (
               <>
                 {/* overall + coverage banner */}
-                <Section title="Coverage" icon={<ShieldCheck size={14} />}>
+                <Section title="Coverage" icon={<TbPhotoScan size={14} />}>
                   <div className="flex flex-wrap items-center gap-2">
                     {qa?.overall_score != null && (
                       <Badge ok={renderResult.qa_passed}>
@@ -2869,7 +2937,7 @@ export default function App() {
 
       {showTitleConfirm && (
         <TitleConfirmOverlay
-          onYes={() => { setShowTitleConfirm(false); setScreen("title"); }}
+          onYes={() => { setShowTitleConfirm(false); prevScreen.current = displayedScreen; setScreen("title"); }}
           onNo={() => setShowTitleConfirm(false)}
         />
       )}
@@ -2879,6 +2947,21 @@ export default function App() {
           filename={pendingAssetDelete.filename ?? pendingAssetDelete.assetId}
           onYes={() => { confirmDeleteAsset(); setPendingAssetDelete(null); }}
           onNo={() => setPendingAssetDelete(null)}
+        />
+      )}
+
+      {pendingBackNav && (
+        <UnsavedChangesOverlay
+          onYes={() => {
+            setPendingBackNav(false);
+            navGuardRef.current = true;
+            const prev = prevScreen.current;
+            setScreen(prev && prev !== displayedScreen ? prev : "title");
+          }}
+          onNo={() => {
+            setPendingBackNav(false);
+            window.history.pushState({ screen: displayedScreen }, "");
+          }}
         />
       )}
 
