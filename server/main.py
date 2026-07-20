@@ -916,6 +916,28 @@ def detect_stream(
                     "regions": len(manifest.instances),
                 })
 
+            # vertical-stack re-split: a detection box far taller than
+            # wide is likely CRAFT over-merging several stacked
+            # vertical-CJK characters into one box (see
+            # cicerone._split_tall_detections) -- this endpoint calls
+            # build_manifest() directly (not cicerone.detect(), which
+            # already runs this as its own step) so it needs its own
+            # explicit stage here for parity, same as savor below
+            if isinstance(backend, cicerone.EasyOCRBackend):
+                yield event({"stage": "vertical_split", "status": "running"})
+                split = cicerone._split_tall_detections(str(path), backend, detections)
+                if split is not None:
+                    detections = split
+                    manifest = cicerone.build_manifest(
+                        str(path), detections,
+                        asset_info=info, engine=backend,
+                        scene_regions=regions, start=start,
+                    )
+                yield event({
+                    "stage": "vertical_split", "status": "complete",
+                    "regions": len(manifest.instances),
+                })
+
             # second-look recognition on surviving weak regions
             if not isinstance(backend, cicerone.NullBackend) and manifest.instances:
                 yield event({"stage": "polish", "status": "running"})

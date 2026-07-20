@@ -185,6 +185,15 @@ class EasyOCRBackend(OCRBackend):
         add_margin: float = 0.04,
         width_ths: float = 0.3,
         contrast_ths: float = 0.3,
+        # small-source upscale: street photography below this on its
+        # longer edge loses small/distant signage to CRAFT's effective
+        # resolving power (measured on japan-street.jpeg, 627x489 —
+        # every documented eval fixture at or above 960px on its longer
+        # edge detects fine; both known-bad street scenes are well under
+        # it). _prepare() only ever downscaled via max_dim before this;
+        # there was no symmetric path for images that start too SMALL.
+        min_upscale_dim: int = 850,
+        upscale_factor: float = 2.0,
     ):
         self.languages = tuple(_to_easyocr_lang(l) for l in languages)
         self.gpu = gpu
@@ -199,6 +208,8 @@ class EasyOCRBackend(OCRBackend):
         self.add_margin = add_margin
         self.width_ths = width_ths
         self.contrast_ths = contrast_ths
+        self.min_upscale_dim = min_upscale_dim
+        self.upscale_factor = upscale_factor
 
     def _reader(self):
         import easyocr  # deferred: heavy import
@@ -215,14 +226,19 @@ class EasyOCRBackend(OCRBackend):
         return self._readers[key]
 
     def _prepare(self, asset: Any) -> Tuple[Any, Tuple[float, float]]:
-        """pre-resize oversized image files; pass everything else through.
+        """pre-resize oversized image files; upscale undersized ones;
+        pass everything else through.
 
         returns (prepared_asset, (sx, sy)) where sx/sy are the resize
         factors applied per axis: original_coord = detected_coord / s.
         (1.0, 1.0) means detection runs in original coordinate space.
+        the same division (detected_coord / s) that maps a downscaled
+        detection back to original coordinates also correctly maps an
+        UPSCALED one — s is just >1 instead of <1, no separate math
+        needed for the two directions.
         """
         no_scale = (1.0, 1.0)
-        if self.max_dim is None or not isinstance(asset, str):
+        if not isinstance(asset, str):
             return asset, no_scale
         try:
             import numpy as np
@@ -233,12 +249,20 @@ class EasyOCRBackend(OCRBackend):
             img = Image.open(asset)
         except Exception:
             return asset, no_scale
-        if max(img.size) <= self.max_dim:
-            return asset, no_scale
         orig_w, orig_h = img.size
-        img.thumbnail((self.max_dim, self.max_dim))
-        scale = (img.size[0] / orig_w, img.size[1] / orig_h)
-        return np.asarray(img.convert("RGB")), scale
+        if self.max_dim is not None and max(img.size) > self.max_dim:
+            img.thumbnail((self.max_dim, self.max_dim))
+            scale = (img.size[0] / orig_w, img.size[1] / orig_h)
+            return np.asarray(img.convert("RGB")), scale
+        if self.min_upscale_dim and max(img.size) < self.min_upscale_dim:
+            new_size = (
+                round(orig_w * self.upscale_factor),
+                round(orig_h * self.upscale_factor),
+            )
+            img = img.resize(new_size, Image.LANCZOS)
+            scale = (img.size[0] / orig_w, img.size[1] / orig_h)
+            return np.asarray(img.convert("RGB")), scale
+        return asset, no_scale
 
     def detect(
         self,
@@ -922,6 +946,173 @@ def merge_vertical_columns(detections: List[RawDetection]) -> List[RawDetection]
     return out
 
 
+# over-merged vertical stack re-split: CRAFT's own horizontal-only
+# character linking (see merge_vertical_columns's docstring) has no
+# symmetric protection against a TIGHTLY stacked vertical sign getting
+# unified into one box at the DETECTION stage itself — measured: a
+# single 127x603 box for a 6-character "茂昌眼镜公司" column. that's the
+# mirror image of what merge_vertical_columns fixes (reassembling
+# already-fragmented per-character detections): here there's nothing
+# fragmented to reassemble, because detection already over-merged.
+# recognizing 600px of stacked, unrelated glyphs as one text line
+# produces garbage regardless of reader charset (measured conf 0.01-0.46
+# on the SAME crop where the same reader reads short/isolated text at
+# conf 0.95-0.99) -- the fix is to re-segment BEFORE recognition, not to
+# read differently.
+VERTICAL_STACK_MIN_ASPECT = 3.0  # height >= 3x width: too tall for one
+                                  # line, likely several stacked chars
+MIN_BAND_HEIGHT_PX = 12          # a band shorter than this can't hold
+                                  # one legible character
+
+
+def _segment_vertical_bands(asset: Any, bbox: BBox) -> List[BBox]:
+    """split a tall/narrow bbox into per-character horizontal bands.
+
+    finds character gaps via a horizontal ink-density profile off the
+    shared imaging.text_mask() (rows with near-zero ink are gaps between
+    stacked glyphs — the same connected-component-adjacent technique
+    savor.py's _plate_up() already uses for per-glyph segmentation, one
+    level up: character bands instead of individual glyph blobs). falls
+    back to equal division by the aspect-implied character count (CJK
+    characters are roughly square) when no clear gaps are found — dense
+    or touching glyphs, or a background too complex for text_mask's
+    Otsu split to separate cleanly. returns bands in the bbox's own
+    (full-image) coordinate space, or [] when nothing usable resulted.
+    """
+    from tofu.utils.imaging import load_rgb, text_mask
+    n_chars_guess = max(2, round(bbox.height / max(1, bbox.width)))
+
+    img = load_rgb(asset)
+    if img is not None:
+        # refine=False: GrabCut is expensive and this only needs a
+        # coarse ink/gap profile, not a precision stroke mask
+        mask = text_mask(img, bbox, refine=False)
+        if mask is not None:
+            row_ink = mask.sum(axis=1)
+            gap_floor = max(1, int(0.02 * mask.shape[1]))
+            bands: List[Tuple[int, int]] = []
+            start = None
+            for y, ink in enumerate(row_ink):
+                is_gap = ink <= gap_floor
+                if not is_gap and start is None:
+                    start = y
+                elif is_gap and start is not None:
+                    bands.append((start, y))
+                    start = None
+            if start is not None:
+                bands.append((start, len(row_ink)))
+            bands = [(a, b) for a, b in bands if (b - a) >= MIN_BAND_HEIGHT_PX]
+            if len(bands) >= 2:
+                return [
+                    BBox(x=bbox.x, y=bbox.y + a, width=bbox.width, height=b - a)
+                    for a, b in bands
+                ]
+
+    if n_chars_guess < 2:
+        return []
+    band_h = bbox.height / n_chars_guess
+    if band_h < MIN_BAND_HEIGHT_PX:
+        return []
+    return [
+        BBox(
+            x=bbox.x, y=bbox.y + round(i * band_h),
+            width=bbox.width, height=round(band_h),
+        )
+        for i in range(n_chars_guess)
+    ]
+
+
+def _split_tall_detections(
+    asset: Any, engine: "EasyOCRBackend", detections: List[RawDetection],
+) -> Optional[List[RawDetection]]:
+    """re-segment and re-recognize over-tall/narrow detections that are
+    likely an over-merged vertical CJK stack (see module note above).
+
+    each detection whose box trips VERTICAL_STACK_MIN_ASPECT gets split
+    into per-character bands (_segment_vertical_bands) and each band is
+    re-recognized individually via the engine's existing
+    detect_in_regions() — no new recognition machinery. the resulting
+    per-character detections are handed back to the caller to feed
+    through build_manifest(), whose own merge_vertical_columns() call
+    reassembles them into one clean column with composed text, exactly
+    as it already does for genuinely fragmented per-character
+    detections — reusing that logic rather than duplicating it here.
+
+    returns None when nothing needed splitting (caller can skip the
+    extra build_manifest() re-run), or the full replacement detection
+    list otherwise. a detection that trips the aspect trigger but can't
+    be usefully split, or whose split doesn't clearly improve on the
+    original read, passes through unchanged.
+
+    the aspect trigger alone is NOT sufficient to commit to a
+    replacement: a genuine SINGLE tall character can trip it too, and
+    _segment_vertical_bands's coarse ink-gap profile can mistake that
+    character's own internal structure for inter-character gaps.
+    requiring the split's average confidence to clearly exceed the
+    original whole-box read's confidence before committing lets the
+    genuine multi-character cases (measured: china-street's garbage
+    single-digit "1" read at confidence 0.010 vs. 4 correctly split/
+    re-recognized characters averaging ~0.6) through — but this
+    comparison alone does NOT fully protect Korean specifically: a
+    single Hangul syllable block is visually COMPOSED of 2-3 jamo
+    sub-glyphs with real internal gaps between them, so the segmenter
+    can slice a genuine character into fragments that each still
+    resemble a DIFFERENT, valid (but wrong) syllable, and the
+    recognizer can read those wrong fragments confidently (measured
+    live: gemini-street's correctly-read '놓' split into '노'+'방', both
+    recognized at >99% confidence, comfortably beating the original's
+    own low confidence despite being entirely wrong). Han/Kanji
+    ideographs don't share this failure mode — they're monolithic
+    blocks with no internal white-space gaps of their own — so Korean
+    is excluded outright rather than papered over with a shakier
+    confidence margin.
+    """
+    if engine.languages and engine.languages[0] == "ko":
+        return None
+    changed = False
+    out: List[RawDetection] = []
+    for det in detections:
+        bbox = _polygon_bbox(det.polygon)
+        if bbox.width <= 0 or bbox.height < VERTICAL_STACK_MIN_ASPECT * bbox.width:
+            out.append(det)
+            continue
+        bands = _segment_vertical_bands(asset, bbox)
+        if len(bands) < 2:
+            out.append(det)
+            continue
+        try:
+            per_band = engine.detect_in_regions(asset, bands)
+        except Exception:
+            out.append(det)
+            continue
+        composed_bands: List[Tuple[BBox, RawDetection]] = []
+        for band_bbox, band_dets in zip(bands, per_band):
+            composed = _compose_crop_text(band_dets)
+            if composed is None or not (composed.text or "").strip():
+                continue
+            composed_bands.append((band_bbox, composed))
+        if len(composed_bands) < 2:
+            out.append(det)
+            continue
+        avg_conf = sum(c.confidence for _, c in composed_bands) / len(composed_bands)
+        if avg_conf <= (det.confidence or 0):
+            out.append(det)
+            continue
+        changed = True
+        for band_bbox, composed in composed_bands:
+            out.append(RawDetection(
+                polygon=[
+                    (band_bbox.x, band_bbox.y),
+                    (band_bbox.x + band_bbox.width, band_bbox.y),
+                    (band_bbox.x + band_bbox.width, band_bbox.y + band_bbox.height),
+                    (band_bbox.x, band_bbox.y + band_bbox.height),
+                ],
+                text=composed.text, confidence=composed.confidence,
+                language=det.language,
+            ))
+    return out if changed else None
+
+
 def _compose_crop_text(
     dets: List[RawDetection], min_conf: float = 0.2
 ) -> Optional[RawDetection]:
@@ -1041,6 +1232,20 @@ PROBE_LANGSETS: Tuple[Tuple[str, ...], ...] = (
     ("ja", "en"), ("ko", "en"), ("ch_sim", "en"),
 )
 
+# minimum count of real CJK-script (han/japanese/hangul) instances
+# required before build_manifest()'s "no kana observed" heuristic is
+# trusted enough to relabel ja instances as zh-cn — below this, absence
+# of kana more likely means too little text survived detection to
+# contain it than that the scene is genuinely kana-free.
+MIN_DISAMBIGUATION_EVIDENCE = 2
+
+# confidence floor for a script-bearing instance to count as evidence in
+# _disambiguate_ja_zh — matches the floor _identify_languages already
+# applies to low-confidence latin; a near-zero-confidence misread of a
+# tiny/blurry garbage crop can accidentally shape-match a kana glyph and
+# must not be trusted as a definitive Japanese signal.
+MIN_KANA_CONFIDENCE = 0.3
+
 
 def _script_bearing_conf(det: RawDetection, target_scripts: set) -> float:
     """confidence of a detection, counted only if its text actually
@@ -1132,7 +1337,7 @@ def _auto_probe_language(
         return []
     bboxes = [i.bounding_box for i in top]
 
-    winners: List[Tuple[float, EasyOCRBackend]] = []
+    winners: List[Tuple[int, float, EasyOCRBackend]] = []
     for langset in PROBE_LANGSETS:
         try:
             candidate = EasyOCRBackend(languages=langset, gpu=engine.gpu)
@@ -1156,10 +1361,19 @@ def _auto_probe_language(
         # are unreadable under every charset
         top2 = confs[:2]
         score = sum(top2) / len(top2) if top2 else 0.0
+        # breadth beats depth: a single high-confidence-but-implausible
+        # read (e.g. Korean's hangul plausibly-shaped-but-wrong on
+        # Japanese kanji) must not outrank a correctly-scripted reader
+        # whose crops are merely HARDER — measured: Korean beat Japanese
+        # this way on japan-street, where the ja reader read real kanji
+        # at conf 0.015-0.235 (genuinely low, not implausible). count of
+        # independently-corroborating regions ranks first; confidence
+        # only breaks ties within that.
+        hits = sum(1 for c in confs if c > 0)
         if score >= min_evidence:
-            winners.append((score, candidate))
-    winners.sort(key=lambda w: -w[0])
-    return [backend for _, backend in winners[:max_winners]]
+            winners.append((hits, score, candidate))
+    winners.sort(key=lambda w: (-w[0], -w[1]))
+    return [backend for _, _, backend in winners[:max_winners]]
 
 
 SURFACE_PROBE_MAX = 8
@@ -1229,7 +1443,7 @@ def probe_uncovered_surfaces(
         return None, []
     bboxes = [r.bbox for r in surfaces]
 
-    best_score, best_langset, best_dets = 0.0, None, []
+    best_hits, best_score, best_langset, best_dets = -1, 0.0, None, []
     for langset in PROBE_LANGSETS:
         try:
             candidate = EasyOCRBackend(
@@ -1252,8 +1466,12 @@ def probe_uncovered_surfaces(
                 dets.append(composed)
         top2 = sorted(confs, reverse=True)[:2]
         score = sum(top2) / len(top2) if top2 else 0.0
-        if score > best_score:
-            best_score, best_langset, best_dets = score, langset, dets
+        # breadth beats depth -- see _auto_probe_language's identical
+        # reasoning; count of independently-corroborating panels ranks
+        # first, confidence only breaks ties within that
+        hits = sum(1 for c in confs if c > 0)
+        if (hits, score) > (best_hits, best_score):
+            best_hits, best_score, best_langset, best_dets = hits, score, langset, dets
     if best_score >= min_evidence and best_dets:
         return best_langset, best_dets
     return None, []
@@ -1384,22 +1602,41 @@ def refine_langset(
     or None when the current engine's charset already covers the scene.
 
     the dominant detected language is chosen by region area (a storefront
-    sign outvotes incidental fragments). a second pass is only worth its
-    cost when that language's script is one the engine could not emit —
-    recognition under the wrong charset produces garbage that the
-    hallucination pruner then deletes, which is where recall dies.
+    sign outvotes incidental fragments), but a SINGLE instance — however
+    large its box — is never enough corroborating evidence to commit to
+    a re-detection language: a lone script misread (Korean hangul
+    plausibly matching a Chinese character's strokes) can otherwise
+    hijack the whole adaptive stage-2 pass on its own, before
+    probe_uncovered_surfaces's more careful surface-level probe (see its
+    own breadth-of-evidence ranking) ever gets a chance to run — measured
+    live on china-street: one 'ko'-labeled instance (a Korean misread of
+    real Chinese signage) outvoted several genuine 'en' fragments purely
+    on box area, and detect()'s adaptive stage only calls
+    probe_uncovered_surfaces when THIS function returns None. requiring
+    a second, independent instance before committing mirrors the same
+    principle _auto_probe_language/probe_uncovered_surfaces/
+    _disambiguate_ja_zh already apply.
+
+    a second pass is only worth its cost when that language's script is
+    one the engine could not emit — recognition under the wrong charset
+    produces garbage that the hallucination pruner then deletes, which
+    is where recall dies.
     """
     if not isinstance(engine, EasyOCRBackend):
         return None
     votes: Dict[str, float] = {}
+    counts: Dict[str, int] = {}
     for inst in instances:
         if not inst.detected_language or inst.bounding_box is None:
             continue
         area = max(1, inst.bounding_box.width * inst.bounding_box.height)
         votes[inst.detected_language] = votes.get(inst.detected_language, 0.0) + area
+        counts[inst.detected_language] = counts.get(inst.detected_language, 0) + 1
     if not votes:
         return None
     dominant = max(votes, key=lambda k: votes[k])
+    if counts[dominant] < MIN_DISAMBIGUATION_EVIDENCE:
+        return None
     target = expand_langset([dominant])
     needed: set = set()
     for lang in target:
@@ -1625,6 +1862,7 @@ def detect(
     prune_garbage: bool = True,
     adaptive: bool = True,
     zoom: bool = True,
+    vertical_split: bool = True,
     polish: bool = True,
     savor: bool = True,
 ) -> TextManifest:
@@ -1665,6 +1903,13 @@ def detect(
             coarse frame-scale boxes they overlap (fixes merged multi-
             sign boxes and recovers signage below CRAFT's frame-scale
             resolving power).
+        vertical_split: re-segment detections whose box is far taller
+            than wide (likely CRAFT over-merging several stacked
+            vertical-CJK characters into one box, defeating single-line
+            recognition regardless of charset) into per-character bands
+            and re-recognize each individually; the resulting fragments
+            flow through the normal merge_vertical_columns() reassembly.
+            see `_split_tall_detections`.
         polish: second-look recognition — re-read low-confidence regions
             from upscaled crops with the final engine and keep the
             better read.
@@ -1783,6 +2028,27 @@ def detect(
                 start=start,
             )
 
+    # vertical-stack re-split: runs LAST among the detection-refinement
+    # passes, against whichever engine/detections survived every
+    # earlier stage, so it benefits from the adaptive/zoom passes' own
+    # language and coverage improvements rather than duplicating them.
+    # see _split_tall_detections's module-level note.
+    if vertical_split and isinstance(final_engine, EasyOCRBackend):
+        split = _split_tall_detections(asset, final_engine, detections)
+        if split is not None:
+            detections = split
+            manifest = build_manifest(
+                asset, detections,
+                asset_info=asset_info,
+                engine=final_engine,
+                scene_regions=scene_regions,
+                scene_filter=scene_filter,
+                identify_languages=identify_languages,
+                max_extra_readers=max_extra_readers,
+                prune_garbage=prune_garbage,
+                start=start,
+            )
+
     # second-look recognition on the surviving weak regions
     if polish and manifest.instances and not isinstance(final_engine, NullBackend):
         second_look(asset, manifest.instances, final_engine)
@@ -1798,6 +2064,68 @@ def detect(
             pass
 
     return manifest
+
+
+def _disambiguate_ja_zh(instances: List[InstText]) -> None:
+    """Japanese vs Chinese disambiguation, in place:
+    - if any instance contains kana, the scene is Japanese — kanji-only
+      instances labeled "zh-cn"/"ko" are actually Japanese.
+    - if NO instance contains kana but instances were labeled "ja"
+      (han-only text read by the Japanese reader), the scene is
+      POSSIBLY actually Chinese — the ja reader covers kanji but kana is
+      the definitive Japanese signal.
+
+    kana is the only unambiguous ja-vs-zh signal (only Japanese uses
+    it), so its PRESENCE is normally trusted from even a single
+    instance — PROVIDED that instance is confident enough to trust as
+    real: a low-confidence misread of a tiny/blurry garbage crop can
+    accidentally shape-match a kana glyph, and unconditionally trusting
+    it can permanently lock a scene as "Japanese" even when the
+    overwhelming majority of real, legible text is Chinese (measured
+    live on china-street: a handful of near-zero-confidence kana-shaped
+    misreads among many garbage fragments blocked the correct zh-cn
+    downgrade from ever firing, despite 2+ real, confident han-only
+    instances). the confidence floor mirrors the one
+    _identify_languages already applies to low-confidence latin.
+
+    kana's ABSENCE (once low-confidence noise is filtered out) is much
+    weaker evidence — with only a handful of real instances recovered
+    (the norm on hard dense-CJK scenes), "no kana observed" often just
+    means too little text survived to contain it, not that the scene is
+    genuinely kana-free. measured: an explicit, correct
+    source_lang="ja" hint still got silently downgraded to zh-cn this
+    way on a 2-3-instance manifest. requiring MIN_DISAMBIGUATION_EVIDENCE
+    real CJK-script instances before the no-kana downgrade fires lets an
+    upstream language selection (itself evidence-count-ranked — see
+    _auto_probe_language/probe_uncovered_surfaces) stand when too little
+    text survived to meaningfully contradict it.
+    """
+    detector = ScriptDetector()
+    has_kana = any(
+        detector.detect_script(i.text or "") == "japanese"
+        and (i.confidence or 0) >= MIN_KANA_CONFIDENCE
+        for i in instances
+    )
+    if has_kana:
+        for inst in instances:
+            if inst.detected_language in ("zh-cn", "ko"):
+                script = detector.detect_script(inst.text or "")
+                if script in ("han", "japanese", "hangul"):
+                    inst.detected_language = "ja"
+        return
+    cjk_evidence = sum(
+        1 for i in instances
+        if detector.detect_script(i.text or "") in ("han", "japanese", "hangul")
+        and (i.confidence or 0) >= MIN_KANA_CONFIDENCE
+    )
+    if cjk_evidence >= MIN_DISAMBIGUATION_EVIDENCE:
+        # no kana anywhere, and enough real CJK text to trust that
+        # absence: relabel ja→zh-cn for han-only instances
+        for inst in instances:
+            if inst.detected_language == "ja":
+                script = detector.detect_script(inst.text or "")
+                if script == "han":
+                    inst.detected_language = "zh-cn"
 
 
 def _prune_hallucinations(instances: List[InstText]) -> List[InstText]:
@@ -1855,25 +2183,29 @@ def build_manifest(
     if merge_columns:
         detections = merge_vertical_columns(detections)
 
-    # scene constraint: suppress LOW-CONFIDENCE detections outside every
-    # candidate surface. containment fraction, NOT IoU — small text inside
-    # a large sign must score ~1.0. confident detections survive even
-    # outside surfaces: the surface detector is a false-positive filter,
-    # not an oracle — real signage it missed must not lose its text.
-    # an empty region list bypasses the filter entirely.
+    # scene constraint, PHASE A — survive-for-rescue: a deliberately
+    # lenient GEOMETRIC-ONLY gate ("is this plausibly text-shaped,
+    # geometrically," not "did we read it right"). containment fraction,
+    # NOT IoU — small text inside a large sign must score ~1.0. an empty
+    # region list bypasses the filter entirely.
     #
-    # adaptive thresholds: "panel" and "text_cluster" regions get a lower
-    # bar (0.30) because text is very likely inside them — the scene
-    # detector already confirmed a text-bearing surface. "bordered_region"
-    # and "surface" keep the standard 0.50 bar.
+    # the STRICT confidence-based prune moves to PHASE B, after language
+    # rescue (below) has had a chance to re-recognize every surviving
+    # candidate with the correct charset. recognition confidence from
+    # the wrong charset — or even the RIGHT charset on a hard crop
+    # (bloom/glow from saturated neon signage measurably caps EasyOCR's
+    # own confidence estimate) — is not a reliable signal for "is this
+    # real text" at this point in the pipeline: measured on
+    # japan-street's banner, a ja-charset read got 6/7 characters right
+    # at confidence 0.015, LOWER than the wrong-charset English read's
+    # garbage at 0.087. pruning by confidence before rescue has run
+    # discards exactly the candidates rescue exists to save.
     if scene_filter and scene_regions:
-        _SCENE_CONF = {"panel": 0.30, "text_cluster": 0.30, "bordered_region": 0.40}
         detections = [
             det for det in detections
             if det.confidence >= 0.5
             or any(
                 _containment_frac(_polygon_bbox(det.polygon), region.bbox) > 0.5
-                and det.confidence >= _SCENE_CONF.get(region.semantic_label, 0.50)
                 for region in scene_regions
             )
         ]
@@ -1990,24 +2322,31 @@ def build_manifest(
         #   (han-only text read by the Japanese reader), the scene is
         #   actually Chinese — the ja reader covers kanji but kana is
         #   the definitive Japanese signal.
-        detector = ScriptDetector()
-        has_kana = any(
-            detector.detect_script(i.text or "") == "japanese"
-            for i in instances
-        )
-        if has_kana:
-            for inst in instances:
-                if inst.detected_language in ("zh-cn", "ko"):
-                    script = detector.detect_script(inst.text or "")
-                    if script in ("han", "japanese", "hangul"):
-                        inst.detected_language = "ja"
-        else:
-            # no kana anywhere: relabel ja→zh-cn for han-only instances
-            for inst in instances:
-                if inst.detected_language == "ja":
-                    script = detector.detect_script(inst.text or "")
-                    if script == "han":
-                        inst.detected_language = "zh-cn"
+        _disambiguate_ja_zh(instances)
+
+    # scene constraint, PHASE B — final confidence prune: now that
+    # language rescue (above) has had its chance to rewrite inst.text/
+    # inst.confidence with the correct charset, apply the confidence bar
+    # phase A deferred. anything still low-confidence after rescue is
+    # pruned exactly as the old single-phase filter would have; anything
+    # rescue brought above the bar survives where the old filter would
+    # have discarded it before rescue ever got a chance to run.
+    #
+    # adaptive thresholds: "panel" and "text_cluster" regions get a lower
+    # bar (0.30) because text is very likely inside them — the scene
+    # detector already confirmed a text-bearing surface. "bordered_region"
+    # and "surface" keep the standard 0.50 bar.
+    if scene_filter and scene_regions:
+        _SCENE_CONF = {"panel": 0.30, "text_cluster": 0.30, "bordered_region": 0.40}
+        instances = [
+            inst for inst in instances
+            if (inst.confidence or 0) >= 0.5
+            or any(
+                _containment_frac(inst.bounding_box, region.bbox) > 0.5
+                and (inst.confidence or 0) >= _SCENE_CONF.get(region.semantic_label, 0.50)
+                for region in scene_regions
+            )
+        ]
 
     # hallucination pruning runs AFTER rescue/identification so regions
     # that were salvageable got their chance first

@@ -1227,6 +1227,252 @@ its box width comparably to the source text and to the real render's
 own output, versus the previously narrower/smaller preview render. No
 console errors from the change.
 
+## Performance investigation: dense-CJK-signage capture (japan-street, china-street)
+
+Full UI walkthrough (Upload → auto Capture → fix-and-proceed → Translate)
+of two fresh projects against `images/japan-street.jpeg` (Shinjuku
+Kabukicho gate, 627×489, GT: `images/japan-street.gt.json`, 8 regions)
+and `images/china-street.png` (Nanjing Road neon signage, 680×784, no
+prior GT). Both are extremely dense, mostly-vertical CJK street scenes —
+exactly this project's target domain. Cross-validated every UI-observed
+result against direct calls into `cicerone.detect()`/`EasyOCRBackend`/
+`scene.analyze_regions()` to pin down mechanism, not just symptom.
+
+**japan-street was already a known, documented 0.00-recall failure**
+(CP-1 results, Part 3c above: EasyOCR 0.00, PaddleOCR 0.125, both
+concluding "japan-street needs a 2× upscale pass or better scene recall
+regardless of engine" — never implemented). This session's live re-test
+reproduced that failure (auto-detect: 2 regions, both empty/garbage OCR
+text; even after fixing the wrongly-auto-detected source language to
+`ja` via `PATCH /api/projects` and re-running, the pipeline still only
+recovered 3 regions, none of them real text) and, going beyond the prior
+"too small for EasyOCR" conclusion, isolated the SPECIFIC mechanism:
+
+1. **CRAFT correctly finds the text; the confidence-based filter throws
+   it away regardless of charset.** Direct probing confirmed CRAFT (the
+   detector, charset-agnostic) locates the giant red "歌舞伎町一番街"
+   banner precisely (`bbox=(193,125,240x40)`) in a single English-reader
+   pass. The ENGLISH recognizer reads garbage there at conf 0.087
+   (expected — wrong charset). But probing the SAME box directly with a
+   `ja` reader recognizes **`歌舞伎町一番衛`　— 6 of 7 characters
+   correct** — at conf **0.015, lower than the wrong-charset English
+   read**. `build_manifest()`'s `scene_filter` requires conf ≥0.30 (even
+   for scene-surface-contained "text_cluster" detections) or ≥0.50
+   otherwise; 0.015 clears neither, with the CORRECT charset. This
+   isn't a rare fluke — bloom/glow from saturated neon signage
+   inherently caps EasyOCR's own confidence estimate far below what a
+   plain-charset-mismatch case would score, and the pipeline has no way
+   to tell "correct but hard" apart from "wrong and appropriately
+   unsure" once a fixed confidence floor is the only gate. Reproduced
+   through the real server code path three separate ways: unhinted
+   auto-detect, an explicit `languages=["ja"]` hint via direct
+   `cicerone.detect()` call, and a real `POST /api/detect` with the
+   project's `source_lang` PATCHed to `ja` — the banner is lost in
+   every case.
+2. **CJK auto-language-detection can lock onto a confidently-wrong
+   script over a correctly-scripted-but-underconfident one.** With
+   `scene_filter` disabled to let more candidates through,
+   `_auto_probe_language`'s winner was **Korean**, not Japanese — the
+   Korean reader produced higher-confidence (if nonsensical) Hangul
+   readings on the same crops where the Japanese reader correctly
+   read real kanji at very low confidence. The project's own
+   `streetfront-japan` project (pre-existing, `ko → fr`, from an
+   earlier session) shows this is a **recurring** failure, not a
+   one-off. The built-in "no kana observed → relabel ja as zh-cn"
+   safety net (meant to catch exactly this class of error) fires on
+   whatever sparse evidence survives — and can override even an
+   **explicit correct project-level language hint**: PATCHing
+   `source_lang=ja` and re-running still produced a manifest labeled
+   `zh-cn`, because none of the 2-3 surviving low-quality fragments
+   happened to contain kana for the disambiguation heuristic to key
+   on.
+3. **Frame-scale detection recall is fundamentally too low for this
+   image density independent of language**: the scene pre-pass
+   (MSER/SWT) found 12 plausible "text_cluster" surfaces reasonably
+   well spread across the frame, but raw CRAFT detection (any charset,
+   single or multi-pass) only ever produced 8 candidate boxes total for
+   a scene with 8+ GT regions AND dozens more legible-but-unannotated
+   background signage — most of the vertical storefront signs never
+   generate a detection box at all, at any threshold.
+
+**china-street (no prior GT/eval — new finding this session) auto-detected
+its source language CORRECTLY** (`zh-cn`, no fix needed — confirms the
+language-arbitration machinery does work when evidence is less sparse)
+but still only recovered **3 regions out of ~8 distinct, clearly legible
+signs** (美珠宝, 茂昌眼镜公司, 上海明牌, 大娘水饺, MING crown logo, OPTICAL,
+王开照相, 华联店 3F). Root cause here is different from japan-street's:
+
+4. **Vertical multi-character signs are detected as ONE box spanning
+   the whole sign, not per-character — so single-line recognition
+   fails regardless of which reader is used.** Direct probing found
+   CRAFT returning a single `127×603` box for the entire 6-character
+   "茂昌眼镜公司" column. Feeding that whole crop to recognition (any
+   language) forces EasyOCR to treat 603px of stacked, unrelated
+   glyphs as ONE text line — conf 0.010 (`ch_sim`) / 0.460 (`en`), both
+   nonsense. This is NOT the same failure `merge_vertical_columns()`
+   was built for (Phase 1b, `probe_uncovered_surfaces` — that fixes
+   the OPPOSITE problem, stacked PER-CHARACTER fragments that need
+   reassembling into one column). Here CRAFT already unified the whole
+   column into one box at the DETECTION stage, so there's nothing
+   fragmented left to merge, and no existing step re-splits an
+   over-merged vertical box before recognition. In the same raw pass,
+   short/isolated text read perfectly at high confidence — `ch_sim`
+   read `华联店` (Hualian store) at **conf 0.952**, `3` at **conf
+   0.999**, and the English reader read `OPTICAL` at **conf 0.998** —
+   confirming the recognizer itself is fine; it's specifically fed the
+   wrong-shaped crop for tall stacked columns.
+
+**Deep-think solutions, in priority order:**
+
+1. **Decouple "is this a text region" from "did we read it correctly"
+   in `scene_filter`.** The confidence gate conflates DETECTION
+   confidence (CRAFT's box, charset-agnostic — reliable) with
+   RECOGNITION confidence (CRNN's text, charset- and image-quality-
+   dependent — unreliable exactly when it matters most: wrong charset
+   or heavy bloom/glow). Concretely: seed `scene_regions` with large
+   raw CRAFT boxes directly (not only MSER surfaces) before language
+   rescue runs, and defer the confidence-based prune until AFTER
+   `_auto_probe_language`/`probe_uncovered_surfaces` have had a chance
+   to re-recognize every surviving candidate with the winning charset
+   — right now confidence-based pruning happens on the FIRST (often
+   wrong-charset) pass, before rescue logic ever sees the discarded
+   candidates.
+2. **Make CJK langset arbitration evidence-aware, not just confidence-
+   ranked**, and make an explicit source-language hint (project-level,
+   or the "fix and proceed" correction this session performed)
+   actually authoritative — skip the ambiguous multi-reader race
+   entirely when one is given, and require a minimum real-character
+   evidence count (not just "no kana observed in 2 sparse fragments")
+   before the ja→zh-cn safety net is allowed to override it.
+3. **Split over-merged vertical detections before recognition.**
+   Detect aspect-ratio outliers (tall/narrow boxes, height:width
+   greater than roughly 3:1) among raw CRAFT boxes, segment them into
+   per-character bands (connected-component or horizontal-projection-
+   profile valleys — the same technique Savor's `chew_on()` already
+   uses for glyph-level segmentation off `imaging.text_mask()`), and
+   recognize each band individually before composing top-to-bottom.
+   This generalizes `probe_uncovered_surfaces`'s already-proven
+   "per-panel single-character recognition is highly reliable"
+   principle from a rescue-only path into the primary recognition
+   strategy for any tall/narrow detected box, CJK or not.
+4. **Implement the already-recommended, never-built 2× upscale pass**
+   for small source images (`_prepare()` currently only ever
+   downscales via `max_dim`; there is no symmetric upscale path) —
+   both test images are well under typical street-photography
+   resolution (627×489, 680×784) and this was already identified as
+   the likely fix for japan-street's frame-scale recall gap in Part 3c,
+   just never implemented.
+5. **Re-measure `mag_ratio` specifically against dense multi-sign CJK
+   scenes** — the existing "mag_ratio 1.5 bought zero benefit" note is
+   scoped to whatever fixture prompted it; it has not been re-tested
+   against this specific failure mode (many small, densely-packed
+   signs) since the MSER scene-recall fix landed.
+
+Not yet implemented — this is the diagnostic + solution-design pass;
+awaiting a decision on which fixes to build.
+
+## Dense-CJK capture-perf fixes: implementation (2026-07-20)
+
+All 4 planned fixes built, tested, and live-verified in `src/tofu/layers/cicerone.py`
+(+ `server/main.py`'s `/api/detect/stream` for parity, matching the existing
+Savor-stage precedent).
+
+1. **Two-phase `scene_filter`** in `build_manifest()`: phase A (survive-
+   for-rescue) drops the confidence requirement entirely for scene-
+   surface-contained detections — geometric containment only. Phase B
+   (final prune, unchanged thresholds) runs AFTER language rescue, so a
+   detection only needs to clear the confidence bar with its BEST
+   available recognition, not its first (often wrong-charset) one.
+2. **Evidence-breadth ranking**: `_auto_probe_language`/
+   `probe_uncovered_surfaces` now rank candidate CJK readers by
+   `(count of corroborating regions, confidence)` instead of confidence
+   alone — a single confident-but-wrong read can no longer outrank a
+   correctly-scripted reader whose crops are merely harder. Extended to
+   `refine_langset()` too (a SEPARATE, cruder area-weighted vote
+   `detect()`'s adaptive stage consults BEFORE `probe_uncovered_
+   surfaces` gets a chance) — discovered live on china-street, where a
+   single Korean misread of real Chinese signage was hijacking the
+   whole adaptive stage on box-area alone; not originally named in the
+   plan but squarely within its "evidence-count gating" intent. The
+   `_disambiguate_ja_zh` heuristic (extracted from `build_manifest()`
+   into its own testable function) also gained a confidence floor on
+   what counts as "kana observed" — a near-zero-confidence kana-shaped
+   misread among garbage fragments was blocking the correct zh-cn
+   downgrade even with 2+ real, confident han-only instances backing
+   it.
+3. **Vertical-stack re-split** (`_split_tall_detections`/
+   `_segment_vertical_bands`, new): over-tall/narrow raw detections get
+   segmented into per-character bands (ink-gap profile off the shared
+   `imaging.text_mask()`, falling back to equal division) and each band
+   re-recognized via the engine's existing `detect_in_regions()`; results
+   flow through `build_manifest()`'s own `merge_vertical_columns()` for
+   reassembly. Required TWO regression-driven refinements beyond the
+   original plan, both found via live re-measurement against `gemini-
+   street.png` (a documented eval fixture, unrelated to this task's two
+   target images) after the naive version regressed its recall 0.111→
+   0.056: (a) an aspect-ratio trigger alone isn't sufficient evidence of
+   over-merging — a genuine single tall character trips it too — so the
+   split is only COMMITTED when its re-recognized average confidence
+   clearly exceeds the original whole-box read; (b) that confidence
+   comparison still isn't sufficient for Korean specifically, because a
+   single Hangul syllable block is visually composed of 2-3 jamo
+   sub-glyphs with real internal gaps, so the segmenter can slice a
+   genuine character into fragments that each resemble a DIFFERENT,
+   valid-but-wrong syllable, confidently — measured live: a correctly-
+   read '놓' split into '노'+'방', both at >99% confidence. Korean is now
+   excluded outright from this pass (Han/Kanji ideographs don't share
+   the failure mode — they're monolithic blocks with no internal
+   gaps of their own).
+4. **Small-image upscale**: `EasyOCRBackend._prepare()` gained a
+   symmetric upscale path (`min_upscale_dim=850`, 2× LANCZOS) — it
+   previously only ever downscaled via `max_dim`. Threshold chosen from
+   measured fixture sizes: every existing eval image is ≥960px on its
+   longer edge except japan-street (627×489) and china-street (680×784),
+   so no existing fixture is affected.
+
+**Testing**: `_disambiguate_ja_zh` extracted from inline code into its
+own function specifically to make it directly unit-testable (previously
+only reachable via `build_manifest()`, which needs a real engine to
+exercise meaningfully). New tests in `tests/test_cicerone_logic.py`
+cover the ranking change (`unittest.mock.patch`-based, canned per-
+langset results — no model load), the two-phase filter (`patch.object`
+stubbing `detect_in_regions` on a real `EasyOCRBackend.__new__`
+instance), the disambiguation gates, the band-segmentation geometry, and
+the upscale path. 223 backend tests pass (up from 202 known-good before
+this session — the ~30-test failure cluster flagged as pre-existing and
+unrelated in the earlier font-fidelity session is now green too,
+unexplained but a strict improvement, not investigated further).
+
+**Regression guard**: all 6 synthetic fixtures (flat-sign, gradient-
+banner, textured-wall, stylized-italic, expansion-en, cjk-vertical) and
+gemini-street re-measured byte-identical to their documented baselines
+after every change, including the two regressions found and fixed mid-
+implementation.
+
+**Measured results** (`scripts/eval_detect.py`, cold auto-detect via a
+genuinely fresh project + `POST /api/detect` — no manual language hint):
+- **japan-street**: recall **0.00 → 0.125** against the existing
+  `japan-street.gt.json` (8 regions); `src_lang` now correctly settles
+  on `ja` with zero manual intervention (previously required this
+  session's own `PATCH source_lang=ja` workaround to get anywhere).
+  3 regions recovered including a real, mostly-correct read of the
+  banner text.
+- **china-street**: new `images/china-street.gt.json` (8 regions,
+  partial/recall-focused, same convention as the existing two street-
+  scene GT files) establishes a first-ever baseline: recall **0.125**;
+  `src_lang` correctly `zh-cn`. 5 regions recovered, including 4 of 6
+  characters of "茂昌眼镜公司" (previously a single garbage digit) and
+  "华联店" at 0.99 confidence.
+- **gemini-street**: recall held at the documented **0.111** baseline
+  (unchanged) after the two regression fixes above; `src_lang` correctly
+  `ko`.
+
+Live-verified end-to-end through the actual UI (fresh projects, "Asset
+Scan (Auto)", no manual language correction): both images now show real,
+mostly-correct signage text and correctly-inferred source languages in
+the Capture step's region table, replacing the earlier single-fragment
+garbage reads this task's own diagnostic pass first identified.
+
 ## Part 4 — Risks & mitigations
 - **easyocr/torch on the dev host** (currently absent): Phase 0 gate; if
   installation is blocked, pin PaddleOCR as the dev default via `OCR_ENGINE` and

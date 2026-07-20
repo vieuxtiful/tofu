@@ -1,11 +1,18 @@
 ## 🍢 cicerone pure-logic units (no OCR model required)
+from unittest.mock import patch
+
 from tofu.core.types import BBox, InstText, SceneRegion
 from tofu.layers.cicerone import (
     EasyOCRBackend,
     RawDetection,
     ScriptDetector,
+    _auto_probe_language,
     _compose_crop_text,
+    _disambiguate_ja_zh,
     _polygon_bbox,
+    _segment_vertical_bands,
+    _split_tall_detections,
+    build_manifest,
     guess_latin_language,
     merge_detections,
     merge_vertical_columns,
@@ -189,3 +196,277 @@ class TestExpandLangset:
 
     def test_empty_defaults_english(self):
         assert expand_langset([]) == ("en",)
+
+
+# -- evidence-breadth ranking (dense-CJK capture-perf follow-up) --------------
+# a single high-confidence-but-implausible read must not outrank a
+# correctly-scripted reader whose crops are merely HARDER -- measured on
+# japan-street.jpeg, where Korean's hangul beat Japanese's genuinely
+# low-but-real kanji reads under the old confidence-mean-only ranking.
+
+def _fake_reader(per_langset_dets):
+    """returns a stand-in for EasyOCRBackend's constructor: a function
+    matching EasyOCRBackend(languages=..., gpu=...)'s signature that
+    hands back a stub instance whose detect_in_regions() returns
+    per_langset_dets[languages[0]] (a List[List[RawDetection]], one
+    inner list per probed bbox), so _auto_probe_language/
+    probe_uncovered_surfaces's REAL ranking logic runs end-to-end
+    against canned per-language results, without loading a model."""
+    def make(languages, gpu=False):
+        fake = EasyOCRBackend.__new__(EasyOCRBackend)
+        fake.languages = languages
+        fake.gpu = gpu
+        results = per_langset_dets.get(languages[0], [])
+        fake.detect_in_regions = lambda asset, bboxes: results
+        return fake
+    return make
+
+
+class TestEvidenceBreadthRanking:
+    def test_auto_probe_language_prefers_broad_weak_over_narrow_confident(self):
+        instances = [
+            _inst(0, 0, 40, 40, ":::", 0.3),
+            _inst(0, 100, 40, 40, ";;;", 0.3),
+        ]
+        engine = EasyOCRBackend.__new__(EasyOCRBackend)
+        engine.languages = ("en",)
+        engine.gpu = False
+        fake = _fake_reader({
+            # japanese: TWO real (if low-confidence) script-bearing hits
+            "ja": [
+                [det(0, 0, 40, 40, "居", 0.25, lang="ja")],
+                [det(0, 0, 40, 40, "屋", 0.22, lang="ja")],
+            ],
+            # korean: ONE high-confidence hit, nothing in the 2nd region
+            # -- old mean-of-top2 scoring (0.3) beat japanese's (0.235)
+            "ko": [
+                [det(0, 0, 40, 40, "맥", 0.6, lang="ko")],
+                [],
+            ],
+        })
+        with patch("tofu.layers.cicerone.EasyOCRBackend", side_effect=fake):
+            winners = _auto_probe_language(
+                None, instances, engine, probe_regions=8, min_evidence=0.2,
+            )
+        assert winners and winners[0].languages[0] == "ja"
+
+    def test_probe_uncovered_surfaces_prefers_broad_weak_over_narrow_confident(self):
+        surfaces = [_surface(0, 0, 40, 40), _surface(0, 100, 40, 40)]
+        engine = EasyOCRBackend.__new__(EasyOCRBackend)
+        engine.languages = ("en",)
+        engine.gpu = False
+        fake = _fake_reader({
+            "ja": [
+                [det(0, 0, 40, 40, "居", 0.25, lang="ja")],
+                [det(0, 0, 40, 40, "屋", 0.22, lang="ja")],
+            ],
+            "ko": [
+                [det(0, 0, 40, 40, "맥", 0.6, lang="ko")],
+                [],
+            ],
+        })
+        with patch("tofu.layers.cicerone.EasyOCRBackend", side_effect=fake):
+            langset, dets = probe_uncovered_surfaces(
+                None, surfaces, [], engine, min_evidence=0.2,
+            )
+        assert langset is not None and langset[0] == "ja"
+
+
+# -- two-phase scene_filter (dense-CJK capture-perf follow-up) ---------------
+# confidence from the wrong charset, or even the right charset on a hard
+# crop, is not a reliable "is this real text" signal -- measured on
+# japan-street's banner: 6/7 characters read correctly at confidence
+# 0.015, below the filter's own floor. the strict confidence prune must
+# apply AFTER language rescue has had a chance to fix the text, not
+# before.
+
+class TestTwoPhaseSceneFilter:
+    def test_low_confidence_survives_when_rescue_improves_it(self):
+        # a detection inside a text_cluster surface at confidence 0.05
+        # -- well below the 0.30 floor even for the lenient text_cluster
+        # threshold. the OLD single-phase filter drops this before any
+        # rescue can run; phase A's geometric-only gate lets it through,
+        # and rescue (stubbed here) brings its confidence up enough to
+        # survive phase B.
+        low_conf = det(10, 10, 50, 20, text=":::", conf=0.05)
+        surfaces = [_surface(0, 0, 100, 100, label="text_cluster")]
+        engine = EasyOCRBackend.__new__(EasyOCRBackend)
+        engine.languages = ("en",)
+        engine.gpu = False
+
+        def fake_detect_in_regions(self, asset, bboxes):
+            return [[det(10, 10, 50, 20, "居酒屋", 0.35, lang=self.languages[0])]]
+
+        with patch.object(EasyOCRBackend, "detect_in_regions", fake_detect_in_regions):
+            m = build_manifest(
+                "fake.png", [low_conf], scene_regions=surfaces, engine=engine,
+                identify_languages=True, prune_garbage=False,
+            )
+        assert m.total_regions == 1
+        assert m.instances[0].text == "居酒屋"
+
+    def test_low_confidence_still_pruned_when_nothing_rescues_it(self):
+        # same low-confidence-in-surface detection, but identify_languages
+        # disabled -- no rescue happens, so phase B must still prune it
+        # exactly as the old single-phase filter would have. proves the
+        # restructuring doesn't just make everything survive.
+        low_conf = det(10, 10, 50, 20, text=":::", conf=0.05)
+        surfaces = [_surface(0, 0, 100, 100, label="text_cluster")]
+        m = build_manifest(
+            "fake.png", [low_conf], scene_regions=surfaces,
+            identify_languages=False, prune_garbage=False,
+        )
+        assert m.total_regions == 0
+
+    def test_high_confidence_survives_without_any_surface(self):
+        # unchanged behavior: a confident detection needs no surface at
+        # all (the existing >=0.5-anywhere bypass, both phases).
+        confident = det(500, 500, 50, 20, text="STOP", conf=0.9)
+        m = build_manifest(
+            "fake.png", [confident], scene_regions=[_surface(0, 0, 10, 10)],
+            identify_languages=False, prune_garbage=False,
+        )
+        assert m.total_regions == 1
+
+
+# -- ja/zh-cn disambiguation evidence gate (dense-CJK capture-perf) ----------
+
+class TestDisambiguationEvidenceGate:
+    def test_sparse_no_kana_evidence_does_not_downgrade_ja(self):
+        # a single han-only "ja"-labeled instance and no kana anywhere:
+        # too little text survived to trust "no kana" as meaningful --
+        # measured live, an explicit correct source_lang="ja" hint still
+        # got silently downgraded to zh-cn this way on a 2-3-instance
+        # manifest. must NOT relabel below MIN_DISAMBIGUATION_EVIDENCE.
+        inst = _inst(0, 0, 40, 40, "屋", 0.5)
+        inst.detected_language = "ja"
+        _disambiguate_ja_zh([inst])
+        assert inst.detected_language == "ja"
+
+    def test_sufficient_no_kana_evidence_downgrades_ja(self):
+        # MIN_DISAMBIGUATION_EVIDENCE han-only "ja"-labeled instances,
+        # still no kana anywhere: now there's enough real CJK text to
+        # trust the absence, so the downgrade fires as intended.
+        insts = [_inst(0, i * 50, 40, 40, "屋", 0.5) for i in range(2)]
+        for inst in insts:
+            inst.detected_language = "ja"
+        _disambiguate_ja_zh(insts)
+        assert all(i.detected_language == "zh-cn" for i in insts)
+
+    def test_kana_presence_upgrades_regardless_of_count(self):
+        # a SINGLE kana-bearing instance is unambiguous evidence of
+        # Japanese -- the presence side of the heuristic is trusted
+        # immediately, no minimum-count gate applies there.
+        kana_inst = _inst(0, 0, 40, 40, "ようこそ", 0.9)
+        han_inst = _inst(0, 50, 40, 40, "屋", 0.5)
+        han_inst.detected_language = "zh-cn"
+        _disambiguate_ja_zh([kana_inst, han_inst])
+        assert han_inst.detected_language == "ja"
+
+
+# -- vertical-stack re-split (dense-CJK capture-perf, china-street) ---------
+# CRAFT can over-merge an entire multi-character vertical CJK sign into
+# ONE box (measured: 127x603 for a 6-character sign) -- recognizing that
+# whole crop as one text line produces garbage regardless of charset.
+
+class TestSegmentVerticalBands:
+    def test_square_box_still_floors_at_two_bands(self):
+        # the aspect-ratio TRIGGER (is this box worth splitting at all)
+        # lives in _split_tall_detections's caller, not here -- this
+        # class tests the segmentation geometry in isolation. a square
+        # box's aspect-implied char count rounds to 1, but the fallback
+        # floors at 2 (a single "band" would just be the whole box back
+        # again, which is never useful to return from a split function)
+        bbox = BBox(x=0, y=0, width=100, height=100)
+        bands = _segment_vertical_bands(None, bbox)
+        assert len(bands) == 2
+        assert all(b.height == 50 for b in bands)
+
+    def test_tall_box_falls_back_to_equal_division_without_an_image(self):
+        # asset=None -> load_rgb returns None -> pure geometric fallback
+        bbox = BBox(x=10, y=20, width=50, height=300)
+        bands = _segment_vertical_bands(None, bbox)
+        assert len(bands) == 6  # round(300/50) == 6
+        assert all(b.width == 50 for b in bands)
+        assert bands[0].y == 20
+        assert bands[-1].y + bands[-1].height == 320
+
+    def test_too_short_for_even_one_band_returns_empty(self):
+        bbox = BBox(x=0, y=0, width=200, height=10)
+        assert _segment_vertical_bands(None, bbox) == []
+
+
+class TestSplitTallDetections:
+    def test_short_wide_detection_passes_through_unchanged(self):
+        line = det(0, 0, 200, 30, text="MAIN STREET", conf=0.9)
+        engine = EasyOCRBackend.__new__(EasyOCRBackend)
+        engine.languages = ("en",)
+        assert _split_tall_detections(None, engine, [line]) is None
+
+    def test_korean_engine_excluded_outright(self):
+        # a single Hangul syllable block is visually composed of 2-3
+        # jamo sub-glyphs with real internal gaps -- the ink-gap
+        # segmenter can't tell that apart from genuine inter-character
+        # gaps, so Korean is excluded rather than relying on the
+        # confidence-comparison gate alone (measured live: a correctly-
+        # read character split into two DIFFERENT wrong ones, both at
+        # >99% confidence, beating the original's own low confidence).
+        stack = det(0, 0, 40, 240, text="1", conf=0.05)
+        engine = EasyOCRBackend.__new__(EasyOCRBackend)
+        engine.languages = ("ko", "en")
+        assert _split_tall_detections(None, engine, [stack]) is None
+
+    def test_tall_detection_gets_split_and_recomposed(self):
+        # a 40x240 box (6:1 aspect) with garbage text, mirroring the
+        # over-merged-column shape measured on china-street
+        stack = det(0, 0, 40, 240, text="1", conf=0.05)
+        engine = EasyOCRBackend.__new__(EasyOCRBackend)
+        engine.languages = ("ch_sim",)
+
+        def fake_detect_in_regions(self, asset, bboxes):
+            chars = "美珠宝"
+            return [
+                [RawDetection(
+                    polygon=[(b.x, b.y), (b.x + b.width, b.y),
+                             (b.x + b.width, b.y + b.height), (b.x, b.y + b.height)],
+                    text=chars[i % len(chars)], confidence=0.9, language="zh-cn",
+                )]
+                for i, b in enumerate(bboxes)
+            ]
+
+        with patch.object(EasyOCRBackend, "detect_in_regions", fake_detect_in_regions):
+            split = _split_tall_detections(None, engine, [stack])
+        assert split is not None
+        assert len(split) >= 2
+        assert all(d.confidence == 0.9 for d in split)
+        assert set(d.text for d in split) <= set("美珠宝")
+
+
+# -- small-image upscale (dense-CJK capture-perf) ----------------------------
+
+class TestPrepareUpscale:
+    def test_small_image_upscales(self, tmp_path):
+        from PIL import Image
+        p = tmp_path / "small.png"
+        Image.new("RGB", (400, 300), (255, 255, 255)).save(p)
+        engine = EasyOCRBackend(min_upscale_dim=850, upscale_factor=2.0)
+        prepared, scale = engine._prepare(str(p))
+        assert scale == (2.0, 2.0)
+        assert prepared.shape[1] == 800 and prepared.shape[0] == 600
+
+    def test_normal_sized_image_untouched(self, tmp_path):
+        from PIL import Image
+        p = tmp_path / "normal.png"
+        Image.new("RGB", (960, 640), (255, 255, 255)).save(p)
+        engine = EasyOCRBackend(min_upscale_dim=850, upscale_factor=2.0)
+        prepared, scale = engine._prepare(str(p))
+        assert scale == (1.0, 1.0)
+        assert prepared == str(p)
+
+    def test_oversized_image_still_downscales_not_upscales(self, tmp_path):
+        from PIL import Image
+        p = tmp_path / "big.png"
+        Image.new("RGB", (3000, 2000), (255, 255, 255)).save(p)
+        engine = EasyOCRBackend(max_dim=2560, min_upscale_dim=850)
+        prepared, scale = engine._prepare(str(p))
+        assert scale[0] < 1.0 and scale[1] < 1.0
