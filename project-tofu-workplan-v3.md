@@ -1058,6 +1058,80 @@ flow actually uses) shows an explicit `savor` stage
 197 unit tests pass (15 new). `InstText.ocr_correction` also wired
 through `manifest_store.py`'s serialization (mirrors `tm_suggestion`).
 
+## Translate-tab preview fidelity: font resolution, wrap/fit, style-field parity
+
+**Problem.** `TargetPreviewCanvas.tsx`'s "target" pane, meant to give a
+rough WYSIWYG preview of the final render before the Render tab, diverged
+from `scribe.py`'s actual output in two structural ways: (1) "auto" font
+selection (`style_profile.font_family == None`, the common case — every
+region in `tm-smoke-test2`) rendered with the browser's generic default
+font, since nothing in the frontend knew what `scribe._get_font(None,
+size)`/`check_glyph_coverage()` actually resolves "auto" to server-side;
+(2) text rendered as one line inside `overflow: hidden` at a fixed size,
+with no word-wrap or size-fit, so a translation notably longer or
+shorter than its source (the normal case) never visually reflected the
+size/line-count `scribe._fit_wrapped()` would actually pick. Root cause
+was the same for the parallel ask — `RegionTable.tsx`'s Font column
+showed bare `characteristics.font_style` ("bold") instead of a real font
+name for auto-styled regions, for identical reasons.
+
+**Fix, three parts.**
+1. New `scribe.resolve_auto_font(font_registry, lang, text)`
+   (`src/tofu/layers/scribe.py`) composes the exact same two steps
+   `render()` itself uses to resolve "auto" — the `FALLBACK_FONTS`
+   chain, then `check_glyph_coverage()`'s override — so any consumer
+   agrees with what will actually be drawn, without reimplementing
+   glyph-coverage logic in JS (avoiding drift). Persisted as
+   `InstText.resolved_font_family`, computed at capture time and
+   recomputed on every existing debounced `PUT /api/manifest/{asset_id}`
+   autosave (piggybacked — no new network round-trip; response now
+   returns `resolved_fonts` for the frontend to merge back into state).
+   `RegionTable.tsx`'s Font column and `TargetPreviewCanvas.tsx` both now
+   prefer `resolved_font_family` for the real family+weight label and
+   the actual `@font-face` applied to preview text.
+2. New `frontend/src/textFit.ts` mirrors `scribe._fit_wrapped()`
+   client-side: greedy word-wrap/char-wrap (CJK), binary-search font
+   size using `measureText()`'s tight `actualBoundingBox*` ink bounds
+   for the fit-check (not nominal `fontBoundingBox*` metrics) — the same
+   ink-vs-nominal distinction this project already learned the hard way
+   fixing scribe's own "SALE" font-size bug. Runs client-side (not a
+   server round-trip) so the preview updates instantly as the user types
+   a translation. `loadFontPreview()` (`FontCombobox.tsx`) upgraded to
+   return a cached, awaitable `Promise<void>` backed by
+   `document.fonts.load()`, so canvas measurements never race an
+   unloaded `@font-face`.
+3. Remaining already-captured, already-editable style fields
+   (`align_v`, `justification`, `indent`, `tracking`, `leading`,
+   `baseline_shift`, `stroke_color`/`width`, `sub`/`superscript`,
+   detected rotation) wired into the preview's CSS — pure plumbing, the
+   data already existed. `justification`'s last-line semantics mapped
+   onto flexbox `align-self` on the final wrapped line only (documented
+   as an approximation — true inter-word-stretch justify has no meaning
+   against an already-terminal single line of manually wrapped text).
+
+**Verification.** 5 new unit tests for `resolve_auto_font` (Latin text
+resolves to the installed `arial.ttf` fallback; text the default can't
+cover resolves to a real covering font from the registry; no-registry/
+empty-text/no-fallback-installed edge cases) — full backend suite 202
+passed, no regressions. `tsc --noEmit` clean after every frontend-
+touching change. Live-verified against `tm-smoke-test2`: Font column now
+shows "Arial Regular" for all 4 auto-styled regions instead of bare
+"bold"/"auto" — an accurate label, since "auto" only ever resolves to
+the plain `arial.ttf` file (no bold-suffixed variant in `FALLBACK_FONTS`),
+correctly *not* claiming "Arial Bold" when that isn't what gets
+rendered. Ran an actual render and compared the Translate-tab preview
+against the real `scribe.py` output side by side for the same asset:
+r1/r3 (`CALLE PRINCIPAL` / `SALIDA 25`, longer than source `MAIN STREET`
+/ `EXIT 25`) wrapped to the same two-line layout in both; r4 (`Abierto
+de 9am a 5pm`, longer than source `Open 9am to 5pm`) shrank to the same
+single-line-no-wrap layout in both, closely matching proportions. Text
+color in preview didn't match final render (defaults to black vs. the
+render's white) — a separate, pre-existing gap in color resolution
+(`style_profile.color` has no auto-resolution equivalent to font
+family), out of scope for this task and not a regression it introduced.
+No console errors from the new canvas-measurement/font-loading code
+path during live use.
+
 ## Part 4 — Risks & mitigations
 - **easyocr/torch on the dev host** (currently absent): Phase 0 gate; if
   installation is blocked, pin PaddleOCR as the dev default via `OCR_ENGINE` and

@@ -3,7 +3,7 @@ import { FontFamily, FontOption, InstText, LanguageOption } from "./api";
 import { BookmarkCheck, Eye, EyeOff, Loader2, ScanText, Trash2 } from "lucide-react";
 import { langDisplayName } from "./languageData";
 import LanguageCombobox from "./LanguageCombobox";
-import { loadFontPreview, fontNameForPath } from "./FontCombobox";
+import { loadFontPreview, fontNameForPath, weightLabel } from "./FontCombobox";
 import { HiLockClosed, HiLockOpen } from "react-icons/hi";
 import "./bbox.css";
 
@@ -395,59 +395,71 @@ export default function RegionTable({
                         </div>
                       </td>
                     )}
-                    {mode === "translate" && (
-                      <td className="px-2 py-1" onClick={(e) => e.stopPropagation()}>
-                        {inst.characteristics?.font_style || inst.style_profile?.font_family ? (
-                          <div className="flex items-center gap-2">
-                            <ScanText size={11} className="shrink-0 text-cyan-600 dark:text-cyan-400" />
-                            <span
-                              className="block truncate text-xs text-zinc-500 dark:text-zinc-400"
-                              style={(() => {
-                                const style: CSSProperties = {};
-                                const fontPath = inst.style_profile?.font_family;
-                                const fontStyle = inst.characteristics?.font_style ?? "";
-                                const fs = fontStyle.toLowerCase();
-                                if (fontPath && familiesByLang) {
-                                  const lang = inst.target_language ?? defaultTargLang;
-                                  const families = familiesByLang[lang] ?? [];
-                                  const fam = families.find((f) => f.weights.some((w) => w.path === fontPath) || f.best_path === fontPath);
-                                  const weight = fam?.weights.find((w) => w.path === fontPath);
-                                  if (weight) {
-                                    const wc = weight.weight_class;
-                                    if (wc <= 400) style.fontWeight = 400;
-                                    else if (wc <= 500) style.fontWeight = 500;
-                                    else if (wc <= 600) style.fontWeight = 600;
-                                    else if (wc <= 700) style.fontWeight = 700;
-                                    else style.fontWeight = 800;
-                                    if ((weight.subfamily || "").toLowerCase().includes("italic")) style.fontStyle = "italic";
-                                    style.fontFamily = fontNameForPath(fontPath);
-                                    loadFontPreview(fontPath, fam?.family ?? "");
-                                  } else {
-                                    if (fs.includes("bold")) style.fontWeight = 700;
-                                    if (fs.includes("italic")) style.fontStyle = "italic";
-                                  }
-                                } else {
-                                  if (fs.includes("bold")) style.fontWeight = 700;
-                                  if (fs.includes("italic")) style.fontStyle = "italic";
-                                }
-                                return style;
-                              })()}
-                              title={[
-                                inst.style_profile?.font_family ? fontName(inst.style_profile.font_family) : null,
-                                inst.characteristics?.font_style && inst.characteristics.font_style !== "regular" ? inst.characteristics.font_style : null,
-                              ].filter(Boolean).join(" ") || "auto"}
-                            >
-                              {[
-                                inst.style_profile?.font_family ? fontName(inst.style_profile.font_family) : null,
-                                inst.characteristics?.font_style && inst.characteristics.font_style !== "regular" ? inst.characteristics.font_style : null,
-                              ].filter(Boolean).join(" ") || "auto"}
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-zinc-400 dark:text-zinc-600">—</span>
-                        )}
-                      </td>
-                    )}
+                    {mode === "translate" && (() => {
+                      // explicit pick wins; otherwise fall back to what
+                      // "auto" currently resolves to (resolved_font_family,
+                      // computed server-side by scribe.resolve_auto_font —
+                      // the same resolution render() itself performs) so
+                      // this column shows a real font name ("Arial Bold")
+                      // instead of just the bare detected style ("bold")
+                      const explicitPath = inst.style_profile?.font_family;
+                      const fontPath = explicitPath ?? inst.resolved_font_family ?? null;
+                      const fontStyle = inst.characteristics?.font_style ?? "";
+                      const fs = fontStyle.toLowerCase();
+                      const lang = inst.target_language ?? defaultTargLang;
+                      const families = familiesByLang?.[lang] ?? [];
+                      const fam = fontPath
+                        ? families.find((f) => f.weights.some((w) => w.path === fontPath) || f.best_path === fontPath)
+                        : undefined;
+                      const weight = fam?.weights.find((w) => w.path === fontPath);
+
+                      const style: CSSProperties = {};
+                      if (weight) {
+                        const wc = weight.weight_class;
+                        if (wc <= 400) style.fontWeight = 400;
+                        else if (wc <= 500) style.fontWeight = 500;
+                        else if (wc <= 600) style.fontWeight = 600;
+                        else if (wc <= 700) style.fontWeight = 700;
+                        else style.fontWeight = 800;
+                        if ((weight.subfamily || "").toLowerCase().includes("italic")) style.fontStyle = "italic";
+                        style.fontFamily = fontNameForPath(fontPath!);
+                        loadFontPreview(fontPath!, fam?.family ?? "");
+                      } else {
+                        if (fs.includes("bold")) style.fontWeight = 700;
+                        if (fs.includes("italic")) style.fontStyle = "italic";
+                      }
+
+                      // prefer a real "{Family} {Weight}" label; fall back
+                      // to the raw file name when the font isn't in this
+                      // language's family list (e.g. resolution happened
+                      // before familiesByLang for this lang was fetched),
+                      // then to the bare detected style, then "auto"
+                      const familyLabel = fam
+                        ? `${fam.family}${weight ? ` ${weightLabel(weight)}` : ""}`
+                        : fontPath
+                        ? fontName(fontPath)
+                        : null;
+                      const label = [
+                        familyLabel,
+                        !familyLabel && fontStyle && fontStyle !== "regular" ? fontStyle : null,
+                      ].filter(Boolean).join(" ") || "auto";
+
+                      const hasContent = fontStyle || fontPath;
+                      return (
+                        <td className="px-2 py-1" onClick={(e) => e.stopPropagation()}>
+                          {hasContent ? (
+                            <div className="flex items-center gap-2">
+                              <ScanText size={11} className="shrink-0 text-cyan-600 dark:text-cyan-400" />
+                              <span className="block truncate text-xs text-zinc-500 dark:text-zinc-400" style={style} title={label}>
+                                {label}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-zinc-400 dark:text-zinc-600">—</span>
+                          )}
+                        </td>
+                      );
+                    })()}
                     <td className={`px-2 py-1 text-xs ${confColor(inst.confidence)}`}>
                       {inst.confidence !== null ? `${(inst.confidence * 100).toFixed(0)}%` : "man"}
                     </td>

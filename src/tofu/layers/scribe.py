@@ -238,6 +238,44 @@ def check_glyph_coverage(
     return best_path, False
 
 
+def resolve_auto_font(font_registry, lang: Optional[str], text: str) -> Optional[str]:
+    """what does "auto" (font_family=None) actually resolve to for THIS
+    region's own text/language? render() resolves auto in two composed
+    steps — _get_font(None, ...)'s FALLBACK_FONTS chain, then
+    check_glyph_coverage()'s override when that pick can't cover the
+    text — and this helper performs the exact same two steps so its
+    answer is guaranteed to agree with what actually gets drawn. exists
+    for callers (capture-time enrichment, manifest autosave) that need
+    to SHOW the user what "auto" means before a render ever happens —
+    e.g. the Translate-tab preview and the Font column label — without
+    duplicating glyph-coverage rules in a second language.
+
+    returns a FontRegistry path (matching what familiesByLang lookups
+    expect, not a bare filename), or None when there's no font_registry
+    to resolve against or no FALLBACK_FONTS entry is actually installed.
+    """
+    if not font_registry or not text:
+        return None
+    fonts = getattr(font_registry, "_fonts", {})
+    if not fonts:
+        return None
+
+    default_path = None
+    for fallback_name in FALLBACK_FONTS:
+        match = next(
+            (p for p in fonts if Path(p.split("#")[0]).name.lower() == fallback_name.lower()),
+            None,
+        )
+        if match:
+            default_path = match
+            break
+
+    replacement, all_covered = check_glyph_coverage(font_registry, None, text, lang)
+    if not all_covered and replacement:
+        return replacement
+    return default_path
+
+
 def _line_height(font) -> float:
     try:
         ascent, descent = font.getmetrics()

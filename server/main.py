@@ -49,7 +49,7 @@ from tofu.core.types import (
     RenderParams, StyleProfil,
 )
 from tofu.layers.tofu import ToFU, lang_to_script
-from tofu.layers import cicerone, memory
+from tofu.layers import cicerone, memory, scribe
 from tofu.layers.cicerone import _to_easyocr_lang
 from tofu.utils.manifest_store import save_manifest, load_manifest
 from tofu.utils import interchange
@@ -154,6 +154,40 @@ def _attach_tm_suggestions(pid: Optional[str], manifest: TextManifest, source_pa
         m = matches.get(inst.id)
         inst.tm_suggestion = m
     return len(matches)
+
+
+def _resolve_auto_fonts(manifest: TextManifest, default_targ_lang: Optional[str] = None) -> int:
+    """populate InstText.resolved_font_family for every region left on
+    "auto" (style_profile.font_family is None/unset): what does auto
+    ACTUALLY render with, right now, for this region's own text? uses
+    scribe.resolve_auto_font() -- the identical two-step resolution
+    render() itself performs -- so the Font column label and the
+    Translate-tab preview both show something guaranteed to match the
+    real render, not a guess. cheap (registry codepoint lookups, no font
+    file I/O), so it's safe to recompute on every call rather than
+    tracking what changed since the last one.
+
+    resolves against target_text when one exists (what will actually be
+    drawn) and falls back to the source text otherwise (capture-time,
+    before any translation is entered, still shows a reasonable guess).
+    explicit font_family picks are left untouched -- resolved_font_family
+    is a display hint only, never itself treated as an override.
+    """
+    registry = get_validator().font_registry
+    if registry is None:
+        return 0
+    resolved = 0
+    for inst in manifest.instances:
+        if inst.style_profile and inst.style_profile.font_family:
+            continue  # explicit pick -- nothing to resolve
+        text = inst.target_text or inst.text or ""
+        lang = inst.target_language or default_targ_lang or manifest.targ_lang
+        path = scribe.resolve_auto_font(registry, lang, text)
+        if path != inst.resolved_font_family:
+            inst.resolved_font_family = path
+        if path:
+            resolved += 1
+    return resolved
 
 
 def _infer_src_lang(manifest: TextManifest) -> str:
@@ -680,6 +714,7 @@ def detect(req: DetectRequest):
     except Exception:
         pass  # enrichment is best-effort; detection results stand alone
     tm_matched = _lookup_tm_for_manifest(req.asset_id, manifest, path)
+    _resolve_auto_fonts(manifest)  # after TM lookup so manifest.targ_lang is set
     save_manifest(UPLOAD_DIR, req.asset_id, manifest)
     _record_detection(req.asset_id, manifest)
     payload = jsonable(manifest)
@@ -919,6 +954,11 @@ def detect_stream(
                 tm_matched = _lookup_tm_for_manifest(asset_id, manifest, path)
                 yield event({"stage": "memory", "status": "complete", "matched": tm_matched})
 
+            # what does "auto" render with, right now, for each region?
+            # near-instant (registry lookups, no font-file I/O) -- no
+            # SSE stage of its own, folded in silently before save
+            _resolve_auto_fonts(manifest)
+
             save_manifest(UPLOAD_DIR, asset_id, manifest)
             _record_detection(asset_id, manifest)
             yield event({
@@ -950,13 +990,22 @@ def put_manifest(asset_id: str, manifest_data: Dict[str, Any]):
     manifest = _dict_to_manifest(manifest_data)
     manifest.asset_id = asset_id
     manifest.total_regions = len(manifest.instances)
+    # re-resolve "auto" fonts on every save: target_text/target_language
+    # are exactly what changes during Translate-step editing, and
+    # resolution is cheap (registry lookups, no font-file I/O) -- no
+    # need to diff old vs new to decide what changed
+    _resolve_auto_fonts(manifest)
     save_manifest(UPLOAD_DIR, asset_id, manifest)
     # autosave ledger: every accepted write is snapshotted (deduped) so a
     # session can always be rolled back
     pid = db.project_for_asset(asset_id)
     if pid:
         db.add_snapshot(pid, asset_id, _manifest_to_dict(manifest), reason="autosave")
-    return {"ok": True, "total_regions": manifest.total_regions}
+    resolved_fonts = {
+        inst.id: inst.resolved_font_family
+        for inst in manifest.instances if inst.resolved_font_family
+    }
+    return {"ok": True, "total_regions": manifest.total_regions, "resolved_fonts": resolved_fonts}
 
 
 @app.post("/api/manifest/{asset_id}/regions")

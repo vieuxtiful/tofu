@@ -15,7 +15,7 @@ import { FcCollapse } from "react-icons/fc";
 import { LiaSpellCheckSolid } from "react-icons/lia";
 import { RiCheckboxFill } from "react-icons/ri";
 import { TbCubePlus, TbPhotoScan } from "react-icons/tb";
-import { FaBoxOpen } from "react-icons/fa";
+import { FaBoxOpen, FaLink, FaUnlink } from "react-icons/fa";
 import { FaFileImport } from "react-icons/fa6";
 import { PiWarningCircleFill } from "react-icons/pi";
 import { MdTipsAndUpdates } from "react-icons/md";
@@ -25,6 +25,7 @@ import { langDisplayName, langFlag, LANGUAGE_REGIONS, REGION_ORDER } from "./lan
 import LanguageCombobox from "./LanguageCombobox";
 import FontCombobox, { loadFontPreview, fontNameForPath, weightLabel } from "./FontCombobox";
 import BBoxCanvas from "./BBoxCanvas";
+import TargetPreviewCanvas from "./TargetPreviewCanvas";
 import RegionTable from "./RegionTable";
 import ExportPanel from "./ExportPanel";
 import ProjectGate from "./ProjectGate";
@@ -169,7 +170,7 @@ function UnsavedChangesOverlay({ onYes, onNo }: { onYes: () => void; onNo: () =>
       onClick={handleNo}
     >
       <div className="title-confirm-card" onClick={(e) => e.stopPropagation()}>
-        <p className="title-confirm-message">Proceed with unsaved changes?</p>
+        <p className="title-confirm-message">proceed with unsaved changes?</p>
         <div className="title-confirm-actions">
           <button className="title-confirm-btn yes" onClick={handleYes}>Yes</button>
           <button className="title-confirm-btn no" onClick={handleNo}>No</button>
@@ -222,6 +223,11 @@ export default function App() {
   const [prevSelId, setPrevSelId] = useState<string | null>(null);
   const [styleCollapsed, setStyleCollapsed] = useState(false);
   const [canvasExpandedH, setCanvasExpandedH] = useState(false);
+
+  // --- linked canvas state (translate step) ---
+  const [canvasesLinked, setCanvasesLinked] = useState(true);
+  const [sharedZoom, setSharedZoom] = useState(1);
+  const [sharedScroll, setSharedScroll] = useState({ x: 0, y: 0 });
 
   // --- verify step (QA inspector) ---
   const [verifyBusy, setVerifyBusy] = useState<string | null>(null); // stage label while streaming
@@ -494,8 +500,19 @@ export default function App() {
           prcssng_time: null,
           instances,
         };
-        await putManifest(asset.asset_id, m);
+        const { resolved_fonts } = await putManifest(asset.asset_id, m);
         setSaveStatus("saved");
+        // "auto" font resolution depends on target_text/target_language,
+        // exactly what changes during Translate-step editing — the
+        // server recomputes it on every save; merge back in so the Font
+        // column and preview stay current without a second fetch
+        if (resolved_fonts && Object.keys(resolved_fonts).length > 0) {
+          setManifest((prev) => prev.map((i) =>
+            resolved_fonts[i.id] !== undefined && resolved_fonts[i.id] !== i.resolved_font_family
+              ? { ...i, resolved_font_family: resolved_fonts[i.id] }
+              : i
+          ));
+        }
       } catch {
         setSaveStatus("idle");
       }
@@ -1373,8 +1390,8 @@ export default function App() {
               ) : (
                 <>
                   <ArrowUpFromLine size={28} />
-                  <span className="text-sm">drop or click to upload an image</span>
-                  <span className="subtext text-xs text-zinc-500 dark:text-zinc-600">uploading a new image starts a fresh capture session</span>
+                  <span className="text-sm">drop or click to upload asset</span>
+                  {/* <span className="subtext text-xs text-zinc-500 dark:text-zinc-600">uploading a new image starts a fresh capture session</span> */}
                 </>
               )}
               <input
@@ -1858,21 +1875,56 @@ export default function App() {
           </div>
 
           <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
-            <BBoxCanvas
-              imageUrl={previewUrl}
-              manifest={manifest}
-              sceneRegions={sceneRegions}
-              selectedId={selectedId}
-              hoveredId={hoveredId}
-              onSelect={setSelectedId}
-              onHover={setHoveredId}
-              onAddRegion={onAddRegion}
-              onUpdateRegion={onUpdateRegion}
-              drawMode={false}
-              imgNaturalSize={imgSize}
-              onImgLoad={setImgSize}
-              preview
-            />
+            <div className="flex flex-col gap-2">
+              <BBoxCanvas
+                imageUrl={previewUrl}
+                manifest={manifest}
+                sceneRegions={sceneRegions}
+                selectedId={selectedId}
+                hoveredId={hoveredId}
+                onSelect={setSelectedId}
+                onHover={setHoveredId}
+                onAddRegion={onAddRegion}
+                onUpdateRegion={onUpdateRegion}
+                drawMode={false}
+                imgNaturalSize={imgSize}
+                onImgLoad={setImgSize}
+                preview
+                canvasLabel="source"
+                showPreviewControls
+                controlledZoom={canvasesLinked ? sharedZoom : undefined}
+                onZoomChange={canvasesLinked ? setSharedZoom : undefined}
+                controlledScroll={canvasesLinked ? sharedScroll : undefined}
+                onScrollChange={canvasesLinked ? setSharedScroll : undefined}
+              />
+              <TargetPreviewCanvas
+                imageUrl={previewUrl}
+                manifest={manifest}
+                imgNaturalSize={imgSize}
+                familiesByLang={familiesByLang}
+                defaultTargLang={targLang}
+                label="target"
+                linked={canvasesLinked}
+                showZoom={!canvasesLinked}
+                controlledZoom={canvasesLinked ? sharedZoom : undefined}
+                onZoomChange={canvasesLinked ? setSharedZoom : undefined}
+                controlledScroll={canvasesLinked ? sharedScroll : undefined}
+                onScrollChange={canvasesLinked ? setSharedScroll : undefined}
+              />
+              <div className="flex justify-center">
+                <button
+                  onClick={() => setCanvasesLinked((v) => !v)}
+                  className={`flex items-center rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                    canvasesLinked
+                      ? "bg-cyan-600 text-white hover:bg-cyan-700"
+                      : "bg-zinc-200 text-zinc-600 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"
+                  }`}
+                  title={canvasesLinked ? "unlink canvases" : "link canvases"}
+                >
+                  {canvasesLinked ? <FaLink size={12} /> : <FaUnlink size={12} />}
+                </button>
+              </div>
+            </div>
             <div
               className="relative flex flex-col gap-4"
               onDragOver={(e) => { e.preventDefault(); setDragOverTranslate(true); }}

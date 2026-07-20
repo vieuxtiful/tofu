@@ -82,6 +82,42 @@ class TestCheckGlyphCoverage:
         assert path == r"C:\Windows\Fonts\cjk.ttc#0"
 
 
+class TestResolveAutoFont:
+    """resolve_auto_font composes _get_font's FALLBACK_FONTS chain with
+    check_glyph_coverage's override -- the same two steps render() takes
+    -- so callers (Translate-tab preview, Font column label) can show
+    the user what "auto" means before any render happens, guaranteed to
+    agree with what actually gets drawn."""
+
+    def test_latin_text_resolves_to_the_installed_fallback_font(self):
+        reg = make_registry([
+            (r"C:\Windows\Fonts\arial.ttf", "Arial", "Regular", 400, LATIN_ONLY),
+        ])
+        path = scribe.resolve_auto_font(reg, "en", "HELLO")
+        assert path == r"C:\Windows\Fonts\arial.ttf"
+
+    def test_text_the_default_cant_cover_resolves_to_a_covering_font(self):
+        reg = make_registry([
+            (r"C:\Windows\Fonts\arial.ttf", "Arial", "Regular", 400, LATIN_ONLY),
+            (r"C:\Windows\Fonts\cjk.ttc#0", "CJK Gothic", "Regular", 400, CJK_SAMPLE),
+        ])
+        path = scribe.resolve_auto_font(reg, "ja", "居酒屋")
+        assert path == r"C:\Windows\Fonts\cjk.ttc#0"
+
+    def test_no_registry_returns_none(self):
+        assert scribe.resolve_auto_font(None, "en", "HELLO") is None
+
+    def test_empty_text_returns_none(self):
+        reg = make_registry([(r"C:\Windows\Fonts\arial.ttf", "Arial", "Regular", 400, LATIN_ONLY)])
+        assert scribe.resolve_auto_font(reg, "en", "") is None
+
+    def test_no_installed_fallback_font_returns_none(self):
+        # registry only has a CJK font -- none of FALLBACK_FONTS
+        # (arial/DejaVuSans/segoeui) is present to serve as a baseline
+        reg = make_registry([(r"C:\Windows\Fonts\cjk.ttc#0", "CJK Gothic", "Regular", 400, CJK_SAMPLE)])
+        assert scribe.resolve_auto_font(reg, "en", "HELLO") is None
+
+
 class TestGetFontHandlesCollectionIndex:
     """regression: FontRegistry keys collection faces as 'path#index'
     (multiple faces share one .ttc/.otc file); PIL takes the index as a

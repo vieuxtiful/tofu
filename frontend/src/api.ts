@@ -136,6 +136,7 @@ export interface InstText {
   target_language: string | null;
   glyph_fallback?: boolean | null;  // scribe swapped fonts: the requested face lacked codepoints for this text
   tm_suggestion?: TMSuggestion | null;  // translation-memory match from a prior approved render
+  resolved_font_family?: string | null;  // what "auto" (style_profile.font_family unset) currently renders with — display hint only, never an override
   segmentation_mask?: { polygon: number[][]; confidence: number } | null;
   style_profile?: {
     font_family: string | null;
@@ -515,7 +516,9 @@ export async function getManifest(assetId: string): Promise<TextManifest> {
   return json(await fetch(`/api/manifest/${assetId}`));
 }
 
-export async function putManifest(assetId: string, manifest: TextManifest): Promise<{ ok: boolean; total_regions: number }> {
+export async function putManifest(
+  assetId: string, manifest: TextManifest
+): Promise<{ ok: boolean; total_regions: number; resolved_fonts: Record<string, string> }> {
   return json(
     await fetch(`/api/manifest/${assetId}`, {
       method: "PUT",

@@ -102,6 +102,7 @@ def _inst_to_dict(inst: InstText) -> dict:
         "glyph_fallback": inst.glyph_fallback,
         "tm_suggestion": inst.tm_suggestion,
         "ocr_correction": inst.ocr_correction,
+        "resolved_font_family": inst.resolved_font_family,
     }
     if inst.language is not None:
         d["language"] = inst.language
@@ -239,6 +240,7 @@ def _dict_to_manifest(data: dict) -> TextManifest:
             glyph_fallback=idict.get("glyph_fallback"),
             tm_suggestion=idict.get("tm_suggestion"),
             ocr_correction=idict.get("ocr_correction"),
+            resolved_font_family=idict.get("resolved_font_family"),
             style_profile=style,
             background_profile=bg,
             characteristics=chars,
