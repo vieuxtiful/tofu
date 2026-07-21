@@ -183,6 +183,14 @@ Open http://localhost:5173.
 
 ---
 
+## performance comparison
+
+<div style="image" align="center">
+  <img src="images/gemini-example.png" width="90%">
+</div>
+
+---
+
 <div align="center">
 
 <img src="images/miis-logo-rev.svg" width="35%" />
