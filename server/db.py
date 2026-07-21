@@ -43,11 +43,12 @@ CREATE TABLE IF NOT EXISTS projects (
   updated_at  REAL NOT NULL
 );
 CREATE TABLE IF NOT EXISTS project_assets (
-  asset_id    TEXT PRIMARY KEY,
-  project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-  filename    TEXT,
-  uploaded_at REAL NOT NULL,
-  is_active   INTEGER NOT NULL DEFAULT 0
+  asset_id     TEXT PRIMARY KEY,
+  project_id   TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  filename     TEXT,
+  uploaded_at  REAL NOT NULL,
+  is_active    INTEGER NOT NULL DEFAULT 0,
+  content_hash TEXT
 );
 CREATE TABLE IF NOT EXISTS snapshots (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -118,6 +119,11 @@ def init_db() -> None:
             con.execute(
                 "ALTER TABLE projects ADD COLUMN asset_kind TEXT NOT NULL DEFAULT 'image'"
             )
+        # migration: assets uploaded before duplicate-image detection existed
+        asset_cols = {r["name"] for r in con.execute("PRAGMA table_info(project_assets)")}
+        if "content_hash" not in asset_cols:
+            con.execute("ALTER TABLE project_assets ADD COLUMN content_hash TEXT")
+        con.execute("CREATE INDEX IF NOT EXISTS idx_assets_hash ON project_assets(content_hash)")
 
 
 # --- projects ---
@@ -195,7 +201,8 @@ def touch_project(pid: str) -> None:
 
 # --- assets ---
 
-def link_asset(pid: str, asset_id: str, filename: Optional[str]) -> None:
+def link_asset(pid: str, asset_id: str, filename: Optional[str],
+               content_hash: Optional[str] = None) -> None:
     """attach an uploaded asset to a project and make it the active one."""
     now = time.time()
     with _conn() as con:
@@ -204,11 +211,25 @@ def link_asset(pid: str, asset_id: str, filename: Optional[str]) -> None:
         )
         con.execute(
             "INSERT OR REPLACE INTO project_assets"
-            " (asset_id, project_id, filename, uploaded_at, is_active)"
-            " VALUES (?, ?, ?, ?, 1)",
-            (asset_id, pid, filename, now),
+            " (asset_id, project_id, filename, uploaded_at, is_active, content_hash)"
+            " VALUES (?, ?, ?, ?, 1, ?)",
+            (asset_id, pid, filename, now, content_hash),
         )
         con.execute("UPDATE projects SET updated_at = ? WHERE id = ?", (now, pid))
+
+
+def find_asset_by_hash(content_hash: str) -> Optional[Dict[str, Any]]:
+    """most recent asset (across all projects) matching an exact content
+    hash, joined with its project's name -- the duplicate-upload check."""
+    with _conn() as con:
+        row = con.execute(
+            """SELECT a.asset_id, a.filename, a.project_id, p.name AS project_name
+               FROM project_assets a JOIN projects p ON p.id = a.project_id
+               WHERE a.content_hash = ?
+               ORDER BY a.uploaded_at DESC LIMIT 1""",
+            (content_hash,),
+        ).fetchone()
+    return dict(row) if row else None
 
 
 def set_active_asset(pid: str, asset_id: str) -> None:

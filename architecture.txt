@@ -1,6 +1,13 @@
 ## ToFU architecture
 ## vieuxtiful
 
+## pipeline stage order (v2, 2026-07):
+##   tofu (pre-flight) → SCENE PRE-PASS (candidate surfaces constrain
+##   detection) → cicerone (multi-pass, scene-filtered, per-region
+##   language id) → tofu re-validation → scene (per-instance style/bg
+##   enrichment) → cleanse → scribe → verify → memory
+## scene runs TWICE: analyze_regions() before cicerone, analyze() after.
+
 project-tofu/
 │
 ├── README.md

@@ -52,6 +52,42 @@ def _containment(inner: BBox, outer: BBox) -> float:
     return inter / area if area > 0 else 0.0
 
 
+def _orientation_bucket(r: BBox) -> str:
+    """coarse tall/wide/square classification, used only to decide
+    whether two highly-overlapping candidate surfaces are plausibly the
+    SAME content (safe to dedupe) or two DIFFERENT pieces of content
+    that happen to share pixels (e.g. small horizontal English text
+    written across a large vertical CJK sign) -- see _is_duplicate_surface."""
+    if r.height <= 0 or r.width <= 0:
+        return "square"
+    ratio = r.width / r.height
+    if ratio > 1.3:
+        return "wide"
+    if ratio < 0.77:
+        return "tall"
+    return "square"
+
+
+def _is_duplicate_surface(candidate: BBox, kept: List[BBox]) -> bool:
+    """True when `candidate` should be discarded as a near-duplicate of
+    an already-kept surface.
+
+    containment alone isn't a safe dedup signal: a small candidate can
+    be >85% inside a large one while representing genuinely DIFFERENT
+    content -- e.g. a small horizontal English label sitting on top of
+    a large vertical CJK sign (measured live: china-street's "MING" on
+    "上海明牌" was silently discarded here before cicerone ever saw it).
+    requiring matching orientation keeps the dedup's original purpose
+    (collapsing near-duplicate MSER/contour blobs of the SAME surface)
+    while no longer discarding orthogonal overlapping content outright.
+    """
+    return any(
+        _containment(candidate, k) > 0.85
+        and _orientation_bucket(candidate) == _orientation_bucket(k)
+        for k in kept
+    )
+
+
 # -- backends -----------------------------------------------------------------
 
 class SceneBackend(ABC):
@@ -399,7 +435,7 @@ class ClassicalCVBackend(SceneBackend):
         all_regions.sort(key=lambda r: r.bbox.width * r.bbox.height, reverse=True)
         kept: List[SceneRegion] = []
         for region in all_regions:
-            if any(_containment(region.bbox, k.bbox) > 0.85 for k in kept):
+            if _is_duplicate_surface(region.bbox, [k.bbox for k in kept]):
                 continue
             kept.append(region)
             if len(kept) >= self.max_regions:

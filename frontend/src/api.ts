@@ -133,6 +133,7 @@ export interface InstText {
   language?: string | null;  // user-confirmed per-region source language
   reading_order: number | null;
   dnt: boolean;
+  excluded?: boolean;  // removed from the workspace UI/export; still erased on render, unlike dnt
   target_language: string | null;
   glyph_fallback?: boolean | null;  // scribe swapped fonts: the requested face lacked codepoints for this text
   tm_suggestion?: TMSuggestion | null;  // translation-memory match from a prior approved render
@@ -159,6 +160,8 @@ export interface InstText {
     tsume: number | null;
     stroke_color: string | null;
     stroke_width: number | null;
+    target_orientation: "horizontal" | "vertical" | null;
+    word_order: "ltr" | "rtl" | null;
   } | null;
   background_profile?: {
     semantic_label: string | null;  // containing scene surface: "panel" | "bordered_region" | ...
@@ -270,7 +273,7 @@ export interface RenderResult {
 }
 
 export interface DetectStreamEvent {
-  stage: "scene" | "cicerone" | "finalize" | "refine" | "zoom" | "polish" | "savor" | "enrich" | "memory" | "complete" | "error";
+  stage: "scene" | "cicerone" | "finalize" | "refine" | "zoom" | "vertical_split" | "paddle_rescue" | "polish" | "savor" | "wasabi" | "menu" | "enrich" | "memory" | "complete" | "error";
   status?: "running" | "complete";
   pass?: number;
   regions?: SceneRegion[] | number;  // scene: region list; cicerone/refine: running count
@@ -341,6 +344,21 @@ export async function uploadAsset(file: File, projectId?: string): Promise<Uploa
   form.append("file", file);
   const qs = projectId ? `?project_id=${encodeURIComponent(projectId)}` : "";
   return json(await fetch(`/api/assets${qs}`, { method: "POST", body: form }));
+}
+
+export async function sha256File(file: File): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+export interface DuplicateCheckResult {
+  duplicate: boolean;
+  project_id: string | null;
+  project_name: string | null;
+}
+
+export async function checkDuplicateAsset(hash: string): Promise<DuplicateCheckResult> {
+  return json(await fetch(`/api/assets/check-duplicate?hash=${encodeURIComponent(hash)}`));
 }
 
 // --- projects ---

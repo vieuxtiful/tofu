@@ -21,8 +21,15 @@ Request (stdin, one JSON object):
     "lang": "<paddleocr lang code, e.g. 'en' | 'korean' | 'japan' | 'ch'>",
     "out_path": "<absolute path this worker must write its JSON result to>",
     "regions": [[x, y, w, h], ...],   # detect_regions only
-    "pad": 4                          # detect_regions only, default 4
+    "pad": 4,                         # detect_regions only, default 4
+    "det_db_thresh": 0.3,             # optional -> PaddleOCR's text_det_thresh
+    "det_box_thresh": 0.6,            # optional -> text_det_box_thresh
+    "drop_score": 0.3,                # optional -> text_rec_score_thresh
+    "unclip_ratio": 1.4               # optional -> text_det_unclip_ratio
   }
+  a reader is cached per (lang, threshold-params) combination -- omitted
+  threshold keys fall back to PaddleOCR's own model defaults rather than
+  this worker silently re-guessing one.
 
 Result (written to out_path):
   {"ok": true, "detections": [{"polygon": [[x,y],...], "text": str, "confidence": float}, ...]}
@@ -42,20 +49,34 @@ import sys
 # paddle/paddleocr import
 os.environ.setdefault("FLAGS_use_mkldnn", "0")
 
-_readers = {}  # lang -> PaddleOCR instance, reused across detect_regions calls
+_readers = {}  # (lang, det_params) -> PaddleOCR instance, reused across calls
+
+# request key -> PaddleOCR constructor kwarg it maps to
+_DET_PARAM_MAP = {
+    "det_db_thresh": "text_det_thresh",
+    "det_box_thresh": "text_det_box_thresh",
+    "drop_score": "text_rec_score_thresh",
+    "unclip_ratio": "text_det_unclip_ratio",
+}
 
 
-def _get_reader(lang: str):
-    if lang not in _readers:
+def _get_reader(lang: str, det_params: dict | None = None):
+    det_params = det_params or {}
+    cache_key = (lang, tuple(sorted(det_params.items())))
+    if cache_key not in _readers:
         from paddleocr import PaddleOCR
-        _readers[lang] = PaddleOCR(
+        kwargs = {
+            _DET_PARAM_MAP[k]: v for k, v in det_params.items() if k in _DET_PARAM_MAP
+        }
+        _readers[cache_key] = PaddleOCR(
             lang=lang,
             use_doc_orientation_classify=False,
             use_doc_unwarping=False,
             use_textline_orientation=True,
             enable_mkldnn=False,
+            **kwargs,
         )
-    return _readers[lang]
+    return _readers[cache_key]
 
 
 def _run_predict(reader, image) -> list:
@@ -74,8 +95,12 @@ def _run_predict(reader, image) -> list:
     return out
 
 
+def _det_params_from_req(req: dict) -> dict:
+    return {k: req[k] for k in _DET_PARAM_MAP if k in req}
+
+
 def op_detect(req: dict) -> dict:
-    reader = _get_reader(req["lang"])
+    reader = _get_reader(req["lang"], _det_params_from_req(req))
     dets = _run_predict(reader, req["image_path"])
     return {
         "ok": True,
@@ -90,7 +115,7 @@ def op_detect_regions(req: dict) -> dict:
     import numpy as np
     from PIL import Image
 
-    reader = _get_reader(req["lang"])
+    reader = _get_reader(req["lang"], _det_params_from_req(req))
     img = np.asarray(Image.open(req["image_path"]).convert("RGB"))
     h, w = img.shape[:2]
     pad = int(req.get("pad", 4))

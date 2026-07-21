@@ -27,6 +27,18 @@ from tofu.layers import cicerone, scene  # noqa: E402
 from tofu.layers.cicerone import ScriptDetector  # noqa: E402
 
 
+def _font_registry():
+    """best-effort FontRegistry for savor's dakuten course -- mirrors
+    server/main.py's _font_dir() fallback chain. returns None (course
+    silently skipped, fail-open) when nothing is found."""
+    import os
+    from tofu.layers.fonts import FontRegistry
+    font_dir = os.environ.get("TOFU_FONT_DIR") or (
+        "C:/Windows/Fonts" if sys.platform == "win32" else "/usr/share/fonts"
+    )
+    return FontRegistry(font_dir) if Path(font_dir).exists() else None
+
+
 def infer_src_lang(manifest) -> str:
     """area-weighted dominant language (mirrors server logic)."""
     votes = Counter()
@@ -245,7 +257,8 @@ def main() -> None:
         detect_kwargs["identify_languages"] = False
     t1 = time.time()
     manifest = cicerone.detect(
-        str(image_path), scene_regions=scene_regions, **detect_kwargs
+        str(image_path), scene_regions=scene_regions,
+        font_registry=_font_registry(), **detect_kwargs
     )
     t_detect = time.time() - t1
 

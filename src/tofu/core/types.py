@@ -117,6 +117,7 @@ class InstText:
     temporal_span: Optional[tuple[int, int]] = None  ## video: (first_frame, last_frame) the instance persists
     track_id: Optional[str] = None               ## video: links per-frame instances into one tracked text entity
     dnt: bool = False                            ## do-not-translate flag: excluded from export and scribe
+    excluded: bool = False                       ## user-removed from the workspace: still cleansed/erased, never rendered/exported (unlike dnt, which leaves source text untouched)
     target_language: Optional[str] = None        ## per-region override of target language (None = use manifest default)
     glyph_fallback: Optional[bool] = None         ## True: scribe swapped the requested font for a codepoint-covering one
     tm_suggestion: Optional[Dict[str, Any]] = None  ## Memory lookup match: {target_text, score, method, source_asset_id, record_id}

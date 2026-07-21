@@ -1,0 +1,17 @@
+## 🍢 ToFU server — consolidated requirements (backend + pipeline)
+## install into the project venv:
+##   py -3.13 -m venv .venv
+##   .venv\Scripts\python -m pip install -r server/requirements.txt
+
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch>=2.2                  # CPU build via extra index; easyocr backbone
+easyocr>=1.7.1              # cicerone OCR backend (CRAFT + CRNN); pulls opencv-headless, scikit-image, python-bidi, shapely
+paddleocr>=2.7.0            # cicerone optional OCR backend (DB + SVTR); higher accuracy on skew/curve/CJK
+fastapi>=0.110
+uvicorn[standard]>=0.29
+python-multipart>=0.0.9
+pydantic>=2.6
+pillow>=10.0                # scribe rendering + cicerone pre-resize
+numpy>=1.26                 # image array interchange
+fonttools>=4.38             # tofu layer-0 glyph coverage
+arabic-reshaper>=3.0        # scribe RTL shaping (phase 7)

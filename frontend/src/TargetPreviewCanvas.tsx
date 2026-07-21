@@ -6,6 +6,7 @@ import { fitWrappedText, getMeasureContext, FitResult } from "./textFit";
 import "./bbox.css";
 
 interface TargetPreviewCanvasProps {
+  className?: string;
   imageUrl: string | null;
   manifest: InstText[];
   imgNaturalSize: { width: number; height: number } | null;
@@ -19,19 +20,24 @@ interface TargetPreviewCanvasProps {
   onZoomChange?: (zoom: number) => void;
   controlledScroll?: { x: number; y: number };
   onScrollChange?: (scroll: { x: number; y: number }) => void;
+  controlledHeight?: number | null;
+  onHeightChange?: (height: number) => void;
+  onDoubleClickExpand?: () => void;
 }
 
 type PanState = { startClientX: number; startClientY: number; startScrollLeft: number; startScrollTop: number } | null;
 
 export default function TargetPreviewCanvas({
-  imageUrl, manifest, imgNaturalSize, familiesByLang, defaultTargLang, label,
+  className, imageUrl, manifest, imgNaturalSize, familiesByLang, defaultTargLang, label,
   linked, showZoom = true, controlledZoom, onZoomChange, controlledScroll, onScrollChange,
+  controlledHeight, onHeightChange, onDoubleClickExpand,
 }: TargetPreviewCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const [internalZoom, setInternalZoom] = useState(1);
   const [fitWidth, setFitWidth] = useState<number | null>(null);
   const [pan, setPan] = useState<PanState>(null);
+  const lastDragHandleDown = useRef(0);
 
   const zoom = linked && controlledZoom !== undefined ? controlledZoom : internalZoom;
 
@@ -110,6 +116,44 @@ export default function TargetPreviewCanvas({
     el.addEventListener("scroll", onScroll);
     return () => el.removeEventListener("scroll", onScroll);
   }, [linked, onScrollChange]);
+
+  // drag handle to expand/collapse canvas height
+  const MIN_CANVAS_H = 200;
+  const MAX_CANVAS_H = 800;
+  const dragStartY = useRef(0);
+  const dragStartHeight = useRef(300);
+  const onExpandDragStart = useCallback((e: React.MouseEvent) => {
+    // double-click detection via timestamp
+    const now = Date.now();
+    if (now - lastDragHandleDown.current < 300) {
+      lastDragHandleDown.current = 0;
+      onDoubleClickExpand?.();
+      return;
+    }
+    lastDragHandleDown.current = now;
+
+    dragStartY.current = e.clientY;
+    dragStartHeight.current = containerRef.current?.parentElement?.offsetHeight ?? 300;
+    const dynamicMax = MAX_CANVAS_H;
+    let dragging = false;
+    const onMove = (ev: MouseEvent) => {
+      if (!dragging) {
+        dragging = true;
+        ev.preventDefault();
+      }
+      const delta = ev.clientY - dragStartY.current;
+      const newHeight = Math.max(MIN_CANVAS_H, Math.min(dynamicMax, dragStartHeight.current + delta));
+      if (onHeightChange) {
+        onHeightChange(newHeight);
+      }
+    };
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }, [onHeightChange, imgNaturalSize, fitWidth, zoom, onDoubleClickExpand]);
 
   // resolved, non-size CSS bits for a region's target text — shared by
   // both the canvas measurement (textFit) and the actual React style, so
@@ -214,8 +258,8 @@ export default function TargetPreviewCanvas({
 
   return (
     <div
-      className="bezier-card soft-shadow relative flex min-h-[200px] flex-col rounded-lg bg-zinc-100 dark:bg-zinc-900"
-      style={{ height: 300, transition: "height 0.3s ease-in-out" }}
+      className={`bezier-card soft-shadow relative flex min-h-[200px] flex-col rounded-lg bg-zinc-100 dark:bg-zinc-900 ${className ?? ""}`}
+      style={{ height: controlledHeight !== undefined ? (controlledHeight ?? 300) : 300, transition: "height 0.3s ease-in-out" }}
     >
       <div
         ref={containerRef}
@@ -277,6 +321,16 @@ export default function TargetPreviewCanvas({
                     : spec.justification === "last_right" ? "flex-end"
                     : spec.justification === "justify_center" ? "center"
                     : undefined;
+                  const isVertical = inst.style_profile?.target_orientation === "vertical";
+                  // vertical mode: split target text into words, each word
+                  // becomes a column of characters stacked top-to-bottom,
+                  // words juxtaposed horizontally left-to-right (or right-to-left)
+                  const isRtl = inst.style_profile?.word_order === "rtl";
+                  const verticalWords = isVertical
+                    ? (isRtl
+                      ? inst.target_text.split(/\s+/).filter(Boolean).reverse()
+                      : inst.target_text.split(/\s+/).filter(Boolean))
+                    : [];
                   return (
                     <div
                       key={inst.id}
@@ -288,15 +342,13 @@ export default function TargetPreviewCanvas({
                         height: px(inst.bounding_box.height),
                         background: bg !== "transparent" ? bg : undefined,
                         display: "flex",
-                        flexDirection: "column",
-                        justifyContent: spec.alignV === "top" ? "flex-start" : spec.alignV === "bottom" ? "flex-end" : "center",
-                        alignItems: defaultAlignItems,
-                        // zero horizontal inset, matching render()'s own
-                        // flush-to-bbox line positioning — the fit above
-                        // was computed against the bbox's full width, so
-                        // any padding here would make the box narrower
-                        // than what was actually fit and cause visible
-                        // clipping/wrap the server wouldn't produce
+                        flexDirection: isVertical ? "row" : "column",
+                        justifyContent: isVertical
+                          ? (spec.alignV === "top" ? "flex-start" : spec.alignV === "bottom" ? "flex-end" : "center")
+                          : (spec.alignV === "top" ? "flex-start" : spec.alignV === "bottom" ? "flex-end" : "center"),
+                        alignItems: isVertical
+                          ? (alignH === "right" ? "flex-end" : alignH === "center" ? "center" : "flex-start")
+                          : defaultAlignItems,
                         overflow: "hidden",
                         pointerEvents: "none",
                         transform: [
@@ -305,7 +357,43 @@ export default function TargetPreviewCanvas({
                         ].filter(Boolean).join(" ") || undefined,
                       }}
                     >
-                      {lines.map((line, i) => (
+                      {isVertical ? (
+                        // vertical: each word is a column of characters
+                        verticalWords.map((word, wi) => (
+                          <div
+                            key={wi}
+                            style={{
+                              display: "flex",
+                              flexDirection: "column",
+                              alignItems: "center",
+                              marginRight: wi < verticalWords.length - 1 ? `${fontSizePx * 0.3}px` : undefined,
+                            }}
+                          >
+                            {word.split("").map((ch, ci) => (
+                              <span
+                                key={ci}
+                                style={{
+                                  fontFamily: spec.cssFontFamily,
+                                  fontWeight: spec.fontWeight,
+                                  fontStyle: spec.fontStyle,
+                                  color: spec.color,
+                                  fontSize: spec.subscript || spec.superscript ? `${fontSizePx * 0.7}px` : `${fontSizePx}px`,
+                                  verticalAlign: spec.subscript ? "sub" : spec.superscript ? "super" : undefined,
+                                  lineHeight: `${lineAdvancePx}px`,
+                                  letterSpacing: spec.trackingPx ? `${spec.trackingPx * scale}px` : undefined,
+                                  textDecoration: inst.style_profile?.underline ? "underline" : undefined,
+                                  WebkitTextStroke: spec.strokeColor && spec.strokeWidthPx
+                                    ? `${spec.strokeWidthPx * scale}px ${spec.strokeColor}` : undefined,
+                                  whiteSpace: "pre",
+                                }}
+                              >
+                                {ch}
+                              </span>
+                            ))}
+                          </div>
+                        ))
+                      ) : (
+                      lines.map((line, i) => (
                         <span
                           key={i}
                           style={{
@@ -327,7 +415,8 @@ export default function TargetPreviewCanvas({
                         >
                           {line}
                         </span>
-                      ))}
+                      ))
+                      )}
                     </div>
                   );
                 })}
@@ -385,7 +474,7 @@ export default function TargetPreviewCanvas({
         </div>
       )}
       {/* label + grabber */}
-      <div className="title-drag-handle shrink-0 flex items-center justify-center" style={{ position: "relative" }}>
+      <div className="title-drag-handle shrink-0 flex items-center justify-center" onMouseDown={onExpandDragStart} style={{ position: "relative" }} title="drag to resize · double-click to toggle height">
         <svg width="42" height="14" viewBox="0 0 42 14" fill="none" xmlns="http://www.w3.org/2000/svg">
           <rect x="0.5" y="1" width="41" height="4.5" rx="2.25" fill="currentColor" />
           <rect x="11" y="8" width="20" height="4.5" rx="2.25" fill="currentColor" />

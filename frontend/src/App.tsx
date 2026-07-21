@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  AlertTriangle, AlignCenter, AlignEndHorizontal, AlignEndVertical, AlignJustify, AlignLeft, AlignRight, AlignStartHorizontal, AlignStartVertical, ArrowLeft, ArrowUpFromLine, Baseline, Bold, BookmarkCheck, Box, Check, ChevronDown, FileImage, FolderOpen, Hexagon, History, Home, Italic, Languages, Loader2,
+  AlertTriangle, AlignCenter, AlignEndHorizontal, AlignEndVertical, AlignJustify, AlignLeft, AlignRight, AlignStartHorizontal, AlignStartVertical, ArrowLeft, ArrowLeftRight, ArrowUpFromLine, Baseline, Bold, BookmarkCheck, Box, Check, ChevronDown, FileImage, FolderOpen, Hexagon, History, Home, Italic, Languages, Loader2,
   Play, Plus, RotateCcw, ScanText, ShieldAlert, Sparkles, SquareStack, Subscript, Superscript, Type, Underline, X,
 } from "lucide-react";
 import {
   BBox, FontFamily, FontOption, ImportResult, InstText, LanguageOption, Project,
   RenderResult, RenderStreamEvent, SceneRegion, TextManifest, UploadResponse, ValidationReport,
-  addRegion, approveRender, deleteProjectAsset, deleteRegion, detectAssetStream, fetchFonts,
-  fetchLanguages, getManifest, getProject, importFile, ocrRegion, putManifest, refineRegion,
-  renderAsset, renderAssetStream, scanAssetLanguage, snapshotAsset, updateProject, uploadAsset,
-  validateAsset,
+  addRegion, approveRender, checkDuplicateAsset, deleteProjectAsset, deleteRegion, detectAssetStream,
+  fetchFonts, fetchLanguages, getManifest, getProject, importFile, ocrRegion, putManifest,
+  refineRegion, renderAsset, renderAssetStream, scanAssetLanguage, sha256File, snapshotAsset,
+  updateProject, uploadAsset, validateAsset,
 } from "./api";
 import { FcCollapse } from "react-icons/fc";
 import { LiaSpellCheckSolid } from "react-icons/lia";
@@ -21,6 +21,7 @@ import { PiWarningCircleFill } from "react-icons/pi";
 import { MdTipsAndUpdates } from "react-icons/md";
 import { HiCubeTransparent } from "react-icons/hi2";
 import { HiLockClosed, HiLockOpen } from "react-icons/hi";
+import { LuUndo2, LuRedo2 } from "react-icons/lu";
 import { langDisplayName, langFlag, LANGUAGE_REGIONS, REGION_ORDER } from "./languageData";
 import LanguageCombobox from "./LanguageCombobox";
 import FontCombobox, { loadFontPreview, fontNameForPath, weightLabel } from "./FontCombobox";
@@ -34,7 +35,7 @@ import MemoryPanel from "./MemoryPanel";
 import SplashScreen from "./SplashScreen";
 import TitleScreen from "./TitleScreen";
 import ThemeToggle from "./ThemeToggle";
-import { FlipButton, PressButton } from "./Buttons";
+import { FlipButton, PressButton, ThemeSwitch } from "./Buttons";
 import { SquareLoader } from "./Loaders";
 import ToastSystem, { useToasts, useNotifications, type ToastType, type ToastAction } from "./ToastSystem";
 import NotificationBell from "./NotificationBell";
@@ -65,13 +66,15 @@ function Badge({ ok, children }: { ok: boolean; children: React.ReactNode }) {
   );
 }
 
-function Section({ title, icon, children }: { title: string; icon?: React.ReactNode; children: React.ReactNode }) {
+function Section({ title, icon, children, className = "", rightSideHandle, bottomHandle, sectionStyle, localized, flat }: { title: string; icon?: React.ReactNode; children: React.ReactNode; className?: string; rightSideHandle?: React.ReactNode; bottomHandle?: React.ReactNode; sectionStyle?: React.CSSProperties; localized?: boolean; flat?: boolean }) {
   return (
-    <section className="bezier-card soft-shadow rounded-xl bg-white/60 p-5 dark:bg-zinc-900/60">
+    <section data-render-localized={localized ? "true" : undefined} className={flat ? `relative ${className}` : `bezier-card soft-shadow relative rounded-xl bg-white/60 p-5 dark:bg-zinc-900/60 ${className}`} style={sectionStyle}>
       <h2 className="subtext mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
         {icon} {title}
       </h2>
       {children}
+      {rightSideHandle}
+      {bottomHandle}
     </section>
   );
 }
@@ -140,8 +143,8 @@ function AssetDeleteConfirmOverlay({ filename, onYes, onNo }: { filename: string
       onClick={handleNo}
     >
       <div className="title-confirm-card" onClick={(e) => e.stopPropagation()}>
-        <p className="title-confirm-message">are you sure you want to remove this asset?</p>
-        <p className="subtext mt-1 text-center text-xs text-zinc-500">snapshots are taken—nothing is permanently lost.</p>
+        <p className="title-confirm-message">remove this asset?</p>
+        <p className="subtext mt-1 text-center text-xs text-zinc-500">Snapshots captured—nothing is permanently lost.</p>
         <div className="title-confirm-actions">
           <button className="title-confirm-btn yes" onClick={handleYes}>Yes</button>
           <button className="title-confirm-btn no" onClick={handleNo}>No</button>
@@ -180,10 +183,21 @@ function UnsavedChangesOverlay({ onYes, onNo }: { onYes: () => void; onNo: () =>
   );
 }
 
+const SCREEN_KEY = "tofu.screen";
+
 export default function App() {
   const { theme, toggle: toggleTheme } = useTheme();
-  const [screen, setScreen] = useState<Screen>("splash");
-  const [displayedScreen, setDisplayedScreen] = useState<Screen>("splash");
+  // on reload, restore the saved screen — but always play splash for title
+  const [screen, setScreen] = useState<Screen>(() => {
+    const saved = sessionStorage.getItem(SCREEN_KEY);
+    if (saved === "main" || saved === "pantry") return saved as Screen;
+    return "splash";
+  });
+  const [displayedScreen, setDisplayedScreen] = useState<Screen>(() => {
+    const saved = sessionStorage.getItem(SCREEN_KEY);
+    if (saved === "main" || saved === "pantry") return saved as Screen;
+    return "splash";
+  });
   const [leaving, setLeaving] = useState(false);
   const [pantryLeaving, setPantryLeaving] = useState(false);
   const [pantryMode, setPantryMode] = useState<"full" | "pantry" | "create">("full");
@@ -191,6 +205,12 @@ export default function App() {
   const transitionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [pendingBackNav, setPendingBackNav] = useState(false);
   const navGuardRef = useRef(false);
+
+  // persist current screen so reload restores it (except title always gets splash)
+  useEffect(() => {
+    if (screen === "splash") return;
+    sessionStorage.setItem(SCREEN_KEY, screen);
+  }, [screen]);
 
   const transitionTo = useCallback((next: Screen) => {
     if (next === displayedScreen) return;
@@ -209,6 +229,12 @@ export default function App() {
   }, [screen, displayedScreen, transitionTo]);
 
   const [step, setStep] = useState<Step>(0);
+  const [stackAnimDisabled, setStackAnimDisabled] = useState<boolean>(
+    () => localStorage.getItem("tofu.stackAnimDisabled") === "true"
+  );
+  const [stackReveal, setStackReveal] = useState(0);
+  const [stackRevealStep, setStackRevealStep] = useState<Step>(0);
+  const stackTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const [asset, setAsset] = useState<UploadResponse | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [languages, setLanguages] = useState<LanguageOption[]>([]);
@@ -223,11 +249,140 @@ export default function App() {
   const [prevSelId, setPrevSelId] = useState<string | null>(null);
   const [styleCollapsed, setStyleCollapsed] = useState(false);
   const [canvasExpandedH, setCanvasExpandedH] = useState(false);
+  const [styleExpandedH, setStyleExpandedH] = useState(false);
+  // vertical expand for Text & Appearance card (half-width only)
+  const [styleExpandedV, setStyleExpandedV] = useState(false);
+  const [styleCardH, setStyleCardH] = useState<number | null>(null);
+  const styleCardRef = useRef<HTMLDivElement | null>(null);
+  const styleDragStartY = useRef(0);
+  const styleDragStartH = useRef(0);
+  const preExpandStyleH = useRef<number | null>(null);
+  const styleExpandTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onStyleExpandClick = useCallback(() => {
+    if (styleExpandTimer.current) {
+      clearTimeout(styleExpandTimer.current);
+      styleExpandTimer.current = null;
+      setStyleExpandedH((v) => {
+        const nv = !v;
+        if (nv) { setStyleCardH(null); setStyleExpandedV(false); }
+        return nv;
+      });
+      return;
+    }
+    styleExpandTimer.current = setTimeout(() => { styleExpandTimer.current = null; }, 250);
+  }, []);
+  const onStyleDragStart = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    styleDragStartY.current = e.clientY;
+    styleDragStartH.current = styleCardRef.current?.offsetHeight ?? 400;
+    // compute max height: localized card bottom - style card top - decisions summary - gap
+    const styleEl = styleCardRef.current;
+    const localizedEl = document.querySelector('[data-render-localized]');
+    const decisionsEl = document.querySelector('[data-render-decisions]');
+    let maxH = 9999;
+    if (styleEl && localizedEl) {
+      const styleRect = styleEl.getBoundingClientRect();
+      const localizedRect = localizedEl.getBoundingClientRect();
+      const decisionsH = decisionsEl ? (decisionsEl as HTMLElement).offsetHeight : 0;
+      maxH = localizedRect.bottom - styleRect.top - decisionsH - 16;
+    }
+    const onMove = (ev: MouseEvent) => {
+      const delta = ev.clientY - styleDragStartY.current;
+      const newH = Math.max(200, Math.min(maxH, styleDragStartH.current + delta));
+      setStyleExpandedV(false);
+      preExpandStyleH.current = null;
+      setStyleCardH(newH);
+    };
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }, []);
+  const onStyleDoubleClick = useCallback(() => {
+    if (styleExpandedV) {
+      // collapse back to standard
+      setStyleExpandedV(false);
+      setStyleCardH(null);
+    } else {
+      // expand to max: decisions summary bottom should align with localized asset card bottom
+      const styleEl = styleCardRef.current;
+      if (!styleEl) return;
+      const localizedEl = document.querySelector('[data-render-localized]');
+      if (!localizedEl) return;
+      const decisionsEl = document.querySelector('[data-render-decisions]');
+      const styleRect = styleEl.getBoundingClientRect();
+      const localizedRect = localizedEl.getBoundingClientRect();
+      // account for decisions summary card height + gap (space-y-4 = 16px)
+      const decisionsH = decisionsEl ? (decisionsEl as HTMLElement).offsetHeight : 0;
+      const gap = 16; // space-y-4 gap
+      const maxH = localizedRect.bottom - styleRect.top - decisionsH - gap;
+      preExpandStyleH.current = styleEl.offsetHeight;
+      setStyleCardH(Math.max(200, maxH));
+      setStyleExpandedV(true);
+    }
+  }, [styleExpandedV]);
+
+  // reset render-tab expansion state when leaving step 3
+  useEffect(() => {
+    if (step !== 3) { setStyleCardH(null); setStyleExpandedV(false); setStyleExpandedH(false); }
+  }, [step]);
+
+  // stacking animation: reset reveal counter on step change, then increment
+  useEffect(() => {
+    stackTimers.current.forEach(clearTimeout);
+    stackTimers.current = [];
+    setStackReveal(0);
+    setStackRevealStep(step);
+    if (stackAnimDisabled) return;
+    // reveal cards one by one at 100ms intervals (up to 8 cards max)
+    for (let i = 1; i <= 8; i++) {
+      stackTimers.current.push(setTimeout(() => setStackReveal(i), i * 100));
+    }
+    return () => { stackTimers.current.forEach(clearTimeout); };
+  }, [step, stackAnimDisabled]);
+
+  // persist stacking animation preference
+  useEffect(() => {
+    localStorage.setItem("tofu.stackAnimDisabled", String(stackAnimDisabled));
+  }, [stackAnimDisabled]);
+
+  // helper: returns class for a card at given stack index
+  const stackClass = useCallback((index: number): string => {
+    if (stackAnimDisabled) return "";
+    if (stackRevealStep !== step) return "stack-hidden";
+    return index < stackReveal ? "stack-in" : "stack-hidden";
+  }, [stackAnimDisabled, stackReveal, stackRevealStep, step]);
+
+  // --- image size (shared across steps) ---
+  const [imgSize, setImgSize] = useState<{ width: number; height: number } | null>(null);
 
   // --- linked canvas state (translate step) ---
   const [canvasesLinked, setCanvasesLinked] = useState(true);
   const [sharedZoom, setSharedZoom] = useState(1);
   const [sharedScroll, setSharedScroll] = useState({ x: 0, y: 0 });
+  // shared canvas height: null = standard, number = expanded (px)
+  const STANDARD_CANVAS_H = 300;
+  const [sharedCanvasH, setSharedCanvasH] = useState<number | null>(null);
+  const lastExpandedH = useRef<number | null>(null);
+  const computeExpandedHeight = useCallback(() => {
+    // max height before images truncate: viewport minus header, stepper, toolbar, padding
+    const reserved = 96 /* logo */ + 60 /* stepper */ + 50 /* toolbar */ + 64 /* padding */ + 80 /* link button + gaps */;
+    const viewportMax = Math.max(STANDARD_CANVAS_H, window.innerHeight - reserved);
+    return Math.min(800, viewportMax); // cap at MAX_CANVAS_H
+  }, []);
+  const toggleLinkedCanvasHeight = useCallback(() => {
+    setSharedCanvasH((h) => {
+      if (h !== null) {
+        lastExpandedH.current = h; // remember height before collapsing
+        return null; // collapse to standard
+      }
+      // restore last expanded height, or compute a default
+      return lastExpandedH.current ?? computeExpandedHeight();
+    });
+  }, [computeExpandedHeight]);
 
   // --- verify step (QA inspector) ---
   const [verifyBusy, setVerifyBusy] = useState<string | null>(null); // stage label while streaming
@@ -255,13 +410,60 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const cancelDetectRef = useRef<(() => void) | null>(null);
 
-  const [manifest, setManifest] = useState<InstText[]>([]);
+  const [manifest, setManifestRaw] = useState<InstText[]>([]);
+  // undo/redo history for manifest edits
+  const manifestUndoStack = useRef<InstText[][]>([]);
+  const manifestRedoStack = useRef<InstText[][]>([]);
+  const manifestSkipHistory = useRef(false);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+  const syncUndoRedo = useCallback(() => {
+    setCanUndo(manifestUndoStack.current.length > 0);
+    setCanRedo(manifestRedoStack.current.length > 0);
+  }, []);
+  const setManifest = useCallback((updater: InstText[] | ((prev: InstText[]) => InstText[])) => {
+    setManifestRaw((prev) => {
+      const next = typeof updater === "function" ? (updater as (p: InstText[]) => InstText[])(prev) : updater;
+      if (!manifestSkipHistory.current) {
+        manifestUndoStack.current.push(prev);
+        if (manifestUndoStack.current.length > 50) manifestUndoStack.current.shift();
+        manifestRedoStack.current = [];
+      }
+      manifestSkipHistory.current = false;
+      syncUndoRedo();
+      return next;
+    });
+  }, [syncUndoRedo]);
+  const undoManifest = useCallback(() => {
+    setManifestRaw((prev) => {
+      const stack = manifestUndoStack.current;
+      if (stack.length === 0) return prev;
+      const previous = stack.pop()!;
+      manifestRedoStack.current.push(prev);
+      syncUndoRedo();
+      return previous;
+    });
+  }, [syncUndoRedo]);
+  const redoManifest = useCallback(() => {
+    setManifestRaw((prev) => {
+      const stack = manifestRedoStack.current;
+      if (stack.length === 0) return prev;
+      const next = stack.pop()!;
+      manifestUndoStack.current.push(prev);
+      syncUndoRedo();
+      return next;
+    });
+  }, [syncUndoRedo]);
+  // excluded regions stay in `manifest` (cleanse still needs to erase them),
+  // but the canvas and table must never show a "deleted" region -- everything
+  // rendered to the user reads from this filtered view instead of `manifest`
+  // directly.
+  const visibleManifest = manifest.filter((i) => !i.excluded);
   const [imgDim, setImgDim] = useState<[number, number] | null>(null);
   const [sceneRegions, setSceneRegions] = useState<SceneRegion[]>([]);
   const [srcLang, setSrcLang] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [drawMode, setDrawMode] = useState(false);
-  const [imgSize, setImgSize] = useState<{ width: number; height: number } | null>(null);
   const [ocrLoading, setOcrLoading] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
   const [srcLangLocked, setSrcLangLocked] = useState(true);
@@ -323,6 +525,8 @@ export default function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [pendingUploadFile, setPendingUploadFile] = useState<File | null>(null);
+  const [pendingDuplicateFile, setPendingDuplicateFile] = useState<{ file: File; projectName: string } | null>(null);
   const [scan, setScan] = useState<ScanState | null>(null);
 
   const { toasts, addToast: rawAddToast, dismissToast } = useToasts();
@@ -391,7 +595,11 @@ export default function App() {
     }
     setAsset(null);
     setPreviewUrl(null);
+    manifestSkipHistory.current = true;
     setManifest([]);
+    manifestUndoStack.current = [];
+    manifestRedoStack.current = [];
+    syncUndoRedo();
     setImgDim(null);
     setSceneRegions([]);
     setSelectedId(null);
@@ -412,7 +620,7 @@ export default function App() {
     setError(null);
     setLockedLangs(new Set());
     setStep(0);
-  }, []);
+  }, [syncUndoRedo]);
 
   /** pull a project's active asset + manifest from the server and hydrate
    * the editor — this is how sessions are resumed after a reload */
@@ -434,13 +642,17 @@ export default function App() {
       asset_url: active.asset_url,
     });
     setPreviewUrl(active.asset_url);
+    manifestUndoStack.current = [];
+    manifestRedoStack.current = [];
+    syncUndoRedo();
+    manifestSkipHistory.current = true;
     setManifest(m.instances);
     setImgDim(m.img_dim);
     setSceneRegions(m.scene_regions ?? []);
     if (m.src_lang) setSrcLang(m.src_lang);
     if (m.instances.length > 0) setStep(1);
     return p;
-  }, []);
+  }, [syncUndoRedo]);
 
   const goPantry = useCallback((mode: "full" | "pantry" | "create" = "full") => {
     setPantryMode(mode);
@@ -460,20 +672,24 @@ export default function App() {
     loadProjectSession(p.id)
       .then((full) => {
         if (full.active_asset?.has_manifest) {
-          addToast("success", `resumed session for "${p.name}"`);
+          addToast("success", `resumed session: "${p.name}"`);
         }
       })
       .catch(() => {});
   }, [resetSession, loadProjectSession, addToast, displayedScreen]);
 
-  // on load: silently rehydrate the last project while the splash plays
+  // auto-resume project session when reloading directly into main screen
+  const sessionRestoredRef = useRef(false);
   useEffect(() => {
-    const saved = localStorage.getItem(PROJECT_KEY);
-    if (!saved) return;
-    loadProjectSession(saved).catch(() => {
-      localStorage.removeItem(PROJECT_KEY);
+    if (screen !== "main" || sessionRestoredRef.current) return;
+    const pid = localStorage.getItem(PROJECT_KEY);
+    if (!pid || project) return;
+    sessionRestoredRef.current = true;
+    loadProjectSession(pid).catch(() => {
+      sessionStorage.removeItem(SCREEN_KEY);
+      setScreen("title");
     });
-  }, [loadProjectSession]);
+  }, [screen, project, loadProjectSession]);
 
   const refreshProject = useCallback(() => {
     if (!project) return;
@@ -530,12 +746,12 @@ export default function App() {
       const r = await scanAssetLanguage(uploaded.asset_id);
       if (r.engine === "null") {
         setScan(null);
-        addToast("warning", "language scan skipped — the ocr engine is not installed on the server.");
+        addToast("warning", "language scan skipped — OCR engine not installed on the server.");
         return;
       }
       if (r.locked && r.detected_lang) {
         setSrcLang(r.detected_lang);
-        addToast("success", `source language locked to ${langDisplayName(r.detected_lang)} from this asset.`);
+        addToast("success", `asset source language locked: ${langDisplayName(r.detected_lang)}.`);
         getProject(projectId).then(setProject).catch(() => {});
       }
       if (r.match === false) {
@@ -547,7 +763,7 @@ export default function App() {
           "error",
           `language mismatch: "${uploaded.filename}" is ${langDisplayName(r.detected_lang ?? "?")}, ` +
           `but the project source is ${langDisplayName(r.project_source_lang ?? "?")}. ` +
-          "Change your project source language to proceed.",
+          "change project source language to proceed.",
           false
         );
       } else {
@@ -584,7 +800,7 @@ export default function App() {
       const uploaded = await uploadAsset(file, project.id);
       setAsset(uploaded);
       getProject(project.id).then(setProject).catch(() => {});
-      addToast("success", `"${uploaded.filename}" uploaded — scanning language…`);
+      addToast("success", `"${uploaded.filename}" scanning language…`);
       void runLanguageScan(uploaded, project.id);
     } catch (e) {
       setErrorWithNotif(String(e));
@@ -593,9 +809,13 @@ export default function App() {
     }
   }, [project, asset, manifest.length, resetSession, addToast, runLanguageScan]);
 
-  const onFile = useCallback((file: File) => {
+  const proceedWithFile = useCallback((file: File) => {
     if (!project) {
-      goPantry();
+      // no project yet: hold the file and go straight to project creation
+      // rather than the full browser -- the drop itself is "start something
+      // new", not "go find an existing project"
+      setPendingUploadFile(file);
+      goPantry("create");
       return;
     }
     // ongoing session? confirm before erasing capture data
@@ -604,7 +824,32 @@ export default function App() {
     } else {
       void doUpload(file);
     }
-  }, [project, asset, manifest.length, doUpload]);
+  }, [project, asset, manifest.length, doUpload, goPantry]);
+
+  const onFile = useCallback((file: File) => {
+    void (async () => {
+      try {
+        const hash = await sha256File(file);
+        const dup = await checkDuplicateAsset(hash);
+        if (dup.duplicate && dup.project_name && dup.project_id !== project?.id) {
+          setPendingDuplicateFile({ file, projectName: dup.project_name });
+          return;
+        }
+      } catch {
+        // duplicate check failing must never block an upload
+      }
+      proceedWithFile(file);
+    })();
+  }, [project, proceedWithFile]);
+
+  // once project creation completes, upload the file that was held pending
+  useEffect(() => {
+    if (project && pendingUploadFile) {
+      const file = pendingUploadFile;
+      setPendingUploadFile(null);
+      void doUpload(file);
+    }
+  }, [project, pendingUploadFile, doUpload]);
 
   /** mismatch resolution: remove the offending asset entirely */
   const onMismatchRemove = useCallback(async () => {
@@ -628,7 +873,7 @@ export default function App() {
       setSrcLang(scan.detected);
       refreshProject();
       setScan((s) => (s ? { ...s, status: "passed" } : s));
-      addToast("success", `project source language changed to ${langDisplayName(scan.detected)}.`);
+      addToast("success", `project source language changed: ${langDisplayName(scan.detected)}.`);
     } catch (e) {
       setErrorWithNotif(String(e));
     }
@@ -683,8 +928,15 @@ export default function App() {
         setDetectStage("drawing");
         setDetectProgress(
           ev.status === "running"
-            ? "zooming into surfaces (fine-grain pass)…"
+            ? "inspecting surfaces" /* zooming into surfaces (fine-grain pass...) */
             : `fine-grain: ${ev.regions} region(s)`
+        );
+      } else if (ev.stage === "paddle_rescue") {
+        setDetectStage("drawing");
+        setDetectProgress(
+          ev.status === "running"
+            ? "retasting to ensure flavor consistency…" /* previously: trying a second engine on weak/missed regions… */
+            : `rescue pass: ${ev.regions} region(s)`
         );
       } else if (ev.stage === "polish") {
         setDetectStage("lang");
@@ -699,6 +951,20 @@ export default function App() {
           ev.status === "running"
             ? "taste-testing recognized text…"
             : (ev.corrected ?? 0) > 0 ? `savored: ${ev.corrected} correction(s)` : "tastes right"
+        );
+      } else if (ev.stage === "wasabi") {
+        setDetectStage("lang");
+        setDetectProgress(
+          ev.status === "running"
+            ? "checking for the right regional flavor…"
+            : (ev.corrected ?? 0) > 0 ? `wasabi: ${ev.corrected} correction(s)` : "flavor's right"
+        );
+      } else if (ev.stage === "menu") {
+        setDetectStage("lang");
+        setDetectProgress(
+          ev.status === "running"
+            ? "checking the menu for known place names…"
+            : (ev.corrected ?? 0) > 0 ? `menu: ${ev.corrected} correction(s)` : "no menu matches"
         );
       } else if (ev.stage === "enrich") {
         setDetectStage("lang");
@@ -717,6 +983,7 @@ export default function App() {
       } else if (ev.stage === "complete" && ev.manifest) {
         const m = ev.manifest;
         const detected = langs?.[0] ?? m.src_lang;
+        manifestSkipHistory.current = true;
         setManifest(m.instances);
         setImgDim(m.img_dim);
         setSceneRegions(m.scene_regions ?? []);
@@ -799,6 +1066,7 @@ export default function App() {
 
   const onManualDraw = useCallback(() => {
     setShowCapturePrompt(false);
+    manifestSkipHistory.current = true;
     setManifest([]);
     setStep(1);
     setDrawMode(true);
@@ -839,8 +1107,13 @@ export default function App() {
     if (!asset) return;
     try {
       await deleteRegion(asset.asset_id, id);
+      // the instance stays in `manifest` (marked excluded) rather than
+      // being removed outright -- autoSave below PUTs this array back to
+      // the server, and dropping it here would silently undo the
+      // excluded flag deleteRegion() just persisted, turning the soft
+      // exclude back into a hard delete on the very next autosave.
       setManifest((prev) => {
-        const next = prev.filter((i) => i.id !== id);
+        const next = prev.map((i) => i.id === id ? { ...i, excluded: true } : i);
         autoSave(next);
         return next;
       });
@@ -890,7 +1163,7 @@ export default function App() {
       if (result.text) {
         addToast("success", `ocr: "${result.text}" (${(result.confidence * 100).toFixed(0)}%)`);
       } else {
-        addToast("warning", "no text found in this region. try adjusting the box or entering it manually.");
+        addToast("warning", "no text found in this region. try adjusting the box or drawing it manually.");
       }
     } catch (e) {
       addToast("error", `ocr failed: ${e}`);
@@ -957,6 +1230,8 @@ export default function App() {
           tsume: i.style_profile?.tsume ?? null,
           stroke_color: i.style_profile?.stroke_color ?? null,
           stroke_width: i.style_profile?.stroke_width ?? null,
+          target_orientation: i.style_profile?.target_orientation ?? null,
+          word_order: i.style_profile?.word_order ?? null,
         },
       } : i);
       autoSave(next);
@@ -974,9 +1249,86 @@ export default function App() {
     addToast("success", `applied ${langDisplayName(lang)} to ${ids.length} region(s)`);
   }, [autoSave, addToast]);
 
+  const onOrientationToggle = useCallback((id: string) => {
+    setManifest((prev) => {
+      const next = prev.map((i) => {
+        if (i.id !== id) return i;
+        const current = i.style_profile?.target_orientation ?? "horizontal";
+        return {
+          ...i,
+          style_profile: {
+            font_family: i.style_profile?.font_family ?? null,
+            font_weight: i.style_profile?.font_weight ?? null,
+            color: i.style_profile?.color ?? null,
+            font_size: i.style_profile?.font_size ?? null,
+            italic: i.style_profile?.italic ?? null,
+            underline: i.style_profile?.underline ?? null,
+            subscript: i.style_profile?.subscript ?? null,
+            superscript: i.style_profile?.superscript ?? null,
+            align_h: i.style_profile?.align_h ?? null,
+            align_v: i.style_profile?.align_v ?? null,
+            justification: i.style_profile?.justification ?? null,
+            indent: i.style_profile?.indent ?? null,
+            tracking: i.style_profile?.tracking ?? null,
+            kerning: i.style_profile?.kerning ?? null,
+            leading: i.style_profile?.leading ?? null,
+            baseline_shift: i.style_profile?.baseline_shift ?? null,
+            tab_width: i.style_profile?.tab_width ?? null,
+            tsume: i.style_profile?.tsume ?? null,
+            stroke_color: i.style_profile?.stroke_color ?? null,
+            stroke_width: i.style_profile?.stroke_width ?? null,
+            target_orientation: (current === "vertical" ? "horizontal" : "vertical") as "horizontal" | "vertical",
+            word_order: i.style_profile?.word_order ?? null,
+          },
+        };
+      });
+      autoSave(next);
+      return next;
+    });
+  }, [autoSave]);
+
+  const onWordOrderToggle = useCallback((id: string) => {
+    setManifest((prev) => {
+      const next = prev.map((i) => {
+        if (i.id !== id) return i;
+        const current = i.style_profile?.word_order ?? null;
+        return {
+          ...i,
+          style_profile: {
+            font_family: i.style_profile?.font_family ?? null,
+            font_weight: i.style_profile?.font_weight ?? null,
+            color: i.style_profile?.color ?? null,
+            font_size: i.style_profile?.font_size ?? null,
+            italic: i.style_profile?.italic ?? null,
+            underline: i.style_profile?.underline ?? null,
+            subscript: i.style_profile?.subscript ?? null,
+            superscript: i.style_profile?.superscript ?? null,
+            align_h: i.style_profile?.align_h ?? null,
+            align_v: i.style_profile?.align_v ?? null,
+            justification: i.style_profile?.justification ?? null,
+            indent: i.style_profile?.indent ?? null,
+            tracking: i.style_profile?.tracking ?? null,
+            kerning: i.style_profile?.kerning ?? null,
+            leading: i.style_profile?.leading ?? null,
+            baseline_shift: i.style_profile?.baseline_shift ?? null,
+            tab_width: i.style_profile?.tab_width ?? null,
+            tsume: i.style_profile?.tsume ?? null,
+            stroke_color: i.style_profile?.stroke_color ?? null,
+            stroke_width: i.style_profile?.stroke_width ?? null,
+            target_orientation: i.style_profile?.target_orientation ?? null,
+            word_order: (current === "rtl" ? null : "rtl") as "ltr" | "rtl" | null,
+          },
+        };
+      });
+      autoSave(next);
+      return next;
+    });
+  }, [autoSave]);
+
   const onImported = useCallback((result: ImportResult) => {
     if (asset) {
       getManifest(asset.asset_id).then((m) => {
+        manifestSkipHistory.current = true;
         setManifest(m.instances);
         setImgDim(m.img_dim);
         setSceneRegions(m.scene_regions ?? []);
@@ -1108,7 +1460,7 @@ export default function App() {
   const onRender = useCallback(async () => {
     if (!asset) return;
     if (hasEditsAfterImport) {
-      const ok = confirm("Discrepancy detected: your live edits differ from the imported file. Proceed with current state?");
+      const ok = confirm("discrepancy detected: live edits differ from the imported file. proceed with current state?");
       if (!ok) return;
     }
     setError(null);
@@ -1140,11 +1492,11 @@ export default function App() {
 
   const STAGE_LABEL: Record<string, string> = {
     tofu: "pre-flight check…",
-    scene: "re-reading scene context…",
+    scene: "re-reading the recipe…", /* re-reading scene context… */
     tofu_regions: "validating per-region fit…",
-    cleanse: "erasing source text…",
-    scribe: "rendering target text…",
-    verify: "scoring quality…",
+    cleanse: "rinsing…", /* erasing source text… */
+    scribe: "seasoning…", /* rendering target text... */
+    verify: "scoring quality…", /* scoring quality */
     save: "saving output…",
   };
 
@@ -1164,7 +1516,7 @@ export default function App() {
         setVerifyStage(null);
         const result = renderResultFromEvent(ev);
         setRenderResult(result);
-        if (result.text_manifest) setManifest(result.text_manifest.instances);
+        if (result.text_manifest) { manifestSkipHistory.current = true; setManifest(result.text_manifest.instances); }
         const recs = result.qa_report?.recommendations ?? [];
         recs.slice(0, 3).forEach((r) => addToast("warning", r, false));
         if (result.errors.length > 0) {
@@ -1209,7 +1561,7 @@ export default function App() {
         setReRenderingId(null);
         const result = renderResultFromEvent(ev);
         setRenderResult(result);
-        if (result.text_manifest) setManifest(result.text_manifest.instances);
+        if (result.text_manifest) { manifestSkipHistory.current = true; setManifest(result.text_manifest.instances); }
         addToast("success", `region ${id} re-rendered`);
       } else if (ev.stage === "error") {
         setReRenderingId(null);
@@ -1267,8 +1619,15 @@ export default function App() {
       <>
         <div className={`screen-fade screen-fade-fixed${leaving ? " leaving" : ""}`}>
           <TitleScreen
-            onEnter={() => { prevScreen.current = "title"; setScreen(project ? "main" : "pantry"); }}
+            onEnter={() => {
+              prevScreen.current = "title";
+              resetSession();
+              setProject(null);
+              localStorage.removeItem(PROJECT_KEY);
+              setScreen("main");
+            }}
             onSelectProject={openProject}
+            onCreateProject={() => goPantry("create")}
             theme={theme}
             onToggleTheme={toggleTheme}
           />
@@ -1279,7 +1638,7 @@ export default function App() {
 
   return (
     <div className={`screen-fade${leaving ? " leaving" : ""}`}>
-    <div className="mx-auto max-w-7xl space-y-6 p-8 pb-16">
+    <div className="mx-auto max-w-7xl space-y-6 p-8 pb-12">
       <header className="relative z-[200] flex items-center gap-4">
         <img
           src={logoSrc(theme)}
@@ -1288,6 +1647,7 @@ export default function App() {
           onClick={() => setShowTitleConfirm(true)}
           title="Return to title"
         />
+        <span className="title-typewriter text-zinc-500 dark:text-zinc-400" style={{ fontSize: "0.75rem" }}>v0.1.0</span>
         <div className="flex-1" />
         <div className="bezier-card flex items-center rounded-lg bg-white/60 px-3 py-2 dark:bg-zinc-900/60">
           <span style={{ transform: "scale(0.75)", transformOrigin: "center", display: "inline-block" }}>
@@ -1309,7 +1669,7 @@ export default function App() {
             </span>
           </div>
         )}
-        <NotificationBell notifications={notifications} onClear={clearNotifications} />
+        <NotificationBell notifications={notifications} onClear={clearNotifications} onDismiss={dismissNotification} />
         <div className="relative" ref={menuRef}>
           <button
             onClick={() => setMenuOpen((v) => !v)}
@@ -1383,7 +1743,7 @@ export default function App() {
       {/* STEP 0: Upload — asset intake + project overview */}
       {step === 0 && (
         <div key="step-0" className="step-fade grid gap-6 md:grid-cols-[minmax(0,1fr)_360px]">
-          <Section title="Asset">
+          <Section title="Asset" className={stackClass(0)}>
             <label className="flex min-h-[16rem] cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-zinc-400 p-4 text-zinc-500 transition hover:border-zinc-600 hover:text-zinc-700 dark:border-zinc-700 dark:hover:border-zinc-500 dark:hover:text-zinc-300">
               {previewUrl ? (
                 <img src={previewUrl} alt="preview" className="max-h-72 rounded object-contain" />
@@ -1480,7 +1840,7 @@ export default function App() {
             )}
           </Section>
 
-          <Section title="Project">
+          <Section title="Project" className={stackClass(1)}>
             {project ? (
               <div className="space-y-4 text-sm">
                 <div>
@@ -1611,7 +1971,22 @@ export default function App() {
             >
               <HiCubeTransparent size={20} />
             </button>
-            {saveIndicator}
+            <button
+              onClick={undoManifest}
+              disabled={!canUndo}
+              className="bezier-card flex items-center justify-center rounded-lg bg-white/60 px-3 py-2 text-sm text-zinc-700 transition hover:bg-zinc-100 disabled:opacity-40 dark:bg-zinc-900/60 dark:text-zinc-300 dark:hover:bg-zinc-800"
+              title="undo"
+            >
+              <LuUndo2 size={20} />
+            </button>
+            <button
+              onClick={redoManifest}
+              disabled={!canRedo}
+              className="bezier-card flex items-center justify-center rounded-lg bg-white/60 px-3 py-2 text-sm text-zinc-700 transition hover:bg-zinc-100 disabled:opacity-40 dark:bg-zinc-900/60 dark:text-zinc-300 dark:hover:bg-zinc-800"
+              title="redo"
+            >
+              <LuRedo2 size={20} />
+            </button>
             {busy === "detecting" && detectProgress && (
               <span className="subtext flex items-center gap-2 text-xs text-cyan-600 dark:text-cyan-400">
                 <SquareLoader size="xs" /> {detectProgress}
@@ -1634,6 +2009,7 @@ export default function App() {
                 </span>
               </div>
             </div>
+            {saveIndicator}
             <PressButton
               onClick={() => setStep(2)}
               disabled={manifest.length === 0}
@@ -1660,10 +2036,12 @@ export default function App() {
             )}
           </div>
 
+          <div className={stackClass(0)}>
           <div className={canvasExpandedH ? "space-y-4" : "grid gap-4 lg:grid-cols-[minmax(0,1fr)_380px] 2xl:grid-cols-[minmax(0,1fr)_440px]"}>
+            <div>
             <BBoxCanvas
               imageUrl={previewUrl}
-              manifest={manifest}
+              manifest={visibleManifest}
               sceneRegions={sceneRegions}
               selectedId={selectedId}
               hoveredId={hoveredId}
@@ -1676,9 +2054,11 @@ export default function App() {
               onImgLoad={setImgSize}
               onExpandToggle={setCanvasExpandedH}
             />
+            </div>
+            <div>
             <RegionTable
               mode="capture"
-              regions={manifest}
+              regions={visibleManifest}
               selectedId={selectedId}
               hoveredId={hoveredId}
               onSelect={setSelectedId}
@@ -1710,18 +2090,22 @@ export default function App() {
                 />
               ) : undefined}
             />
+            </div>
+          </div>
           </div>
 
           {!canvasExpandedH && (
+            <div className={stackClass(1)}>
             <ExportPanel
               assetId={asset?.asset_id ?? ""}
               targLang={targLang}
               disabled={translatableCount === 0}
             />
+            </div>
           )}
 
           {report && (
-            <Section title="Preflight" icon={<ShieldAlert size={14} />}>
+            <Section title="Preflight" icon={<ShieldAlert size={14} />} className={stackClass(2)}>
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 <Badge ok={report.passed}>{report.passed ? "passed" : "failed"}</Badge>
                 {Object.entries(report.scrpt_spprt).map(([s, level]) => (
@@ -1862,9 +2246,6 @@ export default function App() {
                 onChange={(e) => e.target.files?.[0] && onImportTranslation(e.target.files[0])}
               />
             </label>
-            <span className="subtext text-[8.4px] text-zinc-500 dark:text-zinc-400">
-              target: <span className="text-zinc-700 dark:text-zinc-300">{targLang}</span>
-            </span>
             <PressButton
               onClick={() => setStep(3)}
               disabled={translatedCount === 0}
@@ -1874,11 +2255,17 @@ export default function App() {
             </PressButton>
           </div>
 
+          <div className="flex items-center justify-end">
+            <span className="subtext text-[8.4px] text-zinc-500 dark:text-zinc-400">
+              target: <span className="text-zinc-700 dark:text-zinc-300">{langFlag(targLang)} {langDisplayName(targLang)}</span>
+            </span>
+          </div>
+
           <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
-            <div className="flex flex-col gap-2">
+            <div className={`flex flex-col gap-2 ${stackClass(0)}`}>
               <BBoxCanvas
                 imageUrl={previewUrl}
-                manifest={manifest}
+                manifest={visibleManifest}
                 sceneRegions={sceneRegions}
                 selectedId={selectedId}
                 hoveredId={hoveredId}
@@ -1896,8 +2283,12 @@ export default function App() {
                 onZoomChange={canvasesLinked ? setSharedZoom : undefined}
                 controlledScroll={canvasesLinked ? sharedScroll : undefined}
                 onScrollChange={canvasesLinked ? setSharedScroll : undefined}
+                controlledHeight={canvasesLinked ? sharedCanvasH : undefined}
+                onHeightChange={canvasesLinked ? setSharedCanvasH : undefined}
+                onDoubleClickExpand={canvasesLinked ? toggleLinkedCanvasHeight : undefined}
               />
               <TargetPreviewCanvas
+                className="mt-[2px]"
                 imageUrl={previewUrl}
                 manifest={manifest}
                 imgNaturalSize={imgSize}
@@ -1910,10 +2301,13 @@ export default function App() {
                 onZoomChange={canvasesLinked ? setSharedZoom : undefined}
                 controlledScroll={canvasesLinked ? sharedScroll : undefined}
                 onScrollChange={canvasesLinked ? setSharedScroll : undefined}
+                controlledHeight={canvasesLinked ? sharedCanvasH : undefined}
+                onHeightChange={canvasesLinked ? setSharedCanvasH : undefined}
+                onDoubleClickExpand={canvasesLinked ? toggleLinkedCanvasHeight : undefined}
               />
-              <div className="flex justify-center">
+              <div className="relative z-10 mt-2 flex justify-center">
                 <button
-                  onClick={() => setCanvasesLinked((v) => !v)}
+                  onClick={() => { setCanvasesLinked((v) => !v); setSharedCanvasH(null); }}
                   className={`flex items-center rounded-lg px-3 py-1.5 text-xs font-medium transition ${
                     canvasesLinked
                       ? "bg-cyan-600 text-white hover:bg-cyan-700"
@@ -1926,7 +2320,7 @@ export default function App() {
               </div>
             </div>
             <div
-              className="relative flex flex-col gap-4"
+              className={`relative flex flex-col gap-4 ${stackClass(1)}`}
               onDragOver={(e) => { e.preventDefault(); setDragOverTranslate(true); }}
               onDragLeave={(e) => { if (e.currentTarget === e.target) setDragOverTranslate(false); }}
               onDrop={(e) => {
@@ -1946,7 +2340,7 @@ export default function App() {
               )}
               <RegionTable
                 mode="translate"
-                regions={manifest}
+                regions={visibleManifest}
                 selectedId={selectedId}
                 hoveredId={hoveredId}
                 onSelect={setSelectedId}
@@ -1967,6 +2361,10 @@ export default function App() {
                 fontsByLang={fontsByLang}
                 familiesByLang={familiesByLang}
                 onNeedFonts={onNeedFonts}
+                lockedLangs={lockedLangs}
+                onToggleLangLock={toggleLangLock}
+                onOrientationToggle={onOrientationToggle}
+                onWordOrderToggle={onWordOrderToggle}
               />
             </div>
           </div>
@@ -2008,9 +2406,42 @@ export default function App() {
             </div>
           </div>
 
+          {/* Layout adapts to styleExpandedH:
+              half-width (standard): text card on left, images on right
+              full-width (expanded): stacked, images side by side below */}
+          <div className={`grid gap-4 transition-all duration-300 ${styleExpandedH ? "grid-cols-1" : "lg:grid-cols-2"}`}>
+            {/* Left column: Text & Appearance + hint + decisions */}
+            <div className="space-y-4">
+
           {/* Text + Appearance styling panels */}
           {manifest.length > 0 && (
-            <Section title="Text & Appearance" icon={<Type size={14} />}>
+            <div
+              ref={styleCardRef}
+              className="bezier-card soft-shadow flex flex-col rounded-xl bg-white/60 dark:bg-zinc-900/60"
+              style={styleCardH !== null
+                ? { height: styleCardH, transition: "height 0.3s ease-in-out" }
+                : { transition: "height 0.3s ease-in-out" }
+              }
+            >
+            <Section
+              title="Text & Appearance"
+              icon={<Type size={14} />}
+              flat
+              className={`${stackClass(0)} flex-1 overflow-auto p-5`}
+              rightSideHandle={
+                <div
+                  className="title-drag-handle absolute right-0 top-1/2 -translate-y-1/2 shrink-0 z-20"
+                  style={{ cursor: "pointer", padding: "2px 4px" }}
+                  onClick={onStyleExpandClick}
+                  title={styleExpandedH ? "double-click to return to standard" : "double-click to expand to full width"}
+                >
+                  <svg width="14" height="42" viewBox="0 0 14 42" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="1" y="0.5" width="4.5" height="41" rx="2.25" fill="currentColor" />
+                    <rect x="8" y="11" width="4.5" height="20" rx="2.25" fill="currentColor" />
+                  </svg>
+                </div>
+              }
+            >
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   {/* Region selector */}
@@ -2067,6 +2498,8 @@ export default function App() {
                   tsume: i.style_profile?.tsume ?? null,
                   stroke_color: i.style_profile?.stroke_color ?? null,
                   stroke_width: i.style_profile?.stroke_width ?? null,
+                  target_orientation: i.style_profile?.target_orientation ?? null,
+                  word_order: i.style_profile?.word_order ?? null,
                   ...patch,
                 },
               } : i));
@@ -2177,6 +2610,26 @@ export default function App() {
                           >{icon}</button>
                         ))}
                       </div>
+                    </div>
+
+                    {/* Word order reversal (vertical text only) */}
+                    <div>
+                      <label className="subtext mb-1 block text-xs text-zinc-500">word order</label>
+                      <button
+                        onClick={() => updateStyle({ word_order: sp?.word_order === "rtl" ? null : "rtl" })}
+                        disabled={sp?.target_orientation !== "vertical"}
+                        className={`flex items-center gap-1.5 rounded px-2 py-1.5 text-xs transition ${
+                          sp?.target_orientation !== "vertical"
+                            ? "cursor-not-allowed bg-zinc-100 text-zinc-300 dark:bg-zinc-900 dark:text-zinc-700"
+                            : sp?.word_order === "rtl"
+                              ? "bg-cyan-600 text-white"
+                              : "bg-zinc-200 text-zinc-600 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"
+                        }`}
+                        title={sp?.target_orientation !== "vertical" ? "only available for vertical text" : sp?.word_order === "rtl" ? "right-to-left word order — click to reset" : "reverse word order (right-to-left)"}
+                      >
+                        <ArrowLeftRight size={14} />
+                        {sp?.word_order === "rtl" ? "RTL" : "LTR"}
+                      </button>
                     </div>
 
                     {/* Justification */}
@@ -2335,56 +2788,74 @@ export default function App() {
                 </div>
               </div>
             </Section>
-          )}
-
-          {!renderSelId && (
-            <p className="subtext flex items-center gap-1 text-xs text-zinc-500">
-              <PiWarningCircleFill size={15} className="text-[#2d8cf0]" />
-              select a region to customize.
-            </p>
-          )}
-
-          {/* decisions summary: what this render will reflect */}
-          <div className="bezier-card soft-shadow subtext flex flex-wrap items-center gap-3 rounded-lg bg-white/60 px-4 py-2 text-xs text-zinc-600 dark:bg-zinc-900/60 dark:text-zinc-400">
-            <span>{translatedCount}/{translatableCount} region(s) translated</span>
-            <span>
-              targets:{" "}
-              <span className="text-zinc-800 dark:text-zinc-300">
-                {[...new Set(manifest.filter((i) => !i.dnt).map((i) => i.target_language ?? targLang))]
-                  .map((l) => langDisplayName(l)).join(", ") || "—"}
-              </span>
-            </span>
-            <span>
-              fonts:{" "}
-              <span className="text-zinc-800 dark:text-zinc-300">
-                {manifest.filter((i) => !i.dnt).map((i) => {
-                  if (!i.style_profile?.font_family) return `auto (${i.id})`;
-                  const path = i.style_profile.font_family;
-                  const lang = i.target_language ?? targLang;
-                  const families = familiesByLang[lang] ?? [];
-                  const fam = families.find((f) => f.weights.some((w) => w.path === path) || f.best_path === path);
-                  const weight = fam?.weights.find((w) => w.path === path);
-                  const weightName = weight ? weightLabel(weight) : null;
-                  const name = fam?.family ?? (path.split(/[\\/]/).pop() ?? "").replace(/\.(ttf|otf|ttc|otc)$/i, "");
-                  return `${name}${weightName ? ` ${weightName}` : ""} (${i.id})`;
-                }).join("; ")}
-              </span>
-            </span>
-            {manifest.some((i) => i.dnt) && (
-              <span>{manifest.filter((i) => i.dnt).length} DNT (kept as-is)</span>
+            {!styleExpandedH && (
+              <div
+                className="title-drag-handle shrink-0 flex items-center justify-center"
+                onMouseDown={onStyleDragStart}
+                onDoubleClick={onStyleDoubleClick}
+                title="drag to resize · double-click to toggle height"
+                style={{ position: "relative" }}
+              >
+                <svg width="42" height="14" viewBox="0 0 42 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <rect x="0.5" y="1" width="41" height="4.5" rx="2.25" fill="currentColor" />
+                  <rect x="11" y="8" width="20" height="4.5" rx="2.25" fill="currentColor" />
+                </svg>
+              </div>
             )}
-          </div>
-
-          {/* Always show source image (uneditable) */}
-          {previewUrl && (
-            <Section title="Source Image (uneditable)" icon={<FileImage size={14} />}>
-              <img src={previewUrl} alt="source" className="rounded-lg border border-zinc-300 dark:border-zinc-800" />
-            </Section>
+            </div>
           )}
 
-          {/* Render result */}
-          {renderResult && (
-            <Section title="Localized Result" icon={<Play size={14} />}>
+              {!renderSelId && (
+                <p className="subtext flex items-center gap-1 text-xs text-zinc-500">
+                  <PiWarningCircleFill size={15} className="text-[#2d8cf0]" />
+                  select a region to customize.
+                </p>
+              )}
+
+              {/* decisions summary: what this render will reflect */}
+              <div data-render-decisions="true" className={`bezier-card soft-shadow subtext flex flex-wrap items-center gap-3 rounded-lg bg-white/60 px-4 py-2 text-xs text-zinc-600 dark:bg-zinc-900/60 dark:text-zinc-400 ${stackClass(1)}`}>
+                <span>{translatedCount}/{translatableCount} region(s) translated</span>
+                <span>
+                  targets:{" "}
+                  <span className="text-zinc-800 dark:text-zinc-300">
+                    {[...new Set(manifest.filter((i) => !i.dnt).map((i) => i.target_language ?? targLang))]
+                      .map((l) => langDisplayName(l)).join(", ") || "—"}
+                  </span>
+                </span>
+                <span>
+                  fonts:{" "}
+                  <span className="text-zinc-800 dark:text-zinc-300">
+                    {manifest.filter((i) => !i.dnt).map((i) => {
+                      if (!i.style_profile?.font_family) return `auto (${i.id})`;
+                      const path = i.style_profile.font_family;
+                      const lang = i.target_language ?? targLang;
+                      const families = familiesByLang[lang] ?? [];
+                      const fam = families.find((f) => f.weights.some((w) => w.path === path) || f.best_path === path);
+                      const weight = fam?.weights.find((w) => w.path === path);
+                      const weightName = weight ? weightLabel(weight) : null;
+                      const name = fam?.family ?? (path.split(/[\\/]/).pop() ?? "").replace(/\.(ttf|otf|ttc|otc)$/i, "");
+                      return `${name}${weightName ? ` ${weightName}` : ""} (${i.id})`;
+                    }).join("; ")}
+                  </span>
+                </span>
+                {manifest.some((i) => i.dnt) && (
+                  <span>{manifest.filter((i) => i.dnt).length} DNT (kept as-is)</span>
+                )}
+              </div>
+            </div>
+
+            {/* Right column: source + localized images */}
+            <div className={`space-y-4 ${styleExpandedH ? "grid grid-cols-2 gap-4" : ""}`}>
+              {/* Always show source image (uneditable) */}
+              {previewUrl && (
+                <Section title="Source Image" icon={<FileImage size={14} />} className={stackClass(2)}>
+                  <img src={previewUrl} alt="source" className="rounded-lg border border-zinc-300 dark:border-zinc-800" />
+                </Section>
+              )}
+
+              {/* Render result */}
+              {renderResult && (
+                <Section title="Localized Asset" icon={<Play size={14} />} className={stackClass(3)} localized>
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 {renderResult.qa_report?.overall_score != null && (
                   <Badge ok={renderResult.qa_passed}>
@@ -2471,6 +2942,8 @@ export default function App() {
               )}
             </Section>
           )}
+            </div>
+          </div>
         </div>
       )}
 
@@ -2494,7 +2967,7 @@ export default function App() {
               {verifyBusy && (
                 <button
                   onClick={cancelVerify}
-                  className="rounded-lg bg-zinc-200 px-3 py-2 text-sm text-zinc-600 transition hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"
+                  className="rounded-lg bg-zinc-200 px-3 py-2 text-sm text-zinc-600 transition hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-400 dark:h(s)over:bg-zinc-700"
                 >
                   cancel
                 </button>
@@ -2596,7 +3069,7 @@ export default function App() {
 
                 {/* per-region scores + re-render */}
                 {Object.keys(per).length > 0 && (
-                  <Section title="Per-Region QA" icon={<ScanText size={14} />}>
+                  <Section title="Per-Region QA" icon={<ScanText size={14} />} className={stackClass(3)}>
                     <div className="space-y-1.5">
                       {Object.entries(per).map(([rid, score]) => {
                         const isSel = verifySelId === rid;
@@ -2648,7 +3121,7 @@ export default function App() {
                 )}
 
                 {/* double-confirmation approve gate */}
-                <div className="bezier-card soft-shadow flex flex-wrap items-center gap-3 rounded-lg bg-white/60 px-4 py-3 dark:bg-zinc-900/60">
+                <div className={`bezier-card soft-shadow flex flex-wrap items-center gap-3 rounded-lg bg-white/60 px-4 py-3 dark:bg-zinc-900/60 ${stackClass(4)}`}>
                   <span className="subtext text-sm text-zinc-600 dark:text-zinc-400">
                     {cov ? `${cov.regions_total}/${cov.regions_total} region(s) addressed — ${cov.rendered} rendered, ${cov.dnt} DNT` : "coverage unavailable"}
                     {!coverageComplete && cov && cov.untranslated > 0 && (
@@ -2709,6 +3182,40 @@ export default function App() {
                 className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-500"
               >
                 Snapshot & Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Duplicate-image cross-check: this exact file already exists in
+          another project -- confirm before uploading a second copy */}
+      {pendingDuplicateFile && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="bezier-card w-full max-w-md rounded-xl bg-white p-6 dark:bg-zinc-900">
+            <h3 className="mb-2 flex items-center gap-2 text-lg font-semibold text-zinc-800 dark:text-zinc-200">
+              <AlertTriangle size={18} className="text-amber-500 dark:text-amber-400" /> Duplicate Image Detected
+            </h3>
+            <p className="mb-4 text-sm text-zinc-600 dark:text-zinc-400">
+              Image exists in project{" "}
+              <span className="text-zinc-800 dark:text-zinc-200">{pendingDuplicateFile.projectName}</span>. Proceed?
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setPendingDuplicateFile(null)}
+                className="rounded-lg px-4 py-2 text-sm text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  const f = pendingDuplicateFile.file;
+                  setPendingDuplicateFile(null);
+                  proceedWithFile(f);
+                }}
+                className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-500"
+              >
+                Proceed
               </button>
             </div>
           </div>
@@ -2827,7 +3334,7 @@ export default function App() {
                   if (project) {
                     updateProject(project.id, { source_lang: srcLang }).then(() => refreshProject()).catch(() => {});
                   }
-                  addToast("success", `source language set to ${langDisplayName(srcLang)}`);
+                  addToast("success", `source language set: ${langDisplayName(srcLang)}`);
                   runDetect(srcLang ? [srcLang] : undefined);
                 }}
                 className="title-mono-btn"
@@ -2934,6 +3441,7 @@ export default function App() {
           leaving={pantryLeaving}
           initialView={pantryMode === "create" ? "create-name" : "list"}
           listOnly={pantryMode === "pantry"}
+          currentProjectId={project?.id ?? null}
         />
       )}
 

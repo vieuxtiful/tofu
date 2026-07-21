@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { FontFamily, FontOption, InstText, LanguageOption } from "./api";
-import { BookmarkCheck, Eye, EyeOff, Loader2, ScanText, Trash2 } from "lucide-react";
+import { BookmarkCheck, Eye, EyeOff, Loader2, ScanText, Trash2, AlignLeft, AlignVerticalJustifyCenter, ArrowLeftRight } from "lucide-react";
 import { langDisplayName } from "./languageData";
 import LanguageCombobox from "./LanguageCombobox";
 import { loadFontPreview, fontNameForPath, weightLabel } from "./FontCombobox";
@@ -39,6 +39,8 @@ interface RegionTableProps {
   onNeedFonts: (lang: string) => void;
   lockedLangs?: Set<string>;
   onToggleLangLock?: (id: string) => void;
+  onOrientationToggle?: (id: string) => void;
+  onWordOrderToggle?: (id: string) => void;
   footer?: ReactNode;
 }
 
@@ -88,7 +90,7 @@ export default function RegionTable({
   mode, regions, selectedId, hoveredId, onSelect, onHover, onTextChange, onTargetChange,
   onDelete, onOcr, onToggleDnt, onTargetLangChange, onSrcLangChange, onFontChange,
   onApplyTargetLang, ocrLoading, languages, defaultTargLang, defaultSrcLang, fontsByLang, familiesByLang, onNeedFonts,
-  lockedLangs, onToggleLangLock, footer,
+  lockedLangs, onToggleLangLock, onOrientationToggle, onWordOrderToggle, footer,
 }: RegionTableProps) {
   const COLS = ALL_COLS.filter((c) => MODE_COLS[mode].includes(c.key));
   const rowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
@@ -101,6 +103,33 @@ export default function RegionTable({
     () => Object.fromEntries(ALL_COLS.map((c) => [c.key, c.w]))
   );
   const resizeRef = useRef<{ key: string; startX: number; startW: number } | null>(null);
+
+  // pagination (translate mode only) — rows per page determined by
+  // actual table container height so pagination only appears when
+  // entries overflow the visible area
+  const ROW_HEIGHT = 32; // approximate px per row (px-2 py-1 text-sm + border)
+  const HEADER_HEIGHT = 28; // approximate px for the thead
+  const [capacity, setCapacity] = useState(999);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      const fit = Math.max(1, Math.floor((el.clientHeight - HEADER_HEIGHT) / ROW_HEIGHT));
+      setCapacity(fit);
+    });
+    ro.observe(el);
+    setCapacity(Math.max(1, Math.floor((el.clientHeight - HEADER_HEIGHT) / ROW_HEIGHT)));
+    return () => ro.disconnect();
+  }, []);
+  const rowsPerPage = mode === "translate" ? capacity : regions.length;
+  const needsPagination = mode === "translate" && regions.length > rowsPerPage;
+  const totalPages = needsPagination ? Math.max(1, Math.ceil(regions.length / rowsPerPage)) : 1;
+  const [currentPage, setCurrentPage] = useState(0);
+  useEffect(() => { if (currentPage > totalPages - 1) setCurrentPage(Math.max(0, totalPages - 1)); }, [totalPages, currentPage]);
+  useEffect(() => { if (mode === "translate") setCurrentPage(0); }, [mode]);
+  const pagedRegions = needsPagination
+    ? regions.slice(currentPage * rowsPerPage, (currentPage + 1) * rowsPerPage)
+    : regions;
 
   const availableCodes = languages.map((l) => l.code);
 
@@ -184,7 +213,26 @@ export default function RegionTable({
     <div className={`bezier-card soft-shadow flex h-full flex-col rounded-lg bg-white/60 dark:bg-zinc-900/60 ${footer ? "overflow-visible" : "overflow-hidden"}`}>
       {/* stats bar */}
       <div className="subtext flex items-center justify-between border-b border-zinc-300 px-3 py-2 text-xs text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
-        <span>regions: {regions.length}</span>
+        <div className="flex items-center gap-2">
+          <span>regions: {regions.length}</span>
+          {needsPagination && (
+            <div className="flex items-center gap-1">
+              {Array.from({ length: totalPages }).map((_, i) => (
+                <button
+                  key={i}
+                  onClick={() => setCurrentPage(i)}
+                  className={`rounded-lg px-2 py-0.5 text-xs font-medium transition ${
+                    i === currentPage
+                      ? "bg-cyan-600 text-white"
+                      : "bg-zinc-200 text-zinc-600 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"
+                  }`}
+                >
+                  {i + 1}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         {regions.some((r) => r.confidence !== null) && (
           <span>avg conf {(avgConf * 100).toFixed(0)}%</span>
         )}
@@ -282,7 +330,7 @@ export default function RegionTable({
             </tr>
           </thead>
           <tbody>
-            {regions.map((inst) => {
+            {pagedRegions.map((inst) => {
               const isSel = inst.id === selectedId;
               const isHovered = inst.id === hoveredId;
               const isExpanded = inst.id === expandedId;
@@ -507,14 +555,49 @@ export default function RegionTable({
                             </div>
                           </div>
                           <div>
-                            <p className="subtext mb-1 text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-600">
-                              target · {langDisplayName(effectiveTarg)}
-                            </p>
+                            <div className="mb-1 flex items-center justify-between">
+                              <p className="subtext text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-600">
+                                target · {langDisplayName(effectiveTarg)}
+                              </p>
+                              <div className="flex items-center gap-0.5">
+                              {onOrientationToggle && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); onOrientationToggle(inst.id); }}
+                                  title={inst.style_profile?.target_orientation === "vertical" ? "vertical text — click for horizontal" : "horizontal text — click for vertical"}
+                                  className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] transition ${
+                                    inst.style_profile?.target_orientation === "vertical"
+                                      ? "bg-cyan-500/15 text-cyan-700 dark:text-cyan-300"
+                                      : "text-zinc-500 hover:bg-zinc-200 dark:text-zinc-400 dark:hover:bg-zinc-800"
+                                  }`}
+                                >
+                                  {inst.style_profile?.target_orientation === "vertical"
+                                    ? <AlignVerticalJustifyCenter size={12} />
+                                    : <AlignLeft size={12} />}
+                                </button>
+                              )}
+                              {onWordOrderToggle && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); onWordOrderToggle(inst.id); }}
+                                  disabled={inst.style_profile?.target_orientation !== "vertical"}
+                                  title={inst.style_profile?.target_orientation !== "vertical" ? "only available for vertical text" : inst.style_profile?.word_order === "rtl" ? "right-to-left word order — click to reset" : "reverse word order (right-to-left)"}
+                                  className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] transition ${
+                                    inst.style_profile?.target_orientation !== "vertical"
+                                      ? "cursor-not-allowed text-zinc-300 dark:text-zinc-700"
+                                      : inst.style_profile?.word_order === "rtl"
+                                        ? "bg-cyan-500/15 text-cyan-700 dark:text-cyan-300"
+                                        : "text-zinc-500 hover:bg-zinc-200 dark:text-zinc-400 dark:hover:bg-zinc-800"
+                                  }`}
+                                >
+                                  <ArrowLeftRight size={12} />
+                                </button>
+                              )}
+                              </div>
+                            </div>
                             <textarea
                               value={inst.target_text ?? ""}
                               onChange={(e) => onTargetChange(inst.id, e.target.value)}
                               onClick={(e) => e.stopPropagation()}
-                              rows={2}
+                              rows={1}
                               placeholder="enter translation…"
                               className={`w-full resize-y rounded border border-zinc-300 bg-white px-2 py-1.5 text-xs outline-none focus:border-cyan-600 dark:border-zinc-800 dark:bg-zinc-900 dark:focus:border-cyan-800 ${
                                 inst.target_text ? "text-emerald-600 dark:text-emerald-300" : "text-zinc-600 dark:text-zinc-400"
@@ -528,16 +611,16 @@ export default function RegionTable({
                 </Fragment>
               );
             })}
-            {regions.length === 0 && (
+            {pagedRegions.length === 0 && (
               <tr>
-                <td colSpan={COLS.length} className="subtext px-3 py-6 text-center text-xs text-zinc-500 dark:text-zinc-600">
-                  No regions detected. Click "Add Region" to draw a bounding box.
+                <td colSpan={COLS.length} className="subtext px-3 py-6 text-left text-xs text-zinc-500 dark:text-zinc-600">
+                  Click "draw bbox" (+) to begin.
                 </td>
               </tr>
             )}
             {/* ghost rows to fill remaining space for UI seamlessness */}
-            {regions.length > 0 && regions.length < 20 && (
-              Array.from({ length: Math.max(3, 20 - regions.length) }).map((_, i) => (
+            {pagedRegions.length > 0 && pagedRegions.length < 20 && (
+              Array.from({ length: Math.max(3, 20 - pagedRegions.length) }).map((_, i) => (
                 <tr key={`ghost-${i}`} className="border-b border-zinc-100 dark:border-zinc-900/30" style={{ opacity: 0.3 }}>
                   {COLS.map((c) => (
                     <td key={c.key} className="px-2 py-1 text-xs text-zinc-300 dark:text-zinc-700">&nbsp;</td>

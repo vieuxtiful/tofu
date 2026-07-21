@@ -24,6 +24,7 @@ run:  uvicorn main:app --reload --port 8000   (from server/)
 """
 
 import dataclasses
+import hashlib
 import os
 import sys
 import time
@@ -367,7 +368,9 @@ async def upload_asset(file: UploadFile = File(...), project_id: Optional[str] =
     suffix = Path(file.filename or "upload.png").suffix.lower() or ".png"
     asset_id = uuid.uuid4().hex[:12]
     dest = UPLOAD_DIR / f"{asset_id}{suffix}"
-    dest.write_bytes(await file.read())
+    data = await file.read()
+    dest.write_bytes(data)
+    content_hash = hashlib.sha256(data).hexdigest()
     info = infer_asset_info(str(dest))
 
     # persist an empty manifest immediately so GET /api/manifest never 404s
@@ -394,13 +397,25 @@ async def upload_asset(file: UploadFile = File(...), project_id: Optional[str] =
     if project_id:
         if db.get_project(project_id) is None:
             raise HTTPException(404, f"project '{project_id}' not found")
-        db.link_asset(project_id, asset_id, file.filename)
+        db.link_asset(project_id, asset_id, file.filename, content_hash)
         db.log_event(project_id, "asset-uploaded",
                      f"uploaded '{file.filename}' ({asset_id})")
     return {
         "asset_id": asset_id, "filename": file.filename,
         "asset_info": jsonable(info),
         "asset_url": f"/uploads/{asset_id}{suffix}",
+    }
+
+
+@app.get("/api/assets/check-duplicate")
+async def check_duplicate_asset(hash: str):
+    match = db.find_asset_by_hash(hash)
+    if match is None:
+        return {"duplicate": False, "project_id": None, "project_name": None}
+    return {
+        "duplicate": True,
+        "project_id": match["project_id"],
+        "project_name": match["project_name"],
     }
 
 
@@ -592,7 +607,9 @@ def scan_language(asset_id: str):
     try:
         # adaptive=False: the auto-probe suffices for language IDENTITY;
         # the full tuned re-detection is capture's job, not the scan's
-        manifest = cicerone.detect(str(path), info, adaptive=False)
+        manifest = cicerone.detect(
+            str(path), info, adaptive=False, font_registry=get_validator().font_registry
+        )
     except Exception as exc:
         raise HTTPException(422, f"language scan could not read the asset: {exc}")
     detected = _infer_src_lang(manifest) if manifest.instances else None
@@ -708,7 +725,8 @@ def detect(req: DetectRequest):
         scene_regions = []
 
     manifest = cicerone.detect(
-        str(path), info, backend=backend, scene_regions=scene_regions
+        str(path), info, backend=backend, scene_regions=scene_regions,
+        font_registry=get_validator().font_registry,
     )
     manifest.src_lang = _infer_src_lang(manifest)
     # scene enrichment at CAPTURE time (not just render): style/background
@@ -938,6 +956,39 @@ def detect_stream(
                     "regions": len(manifest.instances),
                 })
 
+            # PaddleOCR rescue: a second, differently-architected engine
+            # for whatever EasyOCR's own passes above still leave weak or
+            # entirely undetected on a CJK-dominant scene -- self-gating
+            # (should_paddle_rescue) and best-effort, same as savor/menu
+            # below. backend is already the CJK-tuned reader by this
+            # point if the refine stage above fired, so no separate
+            # "avoid re-triggering the expensive langset probe" handling
+            # is needed here the way cicerone.detect() needs it.
+            if (isinstance(backend, cicerone.EasyOCRBackend)
+                    and cicerone.PaddleOCRBackend.is_available()):
+                should_rescue, dominant = cicerone.should_paddle_rescue(
+                    manifest.instances, regions
+                )
+                if should_rescue:
+                    yield event({"stage": "paddle_rescue", "status": "running"})
+                    try:
+                        rescued = cicerone.run_paddle_rescue(
+                            str(path), detections, regions, dominant, gpu=gpu,
+                        )
+                    except Exception:
+                        rescued = None
+                    if rescued is not None:
+                        detections = rescued
+                        manifest = cicerone.build_manifest(
+                            str(path), detections,
+                            asset_info=info, engine=backend,
+                            scene_regions=regions, start=start,
+                        )
+                    yield event({
+                        "stage": "paddle_rescue", "status": "complete",
+                        "regions": len(manifest.instances),
+                    })
+
             # second-look recognition on surviving weak regions
             if not isinstance(backend, cicerone.NullBackend) and manifest.instances:
                 yield event({"stage": "polish", "status": "running"})
@@ -957,8 +1008,31 @@ def detect_stream(
             if manifest.instances:
                 yield event({"stage": "savor", "status": "running"})
                 from tofu.layers.savor import taste
-                swallowed = taste(str(path), manifest.instances)
+                swallowed = taste(str(path), manifest.instances, font_registry=get_validator().font_registry)
                 yield event({"stage": "savor", "status": "complete", "corrected": swallowed})
+
+            # gazetteer correction on whatever text Savor left behind --
+            # Japanese/simplified-Chinese glyph normalization -- this
+            # endpoint calls build_manifest()/taste() directly (not
+            # cicerone.detect(), which already runs wasabi.season() as
+            # its own step), so wasabi needs its own explicit stage here
+            # for parity, same as savor above. runs before menu so its
+            # gazetteer fuzzy-match sees corrected characters.
+            if manifest.instances:
+                yield event({"stage": "wasabi", "status": "running"})
+                from tofu.layers.wasabi import season
+                normalized = season(manifest.instances)
+                yield event({"stage": "wasabi", "status": "complete", "corrected": normalized})
+
+            # this endpoint calls build_manifest()/taste() directly (not
+            # cicerone.detect(), which already runs menu.browse() as its
+            # own last step), so menu needs its own explicit stage here
+            # for parity, same as savor above
+            if manifest.instances:
+                yield event({"stage": "menu", "status": "running"})
+                from tofu.layers.menu import browse
+                matched = browse(manifest.instances)
+                yield event({"stage": "menu", "status": "complete", "corrected": matched})
 
             # scene enrichment at capture time: profiles + typography
             if manifest.instances:
@@ -1061,15 +1135,23 @@ def add_region(asset_id: str, req: RegionCreate):
 
 @app.delete("/api/manifest/{asset_id}/regions/{rid}")
 def delete_region(asset_id: str, rid: str):
+    """"remove" a region from the workspace. the instance is marked
+    excluded rather than actually dropped from the manifest: cleanse()
+    still erases its source pixels (nothing is left half-translated on
+    the canvas), but scribe() never renders it and the UI never lists
+    it -- matches every other "delete" in this app while still letting
+    a user keep a region out of the export without leaving its source
+    text sitting untouched in the final image."""
     manifest = load_manifest(UPLOAD_DIR, asset_id)
     if manifest is None:
         raise HTTPException(404, f"no manifest for asset '{asset_id}'")
-    manifest.instances = [i for i in manifest.instances if i.id != rid]
-    for idx, inst in enumerate(manifest.instances):
-        inst.reading_order = idx
-    manifest.total_regions = len(manifest.instances)
+    inst = next((i for i in manifest.instances if i.id == rid), None)
+    if inst is None:
+        raise HTTPException(404, f"region '{rid}' not found")
+    inst.excluded = True
     save_manifest(UPLOAD_DIR, asset_id, manifest)
-    return {"ok": True, "total_regions": manifest.total_regions}
+    active_count = sum(1 for i in manifest.instances if not i.excluded)
+    return {"ok": True, "total_regions": active_count}
 
 
 @app.patch("/api/manifest/{asset_id}/regions/{rid}")

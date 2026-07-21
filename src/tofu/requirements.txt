@@ -1,0 +1,6 @@
+fonttools>=4.38.0
+matplotlib>=3.5.0   # optional, for system font discovery
+pillow>=10.0.0      # scribe rendering + cicerone pre-resize
+numpy>=1.24.0       # image array interchange
+easyocr>=1.7.0      # optional, cicerone default OCR backend (CRAFT + CRNN)
+paddleocr>=2.7.0    # optional, higher-accuracy OCR backend (DB + SVTR), CPU/GPU

@@ -624,7 +624,7 @@ def render(
 
     render_params = render_params or {}
     for inst in text_manifest.instances:
-        if getattr(inst, "dnt", False):
+        if getattr(inst, "dnt", False) or getattr(inst, "excluded", False):
             continue
         # untranslated regions are skipped, not re-rendered with source text:
         # a cleansed-but-empty region is honest; source text re-drawn in the

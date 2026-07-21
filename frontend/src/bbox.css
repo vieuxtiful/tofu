@@ -293,6 +293,11 @@ html.dark .bbox-meta-tooltip {
   gap: 5px;
   white-space: nowrap;
 }
+/* dropdown-morph.expanded re-enables pointer events; tooltips must stay
+   click-through or they'd steal hover from the bbox and flicker */
+.bbox-meta-tooltip.dropdown-morph.expanded {
+  pointer-events: none;
+}
 .bbox-meta-tooltip .meta-key {
   color: #71717a;
   text-transform: uppercase;

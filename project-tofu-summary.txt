@@ -1,0 +1,198 @@
+project ToFU 
+とうふ ARCHITECTURE
+
+xx Fully automated: Flip all toggles to "auto" and let the pipeline run end-to-end
+
+xx Fully manual: Flip all toggles to "manual" and control every step
+
+xx Hybrid: Auto-run cicerone() and scene(), manually refine masks, auto-run cleanse() and scribe(), manually verify with verify()
+
+Each function returns structured data that the user can inspect and modify at any point. The tofu() toast notifications become the user's guide through the process.
+
+
+---------------
+
+
+LYR/FXN 0: TOFU (the most fun)
+""""
+PRE-FLIGHT VALIDATION (name inspo: "tofu" blocks)
+The guardian layer that validates script support, glyph segmentation feasibility, and render quality. Returns a ValidationReport with issues and suggested actions (DELETE: which can trigger toast notifications on the frontend).
+
+""""
+
+tofu()
+	print f'(ValidationReport)
+
+
+""""
+arg defs
+	position: [bounds, (x,y)] / entity (bounding box)
+	duration: t = X (sec, min) / scene
+	object: characters (non-/ccjk)
+	frames: static (1); dynamic (x-->インフィニティ)
+	style: (font [typeface], color code (hexadecimal), ...)
+	opacity: ( ... )
+	resolution: [x, y]
+
+
+""""
+
+
+LYR/FXN 1: CICERONE (the most needed)
+""""
+(Italian for "guide" — it shows the localizer where everything is)
+
+Detect all text regions in the source image/video frame
+2. Generate precise bounding boxes and segmentation masks
+3. Identify text characteristics (font style, color, size, positioning)
+4. Output a TextManifest — a structured map of every text instance in the asset
+""""
+
+cicerone(region[s], locale[s], characteristics)
+	disp f'("text manifest")
+	## text manifest is a structured map of every text instance in the asset	
+
+
+
+"""" 
+arg defs
+
+>> regions
+
+>> characteristics 
+	font style ( ... )
+	color (RGBA, CMYK, BW)
+	size (0-[define max])
+	positioning (e.g., warp, skew, ...)	
+
+>> segmentation
+""""
+
+
+LYR/FXN 2: SCENE (the most experimental)
+
+""""
+(Short for "scene understanding" — the world scanner)
+Analyze what's behind each text region (brick wall, person's shirt, digital UI, etc.)
+2. Identify visual elements that need preservation (gradients, patterns, textures)
+3. Detect style attributes of the text (font family, weight, color, shadow, effects)
+4. Output a StyleProfile and BackgroundProfile for each text instance
+
+""""
+
+scene()
+
+""""
+arg defs
+
+
+""""
+
+
+LYR/FXN 3: CLEANSE (aka scene part deux)
+
+""""
+(It purifies the image of text, leaving only the pure visual)
+1. Remove original text from the image using the masks from cicerone()
+2. Inpaint the background using semantic guidance from scene()
+3. Ensure seamless background reconstruction with no artifacts
+
+""""
+
+cleanse()
+
+""""
+arg defs
+
+""""
+
+
+LYR/FXN 4: SCRIBE (writing perfect text)
+
+""""
+(It purifies the image of text, leaving only the pure visual)
+1. Remove original text from the image using the masks from cicerone()
+2. Inpaint the background using semantic guidance from scene()
+3. Ensure seamless background reconstruction with no artifacts
+""""
+
+(scribe)
+
+""""
+arg defs
+
+""""
+
+LYR/FXN 5: VERIFY (QA inspector)
+""""
+1. Check for visual artifacts or inconsistencies in the generated image
+2. Verify text clarity, readability and style consistency
+3. Validate that all text regions from cicerone() have been addressed
+4. Ensure background inpainting quality meets threshold
+""""
+
+verify()
+
+""""
+arg defs
+""""
+
+
+LYR/FXN 6: MEMORY ("Visual" translation memory)
+""""
+(The TM for pixels)
+1. Store localized visual elements (text regions, styles, translations)
+2. Detect visual matches across projects/assets
+3. Suggest previously approved localizations for similar elements
+4. Enable fuzzy matching for visual content
+""""
+
+memory()
+
+""""
+arg defs
+""""
+
+
+┌─────────────────────────────────────────────────────────────┐
+│                        INPUT ASSET                          │
+└─────────────────────────┬───────────────────────────────────┘
+                          ▼
+┌─────────────────────────────────────────────────────────────┐
+│  🛡️ Layer 0: tofu() ──────── [ AUTO/MANUAL ]              │
+│  Pre-flight validation & script support check              │
+└─────────────────────────┬───────────────────────────────────┘
+                          ▼
+┌─────────────────────────────────────────────────────────────┐
+│  🔍 Layer 1: cicerone() ───── [ AUTO/MANUAL ]              │
+│  Text detection & localization                             │
+└─────────────────────────┬───────────────────────────────────┘
+                          ▼
+┌─────────────────────────────────────────────────────────────┐
+│  🧠 Layer 2: scene() ──────── [ AUTO/MANUAL ]              │
+│  Semantic context & style analysis                         │
+└─────────────────────────┬───────────────────────────────────┘
+                          ▼
+┌─────────────────────────────────────────────────────────────┐
+│  🧹 Layer 3: cleanse() ────── [ AUTO/MANUAL ]              │
+│  Text erasure & inpainting                                 │
+└─────────────────────────┬───────────────────────────────────┘
+                          ▼
+┌─────────────────────────────────────────────────────────────┐
+│  ✍️ Layer 4: scribe() ──────── [ AUTO/MANUAL ]              │
+│  Style-aware text regeneration                             │
+└─────────────────────────┬───────────────────────────────────┘
+                          ▼
+┌─────────────────────────────────────────────────────────────┐
+│  ✅ Layer 5: verify() ──────── [ AUTO/MANUAL ]              │
+│  Quality verification & QA                                 │
+└─────────────────────────┬───────────────────────────────────┘
+                          ▼
+┌─────────────────────────────────────────────────────────────┐
+│  ♻️ Layer 6: memory() ──────── [ AUTO/MANUAL ]              │
+│  Visual translation memory update                          │
+└─────────────────────────┬───────────────────────────────────┘
+                          ▼
+┌─────────────────────────────────────────────────────────────┐
+│                       OUTPUT ASSET                          │
+└─────────────────────────────────────────────────────────────┘

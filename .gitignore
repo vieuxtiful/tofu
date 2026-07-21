@@ -1,0 +1,32 @@
+# IDE / tool configs
+.claude/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+.venv-paddle/
+.pytest_cache/
+
+# Node
+node_modules/
+frontend/node_modules/
+
+# Build artifacts
+dist/
+build/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Env
+.env
+.env.local
+
+# Server runtime data
+server/uploads/
+server/outputs/
+server/tm_thumbs/
+server/tofu.db

@@ -450,6 +450,8 @@ class PaddleOCRBackend(OCRBackend):
         use_angle_cls: bool = True,
         det_db_thresh: float = 0.3,
         drop_score: float = 0.3,
+        det_box_thresh: Optional[float] = None,
+        unclip_ratio: Optional[float] = None,
     ):
         self.languages = tuple(self.PADDLE_LANG_MAP.get(l, l) for l in languages)
         # PaddleOCR readers are one-language; use the primary language.
@@ -459,6 +461,16 @@ class PaddleOCRBackend(OCRBackend):
         self.use_angle_cls = use_angle_cls
         self.det_db_thresh = det_db_thresh
         self.drop_score = drop_score
+        # None means "use the model's own baked-in default" -- these were
+        # previously declared but never actually forwarded to the worker
+        # (a real bug: there was no way to tune DBNet's box tightness at
+        # all). det_box_thresh -> PaddleOCR's text_det_box_thresh;
+        # unclip_ratio -> text_det_unclip_ratio (a HIGHER unclip_ratio
+        # grows the detected box outward, recovering a trailing character
+        # DBNet's default under-clipped -- see run_paddle_rescue's
+        # box-completeness retry).
+        self.det_box_thresh = det_box_thresh
+        self.unclip_ratio = unclip_ratio
 
     def _to_tofu_lang(self) -> str:
         return self.PADDLE_TO_TOFU.get(self.lang, self.lang)
@@ -553,6 +565,22 @@ class PaddleOCRBackend(OCRBackend):
             language=self._to_tofu_lang(),
         )
 
+    def _det_params(self) -> Dict[str, float]:
+        """threshold overrides to send the worker -- only the ones this
+        instance actually set (det_db_thresh/drop_score always have a
+        value; det_box_thresh/unclip_ratio are None unless explicitly
+        requested, so the worker falls back to the model's own default
+        rather than us silently re-guessing one)."""
+        params: Dict[str, float] = {
+            "det_db_thresh": self.det_db_thresh,
+            "drop_score": self.drop_score,
+        }
+        if self.det_box_thresh is not None:
+            params["det_box_thresh"] = self.det_box_thresh
+        if self.unclip_ratio is not None:
+            params["unclip_ratio"] = self.unclip_ratio
+        return params
+
     def detect(
         self,
         asset: Any,
@@ -567,6 +595,7 @@ class PaddleOCRBackend(OCRBackend):
         try:
             result = self._run_worker({
                 "op": "detect", "image_path": image_path, "lang": self.lang,
+                **self._det_params(),
             })
         finally:
             if tmp:
@@ -598,6 +627,7 @@ class PaddleOCRBackend(OCRBackend):
                 "op": "detect_regions", "image_path": image_path, "lang": self.lang,
                 "regions": [[b.x, b.y, b.width, b.height] for b in regions],
                 "pad": pad,
+                **self._det_params(),
             })
         finally:
             if tmp:
@@ -727,19 +757,34 @@ def guess_latin_language(texts: Sequence[str]) -> Optional[str]:
     """guess the language of latin-script texts via stopwords + diacritics.
 
     returns a tofu language code, or None when the signal is too weak to
-    override the default. english must be BEATEN, not tied, to switch.
+    override the default. english must be BEATEN, not tied, to switch --
+    and requires at least 2 INDEPENDENT hits (stopword tokens and/or
+    diacritics combined), not just a single isolated short-word match.
+    a lone 2-letter stopword coincidence (measured live: "ET", a random
+    fragment on china-street's signage, matching French "et" and
+    single-handedly flipping the whole scene to "fr") is exactly the
+    kind of single-signal false positive this codebase's other language
+    arbitration (_auto_probe_language, probe_uncovered_surfaces,
+    refine_langset) already guards against by requiring evidence
+    BREADTH, not just a score threshold -- same principle here.
     """
     scores: Dict[str, float] = {lang: 0.0 for lang in LATIN_STOPWORDS}
+    hits: Dict[str, int] = {lang: 0 for lang in LATIN_STOPWORDS}
     words = []
     joined = " ".join(t for t in texts if t)
     for token in joined.lower().split():
         words.append(token.strip(".,;:!?()[]\"'"))
     for lang, stops in LATIN_STOPWORDS.items():
-        scores[lang] += 2.0 * sum(1 for w in words if w in stops)
+        matched = sum(1 for w in words if w in stops)
+        scores[lang] += 2.0 * matched
+        hits[lang] += matched
     for lang, chars in LATIN_DIACRITICS.items():
-        scores[lang] += sum(1 for ch in joined.lower() if ch in chars)
+        matched = sum(1 for ch in joined.lower() if ch in chars)
+        scores[lang] += matched
+        hits[lang] += matched
     best = max(scores, key=lambda k: scores[k])
-    if best == "en" or scores[best] < 2.0 or scores[best] <= scores["en"]:
+    if (best == "en" or scores[best] < 2.0 or scores[best] <= scores["en"]
+            or hits[best] < 2):
         return None
     return best
 
@@ -871,8 +916,26 @@ COLUMN_X_ALIGN = 0.5      # x-center offset tolerance, fraction of max width
 COLUMN_WIDTH_RATIO = 1.7  # max width disparity between members
 COLUMN_MAX_GAP = 0.8      # vertical gap tolerance, fraction of max width
 
+# max mean-RGB distance (Euclidean, 0-441 range) between two members'
+# own crops before a column merge is refused on color-mismatch grounds
+# alone -- measured live: japan-street's neon-outline "バンダイ" against
+# its bold block-lettered "焼肉" neighbor (different sign, different
+# material) sat at ~119; same-sign members sharing paint/lighting stay
+# well under that. deliberately generous so ordinary anti-aliasing/
+# lighting variance across one real sign's own characters never trips it.
+COLUMN_COLOR_MAX_DIST = 90.0
 
-def merge_vertical_columns(detections: List[RawDetection]) -> List[RawDetection]:
+
+def _mean_rgb(img, b: BBox):
+    x0, y0 = max(0, b.x), max(0, b.y)
+    x1, y1 = min(img.shape[1], b.x + b.width), min(img.shape[0], b.y + b.height)
+    if x1 - x0 < 1 or y1 - y0 < 1:
+        return None
+    crop = img[y0:y1, x0:x1]
+    return crop.reshape(-1, crop.shape[-1])[:, :3].mean(axis=0)
+
+
+def merge_vertical_columns(detections: List[RawDetection], asset: Any = None) -> List[RawDetection]:
     """merge per-character fragments of stacked vertical CJK signage into
     single column detections.
 
@@ -883,16 +946,43 @@ def merge_vertical_columns(detections: List[RawDetection]) -> List[RawDetection]
     horizontal multi-line layouts are untouched. merged text is the
     members' text top-to-bottom; the language rescue downstream re-runs
     recognition on the merged crop, where the full column reads correctly.
+
+    when `asset` is given, a color-mismatch gate also refuses to merge
+    two geometrically-column-shaped members whose own crops are too
+    different in mean color -- geometry alone can't tell a stacked
+    sign's own characters from a short DIFFERENT sign sitting right
+    below it in the same column slot (measured live: japan-street's
+    "バンダイ" and "焼肉" pass every geometric check but are visibly
+    different materials). asset is optional and the check is skipped
+    (fail-open) whenever it's absent or a crop can't be sampled, so
+    callers without image access (tests, detections-only pipelines)
+    keep their original behavior exactly.
     """
     n = len(detections)
     if n < 2:
         return detections
     boxes = [_polygon_bbox(d.polygon) for d in detections]
 
+    img = None
+    if asset is not None:
+        try:
+            from tofu.layers.scene import _load_rgb
+            img = _load_rgb(asset)
+        except Exception:
+            img = None
+    colors = [_mean_rgb(img, b) if img is not None else None for b in boxes]
+
     def char_like(b: BBox) -> bool:
         return b.height > 0 and b.width <= COLUMN_MAX_ASPECT * b.height
 
-    def same_column(a: BBox, b: BBox) -> bool:
+    def same_color(i: int, j: int) -> bool:
+        ci, cj = colors[i], colors[j]
+        if ci is None or cj is None:
+            return True  # fail-open: no signal, don't block the merge
+        return float(((ci - cj) ** 2).sum() ** 0.5) <= COLUMN_COLOR_MAX_DIST
+
+    def same_column(i: int, j: int) -> bool:
+        a, b = boxes[i], boxes[j]
         if not (char_like(a) and char_like(b)):
             return False
         wmax = max(a.width, b.width)
@@ -901,7 +991,9 @@ def merge_vertical_columns(detections: List[RawDetection]) -> List[RawDetection]
         if wmax > COLUMN_WIDTH_RATIO * max(1, min(a.width, b.width)):
             return False
         gap = max(a.y, b.y) - min(a.y + a.height, b.y + b.height)
-        return gap <= COLUMN_MAX_GAP * wmax
+        if gap > COLUMN_MAX_GAP * wmax:
+            return False
+        return same_color(i, j)
 
     # union-find over all pairs (detection counts are small)
     parent = list(range(n))
@@ -914,7 +1006,7 @@ def merge_vertical_columns(detections: List[RawDetection]) -> List[RawDetection]
 
     for i in range(n):
         for j in range(i + 1, n):
-            if same_column(boxes[i], boxes[j]):
+            if same_column(i, j):
                 ri, rj = find(i), find(j)
                 if ri != rj:
                     parent[rj] = ri
@@ -922,6 +1014,8 @@ def merge_vertical_columns(detections: List[RawDetection]) -> List[RawDetection]
     groups: Dict[int, List[int]] = {}
     for i in range(n):
         groups.setdefault(find(i), []).append(i)
+
+    from tofu.utils.textmatch import fuzzy_similarity
 
     out: List[RawDetection] = []
     for members in groups.values():
@@ -934,9 +1028,33 @@ def merge_vertical_columns(detections: List[RawDetection]) -> List[RawDetection]
         x1 = max(boxes[i].x + boxes[i].width for i in members)
         y1 = max(boxes[i].y + boxes[i].height for i in members)
         confs = [detections[i].confidence for i in members]
+        # text-identity dedup: a member whose text closely matches the
+        # TAIL of what's already been composed is a redundant duplicate
+        # fragment of the same physical glyphs, not the next character
+        # in sequence -- geometry alone (char_like/same_column) can't
+        # tell these apart, since a stray leftover fragment of an
+        # already-composed sign is just as "column-shaped" as a genuine
+        # next character (measured live: china-street's 茂昌眼镜公司镜司,
+        # a duplicated 镜司 tail from a leftover raw fragment surviving
+        # alongside an already-complete read of the same sign).
+        parts: List[str] = []
+        accumulated = ""
+        for i in members:
+            piece = (detections[i].text or "").strip()
+            if not piece:
+                continue
+            # gated to pieces >=2 chars: a single repeated CJK character
+            # can be genuine (real signage sometimes repeats a glyph),
+            # so only a multi-character run matching the existing tail
+            # is treated as a duplicate fragment rather than real text
+            tail = accumulated[-len(piece):] if len(piece) <= len(accumulated) else ""
+            if len(piece) >= 2 and tail and fuzzy_similarity(piece, tail) >= 0.6:
+                continue
+            parts.append(piece)
+            accumulated += piece
         out.append(RawDetection(
             polygon=[(x0, y0), (x1, y0), (x1, y1), (x0, y1)],
-            text="".join((detections[i].text or "").strip() for i in members),
+            text="".join(parts),
             confidence=sum(confs) / len(confs),
             language=next(
                 (detections[i].language for i in members
@@ -965,6 +1083,25 @@ MIN_BAND_HEIGHT_PX = 12          # a band shorter than this can't hold
                                   # one legible character
 
 
+def _ink_gap_bands(row_ink: Any, gap_floor: int) -> List[Tuple[int, int]]:
+    """contiguous non-gap runs in a row-ink profile, filtered to bands
+    tall enough to hold a character. shared by _segment_vertical_bands's
+    strict pass and its narrow-crop rescue pass so both use identical
+    run-finding logic and differ only in gap_floor."""
+    bands: List[Tuple[int, int]] = []
+    start = None
+    for y, ink in enumerate(row_ink):
+        is_gap = ink <= gap_floor
+        if not is_gap and start is None:
+            start = y
+        elif is_gap and start is not None:
+            bands.append((start, y))
+            start = None
+    if start is not None:
+        bands.append((start, len(row_ink)))
+    return [(a, b) for a, b in bands if (b - a) >= MIN_BAND_HEIGHT_PX]
+
+
 def _segment_vertical_bands(asset: Any, bbox: BBox) -> List[BBox]:
     """split a tall/narrow bbox into per-character horizontal bands.
 
@@ -979,6 +1116,7 @@ def _segment_vertical_bands(asset: Any, bbox: BBox) -> List[BBox]:
     Otsu split to separate cleanly. returns bands in the bbox's own
     (full-image) coordinate space, or [] when nothing usable resulted.
     """
+    import numpy as np
     from tofu.utils.imaging import load_rgb, text_mask
     n_chars_guess = max(2, round(bbox.height / max(1, bbox.width)))
 
@@ -990,18 +1128,22 @@ def _segment_vertical_bands(asset: Any, bbox: BBox) -> List[BBox]:
         if mask is not None:
             row_ink = mask.sum(axis=1)
             gap_floor = max(1, int(0.02 * mask.shape[1]))
-            bands: List[Tuple[int, int]] = []
-            start = None
-            for y, ink in enumerate(row_ink):
-                is_gap = ink <= gap_floor
-                if not is_gap and start is None:
-                    start = y
-                elif is_gap and start is not None:
-                    bands.append((start, y))
-                    start = None
-            if start is not None:
-                bands.append((start, len(row_ink)))
-            bands = [(a, b) for a, b in bands if (b - a) >= MIN_BAND_HEIGHT_PX]
+            bands = _ink_gap_bands(row_ink, gap_floor)
+            if len(bands) < 2:
+                # rescue, only on measured failure: the absolute width-
+                # scaled floor degenerates toward ~1 on narrow/tiny crops
+                # (small compact-font signage) regardless of the profile's
+                # real noise floor, so real inter-character gaps -- which
+                # still carry a few pixels of JPEG/anti-alias noise, never
+                # truly near-zero -- never register. retry with a floor
+                # relative to the profile's OWN low/high band instead.
+                # gated behind the same failure this crop already hit, so
+                # crops the absolute floor already handles (e.g. wide
+                # multi-hundred-px signage) are untouched.
+                lo, hi = np.percentile(row_ink, 20), np.percentile(row_ink, 80)
+                relative_floor = int(lo + 0.4 * (hi - lo))
+                if relative_floor > gap_floor:
+                    bands = _ink_gap_bands(row_ink, relative_floor)
             if len(bands) >= 2:
                 return [
                     BBox(x=bbox.x, y=bbox.y + a, width=bbox.width, height=b - a)
@@ -1485,6 +1627,372 @@ def probe_uncovered_surfaces(
     return None, []
 
 
+# -- PaddleOCR rescue pass -----------------------------------------------
+# EasyOCR has a genuine recognition ceiling on small/compact-font CJK
+# signage that no amount of segmentation/threshold tuning around it can
+# clear (measured live: japan-street.jpeg's smallest vertical signs stay
+# unreadable through EasyOCR regardless of crop framing). PaddleOCR (the
+# isolated subprocess bridge -- see PaddleOCRBackend) reads the exact
+# same signage at 0.85-1.0 confidence. this pass gives it a shot at
+# whatever EasyOCR's own pipeline still leaves weak or entirely
+# undetected, gated behind PaddleOCRBackend.is_available() so it's a
+# no-op wherever the isolated .venv-paddle isn't set up.
+
+PADDLE_RESCUE_LANGS = {"ja", "zh-cn", "zh-tw", "ko"}
+PADDLE_RESCUE_CONF_FLOOR = 0.6
+# a Paddle read need only clear this modest bar to win an overlapping
+# EasyOCR detection -- see _prefer_paddle_on_overlap's docstring for why
+# this is NOT a numeric confidence comparison against the EasyOCR side.
+PADDLE_OVERLAP_WIN_FLOOR = 0.5
+
+
+def _prefer_paddle_on_overlap(
+    base: List[RawDetection], paddle_dets: List[RawDetection],
+    floor: float = PADDLE_OVERLAP_WIN_FLOOR,
+) -> List[RawDetection]:
+    """merge PaddleOCR detections into `base`, letting Paddle win any
+    overlap once its OWN confidence clears `floor` -- deliberately not
+    a numeric confidence comparison against the EasyOCR side the way
+    merge_detections does it elsewhere in this file.
+
+    EasyOCR's confidence score is not a reliable correctness signal for
+    exactly the crops this rescue pass targets: measured live on
+    japan-street.jpeg, a wrong single-character misread ('目' for what
+    should be '劇場通り') scored 0.795-0.96 confidence -- high enough to
+    out-rank PaddleOCR's own correct-but-more-modest read in a plain
+    confidence-max merge, which is precisely the failure this function
+    exists to avoid. PaddleOCR's advantage on this failure class is
+    already the reason should_paddle_rescue fired in the first place;
+    once triggered, its own pass-bar (not a comparison to a signal
+    already known to be miscalibrated here) is what decides.
+
+    replaces ALL overlapping entries in `base`, not just the first
+    match: a raw detection list can carry several fragments of the same
+    physical sign (e.g. per-character bands from an earlier split, or a
+    stray tail-only leftover), and a single incoming Paddle detection
+    for the full sign overlaps every one of them. leaving any but the
+    first-matched fragment untouched let it survive into
+    merge_vertical_columns' later text-identity-blind composition and
+    get concatenated onto the correct text as a duplicated tail
+    (measured live: china-street's 茂昌眼镜公司镜司).
+
+    a Paddle detection must also not be SHORTER (fewer characters) than
+    the longest single TRUSTWORTHY fragment it would overlap-replace --
+    PaddleOCR's own inference is not perfectly deterministic run-to-run
+    (measured live: a full-frame pass that read china-street's 王開照相/
+    茂昌眼镜公司 signs perfectly on one call produced a stray 2-character
+    "ET" fragment overlapping 王開照相 on another, otherwise-identical
+    call), and without this guard a confidence-floor-clearing but
+    genuinely WORSE/partial read can silently destroy a longer,
+    already-correct one. comparing against the longest single
+    overlapped fragment (not their combined length) is deliberate: the
+    duplicate-tail case above needs a complete Paddle read to still
+    beat a set of fragments whose lengths merely SUM higher than any
+    one of them alone.
+
+    "trustworthy" matters: an existing fragment's OWN confidence must
+    also clear `floor` before its length counts against an incoming
+    Paddle read -- character count alone is not a reliable "how much
+    real information is here" signal for near-zero-confidence garbage
+    (measured live: japan-street's gate-sign garbage read
+    '闘己_度町二せ国', 8 nonsense characters at 0.0 confidence, would
+    otherwise have blocked Paddle's correct, 1.0-confidence 7-character
+    '歌舞伎町一番街' replacement purely for being one character
+    "shorter" than noise).
+
+    this same length-guarded overlap check also applies WITHIN
+    `paddle_dets` itself, not just against `base`: a caller can pass
+    both a whole surface's own read and one of its own sub-tiles in the
+    same batch (run_paddle_rescue's escalated retry does exactly this,
+    so a tile can still find a small piece of text the whole crop
+    missed without losing the whole crop's own -- likely more
+    complete -- read of the same content). without this, two entries
+    in the SAME incoming batch that both overlap one already-consumed
+    base entry would each independently see "no remaining overlap" and
+    both get accepted, duplicating the content."""
+    consumed = [False] * len(base)
+    accepted: List[RawDetection] = []
+    for pd in paddle_dets:
+        if (pd.confidence or 0) < floor:
+            continue
+        pd_text = (pd.text or "").strip()
+        pb = _polygon_bbox(pd.polygon)
+        dup_base = [
+            i for i, kept in enumerate(base)
+            if not consumed[i] and _overlap_frac(pb, _polygon_bbox(kept.polygon)) > 0.5
+        ]
+        dup_accepted = next(
+            (j for j, kept in enumerate(accepted)
+             if _overlap_frac(pb, _polygon_bbox(kept.polygon)) > 0.5),
+            None,
+        )
+        trustworthy_lengths = [
+            len((base[i].text or "").strip()) for i in dup_base
+            if (base[i].confidence or 0) >= floor
+        ]
+        if dup_accepted is not None and (accepted[dup_accepted].confidence or 0) >= floor:
+            trustworthy_lengths.append(len((accepted[dup_accepted].text or "").strip()))
+        if trustworthy_lengths and len(pd_text) < max(trustworthy_lengths):
+            continue  # trust the existing, more complete read instead
+        for i in dup_base:
+            consumed[i] = True
+        if dup_accepted is not None:
+            accepted[dup_accepted] = pd
+        else:
+            accepted.append(pd)
+    survivors = [d for i, d in enumerate(base) if not consumed[i]]
+    return survivors + accepted
+
+
+def _uncovered_scene_surfaces(
+    scene_regions: List[SceneRegion],
+    refs: List[Tuple[BBox, float]],
+    min_confidence: float = 0.0,
+) -> List[SceneRegion]:
+    """scene surfaces with no >50%-contained, sufficiently-confident box
+    among `refs` -- the same containment test probe_uncovered_surfaces
+    uses, factored out so the paddle rescue pass can reuse it against
+    its OWN merged detection set rather than duplicating the logic.
+
+    `min_confidence` matters: "covered" used to mean "ANY existing
+    detection sits here, however wrong" -- a weak/wrong detection (e.g.
+    japan-street's r12, a 0.305-confidence misread of "2F" as "T")
+    silently blocked the targeted retry that exists specifically to fix
+    it, even after the full-frame rescue pass already ran and failed.
+    the default (0.0) preserves the original "any coverage counts"
+    behavior for callers that haven't opted into confidence-awareness.
+    """
+    return [
+        r for r in scene_regions
+        if not any(
+            conf >= min_confidence and _containment_frac(b, r.bbox) > 0.5
+            for b, conf in refs
+        )
+    ]
+
+
+def should_paddle_rescue(
+    instances: List[InstText],
+    scene_regions: Optional[List[SceneRegion]],
+) -> Tuple[bool, Optional[str]]:
+    """whether a PaddleOCR rescue pass is worth its cost, and which
+    language to run it in.
+
+    two independent triggers, both measured live as necessary on
+    japan-street.jpeg: a low mean confidence catches regions EasyOCR
+    read WRONG (an InstText already exists, just a bad one); an
+    uncovered scene surface catches regions EasyOCR never detected at
+    all (no InstText exists to average a confidence over, so the first
+    trigger alone can't see these). only fires for a CJK-dominant
+    scene -- PaddleOCR's measured advantage over EasyOCR is specific to
+    dense/vertical CJK signage, not a general "try the other engine"
+    policy.
+    """
+    votes: Dict[str, float] = {}
+    confs: Dict[str, List[float]] = {}
+    for inst in instances:
+        lang = inst.detected_language
+        if lang not in PADDLE_RESCUE_LANGS or inst.bounding_box is None:
+            continue
+        area = max(1, inst.bounding_box.width * inst.bounding_box.height)
+        votes[lang] = votes.get(lang, 0.0) + area
+        confs.setdefault(lang, []).append(inst.confidence or 0.0)
+    if not votes:
+        return False, None
+    dominant = max(votes, key=lambda k: votes[k])
+    mean_conf = sum(confs[dominant]) / len(confs[dominant])
+    if mean_conf < PADDLE_RESCUE_CONF_FLOOR:
+        return True, dominant
+    if scene_regions:
+        refs = [(i.bounding_box, i.confidence or 0.0) for i in instances if i.bounding_box]
+        if _uncovered_scene_surfaces(scene_regions, refs, min_confidence=PADDLE_OVERLAP_WIN_FLOOR):
+            return True, dominant
+    return False, dominant
+
+
+PADDLE_ESCALATED_DROP_SCORE = 0.15
+PADDLE_ESCALATED_UNCLIP_RATIO = 1.9
+# a covering detection spanning less than this fraction of its surface's
+# own dominant-axis extent is treated as possibly truncated
+SURFACE_COVERAGE_FLOOR = 0.85
+
+
+def _surface_coverage_frac(det_bbox: BBox, surface_bbox: BBox) -> float:
+    """fraction of `surface_bbox`'s dominant-axis extent that `det_bbox`
+    spans -- a truncation signal distinct from _containment_frac (which
+    measures the detection's OWN area contained in the surface, not
+    whether the detection accounts for the surface's full extent).
+    measured live: japan-street's 劇場通り read as 劇場通 with a box
+    49px tall against a ~62px-tall covering scene surface -- 0.79
+    coverage, below the floor this feeds."""
+    if surface_bbox.height >= surface_bbox.width:
+        return det_bbox.height / max(1, surface_bbox.height)
+    return det_bbox.width / max(1, surface_bbox.width)
+
+
+SUBDIVIDE_MAX_DIM = 120  # a surface larger than this on either axis gets tiled
+SUBDIVIDE_OVERLAP_PX = 10  # tile overlap so a sign spanning a tile edge isn't cut
+# an axis only gets split when it exceeds max_dim by more than this factor --
+# a MARGINAL overage (measured live: china-street's crown+"MING" surface is
+# 121px wide, 1px over a 120px cap) doesn't deserve a cut, because the
+# resulting tile boundary can land squarely across real content that spans
+# nearly the surface's full width ("MING" bisected letter-for-letter between
+# two 60px-ish column tiles, so neither tile ever saw the whole word). only
+# a SUBSTANTIAL overage justifies the tiling tradeoff.
+SUBDIVIDE_SPLIT_TOLERANCE = 1.5
+
+
+def _subdivide_bbox(bbox: BBox, max_dim: int = SUBDIVIDE_MAX_DIM) -> List[BBox]:
+    """split a large bbox into a small overlapping grid of sub-regions no
+    larger than `max_dim` on either side; returns [bbox] unchanged when
+    it's already small enough.
+
+    a single large candidate surface can cover several distinct signs at
+    once (measured live: japan-street's 145x253 "お好み焼本陣" surface
+    also contains an unrelated tiny "2F" floor placard) -- asking
+    PaddleOCR to find and read every embedded piece of text in one big,
+    cluttered crop is exactly the coarse-to-fine failure this codebase's
+    zoom_detect already works around for EasyOCR; this is the same idea
+    for the escalated Paddle retry specifically, where it matters most
+    (the lowest-threshold, most compute-cautious tier).
+
+    each axis is subdivided independently, and only when it clears
+    SUBDIVIDE_SPLIT_TOLERANCE -- a narrow vertical CJK column (common
+    for exactly the signage this rescue targets) can be a little over
+    max_dim in width without needing a horizontal cut at all.
+    """
+    split_w = bbox.width > max_dim * SUBDIVIDE_SPLIT_TOLERANCE
+    split_h = bbox.height > max_dim * SUBDIVIDE_SPLIT_TOLERANCE
+    if not split_w and not split_h:
+        return [bbox]
+    cols = max(1, -(-bbox.width // max_dim)) if split_w else 1
+    rows = max(1, -(-bbox.height // max_dim)) if split_h else 1
+    cell_w = bbox.width / cols
+    cell_h = bbox.height / rows
+    out: List[BBox] = []
+    for row in range(rows):
+        for col in range(cols):
+            x0 = bbox.x + col * cell_w - (SUBDIVIDE_OVERLAP_PX if col > 0 else 0)
+            y0 = bbox.y + row * cell_h - (SUBDIVIDE_OVERLAP_PX if row > 0 else 0)
+            x1 = bbox.x + (col + 1) * cell_w + (SUBDIVIDE_OVERLAP_PX if col < cols - 1 else 0)
+            y1 = bbox.y + (row + 1) * cell_h + (SUBDIVIDE_OVERLAP_PX if row < rows - 1 else 0)
+            out.append(BBox(x=int(x0), y=int(y0), width=int(x1 - x0), height=int(y1 - y0)))
+    return out
+
+
+def _surfaces_needing_help(
+    scene_regions: List[SceneRegion],
+    refs: List[Tuple[BBox, float]],
+    min_confidence: float = PADDLE_OVERLAP_WIN_FLOOR,
+) -> List[SceneRegion]:
+    """scene surfaces that are either genuinely uncovered
+    (_uncovered_scene_surfaces) or covered only by a detection that
+    looks truncated relative to the surface's own extent -- both are
+    worth an escalated retry, not just the former."""
+    uncovered = _uncovered_scene_surfaces(scene_regions, refs, min_confidence)
+    uncovered_ids = {id(r) for r in uncovered}
+    truncated = [
+        r for r in scene_regions
+        if id(r) not in uncovered_ids
+        and any(
+            conf >= min_confidence
+            and _containment_frac(b, r.bbox) > 0.5
+            and _surface_coverage_frac(b, r.bbox) < SURFACE_COVERAGE_FLOOR
+            for b, conf in refs
+        )
+    ]
+    return uncovered + truncated
+
+
+def run_paddle_rescue(
+    asset: Any,
+    detections: List[RawDetection],
+    scene_regions: Optional[List[SceneRegion]],
+    language: str,
+    gpu: bool = False,
+) -> Optional[List[RawDetection]]:
+    """one full-frame PaddleOCR pass, merged into `detections` via
+    `_prefer_paddle_on_overlap` (Paddle wins overlaps once its own
+    confidence clears a modest floor -- NOT a numeric confidence
+    comparison against the EasyOCR side; see that function's docstring
+    for why merge_detections'/union_prefer_primary's usual semantics
+    are both wrong here). any scene surface still needing help after
+    that merge -- genuinely uncovered, OR covered only by a detection
+    that looks truncated relative to the surface's own extent
+    (_surfaces_needing_help) -- gets one targeted detect_in_regions()
+    call at default thresholds; PaddleOCR's own full-frame box-finder
+    sometimes misses a sign a scene-surface crop still catches
+    (measured live: japan-street's partially-occluded 東南荘 sign).
+    whatever STILL needs help after that gets one further escalated
+    retry (lower drop_score recovers faint/partially-obscured signage
+    like カラオケ; higher unclip_ratio recovers a box DBNet under-
+    clipped, like 劇場通り's missing trailing り). returns None
+    (nothing to change) if PaddleOCR added nothing new; at most 3
+    subprocess round-trips total, never one per surface.
+    """
+    backend = PaddleOCRBackend(languages=[language], gpu=gpu)
+    try:
+        full = backend.detect(asset)
+    except Exception:
+        full = []
+    merged = _prefer_paddle_on_overlap(detections, full) if full else list(detections)
+    changed = bool(full)
+
+    if not scene_regions:
+        return merged if changed else None
+
+    def refs_of(dets: List[RawDetection]) -> List[Tuple[BBox, float]]:
+        return [(_polygon_bbox(d.polygon), d.confidence or 0.0) for d in dets]
+
+    needing_help = _surfaces_needing_help(scene_regions, refs_of(merged))
+    if needing_help:
+        bboxes = [r.bbox for r in needing_help[:SURFACE_PROBE_MAX]]
+        try:
+            per_region = backend.detect_in_regions(asset, bboxes)
+        except Exception:
+            per_region = []
+        region_dets = [d for dets in per_region for d in dets]
+        if region_dets:
+            merged = _prefer_paddle_on_overlap(merged, region_dets)
+            changed = True
+
+        # escalate once more, scoped to whatever STILL needs help after
+        # the default-threshold retry above. large surfaces are probed
+        # BOTH whole AND tiled (_subdivide_bbox) in the same call: tiling
+        # alone regressed a previously-correct whole-sign read (measured
+        # live: japan-street's already-complete "お好み焼本陣" read was
+        # lost when the escalated call saw only sub-tiles of its
+        # surface, each missing the context the full crop had) -- but a
+        # whole-surface crop can still miss a small embedded piece of
+        # text a tile isolates (a tiny floor placard). keeping both
+        # candidates and trusting _prefer_paddle_on_overlap's length
+        # guard (the whole surface's more complete read beats an
+        # inferior overlapping tile read) gets both benefits at once.
+        still_needing_help = _surfaces_needing_help(scene_regions, refs_of(merged))
+        if still_needing_help:
+            probe_bboxes: List[BBox] = []
+            for r in still_needing_help:
+                probe_bboxes.append(r.bbox)
+                probe_bboxes.extend(_subdivide_bbox(r.bbox))
+                if len(probe_bboxes) >= SURFACE_PROBE_MAX:
+                    break
+            escalated = PaddleOCRBackend(
+                languages=[language], gpu=gpu,
+                drop_score=PADDLE_ESCALATED_DROP_SCORE,
+                unclip_ratio=PADDLE_ESCALATED_UNCLIP_RATIO,
+            )
+            try:
+                per_region2 = escalated.detect_in_regions(asset, probe_bboxes[:SURFACE_PROBE_MAX])
+            except Exception:
+                per_region2 = []
+            region_dets2 = [d for dets in per_region2 for d in dets]
+            if region_dets2:
+                merged = _prefer_paddle_on_overlap(merged, region_dets2)
+                changed = True
+
+    return merged if changed else None
+
+
 def _identify_languages(
     asset: Any,
     instances: List[InstText],
@@ -1771,7 +2279,41 @@ def zoom_detect(
                 confidence=d.confidence,
                 language=primary_lang,
             ))
-    return fine
+    # surfaces can overlap (e.g. an MSER text_cluster and a contour-rescue
+    # bordered_region both covering the same sign), so the per-surface
+    # re-detection above can hand back the same text twice; collapse those
+    # before returning rather than relying on the caller's union to do it
+    # (union_prefer_primary never dedupes its own primary list).
+    return _dedup_zoom_detections(fine)
+
+
+def _dedup_zoom_detections(fine: List[RawDetection]) -> List[RawDetection]:
+    """collapse duplicate reads within zoom_detect's own output.
+
+    bbox overlap alone isn't a safe dedup signal here: distinct nearby
+    characters recovered from different overlapping candidate surfaces
+    can legitimately share a moderately-overlapping box without being
+    the same read (measured: naively reusing merge_detections' bbox-
+    only NMS here dropped a genuine detection on gemini-street's
+    Korean text, regressing recall 0.111->0.056). a true duplicate --
+    the same sign re-read via two overlapping surfaces -- also reads
+    out near-identical TEXT, so require both signals together.
+    """
+    from tofu.utils.textmatch import fuzzy_similarity
+    out: List[RawDetection] = []
+    for det in fine:
+        db = _polygon_bbox(det.polygon)
+        dup_idx = None
+        for i, kept in enumerate(out):
+            if (_overlap_frac(db, _polygon_bbox(kept.polygon)) > 0.5
+                    and fuzzy_similarity(det.text, kept.text) >= 0.6):
+                dup_idx = i
+                break
+        if dup_idx is None:
+            out.append(det)
+        elif det.confidence > out[dup_idx].confidence:
+            out[dup_idx] = det
+    return out
 
 
 def second_look(
@@ -1871,8 +2413,12 @@ def detect(
     adaptive: bool = True,
     zoom: bool = True,
     vertical_split: bool = True,
+    paddle_rescue: bool = True,
     polish: bool = True,
     savor: bool = True,
+    wasabi: bool = True,
+    menu: bool = True,
+    font_registry: Optional[Any] = None,
 ) -> TextManifest:
     """detect and localize text instances in the asset.
 
@@ -1918,6 +2464,13 @@ def detect(
             and re-recognize each individually; the resulting fragments
             flow through the normal merge_vertical_columns() reassembly.
             see `_split_tall_detections`.
+        paddle_rescue: on a CJK-dominant scene where EasyOCR's own
+            passes above still leave low confidence or entirely
+            undetected scene surfaces, try PaddleOCR (an isolated
+            subprocess-bridged second engine) for whatever it can add —
+            best-effort, silently skipped wherever the isolated
+            `.venv-paddle` isn't set up. see `should_paddle_rescue`/
+            `run_paddle_rescue`.
         polish: second-look recognition — re-read low-confidence regions
             from upscaled crops with the final engine and keep the
             better read.
@@ -1928,6 +2481,22 @@ def detect(
             on the same pixels reproduces the same mistake); it verifies
             a candidate correction against the glyph's own pixel shape
             before ever rewriting anything. see `savor.taste()`.
+        wasabi: normalize known simplified-Chinese-only glyph forms to
+            their Japanese shinjitai equivalent on `ja`-labeled text
+            (e.g. 剧→劇, 烧→焼) -- PaddleOCR's shared ja/zh recognition
+            model can confidently emit either form regardless of the
+            requested language. runs after `savor`, before `menu` (so
+            menu's gazetteer fuzzy-match sees corrected characters).
+            see `wasabi.season()`.
+        menu: check low-confidence reads against a small gazetteer of
+            known real-world place/establishment names (a famous gate
+            sign, a named street) and correct to the closest match when
+            one is a strong fuzzy hit. runs after `savor`/`wasabi`, on
+            whatever text survives them. see `menu.browse()`.
+        font_registry: optional FontRegistry, used only by savor's
+            dakuten/handakuten course (course 4) to render real Japanese
+            reference glyphs for pixel comparison -- every other course
+            is unaffected when this is omitted. see `savor._reference_bite`.
 
     returns:
         TextManifest with one InstText per detected region, sorted into
@@ -2057,6 +2626,47 @@ def detect(
                 start=start,
             )
 
+    # PaddleOCR rescue: a second, differently-architected engine for
+    # whatever EasyOCR's own passes above still leave weak or entirely
+    # undetected on a CJK-dominant scene. best-effort and self-gating --
+    # see should_paddle_rescue/run_paddle_rescue's own docstrings.
+    if paddle_rescue and manifest.instances and PaddleOCRBackend.is_available():
+        try:
+            should_rescue, dominant = should_paddle_rescue(manifest.instances, scene_regions)
+            if should_rescue:
+                rescued = run_paddle_rescue(
+                    asset, detections, scene_regions, dominant,
+                    gpu=getattr(final_engine, "gpu", False),
+                )
+                if rescued is not None:
+                    detections = rescued
+                    id_engine = final_engine
+                    if (isinstance(final_engine, EasyOCRBackend)
+                            and tuple(final_engine.languages) == ("en",)):
+                        # avoid re-triggering the expensive 3-reader auto-
+                        # probe inside build_manifest's identify_languages
+                        # step -- hand it an already-CJK-tuned stand-in
+                        # instead (reader init is lazy, so this costs
+                        # nothing unless actually used downstream)
+                        id_engine = EasyOCRBackend(
+                            languages=expand_langset([dominant]),
+                            gpu=getattr(final_engine, "gpu", False),
+                        )
+                    manifest = build_manifest(
+                        asset, detections,
+                        asset_info=asset_info,
+                        engine=id_engine,
+                        scene_regions=scene_regions,
+                        scene_filter=scene_filter,
+                        identify_languages=identify_languages,
+                        max_extra_readers=max_extra_readers,
+                        prune_garbage=prune_garbage,
+                        start=start,
+                    )
+                    final_engine = id_engine
+        except Exception:
+            pass
+
     # second-look recognition on the surviving weak regions
     if polish and manifest.instances and not isinstance(final_engine, NullBackend):
         second_look(asset, manifest.instances, final_engine)
@@ -2067,7 +2677,28 @@ def detect(
     if savor and manifest.instances:
         try:
             from tofu.layers.savor import taste
-            taste(asset, manifest.instances)
+            taste(asset, manifest.instances, font_registry=font_registry)
+        except Exception:
+            pass
+
+    # Japanese/simplified-Chinese glyph normalization runs before the
+    # gazetteer so menu's fuzzy match sees corrected characters (a
+    # normalized 劇 scores better against a 劇場通り candidate than an
+    # unnormalized 剧 would) -- best-effort, same as Savor/menu.
+    if wasabi and manifest.instances:
+        try:
+            from tofu.layers.wasabi import season
+            season(manifest.instances)
+        except Exception:
+            pass
+
+    # gazetteer correction runs last, on whatever text Savor/wasabi left
+    # behind -- best-effort, same as Savor: a lookup failure must never
+    # fail detection itself.
+    if menu and manifest.instances:
+        try:
+            from tofu.layers.menu import browse
+            browse(manifest.instances)
         except Exception:
             pass
 
@@ -2136,7 +2767,31 @@ def _disambiguate_ja_zh(instances: List[InstText]) -> None:
                     inst.detected_language = "zh-cn"
 
 
-def _prune_hallucinations(instances: List[InstText]) -> List[InstText]:
+def _has_ink_support(asset: Any, bbox: BBox) -> bool:
+    """False when the bbox's own pixels show no separable ink structure
+    at all -- a detection with a "real" script/digit read but literally
+    nothing there is a hallucination text_mask alone can catch,
+    independent of confidence (see _prune_hallucinations's script/digit
+    bypass, which this complements rather than replaces).
+
+    fails OPEN (returns True) on any image-load or crop failure: this
+    gate must never block a detection over an unrelated I/O problem, and
+    text_mask() already returns None both for degenerate crops and for
+    crops Otsu can't separate -- only the latter is a real "no ink"
+    signal, so the fail-open default keeps genuine low-confidence-but-
+    real text (e.g. japan-street's 0.015-confidence neon banner) safe.
+    """
+    from tofu.utils.imaging import load_rgb, text_mask
+    img = load_rgb(asset)
+    if img is None:
+        return True  # fail open: never block on an unrelated load failure
+    mask = text_mask(img, bbox, refine=False)
+    return mask is not None and bool(mask.any())
+
+
+def _prune_hallucinations(
+    instances: List[InstText], asset: Any = None
+) -> List[InstText]:
     """drop symbol-noise regions and renumber the survivors.
 
     a region is a hallucination when its text is empty, or contains no
@@ -2168,6 +2823,23 @@ def _prune_hallucinations(instances: List[InstText]) -> List[InstText]:
             )
             if (inst.confidence or 0) < 0.4 or area < MIN_SYMBOL_JUNK_AREA:
                 continue
+        # independent ink-support gate (Cluster 3): a moderately-low-
+        # confidence read -- script OR not -- sitting on pixels with no
+        # separable ink at all is a hallucination the script/digit logic
+        # above deliberately can't catch (both `に`/0.542 over blank sky
+        # and a confident-looking English `DESIN`/0.546 clear it because
+        # they decoded to *some* script). scoped to conf < 0.65 so
+        # genuinely confident reads are never touched, and _has_ink_support
+        # fails open, so the many real low-confidence detections that DO
+        # have ink are unaffected. this COMPLEMENTS, never replaces, the
+        # script/digit logic -- do not raise the flat floors above.
+        if (
+            asset is not None
+            and inst.bounding_box is not None
+            and (inst.confidence or 0) < 0.65
+            and not _has_ink_support(asset, inst.bounding_box)
+        ):
+            continue
         kept.append(inst)
     for order, inst in enumerate(kept):
         inst.id = f"r{order + 1}"
@@ -2203,7 +2875,7 @@ def build_manifest(
     # language rescue re-recognizes, and one region per sign is what the
     # capture table should show
     if merge_columns:
-        detections = merge_vertical_columns(detections)
+        detections = merge_vertical_columns(detections, asset=asset)
 
     # scene constraint, PHASE A — survive-for-rescue: a deliberately
     # lenient GEOMETRIC-ONLY gate ("is this plausibly text-shaped,
@@ -2401,7 +3073,7 @@ def build_manifest(
     # hallucination pruning runs AFTER rescue/identification so regions
     # that were salvageable got their chance first
     if prune_garbage:
-        instances = _prune_hallucinations(instances)
+        instances = _prune_hallucinations(instances, asset)
 
     return TextManifest(
         # asset_info.source is a full file path (server/main.py's

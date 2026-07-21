@@ -1,0 +1,94 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+@plugin "daisyui";
+
+/* Explicit font stack with verified Vietnamese diacritic support.
+   Without this, some Windows configurations resolve ui-sans-serif to a
+   face whose stacked-diacritic glyphs (ế, ệ) draw the acute detached or
+   misordered. Segoe UI / Noto Sans / Arial all carry correct precomposed
+   Vietnamese glyphs. */
+html {
+  font-family: "Segoe UI", "Noto Sans", "Helvetica Neue", Arial,
+    ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji",
+    "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  font-feature-settings: normal;
+  text-rendering: optimizeLegibility;
+  scrollbar-gutter: stable;
+}
+
+/* descriptive copy (descriptions, legends, hints, stats) is monospace */
+.subtext {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, "Courier New", monospace;
+}
+
+/* page background/foreground per theme (Tailwind class strategy) */
+body {
+  @apply bg-zinc-100 text-zinc-900;
+}
+html.dark body {
+  @apply bg-zinc-950 text-zinc-100;
+}
+
+/* --- loader keyframes (Loaders.tsx) --- */
+@keyframes spinner-fade {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+@keyframes bounce-dots {
+  0%, 100% { transform: scale(0.8); opacity: 0.5; }
+  50% { transform: scale(1.2); opacity: 1; }
+}
+@keyframes thin-pulse {
+  0%, 100% { transform: scale(0.95); opacity: 0.8; }
+  50% { transform: scale(1.05); opacity: 0.4; }
+}
+@keyframes pulse-dot {
+  0%, 100% { transform: scale(1); opacity: 0.8; }
+  50% { transform: scale(1.5); opacity: 1; }
+}
+@keyframes shimmer-text {
+  0% { background-position: 150% center; }
+  100% { background-position: -150% center; }
+}
+@keyframes wave-bars {
+  0%, 100% { transform: scaleY(1); opacity: 0.5; }
+  50% { transform: scaleY(0.6); opacity: 1; }
+}
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* --- splash screen: logo fades in and out over ~5s --- */
+@keyframes splash-logo {
+  0% { opacity: 0; transform: scale(0.98); }
+  35% { opacity: 1; transform: scale(1); }
+  70% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.01); }
+}
+.splash-logo {
+  animation: splash-logo 5.4s ease-in-out forwards;
+}
+
+/* splash terminal entities: each line rises in when its stage arrives */
+.splash-line {
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.45s ease, transform 0.45s ease;
+}
+.splash-line.on {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* --- scan check mark: appears, holds, then fades away --- */
+@keyframes check-fade {
+  0% { opacity: 0; transform: scale(0.6); }
+  15% { opacity: 1; transform: scale(1); }
+  70% { opacity: 1; }
+  100% { opacity: 0; }
+}
+.check-fade {
+  animation: check-fade 2.4s ease-out forwards;
+}

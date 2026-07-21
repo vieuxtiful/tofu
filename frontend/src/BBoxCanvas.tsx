@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { TbZoomInFilled, TbCircleDashedPlus, TbCircleDashedMinus } from "react-icons/tb";
+import { FaPlus, FaMinus } from "react-icons/fa";
 import { InstText, BBox, SceneRegion } from "./api";
 import "./bbox.css";
 
@@ -22,6 +24,15 @@ interface BBoxCanvasProps {
   onImgLoad: (size: { width: number; height: number }) => void;
   onExpandToggle?: (expanded: boolean) => void;
   preview?: boolean;
+  canvasLabel?: string;
+  showPreviewControls?: boolean;
+  controlledZoom?: number;
+  onZoomChange?: (zoom: number) => void;
+  controlledScroll?: { x: number; y: number };
+  onScrollChange?: (scroll: { x: number; y: number }) => void;
+  controlledHeight?: number | null;
+  onHeightChange?: (height: number) => void;
+  onDoubleClickExpand?: () => void;
 }
 
 type DragState =
@@ -48,12 +59,22 @@ function confColor(conf: number | null): string {
 export default function BBoxCanvas({
   imageUrl, manifest, sceneRegions, selectedId, hoveredId, onSelect, onHover,
   onAddRegion, onUpdateRegion, drawMode, imgNaturalSize, onImgLoad, onExpandToggle,
-  preview = false,
+  preview = false, canvasLabel, showPreviewControls = false,
+  controlledZoom, onZoomChange, controlledScroll, onScrollChange,
+  controlledHeight, onHeightChange, onDoubleClickExpand,
 }: BBoxCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const syncBarRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const [zoom, setZoom] = useState(1);
+  const effectiveZoom = controlledZoom !== undefined ? controlledZoom : zoom;
+
+  const setZoomBoth = useCallback((z: number) => {
+    const clamped = Math.max(0.25, Math.min(4, z));
+    setZoom(clamped);
+    onZoomChange?.(clamped);
+  }, [onZoomChange]);
+
   const [fitWidth, setFitWidth] = useState<number | null>(null);
   const [showSurfaces, setShowSurfaces] = useState(true);
   const [drag, setDrag] = useState<DragState>(null);
@@ -67,9 +88,18 @@ export default function BBoxCanvas({
   const expandClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const DEFAULT_CANVAS_H = 400;
-  const MIN_CANVAS_H = 200;
+  const MIN_CANVAS_H = 180;
   const MAX_CANVAS_H = 800;
   const preExpandHeight = useRef<number>(MIN_CANVAS_H);
+  const lastDragHandleDown = useRef(0);
+  const lastExpandedH = useRef<number | null>(null);
+
+  // display scale: rendered px per natural px. zoom=1 fits the container
+  // width (small images stay natural size); zoom scales from there.
+  const natural = imgNaturalSize;
+  const baseWidth = natural
+    ? Math.min(natural.width, fitWidth ?? natural.width)
+    : null;
 
   // track the container's content width so zoom=1 means fit-to-width
   useEffect(() => {
@@ -80,6 +110,27 @@ export default function BBoxCanvas({
     setFitWidth(el.clientWidth);
     return () => ro.disconnect();
   }, []);
+
+  // sync scroll from external source when linked
+  useEffect(() => {
+    if (controlledScroll === undefined) return;
+    const el = containerRef.current;
+    if (!el) return;
+    if (el.scrollLeft !== controlledScroll.x || el.scrollTop !== controlledScroll.y) {
+      el.scrollLeft = controlledScroll.x;
+      el.scrollTop = controlledScroll.y;
+    }
+  }, [controlledScroll]);
+
+  // report scroll changes when linked
+  useEffect(() => {
+    if (!onScrollChange) return;
+    const el = containerRef.current;
+    if (!el) return;
+    const onScroll = () => onScrollChange({ x: el.scrollLeft, y: el.scrollTop });
+    el.addEventListener("scroll", onScroll);
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [onScrollChange]);
 
   // sync horizontal scroll between container and sticky bottom scrollbar
   useEffect(() => {
@@ -102,15 +153,45 @@ export default function BBoxCanvas({
   }, []);
 
   // drag handle to expand/collapse canvas height (like title screen project list)
+  // double-click is detected via mousedown timestamps (more reliable than onClick
+  // which may not fire when mousedown adds document-level listeners)
   const onExpandDragStart = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
+    // double-click detection via timestamp
+    const now = Date.now();
+    if (now - lastDragHandleDown.current < 300) {
+      lastDragHandleDown.current = 0;
+      if (onDoubleClickExpand) {
+        onDoubleClickExpand();
+        return;
+      }
+      setCanvasHeight((h) => {
+        if (h !== null) {
+          lastExpandedH.current = h; // remember height before collapsing
+          return null; // collapse to standard
+        }
+        // restore last expanded height, or use default
+        return lastExpandedH.current ?? DEFAULT_CANVAS_H;
+      });
+      return;
+    }
+    lastDragHandleDown.current = now;
+
     dragStartY.current = e.clientY;
     dragStartHeight.current = containerRef.current?.parentElement?.offsetHeight ?? DEFAULT_CANVAS_H;
+    const dynamicMax = MAX_CANVAS_H;
+    let dragging = false;
     const onMove = (ev: MouseEvent) => {
+      if (!dragging) {
+        dragging = true;
+        ev.preventDefault();
+      }
       const delta = ev.clientY - dragStartY.current;
-      const newHeight = Math.max(MIN_CANVAS_H, Math.min(MAX_CANVAS_H, dragStartHeight.current + delta));
-      setCanvasHeight(newHeight);
+      const newHeight = Math.max(MIN_CANVAS_H, Math.min(dynamicMax, dragStartHeight.current + delta));
+      if (controlledHeight !== undefined && onHeightChange) {
+        onHeightChange(newHeight);
+      } else {
+        setCanvasHeight(newHeight);
+      }
     };
     const onUp = () => {
       document.removeEventListener("mousemove", onMove);
@@ -118,31 +199,30 @@ export default function BBoxCanvas({
     };
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
-  }, []);
+  }, [controlledHeight, onHeightChange, natural, baseWidth, effectiveZoom, preview, onDoubleClickExpand]);
 
   const onExpandClick = useCallback(() => {
     if (expandClickTimer.current) {
       clearTimeout(expandClickTimer.current);
       expandClickTimer.current = null;
-      setCanvasExpanded(false);
-      onExpandToggle?.(false);
+      setCanvasExpanded((v) => { const nv = !v; onExpandToggle?.(nv); return nv; });
       return;
     }
+    // single click: start a timer that expires without toggling.
+    // a second click before expiry cancels it and toggles (double-click).
     expandClickTimer.current = setTimeout(() => {
       expandClickTimer.current = null;
-      setCanvasExpanded((v) => { const nv = !v; onExpandToggle?.(nv); return nv; });
     }, 250);
   }, [onExpandToggle]);
 
-  // display scale: rendered px per natural px. zoom=1 fits the container
-  // width (small images stay natural size); zoom scales from there.
-  const natural = imgNaturalSize;
-  const baseWidth = natural
-    ? Math.min(natural.width, fitWidth ?? natural.width)
-    : null;
-  const renderedW = natural && baseWidth ? baseWidth * zoom : null;
+  const renderedW = natural && baseWidth ? baseWidth * effectiveZoom : null;
   const scale = natural && renderedW ? renderedW / natural.width : 1;
   const px = (v: number) => v * scale;
+
+  // in preview mode, zoom controls only show when the image doesn't fit entirely
+  const previewFitsEntirely = natural && baseWidth && fitWidth
+    ? baseWidth <= fitWidth && natural.height * (baseWidth / natural.width) <= (preview ? 300 : 400)
+    : true;
 
   // client coords → natural-image coords. returns FLOATS — callers round
   // only when committing a bbox, so drags don't accumulate rounding jitter.
@@ -164,7 +244,18 @@ export default function BBoxCanvas({
   );
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {
-    if (preview) return;
+    if (preview) {
+      // in preview mode, drag pans the view (same as empty-canvas drag in edit mode)
+      const el = containerRef.current;
+      if (el) {
+        setDrag({
+          type: "pan",
+          startClientX: e.clientX, startClientY: e.clientY,
+          startScrollLeft: el.scrollLeft, startScrollTop: el.scrollTop,
+        });
+      }
+      return;
+    }
     if (drawMode) {
       // raw (unclamped) hit-test: a draw must start ON the image, not in
       // the container gutter around it
@@ -185,7 +276,7 @@ export default function BBoxCanvas({
         });
       }
     }
-  }, [drawMode, toImgCoords, natural, onSelect]);
+  }, [preview, drawMode, toImgCoords, natural, onSelect]);
 
   const onMouseMove = useCallback((e: React.MouseEvent) => {
     if (loupeOn) {
@@ -290,14 +381,19 @@ export default function BBoxCanvas({
 
   return (
     <div
-      className="bezier-card soft-shadow relative flex min-h-[200px] flex-col rounded-lg bg-zinc-100 dark:bg-zinc-900"
-      style={canvasHeight !== null ? { height: canvasHeight, transition: "height 0.3s ease-in-out" } : { height: preview ? 300 : "100%", transition: "height 0.3s ease-in-out" }}
+      className="bezier-card soft-shadow relative flex min-h-[180px] flex-col rounded-lg bg-zinc-100 dark:bg-zinc-900"
+      style={controlledHeight !== undefined
+        ? { height: controlledHeight ?? (preview ? 300 : "100%"), transition: "height 0.3s ease-in-out" }
+        : canvasHeight !== null
+          ? { height: canvasHeight, transition: "height 0.3s ease-in-out" }
+          : { height: preview ? 300 : "100%", transition: "height 0.3s ease-in-out" }
+      }
     >
     <div
       ref={containerRef}
       className="bbox-canvas-scroll relative flex-1 mr-6"
       style={{
-        cursor: preview ? "default" : drawMode ? "crosshair" : drag?.type === "pan" ? "grabbing" : "grab",
+        cursor: preview ? (drag?.type === "pan" ? "grabbing" : "grab") : drawMode ? "crosshair" : drag?.type === "pan" ? "grabbing" : "grab",
       }}
       onMouseDown={onMouseDown}
       onMouseMove={onMouseMove}
@@ -351,7 +447,7 @@ export default function BBoxCanvas({
                   }}
                 >
                   <span className="bbox-surface-label">
-                    {r.semantic_label}
+                    {r.semantic_label.replace(/_/g, " ")}
                   </span>
                 </div>
               ))}
@@ -411,35 +507,44 @@ export default function BBoxCanvas({
                     )}
                     {/* capture-mode metadata tooltip: scene/typography
                         enrichment (style + background) detected at capture */}
-                    {!preview && isHovered && !drawMode && !drag && (() => {
+                    {!preview && !drawMode && !drag && (() => {
                       const sp = inst.style_profile;
                       const bp = inst.background_profile;
                       const ch = inst.characteristics;
                       const styleBits = [
                         ch?.font_style,
-                        ch?.size != null ? `~${ch.size}px` : null,
                       ].filter(Boolean).join(" · ");
                       const bgBits = [
-                        bp?.semantic_label,
+                        bp?.semantic_label?.replace(/_/g, " "),
                         bp?.texture,
                         ...(bp?.gradients ?? []),
                       ].filter(Boolean).join(" · ");
-                      if (!sp?.color && !styleBits && !bgBits && !inst.detected_language) return null;
+                      if (!sp?.color && !styleBits && !bgBits && !inst.detected_language && ch?.size == null) return null;
                       return (
-                        <div className="bbox-meta-tooltip subtext">
+                        <div className={`bbox-meta-tooltip subtext dropdown-morph${isHovered ? " expanded" : ""}`}>
                           {inst.detected_language && (
                             <div className="meta-row">
                               <span className="meta-key">lang</span>
-                              <span>{inst.detected_language}
-                                {inst.confidence !== null && ` (${(inst.confidence * 100).toFixed(0)}%)`}
-                              </span>
+                              <span>{inst.detected_language}</span>
+                              {inst.confidence !== null && (
+                                <span className={`text-[10px] ${
+                                  inst.confidence >= 0.8 ? "text-emerald-400"
+                                  : inst.confidence >= 0.6 ? "text-amber-400"
+                                  : "text-red-400"
+                                }`}>
+                                  {(inst.confidence * 100).toFixed(0)}%
+                                </span>
+                              )}
                             </div>
                           )}
-                          {(sp?.color || styleBits) && (
+                          {(sp?.color || styleBits || ch?.size != null) && (
                             <div className="meta-row">
                               <span className="meta-key">style</span>
                               {sp?.color && <span className="meta-swatch" style={{ background: sp.color }} />}
-                              <span>{styleBits || sp?.color}</span>
+                              {(styleBits || sp?.color) && <span>{styleBits || sp?.color}</span>}
+                              {ch?.size != null && (
+                                <span className="text-[10px] text-[#2d8cf0]">~{ch.size}px</span>
+                              )}
                             </div>
                           )}
                           {(bp?.dominant_color || bgBits) && (
@@ -491,8 +596,11 @@ export default function BBoxCanvas({
         </div>
       )}
       {/* magnifier loupe: circular halo following the cursor, magnifying
-          the image area beneath it via a scaled CSS background */}
-      {loupeOn && loupe && imageUrl && natural && (
+          the image area beneath it via a scaled CSS background. rendered
+          through a portal to <body>: transformed ancestors (e.g. the
+          step-fade tab animation) would otherwise re-base position:fixed
+          and offset the lens from the cursor */}
+      {loupeOn && loupe && imageUrl && natural && createPortal(
         <div
           style={{
             position: "fixed",
@@ -511,7 +619,8 @@ export default function BBoxCanvas({
             pointerEvents: "none",
             zIndex: 60,
           }}
-        />
+        />,
+        document.body
       )}
       </div>
       {/* synced horizontal scrollbar — pinned to the bottom of the canvas card */}
@@ -523,41 +632,47 @@ export default function BBoxCanvas({
           <div style={{ width: renderedW ?? 0, height: 1 }} />
         </div>
       )}
-      {/* zoom controls — hidden in preview mode */}
-      {!preview && (
+      {/* zoom controls — hidden in preview mode unless showPreviewControls and image doesn't fit */}
+      {(!preview || (showPreviewControls && !previewFitsEntirely)) && (
       <div className="absolute bottom-8 left-2 flex gap-1 z-20 w-fit">
         <button onClick={() => {
           const el = containerRef.current;
-          if (!el || !renderedW || !natural) { setZoom((z) => Math.max(0.25, z - 0.25)); return; }
+          if (!el || !renderedW || !natural) { setZoomBoth(effectiveZoom - 0.25); return; }
           const fracX = el.scrollLeft / Math.max(1, el.scrollWidth);
           const fracY = el.scrollTop / Math.max(1, el.scrollHeight);
-          setZoom((z) => Math.max(0.25, z - 0.25));
+          setZoomBoth(effectiveZoom - 0.25);
           requestAnimationFrame(() => {
             const ne = containerRef.current;
             if (ne) { ne.scrollLeft = fracX * ne.scrollWidth; ne.scrollTop = fracY * ne.scrollHeight; }
           });
-        }} className="flex items-center rounded bg-white px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"><TbCircleDashedMinus size={12} /></button>
-        <span className="rounded bg-white px-2 py-1 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">{(zoom * 100).toFixed(0)}%</span>
+        }} className="flex items-center rounded bg-white px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700">
+          {showPreviewControls ? <FaMinus size={10} /> : <TbCircleDashedMinus size={12} />}
+        </button>
+        <span className="rounded bg-white px-2 py-1 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">{(effectiveZoom * 100).toFixed(0)}%</span>
         <button onClick={() => {
           const el = containerRef.current;
-          if (!el || !renderedW || !natural) { setZoom((z) => Math.min(4, z + 0.25)); return; }
+          if (!el || !renderedW || !natural) { setZoomBoth(effectiveZoom + 0.25); return; }
           const fracX = el.scrollLeft / Math.max(1, el.scrollWidth);
           const fracY = el.scrollTop / Math.max(1, el.scrollHeight);
-          setZoom((z) => Math.min(4, z + 0.25));
+          setZoomBoth(effectiveZoom + 0.25);
           requestAnimationFrame(() => {
             const ne = containerRef.current;
             if (ne) { ne.scrollLeft = fracX * ne.scrollWidth; ne.scrollTop = fracY * ne.scrollHeight; }
           });
-        }} className="flex items-center rounded bg-white px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"><TbCircleDashedPlus size={12} /></button>
-        <button onClick={() => setZoom(1)} className="rounded bg-white px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700">fit</button>
-        <button
-          onClick={() => { setLoupeOn((v) => !v); setLoupe(null); }}
-          className={`flex items-center rounded px-2 py-1 text-xs ${loupeOn ? "bg-cyan-900/70 text-cyan-300" : "bg-white text-zinc-500 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"}`}
-          title="Magnifier: hover the image to inspect detail under the cursor"
-        >
-          <TbZoomInFilled size={12} />
+        }} className="flex items-center rounded bg-white px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700">
+          {showPreviewControls ? <FaPlus size={10} /> : <TbCircleDashedPlus size={12} />}
         </button>
-        {(sceneRegions?.length ?? 0) > 0 && (
+        <button onClick={() => setZoomBoth(1)} className="rounded bg-white px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700">fit</button>
+        {!showPreviewControls && (
+          <button
+            onClick={() => { setLoupeOn((v) => !v); setLoupe(null); }}
+            className={`flex items-center rounded px-2 py-1 text-xs ${loupeOn ? "bg-cyan-900/70 text-cyan-300" : "bg-white text-zinc-500 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"}`}
+            title="Magnifier: hover the image to inspect detail under the cursor"
+          >
+            <TbZoomInFilled size={12} />
+          </button>
+        )}
+        {!showPreviewControls && (sceneRegions?.length ?? 0) > 0 && (
           <button
             onClick={() => setShowSurfaces((s) => !s)}
             className={`rounded px-2 py-1 text-xs ${showSurfaces ? "bg-cyan-900/70 text-cyan-300" : "bg-white text-zinc-500 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-500 dark:hover:bg-zinc-700"}`}
@@ -569,30 +684,27 @@ export default function BBoxCanvas({
       </div>
       )}
       {/* expansion drag handle — always visible so users can collapse too */}
-      <div className="title-drag-handle shrink-0" onMouseDown={onExpandDragStart} onDoubleClick={() => setCanvasHeight((h) => {
-        if (h !== null && h < DEFAULT_CANVAS_H) {
-          preExpandHeight.current = h;
-          return DEFAULT_CANVAS_H;
-        }
-        return preExpandHeight.current;
-      })} title="drag to resize · double-click to toggle height">
+      <div className="title-drag-handle shrink-0 flex items-center justify-center" onMouseDown={onExpandDragStart} title="drag to resize · double-click to toggle height" style={{ position: "relative" }}>
         <svg width="42" height="14" viewBox="0 0 42 14" fill="none" xmlns="http://www.w3.org/2000/svg">
           <rect x="0.5" y="1" width="41" height="4.5" rx="2.25" fill="currentColor" />
           <rect x="11" y="8" width="20" height="4.5" rx="2.25" fill="currentColor" />
         </svg>
+        {canvasLabel && <span className="subtext text-xs text-zinc-500" style={{ position: "absolute", right: "0.75rem", top: "50%", transform: "translateY(-50%)" }}>{canvasLabel}</span>}
       </div>
-      {/* horizontal expand handle — on the right side, vertical version of the drag handle */}
+      {/* horizontal expand handle — on the right side, hidden in preview mode */}
+      {!preview && (
       <div
         className="title-drag-handle absolute right-0 top-1/2 -translate-y-1/2 shrink-0 z-20"
         style={{ cursor: "pointer", padding: "2px 4px" }}
         onClick={onExpandClick}
-        title={canvasExpanded ? "collapse to grid · double-click to snap back" : "expand to full width · double-click to snap back"}
+        title={canvasExpanded ? "double-click to return to standard" : "double-click to expand to full width"}
       >
         <svg width="14" height="42" viewBox="0 0 14 42" fill="none" xmlns="http://www.w3.org/2000/svg">
           <rect x="1" y="0.5" width="4.5" height="41" rx="2.25" fill="currentColor" />
           <rect x="8" y="11" width="4.5" height="20" rx="2.25" fill="currentColor" />
         </svg>
       </div>
+      )}
     </div>
   );
 }

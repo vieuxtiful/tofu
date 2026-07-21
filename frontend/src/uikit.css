@@ -1,0 +1,1395 @@
+/* 🍢 ToFU ui kit — user-specified component styles (Uiverse-derived),
+   made theme-aware via the `light` / `dark` classes on <html>. */
+
+/* ============ square loader (3x3 grid) ============ */
+
+@keyframes square-loader-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.square-loader-tile {
+  animation: square-loader-fade 675ms ease-in-out infinite alternate;
+}
+
+@keyframes success-fade {
+  0% { opacity: 0; }
+  15% { opacity: 1; }
+  85% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.success-fade {
+  animation: success-fade 2s ease-in-out forwards;
+}
+
+/* ============ bezier card (panels, popups, toasts) ============ */
+
+.bezier-card {
+  --bc-border: #323232;
+  --bc-shadow: #323232;
+  border: 2px solid var(--bc-border);
+  border-radius: 0.5rem;
+  box-shadow: 4px 4px 0 var(--bc-shadow);
+  transition: box-shadow 0.3s ease, transform 0.3s ease;
+}
+html.dark .bezier-card {
+  --bc-border: #e4e4e7;
+  --bc-shadow: #e4e4e7;
+}
+
+.bezier-card.soft-shadow {
+  box-shadow: 4px 4px 0 var(--bc-shadow), 8px 8px 16px rgba(0,0,0,0.18);
+  animation: soft-shadow-float 4s ease-in-out infinite alternate;
+  transition: transform 0.3s ease;
+}
+
+.soft-shadow:not(.bezier-card) {
+  --bc-shadow: #323232;
+  box-shadow: 4px 4px 0 var(--bc-shadow), 8px 8px 16px rgba(0,0,0,0.18);
+  animation: soft-shadow-float-sm 4s ease-in-out infinite alternate;
+  transition: transform 0.3s ease;
+}
+
+html.dark .soft-shadow:not(.bezier-card) {
+  --bc-shadow: #e4e4e7;
+}
+
+@keyframes soft-shadow-float-sm {
+  0% {
+    box-shadow: 4px 4px 0 var(--bc-shadow), 8px 8px 16px rgba(0,0,0,0.18);
+  }
+  100% {
+    box-shadow: 5.5px 5.5px 0 var(--bc-shadow), 10px 10px 17px rgba(0,0,0,0.19);
+  }
+}
+
+@keyframes soft-shadow-float {
+  0% {
+    box-shadow: 4px 4px 0 var(--bc-shadow), 8px 8px 16px rgba(0,0,0,0.18);
+  }
+  100% {
+    box-shadow: 10px 10px 0 var(--bc-shadow), 14px 14px 20px rgba(0,0,0,0.22);
+  }
+}
+
+/* ============ bezier impression (inverse of bezier-card) ============ */
+
+.bezier-impression {
+  --bc-border: #323232;
+  --bc-shadow: #323232;
+  --bi-inset: rgba(0,0,0,0.15);
+  border: 2px solid transparent;
+  border-radius: 0.5rem;
+  box-shadow:
+    inset 4px 4px 0 rgba(0,0,0,0.0),
+    inset 0 0 0 rgba(0,0,0,0.0);
+  transition:
+    box-shadow 0.4s ease-out,
+    transform 0.4s ease-out,
+    border-color 0.3s ease,
+    background-color 0.3s ease;
+}
+
+html.dark .bezier-impression {
+  --bc-border: #e4e4e7;
+  --bc-shadow: #e4e4e7;
+  --bi-inset: rgba(255,255,255,0.08);
+}
+
+.bezier-impression:hover {
+  transform: translate(4px, 4px);
+  box-shadow:
+    inset -4px -0px 11px var(--bi-inset),
+    inset 1px 1px 2px rgba(255,255,255,0.03);
+}
+
+/* ============ press button ("Get Capture") ============ */
+
+.press-button {
+  --pb-bg: #212121;
+  --pb-fg: #fff;
+  padding: 0.1em 0.25em;
+  width: 13em;
+  height: 4.2em;
+  background-color: var(--pb-bg);
+  border: 0.08em solid var(--pb-fg);
+  border-radius: 0.3em;
+  font-size: 12px;
+  cursor: pointer;
+}
+html.light .press-button {
+  --pb-bg: #f4f4f5;
+  --pb-fg: #18181b;
+}
+
+.press-button span {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  bottom: 0.4em;
+  width: 100%;
+  height: 2.5em;
+  background-color: var(--pb-bg);
+  border-radius: 0.2em;
+  font-size: 1.5em;
+  color: var(--pb-fg);
+  border: 0.08em solid var(--pb-fg);
+  box-shadow: 0 0.4em 0.1em 0.019em var(--pb-fg);
+  transition: all 1s;
+}
+
+.press-button:hover span {
+  transition: all 0.5s;
+  transform: translate(0, 0.4em);
+  box-shadow: 0 0 0 0 var(--pb-fg);
+}
+
+.press-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ============ flip button (text → icon slide + tooltip) ============ */
+
+.flip-button {
+  --width: 108px;
+  --height: 35px;
+  --tooltip-height: 32px;
+  --tooltip-width: 96px;
+  --gap-between-tooltip-to-button: 16px;
+  --button-color: #222;
+  --button-fg: #fff;
+  --tooltip-bg: #555;
+  width: var(--width);
+  height: var(--height);
+  background: var(--button-color);
+  position: relative;
+  text-align: center;
+  border-radius: 0.45em;
+  transition: background 0.3s;
+  cursor: pointer;
+  border: none;
+  padding: 0;
+  flex: none;
+}
+html.light .flip-button {
+  --button-color: #e4e4e7;
+  --button-fg: #18181b;
+  --tooltip-bg: #3f3f46;
+}
+
+.flip-button::before {
+  position: absolute;
+  content: attr(data-tooltip);
+  width: var(--tooltip-width);
+  height: var(--tooltip-height);
+  background-color: var(--tooltip-bg);
+  font-size: 0.8rem;
+  color: #fff;
+  border-radius: 0.25em;
+  line-height: var(--tooltip-height);
+  bottom: calc(var(--height) + var(--gap-between-tooltip-to-button) + 10px);
+  left: calc(50% - var(--tooltip-width) / 2);
+  z-index: 30;
+}
+
+.flip-button::after {
+  position: absolute;
+  content: "";
+  width: 0;
+  height: 0;
+  border: 10px solid transparent;
+  border-top-color: var(--tooltip-bg);
+  left: calc(50% - 10px);
+  bottom: calc(100% + var(--gap-between-tooltip-to-button) - 10px);
+  z-index: 30;
+}
+
+.flip-button::after,
+.flip-button::before {
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.5s;
+  transition-delay: 0s;
+}
+
+.flip-button .fb-wrapper,
+.flip-button .fb-text,
+.flip-button .fb-icon {
+  overflow: hidden;
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  left: 0;
+  color: var(--button-fg);
+}
+
+.flip-button .fb-wrapper {
+  top: 0;
+  border-radius: 0.45em;
+}
+
+.flip-button .fb-text {
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+.flip-button .fb-text,
+.flip-button .fb-icon {
+  transition: top 0.5s;
+}
+
+.flip-button .fb-icon {
+  top: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.flip-button .fb-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.flip-button:hover .fb-text { top: -100%; }
+.flip-button:hover .fb-icon { top: 0; }
+
+.flip-button:hover::before,
+.flip-button:hover::after {
+  opacity: 1;
+  visibility: visible;
+  transition-delay: 5s;
+}
+.flip-button:hover::after {
+  bottom: calc(var(--height) + var(--gap-between-tooltip-to-button) - 20px);
+}
+.flip-button:hover::before {
+  bottom: calc(var(--height) + var(--gap-between-tooltip-to-button));
+}
+
+.flip-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.flip-button.active {
+  --button-color: #0891b2; /* cyan-600: draw-mode / toggled state */
+  --button-fg: #fff;
+}
+
+/* reversed: icon is default state, text appears on hover */
+.flip-button.reversed .fb-text { top: 100%; }
+.flip-button.reversed .fb-icon { top: 0; }
+.flip-button.reversed:hover .fb-text { top: 0; }
+.flip-button.reversed:hover .fb-icon { top: -100%; }
+
+/* ============ card toast ============ */
+
+.toast-card {
+  --tc-bg: #ffffff;
+  --tc-border: #323232;
+  --tc-shadow: #323232;
+  --tc-text: #24292e;
+  --tc-muted: #959da5;
+  background: var(--tc-bg);
+  color: var(--tc-text);
+  width: 100%;
+  max-width: 380px;
+  border-radius: 0.5rem;
+  border: 2px solid var(--tc-border);
+  box-shadow: 4px 4px 0 var(--tc-shadow);
+  animation: toast-in 0.28s cubic-bezier(0.21, 1.02, 0.73, 1) forwards;
+  transition: transform 0.3s ease;
+}
+html.dark .toast-card {
+  --tc-bg: #18181b;
+  --tc-border: #e4e4e7;
+  --tc-shadow: #e4e4e7;
+  --tc-text: #f4f4f5;
+  --tc-muted: #71717a;
+}
+.toast-card.leaving {
+  animation: toast-out 0.25s ease-in forwards;
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(120%); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes toast-out {
+  from { opacity: 1; transform: translateX(0); }
+  to { opacity: 0; transform: translateX(120%); }
+}
+
+.toast-card .tc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.7rem 1rem 0.25rem 1rem;
+}
+.toast-card .tc-title {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+.toast-card .tc-title-icon {
+  width: 1.05em;
+  height: 1.05em;
+  border-radius: 4px;
+  flex: none;
+}
+.toast-card .tc-body {
+  padding: 0.25rem 1rem 0.8rem 1rem;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, "Courier New", monospace;
+}
+.toast-card .tc-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0 0.6rem 0.6rem 0.6rem;
+  justify-content: flex-end;
+}
+.toast-card .tc-action {
+  cursor: pointer;
+  user-select: none;
+  background: none;
+  border: 0;
+  color: var(--tc-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.72rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.4rem;
+  position: relative;
+  transition: all 0.15s ease-out;
+}
+.toast-card .tc-action:hover,
+.toast-card .tc-action:focus-visible {
+  color: var(--tc-text);
+  background: rgba(128, 128, 128, 0.12);
+}
+.toast-card .tc-action.flicker {
+  animation: tc-flicker 0.3s ease-out;
+}
+@keyframes tc-flicker {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.25) rotate(-4deg); }
+  100% { transform: scale(1); }
+}
+
+/* ============ splash text box (3D input-style) ============ */
+
+.splash-textbox {
+  --stb-border: #323232;
+  --stb-bg: #fff;
+  --stb-text: #000;
+  --stb-shadow: #323232;
+  --stb-chevron: #0f2600;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 12px 20px;
+  font-family: "Courier New", monospace;
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--stb-text);
+  background: var(--stb-bg);
+  border: 4px solid var(--stb-border);
+  border-radius: 0.5rem;
+  box-shadow: 8px 8px 0 var(--stb-shadow);
+  animation: splash-textbox-pop 0.85s ease-out forwards; /* controls visual pop of "ToFU" appearance OUTSIDE of splashscreen.tsx time params */
+  min-width: 280px;
+}
+html.dark .splash-textbox {
+  --stb-border: #e4e4e7;
+  --stb-bg: #18181b;
+  --stb-text: #f4f4f5;
+  --stb-shadow: #e4e4e7;
+  --stb-chevron: #4ade80;
+}
+
+@keyframes splash-textbox-pop {
+  0% {
+    transform: translate(0, 0);
+    box-shadow: 8px 8px 0 var(--stb-shadow);
+  }
+  100% {
+    transform: translate(-10px, -10px);
+    box-shadow: 4px 3.5px 0 var(--stb-shadow); /* to adjust ToFU typewriter shadow offset */
+  }
+}
+
+.splash-textbox .splash-chevron {
+  color: var(--stb-chevron);
+}
+
+.splash-cursor {
+  display: inline-block;
+  width: 0.6rem;
+  height: 1.75rem;
+  background: #323232;
+  animation: splash-blink 1s step-end infinite;
+}
+
+html.dark .splash-cursor {
+  background: #e4e4e7;
+}
+
+@keyframes splash-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.splash-line {
+  opacity: 0;
+  transform: translateY(0.5rem);
+  transition: opacity 0.5s ease-out, transform 0.5s ease-out;
+}
+.splash-line.on {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ============ title screen typewriter ============ */
+
+.title-typewriter {
+  font-family: "Courier New", monospace;
+  font-size: 0.75rem;
+  text-align: center;
+}
+
+.title-typewriter-cursor {
+  display: inline-block;
+  width: 0.4rem;
+  height: 0.85rem;
+  background: currentColor;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  animation: splash-blink 1s step-end infinite;
+}
+
+/* ============ project name typewriter block ============ */
+
+.name-typewriter-block {
+  display: inline-block;
+  width: 0.6ch;
+  height: 1.15em;
+  background: currentColor;
+  margin-left: 0;
+  vertical-align: text-bottom;
+  animation: name-block-blink 0.8s step-end infinite;
+}
+
+@keyframes name-block-blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+/* ============ title monogram buttons ============ */
+
+/* workspace button: fades out + moves up */
+.title-btn-workspace {
+  animation: title-btn-in 0.3s ease-out forwards;
+}
+
+.title-btn-workspace.leaving {
+  animation: title-workspace-out 0.4s ease-in forwards;
+}
+
+@keyframes title-workspace-out {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(-24px); }
+}
+
+/* settings button: fades out + moves down */
+.title-btn-settings-wrapper {
+  animation: title-btn-in 0.3s ease-out forwards;
+}
+
+.title-btn-settings-wrapper.leaving {
+  animation: title-settings-out 0.4s ease-in forwards;
+}
+
+.title-morph.leaving {
+  animation: title-workspace-out 0.4s ease-in forwards;
+}
+
+.title-morph.title-settings-leaving {
+  animation: title-settings-out 0.4s ease-in forwards;
+}
+
+@keyframes title-settings-out {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(24px); }
+}
+
+/* projects morphing container: button → card in one smooth motion */
+.title-morph {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  width: 224px;
+  min-height: 44px;
+  padding: 12px 18px 12px 50px;
+  gap: 15px;
+  background-color: #181717;
+  outline: 3px #323232 solid;
+  outline-offset: -3px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  color: #fff;
+  overflow: hidden;
+  position: relative;
+  transition:
+    width 0.4s ease-in-out,
+    min-height 0.4s ease-in-out,
+    height 0.4s ease-in-out,
+    border-radius 0.4s ease-in-out,
+    padding 0.4s ease-in-out,
+    background-color 400ms,
+    outline-color 400ms,
+    color 400ms;
+  animation: title-btn-in 0.3s ease-out forwards;
+}
+
+html.dark .title-morph {
+  background-color: #f4f4f5;
+  outline-color: #f4f4f5;
+  color: #181717;
+}
+
+.title-morph.morphing {
+  width: 448px;
+  min-height: 200px;
+  height: 200px;
+  border-radius: 12px;
+  padding: 1.25rem;
+  cursor: default;
+  background-color: #fff;
+  outline-color: #323232;
+  overflow: hidden;
+}
+
+html.dark .title-morph.morphing {
+  background-color: #18181b;
+  outline-color: #e4e4e7;
+}
+
+.title-morph.morphing.morphing-back {
+  width: 224px;
+  min-height: 44px;
+  height: 44px;
+  border-radius: 8px;
+  padding: 12px 18px 12px 50px;
+  cursor: pointer;
+  background-color: #181717;
+  outline-color: #323232;
+}
+
+html.dark .title-morph.morphing.morphing-back {
+  background-color: #f4f4f5;
+  outline-color: #f4f4f5;
+}
+
+/* button content — visible by default, fades out when morphing */
+.title-morph-btn-content {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  opacity: 1;
+  transition: opacity 0.2s ease-out;
+}
+
+.title-morph.morphing .title-morph-btn-content {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.title-morph.morphing.morphing-back .title-morph-btn-content {
+  opacity: 1;
+  pointer-events: auto;
+  transition: opacity 0.2s ease-in 0.2s;
+}
+
+/* card content — hidden by default, fades in when morphing */
+.title-morph-card-content {
+  position: absolute;
+  inset: 0;
+  padding: 1.25rem;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease-out;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.title-morph.morphing .title-morph-card-content {
+  opacity: 1;
+  pointer-events: auto;
+  transition: opacity 0.25s ease-in 0.2s;
+}
+
+.title-morph.morphing.morphing-back .title-morph-card-content {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.title-morph-card-content > .space-y-2 {
+  flex: 1 1 auto;
+  overflow-y: auto;
+}
+
+@keyframes title-btn-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* used for projects view fade in/out */
+.title-view-fade {
+  animation: title-btn-in 0.3s ease-out forwards;
+}
+
+.title-view-fade.leaving {
+  animation: title-view-out 0.3s ease-in forwards;
+}
+
+@keyframes title-view-out {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(-8px); }
+}
+
+.project-name-row {
+  opacity: 0;
+  animation: project-row-appear 0.3s ease-out forwards;
+}
+
+@keyframes project-row-appear {
+  from { opacity: 0; transform: translateX(-10px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.project-name-text {
+  display: inline-block;
+  position: relative;
+  clip-path: inset(0 100% 0 0);
+  animation: project-name-reveal 1s ease-out forwards;
+}
+
+@keyframes project-name-reveal {
+  from { clip-path: inset(0 100% 0 0); }
+  to { clip-path: inset(0 0 0 0); }
+}
+
+.project-recency {
+  font-size: 0.7rem;
+  font-weight: 400;
+  color: #2d8cf0;
+}
+
+.title-drag-handle {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding-top: 0.5rem;
+  margin-top: 0.25rem;
+  cursor: ns-resize;
+  color: #323232;
+  transition: color 0.2s ease;
+  user-select: none;
+}
+
+.title-drag-handle:hover {
+  color: #2d8cf0;
+}
+
+html.dark .title-drag-handle {
+  color: #e4e4e7;
+}
+
+html.dark .title-drag-handle:hover {
+  color: #2d8cf0;
+}
+
+/* crowdin icon: black in light mode, white in dark mode */
+html.dark .tms-icon-crowdin {
+  filter: invert(1);
+}
+
+/* confirm overlay reuses existing title-confirm-backdrop/card CSS */
+
+.title-mono-btn {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  width: 224px;
+  padding: 12px 18px 12px 50px;
+  gap: 15px;
+  background-color: #181717;
+  outline: 3px #323232 solid;
+  outline-offset: -3px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  transition: 400ms;
+  color: #fff;
+}
+
+.title-mono-text {
+  color: #fff;
+  font-weight: 400;
+  font-size: 0.95em;
+  transition: 400ms;
+  margin: 0;
+}
+
+.title-mono-btn svg,
+.title-morph-btn-content svg {
+  transition: 400ms;
+}
+
+.title-mono-btn:hover,
+.title-morph:not(.morphing):hover {
+  background-color: transparent;
+  outline-color: transparent;
+}
+
+.title-mono-btn:hover .title-mono-text,
+.title-morph:not(.morphing):hover .title-mono-text {
+  color: #181717;
+}
+
+.title-mono-btn:hover svg,
+.title-morph:not(.morphing):hover svg {
+  color: #181717;
+}
+
+html.dark .title-mono-btn,
+html.dark .title-morph {
+  background-color: #f4f4f5;
+  outline-color: #f4f4f5;
+  color: #181717;
+}
+
+html.dark .title-mono-text {
+  color: #181717;
+}
+
+html.dark .title-mono-btn:hover,
+html.dark .title-morph:not(.morphing):hover {
+  background-color: transparent;
+  outline-color: transparent;
+}
+
+html.dark .title-mono-btn:hover .title-mono-text,
+html.dark .title-morph:not(.morphing):hover .title-mono-text {
+  color: #f4f4f5;
+}
+
+html.dark .title-mono-btn:hover svg,
+html.dark .title-morph:not(.morphing):hover svg {
+  color: #f4f4f5;
+}
+
+/* ============ universal screen fade transition ============ */
+
+.screen-fade {
+  animation: screen-fade-in 0.3s ease-out forwards;
+}
+
+.screen-fade-fixed {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  animation: screen-fade-in-blur 0.3s ease-out forwards;
+}
+
+.screen-fade.leaving {
+  animation: screen-fade-out 0.15s ease-in forwards;
+}
+
+.screen-fade-in-only {
+  animation: screen-fade-in 0.3s ease-out forwards;
+}
+
+.step-fade {
+  animation: step-fade-in 0.2s ease-out forwards;
+}
+
+@keyframes step-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.wizard-step {
+  animation: wizard-step-in 0.25s ease-out forwards;
+}
+
+.wizard-step.leaving {
+  animation: wizard-step-out 0.2s ease-in forwards;
+}
+
+@keyframes wizard-step-in {
+  from { opacity: 0; transform: translateX(12px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes wizard-step-out {
+  from { opacity: 1; transform: translateX(0); }
+  to { opacity: 0; transform: translateX(-12px); }
+}
+
+.lang-card-enter-right {
+  animation: lang-card-enter-right 0.25s ease-out forwards;
+}
+
+.lang-card-enter-left {
+  animation: lang-card-enter-left 0.25s ease-out forwards;
+}
+
+.lang-card-leave-left {
+  animation: lang-card-leave-left 0.2s ease-in forwards;
+}
+
+.lang-card-leave-right {
+  animation: lang-card-leave-right 0.2s ease-in forwards;
+}
+
+@keyframes lang-card-enter-right {
+  from { opacity: 0; transform: translateX(12px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes lang-card-enter-left {
+  from { opacity: 0; transform: translateX(-12px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes lang-card-leave-left {
+  from { opacity: 1; transform: translateX(0); }
+  to { opacity: 0; transform: translateX(-12px); }
+}
+
+@keyframes lang-card-leave-right {
+  from { opacity: 1; transform: translateX(0); }
+  to { opacity: 0; transform: translateX(12px); }
+}
+
+.pantry-overlay {
+  animation: pantry-overlay-in 0.3s ease-out forwards;
+}
+
+.pantry-overlay.leaving {
+  animation: pantry-overlay-out 0.3s ease-in forwards;
+}
+
+@keyframes pantry-overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes pantry-overlay-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+.pantry-card {
+  animation: pantry-card-in 0.3s ease-out forwards;
+}
+
+.pantry-card.leaving {
+  animation: pantry-card-out 0.3s ease-in forwards;
+}
+
+@keyframes pantry-card-in {
+  from { opacity: 0; filter: blur(6px); }
+  to { opacity: 1; filter: blur(0); }
+}
+
+@keyframes pantry-card-out {
+  from { opacity: 1; filter: blur(0); }
+  to { opacity: 0; filter: blur(6px); }
+}
+
+.screen-fade-fixed.leaving {
+  animation: screen-fade-out-blur 0.3s ease-in forwards;
+}
+
+@keyframes screen-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes screen-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes screen-fade-in-blur {
+  from { opacity: 0; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+  to { opacity: 1; backdrop-filter: blur(0); -webkit-backdrop-filter: blur(0); }
+}
+
+@keyframes screen-fade-out-blur {
+  from { opacity: 1; backdrop-filter: blur(0); -webkit-backdrop-filter: blur(0); }
+  to { opacity: 0; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+}
+
+/* ============ title confirm overlay ============ */
+
+.title-confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(8px) saturate(0.8);
+  -webkit-backdrop-filter: blur(8px) saturate(0.8);
+  background: rgba(244, 244, 245, 0.55);
+  animation: tco-fade-in 0.3s ease-out forwards;
+}
+
+html.dark .title-confirm-backdrop {
+  background: rgba(9, 9, 11, 0.55);
+}
+
+.title-confirm-backdrop.leaving {
+  animation: tco-fade-out 0.3s ease-in forwards;
+}
+
+@keyframes tco-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes tco-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+.title-confirm-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 2rem 3rem;
+  border-radius: 1rem;
+  border: 1px solid var(--tcc-border, #e1e4e8);
+  background: var(--tcc-bg, #fff);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  animation: tco-card-in 0.3s cubic-bezier(0.21, 1.02, 0.73, 1) forwards;
+}
+.title-confirm-card[style*="maxWidth"] {
+  align-items: stretch;
+  text-align: left;
+}
+html.dark .title-confirm-card {
+  --tcc-bg: #18181b;
+  --tcc-border: #2f363d;
+}
+.title-confirm-backdrop.leaving .title-confirm-card {
+  animation: tco-card-out 0.3s ease-in forwards;
+}
+
+@keyframes tco-card-in {
+  from { opacity: 0; transform: scale(0.95) translateY(10px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes tco-card-out {
+  from { opacity: 1; transform: scale(1) translateY(0); }
+  to { opacity: 0; transform: scale(0.95) translateY(10px); }
+}
+
+.title-confirm-message {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, "Courier New", monospace;
+  font-size: 1rem;
+  color: var(--tcc-text, #24292e);
+}
+html.dark .title-confirm-message {
+  --tcc-text: #f4f4f5;
+}
+
+.title-confirm-actions {
+  display: flex;
+  gap: 1rem;
+}
+
+.title-confirm-btn {
+  padding: 0.5rem 1.5rem;
+  border-radius: 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.15s ease-out;
+}
+
+.title-confirm-btn.yes {
+  background: #0891b2;
+  color: #fff;
+  border-color: #0891b2;
+}
+.title-confirm-btn.yes:hover {
+  background: #0e7490;
+}
+
+.title-confirm-btn.no {
+  background: var(--tcc-btn-bg, #f4f4f5);
+  color: var(--tcc-btn-fg, #323232);
+  border-color: var(--tcc-btn-border, #d4d4d8);
+}
+html.dark .title-confirm-btn.no {
+  --tcc-btn-bg: #27272a;
+  --tcc-btn-fg: #e4e4e7;
+  --tcc-btn-border: #3f3f46;
+}
+.title-confirm-btn.no:hover {
+  background: var(--tcc-btn-hover, #e4e4e7);
+}
+html.dark .title-confirm-btn.no:hover {
+  --tcc-btn-hover: #3f3f46;
+}
+
+/* ============ theme switch (global toggle) ============ */
+
+.switch {
+  --input-focus: #2d8cf0;
+  --font-color: #323232;
+  --font-color-sub: #666;
+  --bg-color: #fff;
+  --bg-color-alt: #666;
+  --main-color: #323232;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 30px;
+  width: 50px;
+  height: 20px;
+}
+html.dark .switch {
+  --bg-color: #18181b;
+  --main-color: #e4e4e7;
+  --font-color: #e4e4e7;
+}
+
+.switch .toggle {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.switch .slider {
+  box-sizing: border-box;
+  border-radius: 5px;
+  border: 2px solid var(--main-color);
+  box-shadow: 4px 4px var(--main-color);
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--bg-color);
+  transition: 0.3s;
+}
+
+.switch .slider:before {
+  box-sizing: border-box;
+  position: absolute;
+  content: "";
+  height: 20px;
+  width: 20px;
+  border: 2px solid var(--main-color);
+  border-radius: 5px;
+  left: -2px;
+  bottom: 2px;
+  background-color: var(--bg-color);
+  box-shadow: 0 3px 0 var(--main-color);
+  transition: 0.3s;
+}
+
+.switch .toggle:checked + .slider {
+  background-color: var(--input-focus);
+}
+
+.switch .toggle:checked + .slider:before {
+  transform: translateX(30px);
+}
+
+/* ============ penumbra switch (settings) ============ */
+
+.penumbra-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  user-select: none;
+  color: var(--color-on-surface, #f4f4f5);
+  font-size: 13px;
+  letter-spacing: -0.005em;
+}
+html.light .penumbra-switch {
+  --color-on-surface: #18181b;
+  --color-surface-inset: #e4e4e7;
+  --color-border: #d4d4d8;
+  --color-border-strong: #a1a1aa;
+}
+
+.penumbra-switch__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+.penumbra-switch__rail {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+  background-color: var(--color-surface-inset, #17171c);
+  border: 1px solid var(--color-border, #23232a);
+  border-radius: 999px;
+  transition: background-color 180ms ease, border-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.penumbra-switch__knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  background-color: var(--color-on-surface-muted, #9ba0ab);
+  border-radius: 999px;
+  transition: transform 220ms ease, background-color 180ms ease;
+}
+
+.penumbra-switch:hover .penumbra-switch__rail {
+  border-color: var(--color-border-strong, #2e2e36);
+}
+
+.penumbra-switch__input:checked + .penumbra-switch__rail {
+  background-color: var(--color-primary, #e8e5dc);
+  border-color: var(--color-primary, #e8e5dc);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.penumbra-switch__input:checked + .penumbra-switch__rail .penumbra-switch__knob {
+  transform: translateX(16px);
+  background-color: var(--color-on-primary, #08080a);
+}
+
+.penumbra-switch__input:focus-visible + .penumbra-switch__rail {
+  box-shadow: 0 0 0 6px rgba(232, 229, 220, 0.18);
+  border-color: var(--color-focus, #e8e5dc);
+}
+
+.penumbra-switch__input:disabled + .penumbra-switch__rail {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* style panel morph: same easing as title-morph for visual continuity */
+.style-panel-morph {
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  transition:
+    max-height 0.4s ease-in-out,
+    opacity 0.25s ease-out;
+}
+
+.style-panel-morph.expanded {
+  max-height: 2000px;
+  opacity: 1;
+  transition:
+    max-height 0.4s ease-in-out,
+    opacity 0.25s ease-in 0.15s;
+}
+
+/* ── Dropdown Morph ── reusable expand/collapse animation for all dropdown menus.
+   Apply `.dropdown-morph` to the dropdown container and toggle `.expanded` to
+   open/close. Mirrors the style-panel-morph easing for visual continuity. */
+.dropdown-morph {
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    max-height 0.3s ease-in-out,
+    opacity 0.2s ease-out;
+}
+
+.dropdown-morph.expanded {
+  max-height: 600px;
+  opacity: 1;
+  pointer-events: auto;
+  overflow: hidden;
+  transition:
+    max-height 0.3s ease-in-out,
+    opacity 0.2s ease-in 0.1s;
+}
+
+/* notification badge — blue, rounded, same color as theme toggle */
+.notif-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 8px;
+  background: #2d8cf0;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  line-height: 1;
+  z-index: 10;
+}
+
+/* notification item fade-in (same easing as title-morph card content) */
+.notif-item {
+  animation: notif-fade-in 0.25s ease-out forwards;
+}
+
+.notif-item.leaving {
+  animation: notif-fade-out 0.4s ease-in forwards;
+}
+
+@keyframes notif-fade-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes notif-fade-out {
+  from { opacity: 1; transform: translateX(0); }
+  to { opacity: 0; transform: translateX(100%); }
+}
+
+/* pantry current-project halo — glow + drifting particles marking the row
+   of the project currently open in the workspace. gradient is built from
+   the app's save-green (#0f2600, hue ≈ 88°) and its adjacent hues,
+   lightened so they survive the blur; the row itself stays untouched. */
+@property --pantry-halo-scale {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+@property --pantry-halo-offset {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 100;
+}
+.pantry-row-current {
+  --pantry-halo-scale: 1.47;
+  --pantry-halo-offset: -62;
+  --pantry-halo-a: hsl(68, 20%, 69%);
+  --pantry-halo-b: hsl(88, 100%, 32%);
+  --pantry-halo-c: hsl(108, 85%, 42%);
+  transition:
+    --pantry-halo-scale 0.25s ease-in-out,
+    --pantry-halo-offset 0.5s ease-in-out;
+}
+
+.pantry-row-current:hover {
+  --pantry-halo-scale: 1.60;
+  --pantry-halo-offset: -35;
+}
+
+.pantry-halo {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 0.5rem;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.pantry-halo-glow {
+  display: block;
+  position: absolute;
+  width: 80%;
+  height: 60%;
+  top: 80%;
+  left: 50%;
+  background: linear-gradient(180deg, var(--pantry-halo-a) 0%, var(--pantry-halo-b) 39.33%, var(--pantry-halo-c) 59%);
+  filter: blur(14px) saturate(1.1) opacity(0.27); /* opacity of "current project" glow/higlight effect"; blur (spatial dispersion); saturation (color) */
+  transform: translateX(-50%) translateY(calc(var(--pantry-halo-offset) * 1%)) scale(var(--pantry-halo-scale));
+  will-change: filter;
+}
+
+.pantry-halo-particles {
+  position: absolute;
+  inset: 0;
+  background-image: var(--pantry-svg-animation), var(--pantry-svg-animation);
+  background-repeat: no-repeat, repeat;
+  background-position: center, center top 100%;
+  background-size: 100% 100%, 50%;
+  -webkit-mask-image: linear-gradient(to top, transparent, black, transparent);
+  mask-image: linear-gradient(to top, transparent, black, transparent);
+  opacity: var(--pantry-halo-scale);
+}
+
+/* the blurry filter creates a strange artifact on Safari, so the particle
+   background is doubled in a pseudo-element and the blur is applied there. */
+.pantry-halo-particles::before {
+  content: "";
+  display: block;
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  background-image: var(--pantry-svg-animation), var(--pantry-svg-animation), var(--pantry-svg-animation);
+  background-repeat: no-repeat, repeat, repeat;
+  background-position: center, center top 100%, center center;
+  background-size: 100% 100%, 50%, 120%;
+  filter: blur(1px);
+  will-change: filter;
+}
+
+/* particles are white — invisible on the light-mode row background */
+html:not(.dark) .pantry-halo-particles {
+  opacity: calc(var(--pantry-halo-scale) * 0.35);
+  filter: invert(1);
+}
+
+/* fallback for browsers without @property support: the halo is always-on
+   for the current project, so only the hover intensification is lost */
+@supports not (background: paint(something)) {
+  .pantry-row-current {
+    transition: none;
+  }
+}
+
+/* ============ stacking animation (tab switch) ============ */
+.stack-hidden {
+  opacity: 0;
+  transition: opacity 0.35s ease-out !important;
+}
+
+.stack-in {
+  opacity: 1;
+  transition: opacity 0.35s ease-out !important;
+}

@@ -368,14 +368,16 @@ def assess(
 
     total = len(text_manifest.instances)
     dnt_count = sum(1 for i in text_manifest.instances if i.dnt)
+    excluded_count = sum(1 for i in text_manifest.instances if i.excluded)
     untranslated_count = sum(
-        1 for i in text_manifest.instances if not i.dnt and not i.target_text
+        1 for i in text_manifest.instances
+        if not i.dnt and not i.excluded and not i.target_text
     )
     fallback_count = sum(1 for i in text_manifest.instances if i.glyph_fallback)
-    translated_count = total - dnt_count - untranslated_count
+    translated_count = total - dnt_count - excluded_count - untranslated_count
 
     for inst in text_manifest.instances:
-        if inst.dnt:
+        if inst.dnt or inst.excluded:
             per_instance[inst.id] = NEUTRAL_SCORE  # correctly excluded, not a failure
             continue
         if not inst.target_text:
@@ -495,6 +497,7 @@ def assess(
             "instances_assessed": len(per_instance),
             "regions_total": total,
             "dnt": dnt_count,
+            "excluded": excluded_count,
             "translated": translated_count,
             "untranslated": untranslated_count,
             "rendered": translated_count,
