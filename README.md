@@ -9,15 +9,11 @@
   <img src="images/tofu-wht-alt.png" width="38%">
 </div>
 
-<div align="center">
-ToFU (text-over-frame unification)
-</div>
-
 ---
 
 ## Summary
 
-ToFU is a seven-layer visual translation pipeline that detects, erases, and re-renders text in images while preserving the original scene's visual context. Given a source image and a target language, ToFU runs text detection and recognition (Cicerone), semantic surface analysis (Scene), source-text erasure and background inpainting (Cleanse), style-matched target-language rendering (Scribe), and quality verification (Verify) — with a visual translation memory (Memory) that accumulates approved localizations for reuse on future assets. Three auxiliary modules — Savor, Menu, and Wasabi — operate as post-recognition quality-control passes inside Cicerone, correcting glyph-level confusions, recovering known place names, and normalizing CJK character variants. The pipeline is engine-agnostic (EasyOCR or PaddleOCR), runs entirely on CPU, and gates output on measurable accuracy thresholds.
+ToFU (text-over-frame-unification) is a seven-layer visual translation pipeline that detects, erases, and re-renders text in images while preserving the original scene's visual context. Given a source image and a target language, ToFU runs text detection and recognition (Cicerone), semantic surface analysis (Scene), source-text erasure and background inpainting (Cleanse), style-matched target-language rendering (Scribe), and quality verification (Verify) — with a visual translation memory (Memory) that accumulates approved localizations for reuse on future assets. Three auxiliary modules — Savor, Menu, and Wasabi — operate as post-recognition quality-control passes inside Cicerone, correcting glyph-level confusions, recovering known place names, and normalizing CJK character variants. The pipeline is engine-agnostic (EasyOCR or PaddleOCR), runs entirely on CPU, and gates output on measurable accuracy thresholds.
 
 ---
 
