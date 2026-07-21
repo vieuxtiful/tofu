@@ -183,15 +183,17 @@ Open http://localhost:5173.
 
 ---
 
-## performance comparison
+## Model Comparison
 
 <div style="image" align="center">
   <img src="images/gemini-example.png" width="90%">
 </div>
 
-<img src="assets/status-green.svg" alt="#00ff07" width="12" height="12"> residual artifacts
-<img src="assets/status-blue.svg" alt="#008aff" width="12" height="12"> untranslated strings
+<div style="image" align="left">
+<img src="images/status-green.png" alt="#00ff07" width="12" height="12"> residual artifacts
 
+<img src="images/status-blue.png" alt="#008aff" width="12" height="12"> untranslated strings
+</div>
 ---
 
 <div align="center">
