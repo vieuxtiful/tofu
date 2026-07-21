@@ -22,7 +22,7 @@ ToFU is a seven-layer visual translation pipeline that detects, erases, and re-r
 ---
 
 <div style="image" align="center">
-  <img src="images/screen-1.png" width="68%">
+  <img src="images/screen-1.png" width="90%">
 </div>
 
 ---
