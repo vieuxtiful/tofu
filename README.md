@@ -183,17 +183,33 @@ Open http://localhost:5173.
 
 ---
 
-## Model Comparison
+## LLM Comparison
 
 <div style="image" align="center">
   <img src="images/gemini-example.png" width="90%">
 </div>
 
+
+
+<div style="image" align="center">
+  <img src="images/chatgpt-example.png" width="90%">
+</div>
+
+
 <div style="image" align="left">
+  
 <img src="images/status-green.png" alt="#00ff07" width="12" height="12"> residual artifacts
 
 <img src="images/status-blue.png" alt="#008aff" width="12" height="12"> untranslated strings
+
+<img src="images/status-white.png" alt="#ffffff" width="12" height="12"> mistranslated strings
+
+<img src="images/status-red.png" alt="#ff174b" width="12" height="12"> unorthodox translations
+
+<img src="images/status-yellow.png" alt="#fff117" width="12" height="12"> mistranslated strings
+
 </div>
+
 ---
 
 <div align="center">
