@@ -21,6 +21,12 @@ ToFU is a seven-layer visual translation pipeline that detects, erases, and re-r
 
 ---
 
+<div style="image" align="center">
+  <img src="images/screen-1.png" width="68%">
+</div>
+
+---
+
 ## Running the stack
 
 **Backend** (Python 3.13 venv — required; easyocr's dependency tree is not yet reliable on 3.14):
