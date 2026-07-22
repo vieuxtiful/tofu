@@ -92,6 +92,13 @@ type PreviewTransaction = {
   error?: string;
 };
 
+type DraftGarnish = {
+  profile: NonNullable<InstText["garnish_override"]>;
+  bbox: BBox;
+  polygon?: number[][];
+  enabled: boolean;
+};
+
 type LocalizedSnapshot = {
   manifest: InstText[];
   patchIds: string[];
@@ -376,6 +383,7 @@ export default function App() {
   const previewCauseRef = useRef<PreviewCause>("initial");
   const candidatePreviewSeq = useRef(0);
   const [garnishExpanded, setGarnishExpanded] = useState(true);
+  const [draftGarnish, setDraftGarnish] = useState<DraftGarnish | null>(null);
   const [garnishRegionMode, setGarnishRegionMode] = useState(false);
   const [selectedGarnishRegionId, setSelectedGarnishRegionId] = useState<string | null>(null);
   const previewSyncing = previewTransaction.phase === "rendering";
@@ -383,6 +391,7 @@ export default function App() {
   const garnishPreviewSyncing = previewSyncing && previewTransaction.cause === "garnish";
   const [lassoMode, setLassoMode] = useState(false);
   const [lassoPoints, setLassoPoints] = useState<[number, number][]>([]);
+  const [nearFirstPoint, setNearFirstPoint] = useState(false);
   const [brushMode, setBrushMode] = useState(false);
   const [brushStrokes, setBrushStrokes] = useState<BrushStroke[]>([]);
   const [activeBrushStroke, setActiveBrushStroke] = useState<BrushStroke | null>(null);
@@ -1119,19 +1128,24 @@ export default function App() {
   const updateSelectedGarnish = useCallback((patch: Partial<NonNullable<InstText["garnish_override"]>>) => {
     const selected = renderSelId ?? prevSelId;
     if (!selected) return;
+    const selectedInst = manifest.find((inst) => inst.id === selected);
+    if (!selectedInst) return;
+    const b = selectedInst.bounding_box;
+    const surface = sceneRegions.find((region) => b.x + b.width / 2 >= region.bbox.x && b.x + b.width / 2 <= region.bbox.x + region.bbox.width && b.y + b.height / 2 >= region.bbox.y && b.y + b.height / 2 <= region.bbox.y + region.bbox.height);
+    const selectedRegion = (selectedInst.garnish_regions ?? []).find((region) => region.id === selectedGarnishRegionId);
+    const perRegion = selectedInst.garnish_scope === "per_region" && selectedRegion !== undefined;
+    const baseProfile = selectedInst.garnish_override ?? surface?.garnish_profile ?? DEFAULT_GARNISH_PROFILE;
+    const profile = { ...baseProfile, ...(selectedRegion?.profile ?? {}), source_confidence: 1, ...patch };
     recordLocalizedChange();
     const next = manifest.map((inst) => {
       if (inst.id !== selected) return inst;
-      const b = inst.bounding_box;
-      const surface = sceneRegions.find((region) => b.x + b.width / 2 >= region.bbox.x && b.x + b.width / 2 <= region.bbox.x + region.bbox.width && b.y + b.height / 2 >= region.bbox.y && b.y + b.height / 2 <= region.bbox.y + region.bbox.height);
-      const baseProfile = inst.garnish_override ?? surface?.garnish_profile ?? DEFAULT_GARNISH_PROFILE;
-      const perRegion = inst.garnish_scope === "per_region" && selectedGarnishRegionId;
       if (perRegion) return { ...inst, garnish_regions: (inst.garnish_regions ?? []).map((region) => region.id === selectedGarnishRegionId ? {
-        ...region, profile: { ...baseProfile, ...(region.profile ?? {}), source_confidence: 1, ...patch },
+        ...region, profile,
       } : region) };
-      return { ...inst, garnish_override: { ...baseProfile, source_confidence: 1, ...patch } };
+      return { ...inst, garnish_override: profile };
     });
     setManifest(next);
+    setDraftGarnish({ profile, bbox: b, polygon: perRegion ? selectedRegion?.polygon : undefined, enabled: true });
     previewCauseRef.current = "garnish";
     autoSave(next);
   }, [renderSelId, prevSelId, selectedGarnishRegionId, recordLocalizedChange, manifest, sceneRegions, autoSave, setManifest]);
@@ -1139,15 +1153,22 @@ export default function App() {
   const setSelectedGarnishEnabled = useCallback((enabled: boolean) => {
     const selected = renderSelId ?? prevSelId;
     if (!selected) return;
+    const inst = manifest.find((item) => item.id === selected);
+    if (!inst) return;
+    const selectedRegion = (inst.garnish_regions ?? []).find((region) => region.id === selectedGarnishRegionId);
+    const b = inst.bounding_box;
+    const surface = sceneRegions.find((region) => b.x + b.width / 2 >= region.bbox.x && b.x + b.width / 2 <= region.bbox.x + region.bbox.width && b.y + b.height / 2 >= region.bbox.y && b.y + b.height / 2 <= region.bbox.y + region.bbox.height);
+    const profile = selectedRegion?.profile ?? inst.garnish_override ?? surface?.garnish_profile ?? DEFAULT_GARNISH_PROFILE;
     recordLocalizedChange();
     const next = manifest.map((inst) => {
       if (inst.id !== selected) return inst;
       return inst.garnish_scope === "per_region" && selectedGarnishRegionId ? { ...inst, garnish_regions: (inst.garnish_regions ?? []).map((region) => region.id === selectedGarnishRegionId ? { ...region, enabled } : region) } : { ...inst, garnish_enabled: enabled };
     });
     setManifest(next);
+    setDraftGarnish({ profile, bbox: b, polygon: inst.garnish_scope === "per_region" ? selectedRegion?.polygon : undefined, enabled });
     previewCauseRef.current = "garnish";
     autoSave(next);
-  }, [renderSelId, prevSelId, selectedGarnishRegionId, recordLocalizedChange, manifest, autoSave, setManifest]);
+  }, [renderSelId, prevSelId, selectedGarnishRegionId, recordLocalizedChange, manifest, sceneRegions, autoSave, setManifest]);
 
   const useSelectedSceneGarnish = useCallback(() => {
     const selected = renderSelId ?? prevSelId;
@@ -1259,6 +1280,7 @@ export default function App() {
         const result = await renderPreview(asset.asset_id, targLang, snapshot);
         if (seq === previewRenderSeq.current) {
           setPreRenderUrl(result.output_url);
+          setDraftGarnish(null); // authoritative server composition has arrived
           setPreviewRenderError(null);
           setPreviewCacheKey(result.cleanse_cache_key);
           setPreviewTransaction({ phase: "idle", requestId: seq, cause });
@@ -1301,7 +1323,9 @@ export default function App() {
         // The last good canvas remains visible while a transient preview
         // request fails; final Render still reports actionable errors.
       }
-    }, 600);
+    // Garnish gets a much shorter authoritative round trip; the draft proxy
+    // below covers the first frame while the backend finishes its exact mask.
+    }, cause === "garnish" ? 120 : 600);
     return () => clearTimeout(timer);
     // Scene's returned garnish metadata is presentation data.  It must not
     // be a dependency here: accepting it after a successful response would
@@ -4037,13 +4061,14 @@ export default function App() {
                   </div>;
                 })()}
                 <div className="relative inline-block max-w-full touch-none select-none">
-                  <img src={preRenderUrl || previewUrl || "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="} alt="localized treatment canvas" draggable={false} className={`block max-w-full touch-none select-none rounded-lg border border-zinc-300 dark:border-zinc-800 ${(brushMode || lassoMode || garnishRegionMode || colorPickMode === "localized") ? "cursor-crosshair" : ""}`}
+                  <img src={preRenderUrl || previewUrl || "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="} alt="localized treatment canvas" draggable={false} className={`block max-w-full touch-none select-none rounded-lg border border-zinc-300 dark:border-zinc-800 ${nearFirstPoint ? "cursor-pointer" : (brushMode || lassoMode || garnishRegionMode || colorPickMode === "localized") ? "cursor-crosshair" : ""}`}
                     style={{ touchAction: "none", WebkitUserDrag: "none" } as React.CSSProperties}
                     onDragStart={(event) => event.preventDefault()}
                     onPointerDown={(event) => {
                       if (sampleCanvasFill(event, "localized")) return;
                       if (brushMode) beginBrushStroke(event);
                       else if (lassoMode || garnishRegionMode) {
+                        if (nearFirstPoint && lassoPoints.length >= 3) { event.preventDefault(); if (garnishRegionMode) addGarnishRegion(); else applyLasso(); return; }
                         const point = pointOnLocalizedCanvas(event);
                         if (point) { event.preventDefault(); setLassoPoints((points) => [...points, point]); }
                       }
@@ -4052,13 +4077,38 @@ export default function App() {
                       if (brushMode) extendBrushStroke(event);
                       else if (lassoMode || garnishRegionMode) {
                         const point = pointOnLocalizedCanvas(event);
-                        if (point) setBrushCursor(point);
+                        if (point) {
+                          setBrushCursor(point);
+                          if (lassoPoints.length >= 3) {
+                            const rect = event.currentTarget.getBoundingClientRect();
+                            const scale = imgDim ? imgDim[0] / rect.width : 1;
+                            const threshold = 15 * scale;
+                            const dx = point[0] - lassoPoints[0][0];
+                            const dy = point[1] - lassoPoints[0][1];
+                            setNearFirstPoint(Math.sqrt(dx * dx + dy * dy) < threshold);
+                          } else setNearFirstPoint(false);
+                        }
                       }
                     }}
                     onPointerUp={(event) => finishBrushStroke(event)}
                     onPointerCancel={(event) => finishBrushStroke(event, true)}
                     onLostPointerCapture={(event) => finishBrushStroke(event, true)}
-                    onPointerLeave={() => { if (!brushDrawing.current) setBrushCursor(null); }} />
+                    onPointerLeave={() => { if (!brushDrawing.current) setBrushCursor(null); setNearFirstPoint(false); }} />
+                  {draftGarnish?.enabled && imgDim && (preRenderUrl || previewUrl) && (() => {
+                    const profile = draftGarnish.profile;
+                    const b = draftGarnish.bbox;
+                    const clipPath = draftGarnish.polygon?.length
+                      ? `polygon(${draftGarnish.polygon.map(([x, y]) => `${x * 100 / imgDim[0]}% ${y * 100 / imgDim[1]}%`).join(", ")})`
+                      : `inset(${b.y * 100 / imgDim[1]}% ${(imgDim[0] - b.x - b.width) * 100 / imgDim[0]}% ${(imgDim[1] - b.y - b.height) * 100 / imgDim[1]}% ${b.x * 100 / imgDim[0]}%)`;
+                    const smudge = profile.smudge_strength * 4;
+                    const radians = profile.smudge_angle_deg * Math.PI / 180;
+                    return <img aria-hidden src={preRenderUrl || previewUrl || ""} className="pointer-events-none absolute inset-0 block h-full w-full rounded-lg object-fill" style={{
+                      clipPath, opacity: Math.min(.8, .16 + profile.grain_strength * .35 + profile.edge_blur_px * .07),
+                      filter: `blur(${Math.min(8, profile.edge_blur_px)}px) contrast(${Math.round(profile.gamma_shift * 100)}%) saturate(${1 + profile.grain_strength})`,
+                      transform: `translate(${Math.cos(radians) * smudge}px, ${Math.sin(radians) * smudge}px)`,
+                      mixBlendMode: "soft-light",
+                    }} />;
+                  })()}
                   {imgDim && <svg className={`absolute inset-0 h-full w-full ${brushMode || lassoMode || garnishRegionMode ? "pointer-events-none" : ""}`} viewBox={`0 0 ${imgDim[0]} ${imgDim[1]}`} preserveAspectRatio="none">
                     {!brushMode && !lassoMode && !garnishRegionMode && orderedManifest.map((inst) => { const b = inst.bounding_box; const active = inst.id === renderSelId; return <rect key={inst.id} x={b.x} y={b.y} width={b.width} height={b.height} fill={active ? "rgba(6,182,212,.12)" : "transparent"} stroke={active ? "#06b6d4" : "rgba(255,255,255,.7)"} strokeWidth={active ? 2 : 1} onClick={() => setRenderSelId(inst.id)} className="cursor-pointer" />; })}
                     {!brushMode && !lassoMode && !garnishRegionMode && manifest.find((inst) => inst.id === renderSelId)?.garnish_regions?.map((region) => <polygon key={region.id} points={region.polygon.map((point) => point.join(",")).join(" ")} fill={region.id === selectedGarnishRegionId ? "rgba(139,92,246,.20)" : "rgba(139,92,246,.08)"} stroke={region.id === selectedGarnishRegionId ? "#7c3aed" : "rgba(124,58,237,.6)"} strokeWidth="1.5" />)}
@@ -4067,15 +4117,16 @@ export default function App() {
                     {brushMode && brushCursor && <circle cx={brushCursor[0]} cy={brushCursor[1]} r={brushRadius} fill="rgba(6,182,212,.10)" stroke="#06b6d4" strokeWidth="1.5" />}
                     {lassoPoints.length > 0 && <>
                       <polyline points={[...lassoPoints, ...((lassoMode || garnishRegionMode) && brushCursor ? [brushCursor] : [])].map((p) => p.join(",")).join(" ")} fill={garnishRegionMode ? "rgba(139,92,246,.15)" : "rgba(6,182,212,.15)"} stroke={garnishRegionMode ? "#7c3aed" : "#06b6d4"} strokeWidth="2" strokeDasharray={(lassoMode || garnishRegionMode) && brushCursor ? "5 3" : undefined} />
-                      {lassoPoints.map((point, index) => <circle key={`${point[0]}-${point[1]}-${index}`} cx={point[0]} cy={point[1]} r="3" fill="#06b6d4" stroke="white" strokeWidth="1" />)}
+                      {lassoPoints.map((point, index) => <circle key={`${point[0]}-${point[1]}-${index}`} cx={point[0]} cy={point[1]} r="3" fill={garnishRegionMode ? "#7c3aed" : "#06b6d4"} stroke="white" strokeWidth="1" />)}
+                      {nearFirstPoint && lassoPoints.length >= 3 && <circle cx={lassoPoints[0][0]} cy={lassoPoints[0][1]} r="8" fill="none" stroke={garnishRegionMode ? "#7c3aed" : "#06b6d4"} strokeWidth="2" strokeDasharray="3 2"><animate attributeName="r" values="6;10;6" dur="1s" repeatCount="indefinite" /></circle>}
                     </>}
                   </svg>}
                 </div>
                 {previewRenderError && <div className="mb-2 flex items-center justify-between gap-2 rounded border border-amber-500/50 bg-amber-50 px-2 py-1 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-200"><span>Preview update failed; showing the last valid composition. {previewRenderError}</span><button type="button" onClick={() => { previewCauseRef.current = "style"; setPreviewRetryRevision((value) => value + 1); }} className="shrink-0 rounded bg-amber-700 px-1.5 py-0.5 text-[10px] text-white">retry</button></div>}
-                {inpaintingProviders.length > 0 && !cleanseDismissed && <div className={`mb-2 flex items-center justify-between gap-2 rounded border px-2 py-1 text-xs ${activeNeuralProvider ? "border-emerald-500/40 bg-emerald-50 text-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-100" : "border-zinc-300 bg-zinc-50 text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"}`}>
-                  <span><span className="font-medium">Cleanse routing:</span>{" "}{activeNeuralProvider ? `AI-assisted texture repair is available${activeNeuralProvider.promoted ? " for eligible automatic repairs" : " for review"}.` : configuredNeuralProvider ? "AI texture repair is configured but unavailable; deterministic reconstruction remains editable." : "deterministic reconstruction is active; optional AI texture repair is not yet available."}</span>
-                  <button onClick={() => setCleanseDismissed(true)} className="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800 transition">dismiss</button>
-                </div>}
+                {inpaintingProviders.length > 0 && !cleanseDismissed && <p className="bezier-impression subtext mb-2 flex items-start gap-1 px-3 py-2 text-xs text-zinc-500 dark:text-zinc-600">
+                  <MdTipsAndUpdates size={14} className="mt-0.5 shrink-0 text-[#2d8cf0]" /><span>Smart fill options are available below.</span>
+                  <button onClick={() => setCleanseDismissed(true)} className="ml-auto shrink-0 rounded px-1.5 py-0.5 text-[10px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition">dismiss</button>
+                </p>}
                 {repairFallbackIds.length > 0 && <div className="mb-2 rounded border border-sky-500/40 bg-sky-50 px-2 py-2 text-xs text-sky-900 dark:bg-sky-950/30 dark:text-sky-100"><span className="font-medium">Texture treatment is ready for review.</span><span className="ml-1">{repairFallbackIds.length} region{repairFallbackIds.length === 1 ? " uses" : "s use"} the editable reconstruction base.</span></div>}
                 {repairReviews.length > 0 && <div className="mb-2 rounded border border-amber-500/50 bg-amber-50 px-2 py-2 text-xs text-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
                   <span className="font-medium">Suggested repairs:</span><span className="ml-1">Compare a proposed repair with the localized canvas, then apply it only if it improves the surface.</span>
