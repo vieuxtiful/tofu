@@ -19,7 +19,7 @@ detection/refinement/recognition pass (including Savor's) has already
 had its say.
 """
 
-from typing import List, NamedTuple, Optional
+from typing import Any, List, NamedTuple, Optional
 
 from tofu.core.types import InstText
 from tofu.utils.textmatch import fuzzy_similarity
@@ -41,6 +41,43 @@ CONFIDENCE_FLOOR = 0.6
 # than a genuine misread of the same sign.
 SIMILARITY_FLOOR = 0.5
 
+# the whole-string path only ever considers candidates of at least this
+# length: a 2-character name sharing ONE character with a 2-character
+# low-confidence read scores exactly 0.5 similarity -- coin-flip
+# evidence that would rewrite ubiquitous short signage (e.g. "下り" ->
+# "下島"). short names are served exclusively by the substring path,
+# where pixel verification backs the weak string evidence.
+WHOLE_STRING_MIN_CANDIDATE_LEN = 3
+
+# substring (composite-read) matching: a directional post or stacked
+# sign often OCRs as ONE instance concatenating several names, whose
+# read confidence is an average across all of them -- meaningless for
+# any single name, so this path is structurally gated (text strictly
+# longer than the candidate) instead of confidence-gated.
+SUBSTRING_SIMILARITY_FLOOR = 0.5
+# string evidence alone may rewrite a span only when the candidate is
+# long enough and the diff small enough that coincidence is implausible:
+# at least 4 chars with exactly 1 differing (effective similarity 0.75+).
+# measured counterexample that motivates the tightness: a correct
+# "東南口" (3 chars, 1 diff) scores 0.667 against gazetteer "東南荘" --
+# high-frequency short signage must never be rewritten on strings alone.
+SUBSTRING_STRING_TIER_MIN_LEN = 4
+SUBSTRING_STRING_TIER_MAX_DIFFS = 1
+
+# corroboration tier: a composite read that ALREADY contains this many
+# independently-confirmed gazetteer names (exact windows, or spans the
+# string/pixel tiers applied) is, with high probability, a listing of
+# real names (a directional post, a station board) -- document-level
+# context that lets a remaining pixel-INCONCLUSIVE single-diff span
+# apply where its own evidence alone couldn't decide (measured live:
+# japan-subs' 13px 湯屋 glyphs score 湯 0.711 vs 周 0.676 -- leaning
+# right but inside BITE_MARGIN). classic lexicon-driven OCR
+# post-correction with document context. never fires over a pixel
+# CONTRADICTION (those spans are discarded before this tier runs), and
+# corroborated spans never bootstrap each other -- the sibling count is
+# fixed before any promotion.
+CORROBORATION_MIN_SIBLINGS = 2
+
 # known place/establishment names likely to recur in street-signage
 # photos. seeded for this project's dense-CJK-signage test scenes, but
 # meant to grow with whatever real signage future assets turn up --
@@ -51,12 +88,24 @@ KNOWN_PLACES: List[tuple] = [
     ("バンダイ", "ja"),
     ("お好み焼本陣", "ja"),
     ("東南荘", "ja"),
+    ("湯屋", "ja"),
+    ("下島", "ja"),
+    ("濁河温泉", "ja"),
 ]
 
 
 class MenuMatch(NamedTuple):
     text: str
     similarity: float
+
+
+class MenuSpan(NamedTuple):
+    """one aligned gazetteer name inside a longer composite read."""
+    start: int
+    end: int              # half-open: text[start:end] is the window
+    candidate: str
+    similarity: float
+    diffs: List[tuple]    # [(absolute_index, recognized_char, candidate_char)]
 
 
 def consult_menu(text: str, lang: Optional[str], confidence: Optional[float]) -> Optional[MenuMatch]:
@@ -70,6 +119,8 @@ def consult_menu(text: str, lang: Optional[str], confidence: Optional[float]) ->
         return None
     best: Optional[MenuMatch] = None
     for candidate, cand_lang in KNOWN_PLACES:
+        if len(candidate) < WHOLE_STRING_MIN_CANDIDATE_LEN:
+            continue
         if lang and cand_lang != lang:
             continue
         score = fuzzy_similarity(text, candidate)
@@ -78,8 +129,142 @@ def consult_menu(text: str, lang: Optional[str], confidence: Optional[float]) ->
     return best
 
 
-def browse(instances: List[InstText]) -> int:
+def consult_menu_substring(text: str, lang: Optional[str]) -> List[MenuSpan]:
+    """find known names ALIGNED WITHIN a longer composite read.
+
+    a directional post or stacked sign OCRs as one instance whose text
+    concatenates several names (measured live: "周屋下島周河温泉" is
+    really 湯屋 / 下島 / 濁河温泉 stacked on one post) -- the whole-
+    string path can't see any single name inside that, so this slides
+    an exact-length window per candidate and diffs it POSITIONALLY.
+    positional (zip) diffing, not just fuzzy ratio, is load-bearing:
+    for short names SequenceMatcher can't even disambiguate the
+    alignment (measured: both "周屋" and the misaligned "屋下" score
+    0.5 against 湯屋; only the zip diff -- 1-of-2 positions matching vs
+    0-of-2 -- tells them apart).
+
+    windows qualify only when: the text is STRICTLY longer than the
+    candidate (equal-length reads belong to the whole-string and dakuten
+    paths), the window isn't already correct, at least half its
+    positions match exactly, and fuzzy similarity clears
+    SUBSTRING_SIMILARITY_FLOOR. overlapping proposals across candidates
+    are resolved greedily: higher similarity first, then longer
+    candidate, then more matching positions, then leftmost. spans never
+    overlap in the result; equal-length window replacement means
+    corrections are length-preserving and can all be applied at once.
+    """
+    if not text or " " in text:
+        # composite signage instances are never space-tokenized; a space
+        # would also break the char-index-to-glyph-cluster alignment the
+        # pixel tier depends on
+        return []
+    proposals: List[MenuSpan] = []
+    for candidate, cand_lang in KNOWN_PLACES:
+        if lang and cand_lang != lang:
+            continue
+        n = len(candidate)
+        if n < 2 or len(text) <= n:
+            continue
+        for start in range(0, len(text) - n + 1):
+            window = text[start:start + n]
+            if window == candidate:
+                continue  # already correct -- nothing to propose
+            diffs = [
+                (start + i, a, b)
+                for i, (a, b) in enumerate(zip(window, candidate))
+                if a != b
+            ]
+            if 2 * len(diffs) > n:
+                continue  # majority of positions must already match
+            score = fuzzy_similarity(window, candidate)
+            if score < SUBSTRING_SIMILARITY_FLOOR:
+                continue
+            proposals.append(MenuSpan(start, start + n, candidate, score, diffs))
+
+    # greedy non-overlap resolution over the full pool
+    proposals.sort(key=lambda s: (
+        -s.similarity,
+        -(s.end - s.start),
+        len(s.diffs),
+        s.start,
+    ))
+    kept: List[MenuSpan] = []
+    for span in proposals:
+        if any(span.start < k.end and k.start < span.end for k in kept):
+            continue
+        kept.append(span)
+    kept.sort(key=lambda s: s.start)
+    return kept
+
+
+def _count_exact_known_names(text: str, lang: Optional[str],
+                              exclude_spans: List[MenuSpan]) -> int:
+    """how many DISTINCT gazetteer names appear verbatim in `text`,
+    outside the proposal spans -- the exact-match half of the
+    corroboration count (the other half is spans the string/pixel tiers
+    already applied). each candidate counts at most once, at its first
+    non-overlapping occurrence."""
+    count = 0
+    taken = [(s.start, s.end) for s in exclude_spans]
+    for candidate, cand_lang in KNOWN_PLACES:
+        if lang and cand_lang != lang:
+            continue
+        if len(candidate) < 2 or len(candidate) >= len(text):
+            continue
+        idx = text.find(candidate)
+        while idx != -1:
+            end = idx + len(candidate)
+            if not any(idx < te and ts < end for ts, te in taken):
+                count += 1
+                taken.append((idx, end))
+                break
+            idx = text.find(candidate, idx + 1)
+    return count
+
+
+def _verify_span_pixels(asset: Any, inst: InstText, span: MenuSpan,
+                         lang: Optional[str], font_registry: Any) -> "dict[int, Optional[bool]]":
+    """pixel verdicts for a span's diff positions via savor's shared
+    glyph-swap machinery. wrapped fail-open: menu has always been pure
+    string logic and must stay throw-proof now that a pixel tier (cv2/
+    PIL/file IO) is reachable from it -- any failure just means "no
+    pixel evidence", never a crashed detection. consult_menu_substring
+    rejects spaced text, so span indices ARE the no-space glyph indices
+    chew_swaps expects."""
+    if asset is None:
+        return {}
+    try:
+        from tofu.layers.savor import chew_swaps
+        return chew_swaps(asset, inst, span.diffs, lang, font_registry)
+    except Exception:
+        return {}
+
+
+def browse(instances: List[InstText], asset: Any = None,
+           font_registry: Optional[Any] = None) -> int:
     """the full menu pass, run once across every instance.
+
+    two courses per instance, mutually exclusive:
+
+    1. SUBSTRING (composite reads): if any gazetteer name aligns inside
+       a strictly-longer text (consult_menu_substring), correct the
+       aligned span(s) only. a long-enough, single-diff span
+       (SUBSTRING_STRING_TIER_*) applies on string evidence alone --
+       same precedent as the whole-string path below; a weaker span
+       applies only when savor's pixel check confirms EVERY differing
+       glyph (any position the pixels actively contradict discards the
+       whole span; merely-inconclusive evidence records the proposal
+       with applied=False for review, the established convention).
+       when ANY substring proposal exists, the whole-string course is
+       skipped -- rewriting an entire composite post to one of its
+       names would destroy the other names on it.
+
+    2. WHOLE-STRING: the original low-confidence fuzzy match against
+       whole gazetteer entries, unchanged.
+
+    `asset`/`font_registry` are optional and only feed the substring
+    pixel tier; every existing caller that omits them keeps prior
+    behavior exactly (weak spans simply stay unapplied).
 
     corrections are recorded on inst.ocr_correction using the same
     {applied, original_text, corrected_text, reason} shape Savor
@@ -92,7 +277,98 @@ def browse(instances: List[InstText]) -> int:
         text = inst.text or ""
         if not text:
             continue
-        match = consult_menu(text, inst.detected_language or inst.language, inst.confidence)
+        lang = inst.detected_language or inst.language
+
+        spans = consult_menu_substring(text, lang)
+        if spans:
+            applied: List[MenuSpan] = []
+            inconclusive: List[MenuSpan] = []
+            notes: List[str] = []
+            for span in spans:
+                window = text[span.start:span.end]
+                string_tier = (
+                    len(span.candidate) >= SUBSTRING_STRING_TIER_MIN_LEN
+                    and len(span.diffs) <= SUBSTRING_STRING_TIER_MAX_DIFFS
+                )
+                if string_tier:
+                    applied.append(span)
+                    notes.append(
+                        f"[{span.start}:{span.end}] {window}->{span.candidate} "
+                        f"({span.similarity:.2f} similarity, string evidence)"
+                    )
+                    continue
+                verdicts = _verify_span_pixels(asset, inst, span, lang, font_registry)
+                position_verdicts = [verdicts.get(pos) for pos, _, _ in span.diffs]
+                if any(v is False for v in position_verdicts):
+                    continue  # pixels actively contradict -- spit out, no record
+                if all(v is True for v in position_verdicts):
+                    applied.append(span)
+                    notes.append(
+                        f"[{span.start}:{span.end}] {window}->{span.candidate} "
+                        f"({span.similarity:.2f} similarity, glyph-shape confirmed)"
+                    )
+                else:
+                    inconclusive.append(span)
+
+            # corroboration tier (see CORROBORATION_MIN_SIBLINGS): the
+            # sibling count is computed ONCE from independently-confirmed
+            # evidence, so promoted spans can't bootstrap each other
+            if inconclusive:
+                siblings = _count_exact_known_names(text, lang, spans) + len(applied)
+                if siblings >= CORROBORATION_MIN_SIBLINGS:
+                    for span in list(inconclusive):
+                        if len(span.diffs) != 1:
+                            continue  # multi-diff stays a review item -- context can't carry that much
+                        window = text[span.start:span.end]
+                        applied.append(span)
+                        inconclusive.remove(span)
+                        notes.append(
+                            f"[{span.start}:{span.end}] {window}->{span.candidate} "
+                            f"({span.similarity:.2f} similarity, corroborated by {siblings} "
+                            f"co-occurring known names on the same read)"
+                        )
+
+            if applied:
+                original = text
+                chars = list(text)
+                for span in applied:  # equal-length windows: no index shifting
+                    chars[span.start:span.end] = list(span.candidate)
+                new_text = "".join(chars)
+                reason = "known name(s) aligned inside composite read: " + "; ".join(notes)
+                if inconclusive:
+                    reason += "; span(s) " + ", ".join(
+                        f"[{s.start}:{s.end}] {text[s.start:s.end]}->{s.candidate}"
+                        for s in inconclusive
+                    ) + " left unchanged, pixel evidence inconclusive"
+                inst.ocr_correction = {
+                    "applied": True,
+                    "original_text": original,
+                    "corrected_text": new_text,
+                    "reason": reason,
+                }
+                inst.text = new_text
+                corrected += 1
+            elif inconclusive:
+                chars = list(text)
+                for span in inconclusive:
+                    chars[span.start:span.end] = list(span.candidate)
+                inst.ocr_correction = {
+                    "applied": False,
+                    "candidate_text": "".join(chars),
+                    "reason": "possible known name(s) inside composite read ("
+                              + "; ".join(
+                                  f"[{s.start}:{s.end}] {text[s.start:s.end]}->{s.candidate}"
+                                  f" ({s.similarity:.2f} similarity)"
+                                  for s in inconclusive
+                              )
+                              + "), pixel evidence inconclusive",
+                }
+            # a substring alignment is structural evidence of a composite
+            # read -- never fall through to the whole-string rewrite,
+            # which would collapse the whole post to a single name
+            continue
+
+        match = consult_menu(text, lang, inst.confidence)
         if match is None or match.text == text:
             continue
         inst.ocr_correction = {

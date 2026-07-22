@@ -432,26 +432,27 @@ export default function BBoxCanvas({
               }}
             >
               {/* scene-surface underlay (candidate text-bearing surfaces) */}
-              {showSurfaces && sceneRegions?.map((r, i) => (
-                <div
-                  key={`sr-${i}`}
-                  style={{
-                    position: "absolute",
-                    left: px(r.bbox.x),
-                    top: px(r.bbox.y),
-                    width: px(r.bbox.width),
-                    height: px(r.bbox.height),
-                    border: "1px dashed rgba(34, 211, 238, 0.35)",
-                    borderRadius: 4,
-                    pointerEvents: "none",
-                  }}
-                >
-                  <span className="bbox-surface-label">
-                    {r.semantic_label.replace(/_/g, " ")}
-                  </span>
-                </div>
-              ))}
-              {manifest.map((inst) => {
+              {showSurfaces && sceneRegions?.map((r, i) => {
+                // ``text_cluster`` is an implementation grouping, not a
+                // material users can act on. Prefer Scene's conservative
+                // material descriptor and only fall back to the routing type.
+                const label = r.material ?? (r.texture ? `${r.texture.replace(/_/g, " ")} surface` : r.semantic_label.replace(/_/g, " "));
+                if (r.polygon && r.polygon.length >= 3) {
+                  const points = r.polygon.map(([x, y]) => `${px(x)},${px(y)}`).join(" ");
+                  return (
+                    <svg key={`sr-${i}`} className="absolute inset-0 overflow-visible" width={renderedW} height={natural.height * scale}>
+                      <polygon points={points} fill="rgba(34, 211, 238, 0.05)" stroke="rgba(34, 211, 238, 0.5)" strokeWidth="1" strokeDasharray="4 3" />
+                      <text x={px(r.bbox.x + 3)} y={px(r.bbox.y + 14)} className="bbox-surface-label">{label}</text>
+                    </svg>
+                  );
+                }
+                return (
+                  <div key={`sr-${i}`} style={{ position: "absolute", left: px(r.bbox.x), top: px(r.bbox.y), width: px(r.bbox.width), height: px(r.bbox.height), border: "1px dashed rgba(34, 211, 238, 0.35)", borderRadius: 4, pointerEvents: "none" }}>
+                    <span className="bbox-surface-label">{label}</span>
+                  </div>
+                );
+              })}
+              {manifest.map((inst, visualOrder) => {
                 const isSel = inst.id === selectedId;
                 const isHovered = inst.id === hoveredId;
                 return (
@@ -491,7 +492,10 @@ export default function BBoxCanvas({
                         className="bbox-badge"
                         style={{ background: inst.confidence !== null && inst.confidence < 0.6 ? "#ef4444" : "#22d3ee" }}
                       >
-                        {(inst.reading_order ?? 0) + 1}
+                        {/* The caller supplies reading-order presentation.  This
+                            matters for pre-fix manifests whose stored raw-y
+                            order was wrong for words sharing a baseline. */}
+                        {visualOrder + 1}
                       </div>
                     )}
                     {inst.confidence !== null && (
@@ -515,7 +519,8 @@ export default function BBoxCanvas({
                         ch?.font_style,
                       ].filter(Boolean).join(" · ");
                       const bgBits = [
-                        bp?.semantic_label?.replace(/_/g, " "),
+                        bp?.material,
+                        bp?.material ? null : bp?.semantic_label?.replace(/_/g, " "),
                         bp?.texture,
                         ...(bp?.gradients ?? []),
                       ].filter(Boolean).join(" · ");
@@ -634,7 +639,7 @@ export default function BBoxCanvas({
       )}
       {/* zoom controls — hidden in preview mode unless showPreviewControls and image doesn't fit */}
       {(!preview || (showPreviewControls && !previewFitsEntirely)) && (
-      <div className="absolute bottom-8 left-2 flex gap-1 z-20 w-fit">
+      <div className="absolute bottom-12 left-2 flex gap-1 z-20 w-fit">
         <button onClick={() => {
           const el = containerRef.current;
           if (!el || !renderedW || !natural) { setZoomBoth(effectiveZoom - 0.25); return; }

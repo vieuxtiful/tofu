@@ -21,6 +21,12 @@ ToFU is a seven-layer visual translation pipeline that detects, erases, and re-r
 
 ---
 
+<div style="image" align="center">
+  <img src="images/screen-1.png" width="68%">
+</div>
+
+---
+
 ## Running the stack
 
 **Backend** (Python 3.13 venv — required; easyocr's dependency tree is not yet reliable on 3.14):
@@ -91,6 +97,47 @@ The inpainting strategy is selected from Scene's `BgProfil.texture` classificati
 - **Textured or unclassified**: OpenCV content-aware inpainting (Telea 2004), batched into one pass with radius scaled to the detected stroke width.
 
 Every fill is alpha-feathered at the mask boundary (distance-transform falloff) so no strategy leaves a hard seam. Excluded regions (user-removed from the workspace) are still erased — only their rendering is skipped, unlike DNT regions which are left untouched entirely.
+
+### Self-hosted neural repair and promotion gates
+
+Cleanse now uses an evidence-gated provider router rather than exposing a
+"smooth versus texture" choice in the editor. Scene and instance agreement
+on a flat panel or smooth gradient uses deterministic reconstruction and is
+auto-accepted. Every textured or uncertain surface is recorded with
+per-region repair provenance. Without a provisioned neural provider, ToFU
+uses a deterministic Telea fallback only as a review-required candidate; it
+is never silently promoted to a trusted cleansed base.
+
+Neural providers activate through `server/inpainting-providers.json`; copy
+`server/inpainting-providers.example.json`, then point each enabled provider
+at its own local Python environment, checkout, and checkpoint. The application
+process never imports their Torch/diffusers stacks: it passes temporary local
+image/mask/output files to the configured interpreter and rejects an output
+whose dimensions do not exactly match its input. This keeps LaMa, BrushNet,
+and their pinned dependencies from destabilizing OCR or the web backend.
+
+LaMa's `official_lama` runtime targets the upstream `advimman/lama` checkout
+and a local `big-lama` model directory. BrushNet's runtime targets the upstream
+TencentARC checkout, a local base model, and a local BrushNet checkpoint; it
+uses a fixed seed and preserves all known pixels outside ToFU's mask. Both are
+available to the automatic router as soon as their config validates. The
+router prefers LaMa for lower-complexity/repeating texture and a configured
+DiffSTR/BrushNet path for high-detail local texture.
+
+DiffSTR is supported through the same `external_command` file contract, but
+the paper currently has no public runnable code/checkpoint to provision. A
+validated local DiffSTR runner can be activated by filling its command and
+required-path fields; ToFU will not label a generic diffusion model as
+DiffSTR. Run `scripts/eval_cleanse_providers.py` against the fixture set before
+changing any provider's `promoted` field to `true`; an installed model cannot
+become an auto-accept default without benchmark evidence. No source image is
+sent to a cloud service by this architecture.
+
+The Localized Asset Canvas starts from this cleansed base. Its healing brush
+and lasso create ordered, RGBA treatment patches over that base, so every
+manual correction is non-destructive and undoable. It also keeps the source
+reference visible while typography placement, rotation, skew, and arc warp
+are adjusted over the treatment result.
 
 ### Scribe — style-aware text regeneration (`src/tofu/layers/scribe.py`)
 

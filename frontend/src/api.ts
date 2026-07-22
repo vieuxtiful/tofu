@@ -137,8 +137,27 @@ export interface InstText {
   target_language: string | null;
   glyph_fallback?: boolean | null;  // scribe swapped fonts: the requested face lacked codepoints for this text
   tm_suggestion?: TMSuggestion | null;  // translation-memory match from a prior approved render
+  recognition_history?: Array<{ stage: string; engine: string; candidate_text?: string; candidate_confidence?: number; primary_text?: string; primary_confidence?: number; accepted: boolean; reason: string }> | null;
+  repair_provenance?: {
+    requested_provider: string;
+    executed_provider?: string;
+    strategy: string;
+    confidence: number;
+    auto_accepted: boolean;
+    review_required: boolean;
+    reason: string;
+    candidates?: Array<{
+      provider: string;
+      accepted: boolean;
+      decision: string;
+      group_ids: string[];
+      evidence?: {
+        artifact?: { id: string; provider: string; decision: string; bbox: BBox; url: string; cache_key?: string } | null;
+      };
+    }>;
+  } | null;
   resolved_font_family?: string | null;  // what "auto" (style_profile.font_family unset) currently renders with — display hint only, never an override
-  segmentation_mask?: { polygon: number[][]; confidence: number } | null;
+  segmentation_mask?: { polygon: number[][]; confidence: number; holes?: number[][][] | null } | null;
   style_profile?: {
     font_family: string | null;
     font_weight: string | null;
@@ -146,6 +165,8 @@ export interface InstText {
     font_size: number | null;
     italic: boolean | null;
     underline: boolean | null;
+    underline_offset?: number | null;
+    underline_width?: number | null;
     subscript: boolean | null;
     superscript: boolean | null;
     align_h: string | null;
@@ -162,13 +183,17 @@ export interface InstText {
     stroke_width: number | null;
     target_orientation: "horizontal" | "vertical" | null;
     word_order: "ltr" | "rtl" | null;
+    transform?: { skew_x?: number; skew_y?: number; arc?: number; preset?: string; amount?: number; scale_x?: number; scale_y?: number } | null;
   } | null;
   background_profile?: {
     semantic_label: string | null;  // containing scene surface: "panel" | "bordered_region" | ...
     texture: string | null;         // "flat" | "textured"
+    material?: string | null;       // user-facing: "brick / masonry", "painted sign", etc.
     gradients: string[] | null;
     patterns: string[] | null;
     dominant_color: string | null;  // hex
+    surface_texture?: string | null;
+    cleanse_strategy?: "flat" | "smooth_gradient" | "telea" | "neural" | null;
   } | null;
   characteristics?: {
     font_style: string | null;   // detected descriptor: "bold" | "italic" | "bold italic" | "regular"
@@ -189,6 +214,8 @@ export interface SceneRegion {
   background_color: string | null;
   border_detected: boolean;
   polygon: number[][] | null;
+  texture: string | null;
+  material?: string | null;
 }
 
 export interface TextManifest {
@@ -649,6 +676,61 @@ export async function renderAsset(
       body: JSON.stringify({ asset_id: assetId, targ_lang: targLang, font, qa_threshold: qaThreshold }),
     })
   );
+}
+
+export async function renderPreview(
+  assetId: string, targLang: string, manifest: TextManifest
+): Promise<{ output_url: string; text_manifest: TextManifest; cleanse_cache_key: string }> {
+  return json(await fetch("/api/preview/render", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ asset_id: assetId, targ_lang: targLang, manifest }),
+  }));
+}
+
+export interface InpaintPatch { id: string; bbox: BBox; polygon: number[][]; points?: number[][]; mode: string; strategy?: string; radius?: number; hardness?: number; candidate_id?: string; }
+export interface TreatmentRequest { polygon?: number[][]; points?: number[][]; mode?: "auto" | "content_aware" | "texture"; radius?: number; hardness?: number; }
+export async function createInpaintPatch(assetId: string, treatment: TreatmentRequest, manifest?: TextManifest) {
+  return json(await fetch("/api/inpaint", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ asset_id: assetId, ...treatment, manifest }) })) as Promise<{ id: string; bbox: BBox; patches: InpaintPatch[]; revision: string }>;
+}
+export async function applyRepairCandidate(assetId: string, candidateId: string, cacheKey?: string) {
+  return json(await fetch(`/api/inpaint/candidate/${encodeURIComponent(assetId)}/${encodeURIComponent(candidateId)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cache_key: cacheKey }) })) as Promise<{ id: string; bbox: BBox; patches: InpaintPatch[]; revision: string; already_applied: boolean }>;
+}
+export async function undoInpaint(assetId: string, patchId?: string) {
+  return json(await fetch(`/api/inpaint/${encodeURIComponent(assetId)}${patchId ? `/${encodeURIComponent(patchId)}` : ""}`, { method: "DELETE" })) as Promise<{ ok: boolean; patches: InpaintPatch[]; revision: string }>;
+}
+export async function getTreatment(assetId: string) {
+  return json(await fetch(`/api/treatment/${encodeURIComponent(assetId)}`)) as Promise<{ patches: InpaintPatch[]; revision: string }>;
+}
+export async function restoreTreatment(assetId: string, patchIds: string[]) {
+  return json(await fetch(`/api/treatment/${encodeURIComponent(assetId)}`, {
+    method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ patch_ids: patchIds }),
+  })) as Promise<{ patches: InpaintPatch[]; revision: string }>;
+}
+export interface LocalizedBaseline { schema: number; manifest: TextManifest; patch_ids: string[]; }
+export async function getLocalizedBaseline(assetId: string) {
+  return json(await fetch(`/api/localized-baseline/${encodeURIComponent(assetId)}`)) as Promise<LocalizedBaseline>;
+}
+export async function captureLocalizedBaseline(assetId: string, manifest: TextManifest, patchIds: string[]) {
+  return json(await fetch(`/api/localized-baseline/${encodeURIComponent(assetId)}`, {
+    method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ manifest, patch_ids: patchIds }),
+  })) as Promise<LocalizedBaseline>;
+}
+
+export interface InpaintingProvider {
+  id: string;
+  available: boolean;
+  enabled?: boolean;
+  promoted: boolean;
+  review_required: boolean;
+  kind: "deterministic" | "self_hosted" | "experimental" | "external_disabled" | "editor";
+  runtime?: string | null;
+  detail: string;
+  revision?: string;
+}
+
+export async function getInpaintingProviders() {
+  return json(await fetch("/api/inpainting/providers")) as Promise<{ providers: InpaintingProvider[] }>;
 }
 
 export interface RenderStreamEvent {

@@ -96,6 +96,8 @@ class SceneRegion: ## candidate text-bearing surface from scene's pre-pass
     background_color: Optional[str] = None ## dominant color, hex
     border_detected: bool = False
     polygon: Optional[Polygon] = None
+    texture: Optional[str] = None          ## region-interior classification: "flat" | "smooth_gradient" | "textured" -- the surface half of the scene/cleanse agreement gate
+    material: Optional[str] = None         ## user-facing descriptor: "brick / masonry" | "painted sign" | "textured surface"
 
 @dataclass
 class InstText:
@@ -122,6 +124,8 @@ class InstText:
     glyph_fallback: Optional[bool] = None         ## True: scribe swapped the requested font for a codepoint-covering one
     tm_suggestion: Optional[Dict[str, Any]] = None  ## Memory lookup match: {target_text, score, method, source_asset_id, record_id}
     ocr_correction: Optional[Dict[str, Any]] = None  ## recognition_correct: {applied, original_text/candidate_text, corrected_text?, reason}
+    recognition_history: Optional[List[Dict[str, Any]]] = None  ## immutable audit trail of engine candidates and accepted/rejected corrections
+    repair_provenance: Optional[Dict[str, Any]] = None  ## cleanse provider, confidence gate, fallback and review evidence
     resolved_font_family: Optional[str] = None    ## what "auto" (style_profile.font_family=None) currently resolves to — scribe.resolve_auto_font()'s answer, for preview/display only; never itself passed as a render override
 
 @dataclass
@@ -143,6 +147,8 @@ class StyleProfil:
     font_size: Optional[int] = None           # explicit px override; None = auto-fit
     italic: Optional[bool] = None
     underline: Optional[bool] = None
+    underline_offset: Optional[float] = None  # px below the detected glyph bottom; None = detected default
+    underline_width: Optional[float] = None   # px stroke; None = detected default
     subscript: Optional[bool] = None
     superscript: Optional[bool] = None
     align_h: Optional[str] = None             # "left" | "right" | "center"
@@ -158,14 +164,20 @@ class StyleProfil:
     # -- appearance --
     stroke_color: Optional[str] = None        # hex
     stroke_width: Optional[float] = None      # px
+    target_orientation: Optional[str] = None  # "horizontal" | "vertical"
+    word_order: Optional[str] = None          # "ltr" | "rtl" for vertical word columns
+    transform: Optional[Dict[str, Any]] = None  # {skew_x, skew_y, arc, preset, amount, scale_x, scale_y}
 
 @dataclass
 class BgProfil:
     semantic_label: Optional[str] = None  # "brick wall", "wood sign", etc.
     texture: Optional[str] = None
+    material: Optional[str] = None          # presentational material descriptor; never drives Cleanse routing
     gradients: Optional[List[str]] = None
     patterns: Optional[List[str]] = None
     dominant_color: Optional[str] = None  # hex; cleanse fill / scribe contrast hint
+    surface_texture: Optional[str] = None  # containing SceneRegion.texture
+    cleanse_strategy: Optional[str] = None # "flat" | "smooth_gradient" | "telea"
 
 @dataclass
 class TextManifest: ## loc task manifest via cicerone

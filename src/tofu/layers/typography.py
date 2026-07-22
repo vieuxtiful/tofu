@@ -32,6 +32,7 @@ from tofu.utils.imaging import text_mask
 # weight thresholds on stroke_width / text_height (calibrated on the
 # stylized-italic fixture: Arial 44px regular ≈ 0.11, bold ≈ 0.15)
 BOLD_RATIO = 0.135
+HEAVY_RATIO = 0.190
 LIGHT_RATIO = 0.065
 
 ITALIC_DEG = 7.0        # |slant| at or above this reads as italic
@@ -44,7 +45,7 @@ MIN_ROTATION_DEG = 2.0  # snap near-axis-aligned to 0
 @dataclass
 class TypographyProfile:
     stroke_ratio: Optional[float] = None
-    weight: Optional[str] = None          # "light" | "regular" | "bold"
+    weight: Optional[str] = None          # "light" | "regular" | "bold" | "heavy"
     slant_deg: Optional[float] = None     # signed; positive = rightward lean
     italic: Optional[bool] = None
     font_px: Optional[int] = None         # ascender-to-descender extent
@@ -181,7 +182,9 @@ def analyze_region(
     if stroke is not None and profile.font_px and profile.font_px >= 8:
         ratio = stroke / profile.font_px
         profile.stroke_ratio = round(ratio, 4)
-        if ratio >= BOLD_RATIO:
+        if ratio >= HEAVY_RATIO:
+            profile.weight = "heavy"
+        elif ratio >= BOLD_RATIO:
             profile.weight = "bold"
         elif ratio <= LIGHT_RATIO:
             profile.weight = "light"

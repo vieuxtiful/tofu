@@ -61,7 +61,7 @@ manifest, after every detection/refinement pass has already run.
 import re
 from typing import Any, List, Optional
 
-from tofu.core.types import InstText
+from tofu.core.types import BBox, InstText
 from tofu.utils.imaging import load_rgb, text_mask
 
 # glyph shapes a CRNN commonly confuses (letter <-> digit). bidirectional
@@ -111,6 +111,11 @@ _VALID_HOUR = re.compile(r"^(?:[1-9]|1[0-2])$")
 BITE_MARGIN = 0.12
 MIN_MORSEL_AREA = 6         # px^2 floor for a connected component
 TASTING_CANVAS = 24         # common square size both glyph masks are resized to for comparison
+# chew_swaps small-glyph rescue: below this per-glyph extent (px), the
+# crop is bicubically upscaled before masking -- tiny street-photo
+# glyphs under-segment at native resolution (see chew_swaps).
+GLYPH_UPSCALE_MIN_PX = 20
+GLYPH_UPSCALE_FACTOR = 3
 
 
 class Morsel:
@@ -454,22 +459,23 @@ def _cluster_to_n_glyphs(plated, n: int, vertical: bool):
     return [tuple(c) for c in clusters]
 
 
-def chew_dakuten(asset: Any, inst: InstText, morsel: DakutenMorsel,
-                  font_registry: Optional[Any] = None) -> "dict[int, Optional[bool]]":
-    """course 4's bite: verifies EACH position in `morsel.positions`
-    independently against its own pixels, same isolate-render-compare
-    method as chew_on(), but returns a verdict per position instead of
-    a single verdict -- a real case can need more than one glyph
-    confirmed (see DakutenMorsel).
+def chew_swaps(asset: Any, inst: InstText, positions: List[tuple],
+                lang: Optional[str],
+                font_registry: Optional[Any] = None) -> "dict[int, Optional[bool]]":
+    """generic per-position glyph-swap verification: does the pixel
+    evidence at each position support the PROPOSED character over the
+    RECOGNIZED one? same isolate-render-compare method as chew_on(),
+    generalized to arbitrary (position, recognized_char, proposed_char)
+    swaps so any narrowly-triggered course (dakuten, menu's substring
+    gazetteer) can pixel-verify its proposal without duplicating the
+    machinery.
 
-    only answers "does this glyph's pixels support having a mark, vs.
-    the plain form" -- NOT "which mark (dakuten vs handakuten)
-    specifically." whole-glyph IoU can't reliably tell dakuten and
-    handakuten apart (measured live: バ vs パ reference renders score
-    ~0.8 IoU against each other, far above BITE_MARGIN's separation
-    requirement), so which variant is correct is left entirely to the
-    gazetteer match that proposed this morsel; pixel evidence here only
-    confirms whether to trust that suggestion at all.
+    `positions` is [(index, recognized_char, proposed_char)] where index
+    counts characters of inst.text with spaces removed (matching the
+    glyph clusters _cluster_to_n_glyphs produces). returns a verdict per
+    position: True (pixels favor the proposal), False (pixels favor the
+    recognized char), None (inconclusive or unverifiable). None must
+    NEVER be treated as True.
     """
     verdicts: "dict[int, Optional[bool]]" = {}
     try:
@@ -481,18 +487,45 @@ def chew_dakuten(asset: Any, inst: InstText, morsel: DakutenMorsel,
     img = load_rgb(asset)
     if img is None:
         return verdicts
-    mask = text_mask(img, inst.bounding_box, refine=True)
+
+    bbox = inst.bounding_box
+    vertical = _is_vertical_instance(bbox)
+    no_space = (inst.text or "").replace(" ", "")
+
+    # small-glyph rescue: at street-photo scale a stacked sign's glyphs
+    # can be ~13px each, where Otsu can't separate adjacent characters
+    # into distinct components (measured live: japan-subs' 24x106px
+    # 8-glyph post plated as only 6 components, so clustering refused
+    # and every verdict came back unverifiable). upscaling the crop
+    # BEFORE masking recovers the separation -- same coarse-to-fine
+    # philosophy as second_look/zoom_detect. all downstream coordinates
+    # (plate clusters, bites, reference sizes) live consistently in the
+    # upscaled space, so nothing needs scaling back.
+    per_glyph = (bbox.height if vertical else bbox.width) / max(1, len(no_space))
+    if per_glyph < GLYPH_UPSCALE_MIN_PX:
+        x0c, y0c = max(0, bbox.x), max(0, bbox.y)
+        x1c = min(img.shape[1], bbox.x + bbox.width)
+        y1c = min(img.shape[0], bbox.y + bbox.height)
+        if x1c - x0c < 3 or y1c - y0c < 3:
+            return verdicts
+        crop = img[y0c:y1c, x0c:x1c]
+        crop = cv2.resize(
+            crop,
+            (crop.shape[1] * GLYPH_UPSCALE_FACTOR, crop.shape[0] * GLYPH_UPSCALE_FACTOR),
+            interpolation=cv2.INTER_CUBIC,
+        )
+        mask = text_mask(crop, BBox(x=0, y=0, width=crop.shape[1], height=crop.shape[0]), refine=True)
+    else:
+        mask = text_mask(img, bbox, refine=True)
     if mask is None:
         return verdicts
 
-    vertical = _is_vertical_instance(inst.bounding_box)
     plated = _plate_up(np, cv2, mask, vertical=vertical)
-    no_space = (inst.text or "").replace(" ", "")
     plated = _cluster_to_n_glyphs(plated, len(no_space), vertical)
     if plated is None:
         return verdicts  # fewer components than characters -- can't safely split, don't guess
 
-    for pos, orig_char, marked_char in morsel.positions:
+    for pos, orig_char, proposed_char in positions:
         if pos >= len(plated):
             continue
         x0, y0, x1, y1 = plated[pos]
@@ -502,21 +535,40 @@ def chew_dakuten(asset: Any, inst: InstText, morsel: DakutenMorsel,
             continue
 
         size_px = y1 - y0
-        plain_reference = _reference_bite(np, orig_char, size_px, font_registry, morsel.lang)
-        marked_reference = _reference_bite(np, marked_char, size_px, font_registry, morsel.lang)
-        if plain_reference is None or marked_reference is None:
+        orig_reference = _reference_bite(np, orig_char, size_px, font_registry, lang)
+        proposed_reference = _reference_bite(np, proposed_char, size_px, font_registry, lang)
+        if orig_reference is None or proposed_reference is None:
             verdicts[pos] = None
             continue
 
-        plain_score = _flavor_match(np, cv2, bite, plain_reference)
-        marked_score = _flavor_match(np, cv2, bite, marked_reference)
-        if marked_score >= plain_score + BITE_MARGIN:
-            verdicts[pos] = True   # swallow: the marked reading tastes right
-        elif plain_score >= marked_score + BITE_MARGIN:
-            verdicts[pos] = False  # spit out: the plain reading tastes right
+        orig_score = _flavor_match(np, cv2, bite, orig_reference)
+        proposed_score = _flavor_match(np, cv2, bite, proposed_reference)
+        if proposed_score >= orig_score + BITE_MARGIN:
+            verdicts[pos] = True   # swallow: the proposed reading tastes right
+        elif orig_score >= proposed_score + BITE_MARGIN:
+            verdicts[pos] = False  # spit out: the recognized reading tastes right
         else:
             verdicts[pos] = None   # still chewing: too close to call
     return verdicts
+
+
+def chew_dakuten(asset: Any, inst: InstText, morsel: DakutenMorsel,
+                  font_registry: Optional[Any] = None) -> "dict[int, Optional[bool]]":
+    """course 4's bite: verifies EACH position in `morsel.positions`
+    independently against its own pixels -- a thin wrapper over
+    chew_swaps() (a real case can need more than one glyph confirmed,
+    see DakutenMorsel).
+
+    only answers "does this glyph's pixels support having a mark, vs.
+    the plain form" -- NOT "which mark (dakuten vs handakuten)
+    specifically." whole-glyph IoU can't reliably tell dakuten and
+    handakuten apart (measured live: バ vs パ reference renders score
+    ~0.8 IoU against each other, far above BITE_MARGIN's separation
+    requirement), so which variant is correct is left entirely to the
+    gazetteer match that proposed this morsel; pixel evidence here only
+    confirms whether to trust that suggestion at all.
+    """
+    return chew_swaps(asset, inst, morsel.positions, morsel.lang, font_registry)
 
 
 def taste(asset: Any, instances: List[InstText], font_registry: Optional[Any] = None) -> int:

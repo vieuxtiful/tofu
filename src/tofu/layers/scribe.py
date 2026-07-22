@@ -49,6 +49,91 @@ VERTICAL_ASPECT_MIN = 1.3
 VERTICAL_ROW_FACTOR = 1.15  # row height as a multiple of font size
 
 
+def _apply_style_transform(layer: Any, bbox: BBox, transform: Optional[Dict[str, Any]]) -> Any:
+    """Apply deterministic, local text shaping before the detected rotation.
+
+    The transform is deliberately confined to the region's text layer: a
+    global affine transform would make the result depend on where the region
+    lies on the canvas.  Arc is a lightweight baseline warp, not a perspective
+    reconstruction, and therefore remains stable for preview and final render.
+    """
+    if not transform:
+        return layer
+    try:
+        from PIL import Image
+        import math
+        sx = math.tan(math.radians(float(transform.get("skew_x", 0) or 0)))
+        sy = math.tan(math.radians(float(transform.get("skew_y", 0) or 0)))
+        arc = float(transform.get("arc", 0) or 0)
+        preset = str(transform.get("preset", "custom") or "custom").strip().lower().replace(" ", "_")
+        amount = float(transform.get("amount", arc) or 0)
+        scale_x = max(0.4, min(2.5, float(transform.get("scale_x", 1) or 1)))
+        scale_y = max(0.4, min(2.5, float(transform.get("scale_y", 1) or 1)))
+        if preset == "none":
+            preset, amount, arc = "custom", 0.0, 0.0
+        if not (sx or sy or arc or amount or scale_x != 1 or scale_y != 1):
+            return layer
+        cx, cy = bbox.x + bbox.width / 2, bbox.y + bbox.height / 2
+        out = layer.transform(
+            layer.size, Image.Transform.AFFINE,
+            (1, -sx, sx * cy, -sy, 1, sy * cx), resample=Image.Resampling.BICUBIC,
+        ) if (sx or sy) else layer
+        if scale_x != 1 or scale_y != 1:
+            # Pillow's affine matrix maps output coordinates to source
+            # coordinates.  Scaling about the region centre keeps this a
+            # local text transform rather than a canvas-position dependent
+            # one.  BICUBIC preserves anti-aliased glyph contours better
+            # than nearest-neighbour expansion while the bounds prevent a
+            # slider from producing an unreviewable distortion.
+            out = out.transform(
+                out.size, Image.Transform.AFFINE,
+                (1 / scale_x, 0, cx - cx / scale_x,
+                 0, 1 / scale_y, cy - cy / scale_y),
+                resample=Image.Resampling.BICUBIC,
+            )
+        if not (arc or amount):
+            return out
+        # Shift each local column by a quadratic amount.  Bounding the work to
+        # the region also prevents a UI slider from turning into a full-canvas
+        # operation on a large source image.
+        x0, y0 = max(0, bbox.x), max(0, bbox.y)
+        x1, y1 = min(out.width, bbox.x + bbox.width), min(out.height, bbox.y + bbox.height)
+        warped = Image.new("RGBA", out.size, (0, 0, 0, 0))
+        def offset_at(t: float) -> float:
+            """Bounded Photoshop-style *deterministic* warp approximations.
+
+            These describe text placement only; they never invent image
+            pixels.  That makes the same named preset safe to use in the
+            debounced canvas and final Scribe composition.  ``custom``
+            retains the original quadratic Arc slider for compatibility.
+            """
+            magnitude = amount if amount else arc
+            u = (t + 1.0) / 2.0  # 0..1 left-to-right
+            if preset in {"custom", "arc", "arc_lower"}:
+                return magnitude * (t * t - 1.0)
+            if preset in {"arc_upper", "arch", "shell_upper", "rise"}:
+                return -magnitude * (t * t - 1.0) if preset != "rise" else magnitude * (u - .5)
+            if preset in {"bulge", "inflate", "fisheye"}:
+                return -magnitude * (1.0 - t * t)
+            if preset in {"shell_lower", "squeeze"}:
+                return magnitude * (1.0 - t * t)
+            if preset in {"flag", "wave", "fish"}:
+                cycles = 1.0 if preset == "flag" else 2.0
+                return magnitude * math.sin(cycles * math.pi * u)
+            if preset == "twist":
+                return magnitude * t * (1.0 - abs(t))
+            return magnitude * (t * t - 1.0)
+
+        for x in range(x0, x1):
+            t = (x - cx) / max(1.0, bbox.width / 2)
+            dy = int(round(offset_at(t)))
+            column = out.crop((x, y0, x + 1, y1))
+            warped.alpha_composite(column, (x, y0 + dy))
+        return warped
+    except Exception:
+        return layer
+
+
 def _load_image(asset: Any):
     """accept a PIL image, file path, or bytes; return RGBA image or None."""
     try:
@@ -160,33 +245,62 @@ def resolve_face(
     if current is None:
         return font_family, italic  # not a registry-known font; nothing to resolve
 
+    def requested_weight(value: Optional[str]) -> Optional[int]:
+        """Map OS/2 classes and human face names to one CSS-like target.
+
+        Families use different names for 900: Black, Heavy, Ultra, and Extra
+        Black are all valid, distinct installed faces.  Persist the actual
+        subfamily for display but resolve it by its numeric class so selecting
+        Arial Heavy/Black can never be mistaken for Regular.
+        """
+        if value is None:
+            return None
+        raw = str(value).strip().lower()
+        if raw.isdigit():
+            return max(100, min(900, int(raw)))
+        if any(token in raw for token in ("black", "heavy", "ultra", "extra bold", "extrabold")):
+            return 900 if any(token in raw for token in ("black", "heavy", "ultra")) else 800
+        if "bold" in raw:
+            return 700
+        if any(token in raw for token in ("semi", "demi")):
+            return 600
+        if "medium" in raw:
+            return 500
+        if "light" in raw or "thin" in raw:
+            return 300 if "light" in raw else 100
+        if any(token in raw for token in ("regular", "normal", "book", "roman")):
+            return 400
+        return None
+
+    target_weight = requested_weight(weight)
     sub = (current.subfamily or "").lower()
-    wants_bold = weight == "bold"
-    wants_light = weight == "light"
-    has_bold = "bold" in sub
     has_italic = "italic" in sub or "oblique" in sub
-    weight_ok = (wants_bold == has_bold) if (wants_bold or has_bold) else True
-    if wants_light and current.weight_class > 350:
-        weight_ok = False
-    if weight_ok and italic == has_italic:
+    current_weight = int(getattr(current, "weight_class", 400) or 400)
+    # An explicit selected path is authoritative when it is already close to
+    # the requested class.  This fixes a former bug where "Bold" was not
+    # normalized, causing the resolver to replace arialbd.ttf with Regular.
+    if (target_weight is None or abs(current_weight - target_weight) <= 80) and italic == has_italic:
         return font_family, False  # already the right face; no synthesis needed
 
     siblings = [fc for fc in fonts.values() if fc.family == current.family]
-    best = None
-    for fc in siblings:
-        s = (fc.subfamily or "").lower()
-        s_italic = "italic" in s or "oblique" in s
-        if italic != s_italic:
-            continue
-        s_bold = "bold" in s
-        if wants_bold and not s_bold:
-            continue
-        if not wants_bold and not wants_light and s_bold:
-            continue
-        if wants_light and fc.weight_class > 350:
-            continue
-        best = fc
-        break
+    matching_style = [
+        fc for fc in siblings
+        if ("italic" in (fc.subfamily or "").lower() or "oblique" in (fc.subfamily or "").lower()) == italic
+    ]
+    if not matching_style:
+        # There is no real italic/upright sibling. Keep the selected face and
+        # let the caller apply its established synthetic italic fallback.
+        return font_family, italic
+    if target_weight is None:
+        # An italic-only request keeps the current class rather than making a
+        # silent Regular substitution.
+        target_weight = current_weight
+    best = min(
+        matching_style,
+        key=lambda fc: (abs(int(getattr(fc, "weight_class", 400) or 400) - target_weight),
+                        abs(int(getattr(fc, "weight_class", 400) or 400) - current_weight)),
+        default=None,
+    )
     if best is not None:
         return best.font_path, False
     return font_family, italic  # no matching sibling face; synthesize instead
@@ -375,13 +489,17 @@ def _fit_wrapped(
     return best_font, best_lines, best_spacing
 
 
-def _should_render_vertical(bbox: BBox, lang: Optional[str], text: str) -> bool:
+def _should_render_vertical(bbox: BBox, lang: Optional[str], text: str, orientation: Optional[str] = None) -> bool:
     """a region renders as a stacked vertical CJK column when its bbox is
     narrow-and-tall and the effective target language uses vertical
     writing — the shape cicerone's merge_vertical_columns() produces for
     genuine stacked signage. a single-character region is excluded (an
     aspect ratio near 1:1 for one glyph gives no reliable signal either
     way, and a lone character reads identically in either orientation)."""
+    if orientation == "vertical":
+        return True
+    if orientation == "horizontal":
+        return False
     if not lang or lang not in CJK_VERTICAL_LANGS:
         return False
     if bbox.width <= 0 or len(text) < 2:
@@ -446,6 +564,47 @@ def _render_vertical_layer(
                   stroke_width=stroke_w,
                   stroke_fill=stroke_fill if stroke_w > 0 else None)
         y += row_h - compress
+    return layer
+
+
+def _fit_vertical_words(draw, words: List[str], bbox: BBox, font_family: Optional[str], explicit_size: Optional[int] = None):
+    """Fit explicit vertical word-columns, preserving each word's column."""
+    if explicit_size and explicit_size > 0:
+        return _get_font(font_family, explicit_size)
+    lo, hi = MIN_FONT_PX, max(MIN_FONT_PX + 1, bbox.width * 2)
+    best = _get_font(font_family, MIN_FONT_PX)
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        font = _get_font(font_family, mid)
+        widths = [max((draw.textbbox((0, 0), ch, font=font)[2] - draw.textbbox((0, 0), ch, font=font)[0] for ch in word), default=0) for word in words]
+        heights = [_vertical_block_height(font, len(word), 0.0) for word in words]
+        gap = font.size * 0.3 * max(0, len(words) - 1)
+        if sum(widths) + gap <= bbox.width and max(heights, default=0) <= bbox.height:
+            best, lo = font, mid + 1
+        else:
+            hi = mid - 1
+    return best
+
+
+def _render_vertical_words_layer(base_size, words: List[str], font, fill, stroke_fill, stroke_w: int, bbox: BBox, word_order: Optional[str]):
+    """Draw whitespace-delimited words as top-to-bottom columns."""
+    from PIL import Image, ImageDraw
+
+    ordered = list(reversed(words)) if word_order == "rtl" else words
+    layer = Image.new("RGBA", base_size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(layer)
+    widths = [max((draw.textbbox((0, 0), ch, font=font, stroke_width=stroke_w)[2] - draw.textbbox((0, 0), ch, font=font, stroke_width=stroke_w)[0] for ch in word), default=0) for word in ordered]
+    gap = font.size * 0.3
+    total_w = sum(widths) + gap * max(0, len(ordered) - 1)
+    x = bbox.x + (bbox.width - total_w) / 2
+    for word, column_w in zip(ordered, widths):
+        total_h = _vertical_block_height(font, len(word), 0.0)
+        y = bbox.y + (bbox.height - total_h) / 2
+        for ch in word:
+            l, t, r, _ = draw.textbbox((0, 0), ch, font=font, stroke_width=stroke_w)
+            draw.text((x + (column_w - (r - l)) / 2 - l, y - t), ch, font=font, fill=fill, stroke_width=stroke_w, stroke_fill=stroke_fill if stroke_w > 0 else None)
+            y += font.size * VERTICAL_ROW_FACTOR
+        x += column_w + gap
     return layer
 
 
@@ -689,14 +848,27 @@ def render(
             if detected_rot:
                 rotation = detected_rot
 
-        if _should_render_vertical(bbox, effective_lang, text):
-            font = _fit_vertical(measure_draw, text, bbox, s.font_family, s.font_size, s.tsume or 0)
-            layer = _render_vertical_layer(
-                base.size, text, font, fill, stroke_fill, stroke_w, bbox, s.tsume or 0
-            )
+        if _should_render_vertical(bbox, effective_lang, text, s.target_orientation):
+            words = text.split()
+            explicit_word_columns = s.target_orientation == "vertical" and len(words) > 1
+            if explicit_word_columns:
+                font = _fit_vertical_words(measure_draw, words, bbox, s.font_family, s.font_size)
+                layer = _render_vertical_words_layer(
+                    base.size, words, font, fill, stroke_fill, stroke_w, bbox, s.word_order
+                )
+            else:
+                # Keep the legacy single-column path byte-for-byte for
+                # orientation-unset manifests and single-token overrides.
+                font = _fit_vertical(measure_draw, text, bbox, s.font_family, s.font_size, s.tsume or 0)
+                layer = _render_vertical_layer(
+                    base.size, text, font, fill, stroke_fill, stroke_w, bbox, s.tsume or 0
+                )
             if rotation:
                 center = (bbox.x + bbox.width / 2, bbox.y + bbox.height / 2)
+                layer = _apply_style_transform(layer, bbox, s.transform)
                 layer = layer.rotate(rotation, center=center, resample=Image.BICUBIC)
+            else:
+                layer = _apply_style_transform(layer, bbox, s.transform)
             base = Image.alpha_composite(base, layer)
             continue
 
@@ -768,13 +940,17 @@ def render(
 
             if s.underline:
                 # glyph bottom edge (ly + b_off is where the drawn text's
-                # own bbox bottom lands), plus a small drop
-                uy = ly + b_off + 1
+                # own bbox bottom lands), plus a detected/default drop.  The
+                # offset and thickness are independent from an outline: a
+                # user can tune an underline without unexpectedly changing
+                # the glyph stroke itself.
+                uy = ly + b_off + (s.underline_offset if s.underline_offset is not None else 1)
                 draw = ImageDraw.Draw(layer)
                 draw.line([(lx, uy), (lx + w, uy)], fill=fill,
-                          width=max(1, int(stroke_w / 2) or 1))
+                          width=max(1, int(round(s.underline_width if s.underline_width is not None else (stroke_w / 2) or 1))))
             y_cursor += line_h + spacing
 
+        layer = _apply_style_transform(layer, bbox, s.transform)
         if rotation:
             center = (bbox.x + bbox.width / 2, bbox.y + bbox.height / 2)
             layer = layer.rotate(

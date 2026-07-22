@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "providers": {
+    "lama": {
+      "enabled": false,
+      "promoted": false,
+      "runtime": "torchscript_lama",
+      "python": "<models>/venvs/lama/Scripts/python.exe",
+      "model_path": "<models>/lama/big-lama.pt",
+      "device": "cuda",
+      "timeout_seconds": 300,
+      "max_pixels": 4194304,
+      "revision": "big-lama-torchscript"
+    },
+    "brushnet_experimental": {
+      "enabled": false,
+      "promoted": false,
+      "runtime": "brushnet",
+      "python": "<models>/venvs/brushnet/Scripts/python.exe",
+      "repo_dir": "<models>/BrushNet",
+      "base_model_path": "<models>/brushnet/base-model",
+      "checkpoint_path": "<models>/brushnet/segmentation_mask_brushnet_ckpt",
+      "variant": "sd15",
+      "device": "cuda",
+      "prompt": "continuous natural background, no text, no letters, no logo",
+      "negative_prompt": "text, letters, words, logo, watermark",
+      "seed": 1337,
+      "steps": 30,
+      "conditioning_scale": 1.0,
+      "timeout_seconds": 600,
+      "max_pixels": 1048576
+    },
+    "diffstr_experimental": {
+      "enabled": false,
+      "promoted": false,
+      "runtime": "external_command",
+      "command": [
+        "<models>/venvs/diffstr/Scripts/python.exe",
+        "<models>/diffstr_adapter/run.py",
+        "--input", "{input}",
+        "--mask", "{mask}",
+        "--output", "{output}"
+      ],
+      "required_paths": [
+        "<models>/diffstr_adapter/run.py",
+        "<models>/diffstr_checkpoint"
+      ],
+      "timeout_seconds": 600,
+      "max_pixels": 1048576
+    }
+  }
+}

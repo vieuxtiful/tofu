@@ -4,11 +4,11 @@ import {
   Play, Plus, RotateCcw, ScanText, ShieldAlert, Sparkles, SquareStack, Subscript, Superscript, Type, Underline, X,
 } from "lucide-react";
 import {
-  BBox, FontFamily, FontOption, ImportResult, InstText, LanguageOption, Project,
+  BBox, FontFamily, FontOption, ImportResult, InpaintPatch, InpaintingProvider, InstText, LanguageOption, Project,
   RenderResult, RenderStreamEvent, SceneRegion, TextManifest, UploadResponse, ValidationReport,
   addRegion, approveRender, checkDuplicateAsset, deleteProjectAsset, deleteRegion, detectAssetStream,
   fetchFonts, fetchLanguages, getManifest, getProject, importFile, ocrRegion, putManifest,
-  refineRegion, renderAsset, renderAssetStream, scanAssetLanguage, sha256File, snapshotAsset,
+  applyRepairCandidate, captureLocalizedBaseline, createInpaintPatch, getInpaintingProviders, getLocalizedBaseline, getTreatment, refineRegion, renderAsset, renderAssetStream, renderPreview, restoreTreatment, scanAssetLanguage, sha256File, snapshotAsset, undoInpaint,
   updateProject, uploadAsset, validateAsset,
 } from "./api";
 import { FcCollapse } from "react-icons/fc";
@@ -22,6 +22,7 @@ import { MdTipsAndUpdates } from "react-icons/md";
 import { HiCubeTransparent } from "react-icons/hi2";
 import { HiLockClosed, HiLockOpen } from "react-icons/hi";
 import { LuUndo2, LuRedo2 } from "react-icons/lu";
+import { VscDebugRestart } from "react-icons/vsc";
 import { langDisplayName, langFlag, LANGUAGE_REGIONS, REGION_ORDER } from "./languageData";
 import LanguageCombobox from "./LanguageCombobox";
 import FontCombobox, { loadFontPreview, fontNameForPath, weightLabel } from "./FontCombobox";
@@ -51,6 +52,76 @@ interface ScanState {
   status: "scanning" | "passed" | "mismatch";
   detected?: string | null;
   projectSrc?: string | null;
+}
+
+type BrushStroke = {
+  id: string;
+  points: [number, number][];
+};
+
+type RepairCandidate = {
+  id: string;
+  provider: string;
+  decision: string;
+  url: string;
+  bbox: BBox;
+  cacheKey: string;
+};
+
+type RepairReview = {
+  id: string;
+  provider: string;
+  reason: string;
+  candidates: RepairCandidate[];
+};
+
+type LocalizedSnapshot = {
+  manifest: InstText[];
+  patchIds: string[];
+};
+
+const WARP_PRESETS: Array<{ value: string; label: string }> = [
+  { value: "none", label: "None" },
+  { value: "arc", label: "Arc" },
+  { value: "arc_lower", label: "Arc Lower" },
+  { value: "arc_upper", label: "Arc Upper" },
+  { value: "arch", label: "Arch" },
+  { value: "bulge", label: "Bulge" },
+  { value: "shell_lower", label: "Shell Lower" },
+  { value: "shell_upper", label: "Shell Upper" },
+  { value: "flag", label: "Flag" },
+  { value: "wave", label: "Wave" },
+  { value: "fish", label: "Fish" },
+  { value: "rise", label: "Rise" },
+  { value: "fisheye", label: "Fisheye" },
+  { value: "inflate", label: "Inflate" },
+  { value: "squeeze", label: "Squeeze" },
+  { value: "twist", label: "Twist" },
+  { value: "custom", label: "Custom" },
+];
+
+function visualReadingOrder(instances: InstText[]): InstText[] {
+  // Older manifests were persisted with raw top-edge ordering.  Repair their
+  // presentation without changing durable region IDs: words whose boxes share
+  // a baseline form one line, then read left-to-right within that line.
+  const horizontal = instances.filter((inst) => inst.bounding_box.width >= inst.bounding_box.height * .55);
+  const vertical = instances.filter((inst) => !horizontal.includes(inst));
+  if (!horizontal.length) return [...instances].sort((a, b) => (a.reading_order ?? 0) - (b.reading_order ?? 0));
+  const heights = horizontal.map((inst) => inst.bounding_box.height).sort((a, b) => a - b);
+  const tolerance = Math.max(4, heights[Math.floor(heights.length / 2)] * .42);
+  const lines: Array<{ center: number; height: number; items: InstText[] }> = [];
+  [...horizontal].sort((a, b) => (a.bounding_box.y + a.bounding_box.height / 2) - (b.bounding_box.y + b.bounding_box.height / 2)).forEach((inst) => {
+    const center = inst.bounding_box.y + inst.bounding_box.height / 2;
+    const line = lines.find((candidate) => Math.abs(candidate.center - center) <= Math.max(tolerance, candidate.height * .42));
+    if (!line) { lines.push({ center, height: inst.bounding_box.height, items: [inst] }); return; }
+    const count = line.items.push(inst);
+    line.center += (center - line.center) / count;
+    line.height += (inst.bounding_box.height - line.height) / count;
+  });
+  return [
+    ...lines.sort((a, b) => a.center - b.center).flatMap((line) => line.items.sort((a, b) => a.bounding_box.x - b.bounding_box.x)),
+    ...vertical.sort((a, b) => (a.reading_order ?? 0) - (b.reading_order ?? 0)),
+  ];
 }
 
 function Badge({ ok, children }: { ok: boolean; children: React.ReactNode }) {
@@ -237,6 +308,33 @@ export default function App() {
   const stackTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const [asset, setAsset] = useState<UploadResponse | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [preRenderUrl, setPreRenderUrl] = useState<string | null>(null);
+  const [previewRenderError, setPreviewRenderError] = useState<string | null>(null);
+  const [previewCacheKey, setPreviewCacheKey] = useState<string | null>(null);
+  const [previewSyncing, setPreviewSyncing] = useState(false);
+  const [inpaintingProviders, setInpaintingProviders] = useState<InpaintingProvider[]>([]);
+  const [repairReviews, setRepairReviews] = useState<RepairReview[]>([]);
+  const [repairFallbackIds, setRepairFallbackIds] = useState<string[]>([]);
+  const previewRenderSeq = useRef(0);
+  const [lassoMode, setLassoMode] = useState(false);
+  const [lassoPoints, setLassoPoints] = useState<[number, number][]>([]);
+  const [brushMode, setBrushMode] = useState(false);
+  const [brushStrokes, setBrushStrokes] = useState<BrushStroke[]>([]);
+  const [activeBrushStroke, setActiveBrushStroke] = useState<BrushStroke | null>(null);
+  const [brushCursor, setBrushCursor] = useState<[number, number] | null>(null);
+  const [brushRadius, setBrushRadius] = useState(18);
+  const [brushHardness, setBrushHardness] = useState(0.85);
+  const brushDrawing = useRef<{ pointerId: number; stroke: BrushStroke } | null>(null);
+  const [brushApplying, setBrushApplying] = useState(false);
+  const [inpaintPatchIds, setInpaintPatchIds] = useState<string[]>([]);
+  const [appliedCandidateIds, setAppliedCandidateIds] = useState<string[]>([]);
+  const [patchRevision, setPatchRevision] = useState(0);
+  const localizedUndoStack = useRef<LocalizedSnapshot[]>([]);
+  const localizedRedoStack = useRef<LocalizedSnapshot[]>([]);
+  const localizedBaseline = useRef<LocalizedSnapshot | null>(null);
+  const [canLocalizedUndo, setCanLocalizedUndo] = useState(false);
+  const [canLocalizedRedo, setCanLocalizedRedo] = useState(false);
+  const [colorPickMode, setColorPickMode] = useState<"source" | "localized" | null>(null);
   const [languages, setLanguages] = useState<LanguageOption[]>([]);
   const [targLang, setTargLang] = useState("es");
   const [fontsByLang, setFontsByLang] = useState<Record<string, FontOption[]>>({});
@@ -458,7 +556,8 @@ export default function App() {
   // but the canvas and table must never show a "deleted" region -- everything
   // rendered to the user reads from this filtered view instead of `manifest`
   // directly.
-  const visibleManifest = manifest.filter((i) => !i.excluded);
+  const orderedManifest = visualReadingOrder(manifest);
+  const visibleManifest = orderedManifest.filter((i) => !i.excluded);
   const [imgDim, setImgDim] = useState<[number, number] | null>(null);
   const [sceneRegions, setSceneRegions] = useState<SceneRegion[]>([]);
   const [srcLang, setSrcLang] = useState<string | null>(null);
@@ -595,6 +694,26 @@ export default function App() {
     }
     setAsset(null);
     setPreviewUrl(null);
+    setPreRenderUrl(null);
+    setPreviewRenderError(null);
+    setPreviewCacheKey(null);
+    setPreviewSyncing(false);
+    setInpaintingProviders([]);
+    setRepairReviews([]);
+    setRepairFallbackIds([]);
+    brushDrawing.current = null;
+    setBrushStrokes([]);
+    setActiveBrushStroke(null);
+    setBrushCursor(null);
+    setBrushApplying(false);
+    setAppliedCandidateIds([]);
+    setInpaintPatchIds([]);
+    localizedUndoStack.current = [];
+    localizedRedoStack.current = [];
+    localizedBaseline.current = null;
+    setCanLocalizedUndo(false);
+    setCanLocalizedRedo(false);
+    setColorPickMode(null);
     manifestSkipHistory.current = true;
     setManifest([]);
     manifestUndoStack.current = [];
@@ -696,6 +815,47 @@ export default function App() {
     getProject(project.id).then(setProject).catch(() => {});
   }, [project]);
 
+  const currentManifest = useCallback((instances: InstText[] = manifest): TextManifest | null => {
+    if (!asset) return null;
+    return {
+      asset_id: asset.asset_id,
+      total_regions: instances.length,
+      src_lang: srcLang,
+      targ_lang: targLang,
+      img_dim: imgDim ?? (imgSize ? [imgSize.width, imgSize.height] : null),
+      scene_regions: sceneRegions,
+      asset_type: asset.asset_info.asset_type,
+      frame_count: asset.asset_info.frame_count,
+      fps: asset.asset_info.fps,
+      duration: asset.asset_info.duration,
+      prcssng_time: null,
+      instances,
+    };
+  }, [asset, manifest, srcLang, targLang, imgDim, imgSize, sceneRegions]);
+
+  const syncTreatmentPatches = useCallback((patches: InpaintPatch[]) => {
+    setInpaintPatchIds(patches.map((patch) => patch.id));
+    setAppliedCandidateIds(patches.flatMap((patch) => patch.candidate_id ? [patch.candidate_id] : []));
+  }, []);
+
+  const flushCurrentManifest = useCallback(async (): Promise<TextManifest | null> => {
+    const snapshot = currentManifest();
+    if (!snapshot || !asset) return null;
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+    setSaveStatus("saving");
+    try {
+      await putManifest(asset.asset_id, snapshot);
+      setSaveStatus("saved");
+      return snapshot;
+    } catch (error) {
+      setSaveStatus("idle");
+      throw error;
+    }
+  }, [asset, currentManifest]);
+
   const autoSave = useCallback((instances: InstText[]) => {
     if (!asset) return;
     setSaveStatus("saving");
@@ -734,6 +894,334 @@ export default function App() {
       }
     }, 1500);
   }, [asset, srcLang, targLang, imgDim, imgSize, sceneRegions]);
+
+  const cloneLocalizedSnapshot = useCallback((instances: InstText[] = manifest, patchIds: string[] = inpaintPatchIds): LocalizedSnapshot => ({
+    manifest: JSON.parse(JSON.stringify(instances)) as InstText[],
+    patchIds: [...patchIds],
+  }), [manifest, inpaintPatchIds]);
+
+  const syncLocalizedUndoRedo = useCallback(() => {
+    setCanLocalizedUndo(localizedUndoStack.current.length > 0);
+    setCanLocalizedRedo(localizedRedoStack.current.length > 0);
+  }, []);
+
+  const recordLocalizedChange = useCallback(() => {
+    if (step !== 3) return;
+    localizedUndoStack.current.push(cloneLocalizedSnapshot());
+    if (localizedUndoStack.current.length > 80) localizedUndoStack.current.shift();
+    localizedRedoStack.current = [];
+    syncLocalizedUndoRedo();
+  }, [step, cloneLocalizedSnapshot, syncLocalizedUndoRedo]);
+
+  const restoreLocalizedSnapshot = useCallback(async (snapshot: LocalizedSnapshot) => {
+    if (!asset) return;
+    const result = await restoreTreatment(asset.asset_id, snapshot.patchIds);
+    manifestSkipHistory.current = true;
+    setManifestRaw(snapshot.manifest);
+    syncTreatmentPatches(result.patches);
+    setPatchRevision((revision) => revision + 1);
+    autoSave(snapshot.manifest);
+  }, [asset, autoSave, syncTreatmentPatches]);
+
+  const undoLocalized = useCallback(async () => {
+    const previous = localizedUndoStack.current.pop();
+    if (!previous) return;
+    localizedRedoStack.current.push(cloneLocalizedSnapshot());
+    try {
+      await restoreLocalizedSnapshot(previous);
+      addToast("info", "undid localized canvas change");
+    } catch (error) {
+      localizedUndoStack.current.push(previous);
+      localizedRedoStack.current.pop();
+      setErrorWithNotif(String(error));
+    } finally { syncLocalizedUndoRedo(); }
+  }, [addToast, cloneLocalizedSnapshot, restoreLocalizedSnapshot, syncLocalizedUndoRedo]);
+
+  const redoLocalized = useCallback(async () => {
+    const next = localizedRedoStack.current.pop();
+    if (!next) return;
+    localizedUndoStack.current.push(cloneLocalizedSnapshot());
+    try {
+      await restoreLocalizedSnapshot(next);
+      addToast("info", "redid localized canvas change");
+    } catch (error) {
+      localizedRedoStack.current.push(next);
+      localizedUndoStack.current.pop();
+      setErrorWithNotif(String(error));
+    } finally { syncLocalizedUndoRedo(); }
+  }, [addToast, cloneLocalizedSnapshot, restoreLocalizedSnapshot, syncLocalizedUndoRedo]);
+
+  const updateSelectedStyle = useCallback((patch: Partial<NonNullable<InstText["style_profile"]>>) => {
+    const selected = renderSelId ?? prevSelId;
+    if (!selected) return;
+    recordLocalizedChange();
+    const next = manifest.map((inst): InstText => inst.id === selected ? {
+      ...inst,
+      style_profile: { ...(inst.style_profile ?? {}), ...patch } as NonNullable<InstText["style_profile"]>,
+    } : inst);
+    setManifest(next);
+    // This exact next value, not the pre-update closure, drives both the
+    // manifest save and the preview revision.  It is the fix for a chosen
+    // Bold/Italic face appearing in Translate but reverting in Render.
+    autoSave(next);
+  }, [renderSelId, prevSelId, recordLocalizedChange, manifest, autoSave, setManifest]);
+
+  useEffect(() => {
+    if (step !== 3 || !asset || localizedBaseline.current) return;
+    const snapshot = currentManifest();
+    if (!snapshot) return;
+    let disposed = false;
+    (async () => {
+      try {
+        const baseline = await getLocalizedBaseline(asset.asset_id);
+        if (!disposed) localizedBaseline.current = { manifest: baseline.manifest.instances, patchIds: baseline.patch_ids };
+      } catch {
+        try {
+          const baseline = await captureLocalizedBaseline(asset.asset_id, snapshot, inpaintPatchIds);
+          if (!disposed) localizedBaseline.current = { manifest: baseline.manifest.instances, patchIds: baseline.patch_ids };
+        } catch {
+          // The in-memory snapshot remains a safe session-only reset fallback.
+          if (!disposed) localizedBaseline.current = cloneLocalizedSnapshot();
+        }
+      }
+    })();
+    return () => { disposed = true; };
+  }, [step, asset, currentManifest, inpaintPatchIds, cloneLocalizedSnapshot]);
+
+  const resetLocalizedCanvas = useCallback(async () => {
+    const baseline = localizedBaseline.current;
+    if (!baseline) return;
+    if (!confirm("Reset text placement, appearance, transforms, and treatment edits to the Render-entry baseline?")) return;
+    recordLocalizedChange();
+    try {
+      await restoreLocalizedSnapshot(baseline);
+      addToast("info", "restored the localized canvas baseline");
+    } catch (error) { setErrorWithNotif(String(error)); }
+  }, [addToast, recordLocalizedChange, restoreLocalizedSnapshot]);
+
+  const sampleCanvasFill = useCallback((event: React.PointerEvent<HTMLImageElement>, surface: "source" | "localized"): boolean => {
+    if (colorPickMode !== surface || !renderSelId) return false;
+    const image = event.currentTarget;
+    const rect = image.getBoundingClientRect();
+    if (!image.naturalWidth || !image.naturalHeight || !rect.width || !rect.height) return false;
+    const x = Math.max(0, Math.min(image.naturalWidth - 1, Math.floor((event.clientX - rect.left) * image.naturalWidth / rect.width)));
+    const y = Math.max(0, Math.min(image.naturalHeight - 1, Math.floor((event.clientY - rect.top) * image.naturalHeight / rect.height)));
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = image.naturalWidth;
+      canvas.height = image.naturalHeight;
+      const context = canvas.getContext("2d", { willReadFrequently: true });
+      if (!context) return false;
+      context.drawImage(image, 0, 0);
+      const [r, g, b] = context.getImageData(x, y, 1, 1).data;
+      const color = `#${[r, g, b].map((value) => value.toString(16).padStart(2, "0")).join("")}`;
+      event.preventDefault();
+      updateSelectedStyle({ color });
+      setColorPickMode(null);
+      addToast("success", `sampled ${color} from ${surface === "source" ? "source" : "localized"} canvas`);
+      return true;
+    } catch {
+      addToast("warning", "the selected canvas cannot be sampled yet");
+      return false;
+    }
+  }, [colorPickMode, renderSelId, updateSelectedStyle, addToast]);
+
+  // Render tab is a server-backed doppelganger of the final compositor.
+  // It accepts the current in-memory manifest, so the autosave debounce can
+  // never make the canvas lag behind a text/style edit.
+  useEffect(() => {
+    if (step !== 3 || !asset) return;
+    const seq = ++previewRenderSeq.current;
+    setPreviewSyncing(true);
+    const timer = setTimeout(async () => {
+      try {
+        const snapshot = currentManifest();
+        if (!snapshot) return;
+        const result = await renderPreview(asset.asset_id, targLang, snapshot);
+        if (seq === previewRenderSeq.current) {
+          setPreRenderUrl(result.output_url);
+          setPreviewRenderError(null);
+          setPreviewCacheKey(result.cleanse_cache_key);
+          setPreviewSyncing(false);
+          const repairItems = result.text_manifest.instances.flatMap((inst) => {
+            const repair = inst.repair_provenance;
+            const candidates = (repair?.candidates ?? []).flatMap((candidate) => {
+              const artifact = candidate.evidence?.artifact;
+              return artifact?.url ? [{
+                id: artifact.id, provider: artifact.provider, decision: artifact.decision,
+                url: artifact.url, bbox: artifact.bbox,
+                cacheKey: artifact.cache_key ?? result.cleanse_cache_key,
+              }] : [];
+            });
+            return repair?.review_required ? [{
+              id: inst.id, provider: repair.executed_provider ?? repair.requested_provider,
+              reason: repair.reason, candidates,
+            }] : [];
+          });
+          // An unavailable optional model is an asset-level setup state, not
+          // four independent failed repairs.  Keep it visible and require a
+          // final-render acknowledgement, but reserve the review queue for a
+          // real generated candidate that needs an editor's judgement.
+          const unavailable = repairItems.filter((repair) => repair.provider === "telea_fallback" && repair.reason.startsWith("no configured local neural provider"));
+          setRepairFallbackIds(unavailable.map((repair) => repair.id));
+          setRepairReviews(repairItems.filter((repair) => !unavailable.includes(repair)));
+        }
+      } catch (e) {
+        if (seq === previewRenderSeq.current) {
+          setPreviewRenderError(String(e));
+          setPreviewSyncing(false);
+        }
+        // The last good canvas remains visible while a transient preview
+        // request fails; final Render still reports actionable errors.
+      }
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [step, asset, targLang, currentManifest, patchRevision]);
+
+  useEffect(() => {
+    if (step !== 3) return;
+    getInpaintingProviders()
+      .then(({ providers }) => setInpaintingProviders(providers))
+      .catch(() => setInpaintingProviders([]));
+  }, [step]);
+
+  useEffect(() => {
+    if (!asset) return;
+    getTreatment(asset.asset_id)
+      .then((state) => syncTreatmentPatches(state.patches))
+      .catch(() => { setInpaintPatchIds([]); setAppliedCandidateIds([]); });
+  }, [asset, syncTreatmentPatches]);
+
+  const applyLasso = useCallback(async () => {
+    if (!asset || lassoPoints.length < 3) return;
+    try {
+      recordLocalizedChange();
+      const snapshot = await flushCurrentManifest();
+      const result = await createInpaintPatch(asset.asset_id, { polygon: lassoPoints, mode: "auto", radius: brushRadius, hardness: brushHardness }, snapshot ?? undefined);
+      syncTreatmentPatches(result.patches);
+      setLassoPoints([]);
+      setPatchRevision((v) => v + 1);
+      addToast("success", "lasso area inpainted");
+    } catch (e) { setErrorWithNotif(String(e)); }
+  }, [asset, lassoPoints, addToast, brushRadius, brushHardness, flushCurrentManifest, syncTreatmentPatches, recordLocalizedChange]);
+
+  const applyReviewCandidate = useCallback(async (candidate: RepairCandidate) => {
+    if (!asset) return;
+    try {
+      if (previewSyncing || previewCacheKey !== candidate.cacheKey) {
+        addToast("warning", "waiting for the current treatment preview before applying this repair");
+        return;
+      }
+      recordLocalizedChange();
+      const result = await applyRepairCandidate(asset.asset_id, candidate.id, candidate.cacheKey);
+      syncTreatmentPatches(result.patches);
+      setPatchRevision((revision) => revision + 1);
+      addToast("success", result.already_applied ? `${candidate.provider} repair is already in the treatment layer` : `applied ${candidate.provider} repair as an undoable treatment`);
+    } catch (e) { setErrorWithNotif(String(e)); }
+  }, [asset, addToast, previewSyncing, previewCacheKey, syncTreatmentPatches, recordLocalizedChange]);
+
+  const pointOnLocalizedCanvas = useCallback((event: React.PointerEvent<HTMLImageElement>): [number, number] | null => {
+    if (!imgDim) return null;
+    const rect = event.currentTarget.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
+    return [
+      Math.max(0, Math.min(imgDim[0] - 1, Math.round((event.clientX - rect.left) * imgDim[0] / rect.width))),
+      Math.max(0, Math.min(imgDim[1] - 1, Math.round((event.clientY - rect.top) * imgDim[1] / rect.height))),
+    ];
+  }, [imgDim]);
+
+  const beginBrushStroke = useCallback((event: React.PointerEvent<HTMLImageElement>) => {
+    if (!brushMode || brushApplying) return;
+    const point = pointOnLocalizedCanvas(event);
+    if (!point) return;
+    event.preventDefault();
+    const stroke = { id: `${Date.now()}-${event.pointerId}-${Math.random().toString(36).slice(2, 7)}`, points: [point] as [number, number][] };
+    brushDrawing.current = { pointerId: event.pointerId, stroke };
+    setActiveBrushStroke(stroke);
+    setBrushCursor(point);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }, [brushMode, brushApplying, pointOnLocalizedCanvas]);
+
+  const extendBrushStroke = useCallback((event: React.PointerEvent<HTMLImageElement>) => {
+    const drawing = brushDrawing.current;
+    if (!brushMode || !drawing || drawing.pointerId !== event.pointerId) return;
+    const point = pointOnLocalizedCanvas(event);
+    if (!point) return;
+    event.preventDefault();
+    const prior = drawing.stroke.points[drawing.stroke.points.length - 1];
+    // Pointer events can arrive several times with the same mapped pixel.
+    // Ignore those duplicates while retaining every meaningful held-click path.
+    if (prior && prior[0] === point[0] && prior[1] === point[1]) return;
+    drawing.stroke = { ...drawing.stroke, points: [...drawing.stroke.points, point] };
+    brushDrawing.current = drawing;
+    setActiveBrushStroke(drawing.stroke);
+    setBrushCursor(point);
+  }, [brushMode, pointOnLocalizedCanvas]);
+
+  const finishBrushStroke = useCallback((event: React.PointerEvent<HTMLImageElement>, cancelled = false) => {
+    const drawing = brushDrawing.current;
+    if (!drawing || drawing.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    // Clear first: releasePointerCapture can synchronously emit
+    // lostpointercapture in some browsers.
+    brushDrawing.current = null;
+    try {
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch { /* capture can already be released after a browser cancellation */ }
+    setActiveBrushStroke(null);
+    if (!cancelled && drawing.stroke.points.length) {
+      setBrushStrokes((strokes) => [...strokes, drawing.stroke]);
+    }
+  }, []);
+
+  const applyBrush = useCallback(async () => {
+    if (!asset || !brushStrokes.length || brushApplying) return;
+    setBrushApplying(true);
+    try {
+      recordLocalizedChange();
+      const snapshot = await flushCurrentManifest();
+      // Submit one immutable stroke at a time.  Each patch is built from the
+      // current treatment base on the server, so sequential edits persist and
+      // an error never discards strokes that were not yet attempted.
+      let remaining = [...brushStrokes];
+      for (const stroke of brushStrokes) {
+        const result = await createInpaintPatch(asset.asset_id, { points: stroke.points, mode: "auto", radius: brushRadius, hardness: brushHardness }, snapshot ?? undefined);
+        syncTreatmentPatches(result.patches);
+        remaining = remaining.filter((candidate) => candidate.id !== stroke.id);
+        setBrushStrokes(remaining);
+      }
+      setPatchRevision((v) => v + 1);
+      addToast("success", "context-aware treatment applied");
+    } catch (e) { setErrorWithNotif(String(e)); }
+    finally { setBrushApplying(false); }
+  }, [asset, brushStrokes, brushRadius, brushHardness, brushApplying, addToast, flushCurrentManifest, syncTreatmentPatches, recordLocalizedChange]);
+
+  const updateCanvasTransform = useCallback((key: "skew_x" | "skew_y" | "arc" | "scale_x" | "scale_y", value: number) => {
+    const transform = manifest.find((inst) => inst.id === (renderSelId ?? prevSelId))?.style_profile?.transform ?? {};
+    // A manual slider is intentionally a Custom transform.  It must not
+    // retain a named preset's hidden amount and give the user a result they
+    // cannot read back from the controls.
+    const { amount: _amount, ...manualTransform } = transform;
+    updateSelectedStyle({ transform: { ...manualTransform, preset: "custom", [key]: value } });
+  }, [renderSelId, prevSelId, manifest, updateSelectedStyle]);
+
+  const applyCanvasWarpPreset = useCallback((preset: string) => {
+    const transform = manifest.find((inst) => inst.id === (renderSelId ?? prevSelId))?.style_profile?.transform ?? {};
+    if (preset === "none") {
+      updateSelectedStyle({ transform: { ...transform, preset: "none", amount: 0, arc: 0, skew_x: 0, skew_y: 0, scale_x: 1, scale_y: 1 } });
+      return;
+    }
+    updateSelectedStyle({ transform: { ...transform, preset, amount: transform.amount && transform.amount !== 0 ? transform.amount : 12 } });
+  }, [renderSelId, prevSelId, manifest, updateSelectedStyle]);
+
+  const undoLastInpaint = useCallback(async () => {
+    if (!asset || !inpaintPatchIds.length) return;
+    try {
+      const result = await undoInpaint(asset.asset_id, inpaintPatchIds[inpaintPatchIds.length - 1]);
+      syncTreatmentPatches(result.patches);
+      setPatchRevision((v) => v + 1);
+    } catch (e) { setErrorWithNotif(String(e)); }
+  }, [asset, inpaintPatchIds, addToast, syncTreatmentPatches]);
 
   // --- upload flow + language guard --------------------------------------
 
@@ -1216,6 +1704,8 @@ export default function App() {
           font_size: i.style_profile?.font_size ?? null,
           italic: i.style_profile?.italic ?? null,
           underline: i.style_profile?.underline ?? null,
+          underline_offset: i.style_profile?.underline_offset ?? null,
+          underline_width: i.style_profile?.underline_width ?? null,
           subscript: i.style_profile?.subscript ?? null,
           superscript: i.style_profile?.superscript ?? null,
           align_h: i.style_profile?.align_h ?? null,
@@ -1232,6 +1722,7 @@ export default function App() {
           stroke_width: i.style_profile?.stroke_width ?? null,
           target_orientation: i.style_profile?.target_orientation ?? null,
           word_order: i.style_profile?.word_order ?? null,
+          transform: i.style_profile?.transform ?? null,
         },
       } : i);
       autoSave(next);
@@ -1263,6 +1754,8 @@ export default function App() {
             font_size: i.style_profile?.font_size ?? null,
             italic: i.style_profile?.italic ?? null,
             underline: i.style_profile?.underline ?? null,
+            underline_offset: i.style_profile?.underline_offset ?? null,
+            underline_width: i.style_profile?.underline_width ?? null,
             subscript: i.style_profile?.subscript ?? null,
             superscript: i.style_profile?.superscript ?? null,
             align_h: i.style_profile?.align_h ?? null,
@@ -1301,6 +1794,8 @@ export default function App() {
             font_size: i.style_profile?.font_size ?? null,
             italic: i.style_profile?.italic ?? null,
             underline: i.style_profile?.underline ?? null,
+            underline_offset: i.style_profile?.underline_offset ?? null,
+            underline_width: i.style_profile?.underline_width ?? null,
             subscript: i.style_profile?.subscript ?? null,
             superscript: i.style_profile?.superscript ?? null,
             align_h: i.style_profile?.align_h ?? null,
@@ -1459,6 +1954,14 @@ export default function App() {
 
   const onRender = useCallback(async () => {
     if (!asset) return;
+    if (repairReviews.length) {
+      const ok = confirm("One or more repairs are provisional. Review the localized canvas or confirm that this render should use the shown candidate.");
+      if (!ok) return;
+    }
+    if (repairFallbackIds.length) {
+      const ok = confirm(`No local neural inpainting provider is configured for ${repairFallbackIds.length} textured region(s). Render with the editable deterministic fallback, or cancel to configure a provider first?`);
+      if (!ok) return;
+    }
     if (hasEditsAfterImport) {
       const ok = confirm("discrepancy detected: live edits differ from the imported file. proceed with current state?");
       if (!ok) return;
@@ -1466,6 +1969,10 @@ export default function App() {
     setError(null);
     setBusy("rendering");
     try {
+      // Final Render deliberately commits the same manifest snapshot that
+      // generated the localized preview.  This closes the autosave-debounce
+      // gap that could otherwise make final pixels diverge from the canvas.
+      await flushCurrentManifest();
       // per-region fonts (style_profile.font_family) drive scribe now;
       // no request-level font override
       const result = await renderAsset(asset.asset_id, targLang);
@@ -1477,7 +1984,7 @@ export default function App() {
     } finally {
       setBusy(null);
     }
-  }, [asset, targLang, hasEditsAfterImport, addToast]);
+  }, [asset, targLang, hasEditsAfterImport, repairReviews.length, repairFallbackIds.length, addToast, flushCurrentManifest]);
 
   const renderResultFromEvent = (ev: RenderStreamEvent): RenderResult => ({
     output_url: ev.output_url ?? null,
@@ -1503,12 +2010,20 @@ export default function App() {
   /** the QA Inspector's streamed render: same pipeline as onRender, but
    * over SSE so per-stage progress and recommendations surface live
    * instead of behind one spinner */
-  const runVerifyRender = useCallback(() => {
+  const runVerifyRender = useCallback(async () => {
     if (!asset) return;
     setError(null);
     setApproved(false);
     setVerifyBusy("rendering");
     setVerifyStage("tofu");
+    try {
+      await flushCurrentManifest();
+    } catch (error) {
+      setVerifyBusy(null);
+      setVerifyStage(null);
+      setErrorWithNotif(String(error));
+      return;
+    }
     cancelVerifyRef.current = renderAssetStream(asset.asset_id, targLang, (ev) => {
       if (ev.stage === "complete") {
         cancelVerifyRef.current = null;
@@ -1538,7 +2053,7 @@ export default function App() {
       setVerifyStage(null);
       setErrorWithNotif(message);
     });
-  }, [asset, targLang, addToast]);
+  }, [asset, targLang, addToast, flushCurrentManifest]);
 
   const cancelVerify = useCallback(() => {
     if (cancelVerifyRef.current) {
@@ -1552,10 +2067,17 @@ export default function App() {
 
   /** per-region re-render: composites onto the existing output instead of
    * reverting untouched regions to source text (server: region_ids) */
-  const onReRenderRegion = useCallback((id: string) => {
+  const onReRenderRegion = useCallback(async (id: string) => {
     if (!asset) return;
     setReRenderingId(id);
     setApproved(false);
+    try {
+      await flushCurrentManifest();
+    } catch (error) {
+      setReRenderingId(null);
+      setErrorWithNotif(String(error));
+      return;
+    }
     renderAssetStream(asset.asset_id, targLang, (ev) => {
       if (ev.stage === "complete") {
         setReRenderingId(null);
@@ -1571,7 +2093,7 @@ export default function App() {
       setReRenderingId(null);
       setErrorWithNotif(message);
     }, { regionIds: [id] });
-  }, [asset, targLang, addToast]);
+  }, [asset, targLang, addToast, flushCurrentManifest]);
 
   const onApprove = useCallback(async () => {
     if (!asset || !renderResult?.qa_report) return;
@@ -1592,6 +2114,12 @@ export default function App() {
 
   const translatableCount = manifest.filter((i) => !i.dnt).length;
   const translatedCount = manifest.filter((i) => !i.dnt && i.target_text).length;
+  const activeNeuralProvider = inpaintingProviders.find((provider) =>
+    provider.available && (provider.kind === "self_hosted" || provider.kind === "experimental")
+  );
+  const configuredNeuralProvider = inpaintingProviders.find((provider) =>
+    provider.enabled && (provider.kind === "self_hosted" || provider.kind === "experimental")
+  );
 
   const scanBlocked = scan !== null && scan.status !== "passed";
 
@@ -1776,7 +2304,7 @@ export default function App() {
             )}
             {scan?.status === "scanning" && (
               <div className="subtext mt-2 flex items-center gap-2 text-[10px] text-cyan-600 dark:text-cyan-400">
-                <SquareLoader size="xs" />(draining...)
+                <SquareLoader size="xs" />(prepping...) {/* previously "(draining...)" */}
               </div>
             )}
             {busy === "detecting" && (
@@ -1993,6 +2521,7 @@ export default function App() {
               </span>
             )}
             <div className="flex-1" />
+            {saveIndicator}
             <div className="relative group z-50">
               <button
                 onClick={onValidate}
@@ -2009,7 +2538,6 @@ export default function App() {
                 </span>
               </div>
             </div>
-            {saveIndicator}
             <PressButton
               onClick={() => setStep(2)}
               disabled={manifest.length === 0}
@@ -2383,6 +2911,10 @@ export default function App() {
                 onClick={() => setStep(2)}
                 reversed
               />
+              <button onClick={undoLocalized} disabled={!canLocalizedUndo}
+                className="bezier-card flex items-center justify-center rounded-lg bg-white/60 px-3 py-2 text-sm text-zinc-700 transition hover:bg-zinc-100 disabled:opacity-40 dark:bg-zinc-900/60 dark:text-zinc-300 dark:hover:bg-zinc-800" title="undo localized canvas change"><LuUndo2 size={20} /></button>
+              <button onClick={redoLocalized} disabled={!canLocalizedRedo}
+                className="bezier-card flex items-center justify-center rounded-lg bg-white/60 px-3 py-2 text-sm text-zinc-700 transition hover:bg-zinc-100 disabled:opacity-40 dark:bg-zinc-900/60 dark:text-zinc-300 dark:hover:bg-zinc-800" title="redo localized canvas change"><LuRedo2 size={20} /></button>
               <span className="subtext text-[8.4px] text-zinc-500">
                 target: <span className="text-zinc-700 dark:text-zinc-300">{langDisplayName(targLang)}</span>
               </span>
@@ -2446,7 +2978,7 @@ export default function App() {
                 <div className="flex items-center justify-between">
                   {/* Region selector */}
                   <div className="flex flex-wrap gap-1">
-                    {manifest.filter((i) => !i.dnt && i.target_text).map((inst) => (
+                    {orderedManifest.filter((i) => !i.dnt && i.target_text).map((inst) => (
                       <button
                         key={inst.id}
                         onClick={() => setRenderSelId(renderSelId === inst.id ? null : inst.id)}
@@ -2474,37 +3006,7 @@ export default function App() {
                   const inst = prevSelId ? manifest.find((i) => i.id === prevSelId) : null;
                   if (!inst) return null;
                   const sp = inst.style_profile;
-            const updateStyle = (patch: Partial<NonNullable<InstText["style_profile"]>>) => {
-              setManifest((prev) => prev.map((i) => i.id === (renderSelId ?? prevSelId) ? {
-                ...i,
-                style_profile: {
-                  font_family: i.style_profile?.font_family ?? null,
-                  font_weight: i.style_profile?.font_weight ?? null,
-                  color: i.style_profile?.color ?? null,
-                  font_size: i.style_profile?.font_size ?? null,
-                  italic: i.style_profile?.italic ?? null,
-                  underline: i.style_profile?.underline ?? null,
-                  subscript: i.style_profile?.subscript ?? null,
-                  superscript: i.style_profile?.superscript ?? null,
-                  align_h: i.style_profile?.align_h ?? null,
-                  align_v: i.style_profile?.align_v ?? null,
-                  justification: i.style_profile?.justification ?? null,
-                  indent: i.style_profile?.indent ?? null,
-                  tracking: i.style_profile?.tracking ?? null,
-                  kerning: i.style_profile?.kerning ?? null,
-                  leading: i.style_profile?.leading ?? null,
-                  baseline_shift: i.style_profile?.baseline_shift ?? null,
-                  tab_width: i.style_profile?.tab_width ?? null,
-                  tsume: i.style_profile?.tsume ?? null,
-                  stroke_color: i.style_profile?.stroke_color ?? null,
-                  stroke_width: i.style_profile?.stroke_width ?? null,
-                  target_orientation: i.style_profile?.target_orientation ?? null,
-                  word_order: i.style_profile?.word_order ?? null,
-                  ...patch,
-                },
-              } : i));
-              autoSave(manifest);
-            };
+            const updateStyle = updateSelectedStyle;
             const langForInst = inst.target_language ?? targLang;
             const families = familiesByLang[langForInst] ?? [];
             const currentFont = sp?.font_family ?? null;
@@ -2581,6 +3083,11 @@ export default function App() {
                         ) : null}
                       </p>
                     )}
+                    {inst.recognition_history?.length ? (
+                      <p className="subtext text-[10px] text-zinc-500" title={inst.recognition_history.map((h) => `${h.engine}: ${h.reason}`).join("\n")}>
+                        OCR audit: {inst.recognition_history[inst.recognition_history.length - 1]?.accepted ? "Paddle evidence accepted" : "candidate retained for review"}
+                      </p>
+                    ) : null}
 
                     {/* Text alignment: horizontal */}
                     <div>
@@ -2613,8 +3120,8 @@ export default function App() {
                     </div>
 
                     {/* Word order reversal (vertical text only) */}
-                    <div>
-                      <label className="subtext mb-1 block text-xs text-zinc-500">word order</label>
+                  <div>
+                    <label className="subtext mb-1 block text-xs text-zinc-500">word order</label>
                       <button
                         onClick={() => updateStyle({ word_order: sp?.word_order === "rtl" ? null : "rtl" })}
                         disabled={sp?.target_orientation !== "vertical"}
@@ -2630,6 +3137,22 @@ export default function App() {
                         <ArrowLeftRight size={14} />
                         {sp?.word_order === "rtl" ? "RTL" : "LTR"}
                       </button>
+                    </div>
+
+                    <div>
+                      <label className="subtext mb-1 block text-xs text-zinc-500">shape (degrees / arc)</label>
+                      <div className="grid grid-cols-3 gap-1">
+                        {([['skew_x', 'X'], ['skew_y', 'Y'], ['arc', 'Arc']] as const).map(([key, label]) => (
+                          <label key={key} className="text-[10px] text-zinc-500">{label}
+                            <input type="number" step="1" min="-25" max="25"
+                              value={sp?.transform?.[key] ?? 0}
+                              onChange={(e) => updateStyle({ transform: { ...(sp?.transform ?? {}), [key]: Number(e.target.value || 0) } })}
+                              onDoubleClick={() => updateStyle({ transform: { ...(sp?.transform ?? {}), [key]: 0 } })}
+                              title="double-click to reset to 0"
+                              className="mt-0.5 w-full rounded border border-zinc-300 bg-white px-1 py-0.5 text-xs dark:border-zinc-700 dark:bg-zinc-900" />
+                          </label>
+                        ))}
+                      </div>
                     </div>
 
                     {/* Justification */}
@@ -2711,6 +3234,12 @@ export default function App() {
                           onClick={() => updateStyle({ color: null })}
                           className="subtext rounded px-2 py-0.5 text-xs text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800"
                         >auto (from scene)</button>
+                        <button onClick={() => setColorPickMode(colorPickMode === "source" ? null : "source")}
+                          className={`subtext rounded px-2 py-0.5 text-xs ${colorPickMode === "source" ? "bg-cyan-600 text-white" : "text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800"}`}
+                          title="sample a fill color from the source reference">pick source</button>
+                        <button onClick={() => setColorPickMode(colorPickMode === "localized" ? null : "localized")}
+                          className={`subtext rounded px-2 py-0.5 text-xs ${colorPickMode === "localized" ? "bg-cyan-600 text-white" : "text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800"}`}
+                          title="sample a fill color from the localized canvas">pick canvas</button>
                         {currentColor && (
                           <span className="subtext font-mono text-xs text-zinc-500">{currentColor}</span>
                         )}
@@ -2766,6 +3295,18 @@ export default function App() {
                         title="superscript"
                       ><Superscript size={14} /> super</button>
                     </div>
+                    {sp?.underline && <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <label className="subtext text-xs text-zinc-500">underline offset
+                        <input type="number" step={0.5} value={sp.underline_offset ?? ""}
+                          onChange={(e) => updateStyle({ underline_offset: e.target.value ? Number(e.target.value) : null })}
+                          placeholder="detected" className="ml-1 w-16 rounded border border-zinc-300 bg-white px-1 py-0.5 text-xs dark:border-zinc-700 dark:bg-zinc-900" /> px
+                      </label>
+                      <label className="subtext text-xs text-zinc-500">underline weight
+                        <input type="number" min={0.5} step={0.5} value={sp.underline_width ?? ""}
+                          onChange={(e) => updateStyle({ underline_width: e.target.value ? Number(e.target.value) : null })}
+                          placeholder="detected" className="ml-1 w-16 rounded border border-zinc-300 bg-white px-1 py-0.5 text-xs dark:border-zinc-700 dark:bg-zinc-900" /> px
+                      </label>
+                    </div>}
                   </div>
                 </div>
 
@@ -2844,18 +3385,102 @@ export default function App() {
               </div>
             </div>
 
-            {/* Right column: source + localized images */}
+            {/* Source reference + the single editable localized canvas. */}
             <div className={`space-y-4 ${styleExpandedH ? "grid grid-cols-2 gap-4" : ""}`}>
-              {/* Always show source image (uneditable) */}
-              {previewUrl && (
-                <Section title="Source Image" icon={<FileImage size={14} />} className={stackClass(2)}>
-                  <img src={previewUrl} alt="source" className="rounded-lg border border-zinc-300 dark:border-zinc-800" />
-                </Section>
-              )}
+              {previewUrl && <Section title="Source Reference" icon={<FileImage size={14} />} className={stackClass(2)}>
+                <div className="relative inline-block max-w-full">
+                  <img src={previewUrl} alt="source reference" className={`block max-w-full rounded-lg border border-zinc-300 dark:border-zinc-800 ${colorPickMode === "source" ? "cursor-crosshair" : ""}`}
+                    onPointerDown={(event) => { sampleCanvasFill(event, "source"); }} />
+                  {imgDim && renderSelId && manifest.find((inst) => inst.id === renderSelId) && (() => {
+                    const b = manifest.find((inst) => inst.id === renderSelId)!.bounding_box;
+                    return <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox={`0 0 ${imgDim[0]} ${imgDim[1]}`} preserveAspectRatio="none"><rect x={b.x} y={b.y} width={b.width} height={b.height} fill="none" stroke="#06b6d4" strokeWidth="2" /></svg>;
+                  })()}
+                </div>
+              </Section>}
+
+              {(preRenderUrl || previewUrl) && <Section title="Localized Asset Canvas" icon={<Sparkles size={14} />} className={stackClass(3)} localized
+                rightSideHandle={<button onClick={resetLocalizedCanvas} title="Reset all localized canvas edits to the Render-entry baseline" className="absolute right-5 top-4 flex items-center gap-1 rounded px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800"><VscDebugRestart size={16} /> reset</button>}>
+                <p className="mb-2 text-xs text-zinc-500">The canvas starts from the cleansed treatment base. Place and warp localized text here; repairs remain non-destructive overrides.</p>
+                {previewSyncing && <div className="mb-2 flex items-center gap-2 rounded border border-cyan-500/30 bg-cyan-50 px-2 py-1 text-xs text-cyan-900 dark:bg-cyan-950/30 dark:text-cyan-100"><SquareLoader size="xs" /> Preparing localized canvas: reading the surface, repairing text areas, and placing localized text.</div>}
+                {previewRenderError && <div className="mb-2 rounded border border-amber-500/50 bg-amber-50 px-2 py-1 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-200">Preview update failed; showing the last valid composition. {previewRenderError}</div>}
+                {inpaintingProviders.length > 0 && <div className={`mb-2 rounded border px-2 py-1 text-xs ${activeNeuralProvider ? "border-emerald-500/40 bg-emerald-50 text-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-100" : "border-zinc-300 bg-zinc-50 text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"}`}>
+                  <span className="font-medium">Cleanse routing:</span>{" "}
+                  {activeNeuralProvider ? `AI-assisted texture repair is available${activeNeuralProvider.promoted ? " for eligible automatic repairs" : " for review"}.` : configuredNeuralProvider ? "AI texture repair is configured but unavailable; deterministic reconstruction remains editable." : "deterministic reconstruction is active; optional AI texture repair is not yet available."}
+                </div>}
+                {repairFallbackIds.length > 0 && <div className="mb-2 rounded border border-sky-500/40 bg-sky-50 px-2 py-2 text-xs text-sky-900 dark:bg-sky-950/30 dark:text-sky-100"><span className="font-medium">Texture treatment is ready for review.</span><span className="ml-1">{repairFallbackIds.length} region{repairFallbackIds.length === 1 ? " uses" : "s use"} the editable reconstruction base.</span></div>}
+                {repairReviews.length > 0 && <div className="mb-2 rounded border border-amber-500/50 bg-amber-50 px-2 py-2 text-xs text-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+                  <span className="font-medium">Suggested repairs:</span><span className="ml-1">Compare a proposed repair with the localized canvas, then apply it only if it improves the surface.</span>
+                  {(() => {
+                    const candidates = [...new Map(repairReviews.flatMap((review) => review.candidates.map((candidate) => [candidate.id, { review, candidate }] as const))).values()];
+                    return candidates.length > 0 && <div className="mt-2 flex flex-wrap gap-2">
+                      {candidates.map(({ review, candidate }) => <div key={candidate.id} className="flex max-w-40 items-center gap-2 rounded border border-amber-500/40 bg-white/80 p-1 dark:bg-zinc-900/70">
+                        <img src={candidate.url} alt={`suggested texture repair for ${review.id}`} className="h-12 w-16 rounded object-contain" />
+                        <span className="min-w-0"><span className="block truncate font-medium">suggested repair</span><button disabled={previewSyncing || appliedCandidateIds.includes(candidate.id)} onClick={() => applyReviewCandidate(candidate)} className="rounded bg-amber-700 px-1.5 py-0.5 text-[10px] text-white disabled:cursor-not-allowed disabled:opacity-50">{appliedCandidateIds.includes(candidate.id) ? "Applied" : previewSyncing ? "Updating…" : "Apply suggestion"}</button></span>
+                      </div>)}
+                    </div>;
+                  })()}
+                </div>}
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <button onClick={() => { setBrushMode((v) => !v); setLassoMode(false); setBrushCursor(null); }} className={`rounded px-2 py-1 text-xs ${brushMode ? "bg-cyan-600 text-white" : "bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"}`}>{brushMode ? "Stop brush" : "Healing brush"}</button>
+                  <button onClick={() => { setLassoMode((v) => !v); setBrushMode(false); setLassoPoints([]); setBrushCursor(null); }} className={`rounded px-2 py-1 text-xs ${lassoMode ? "bg-cyan-600 text-white" : "bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"}`}>{lassoMode ? "Cancel lasso" : "Content-aware lasso"}</button>
+                  <span className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-500 dark:border-zinc-700">automatic repair routing</span>
+                  {(brushMode || lassoMode) && <label className="text-xs text-zinc-500">radius <input type="range" min="4" max="64" value={brushRadius} onChange={(e) => setBrushRadius(Number(e.target.value))} /><span className="ml-1 font-mono">{brushRadius}px</span></label>}
+                  {brushMode && <label className="text-xs text-zinc-500">softness <input type="range" min="0.2" max="1" step="0.05" value={brushHardness} onChange={(e) => setBrushHardness(Number(e.target.value))} /></label>}
+                  {brushMode && brushStrokes.length > 0 && <button disabled={brushApplying} onClick={applyBrush} className="rounded bg-cyan-700 px-2 py-1 text-xs text-white disabled:opacity-40">{brushApplying ? "Applying treatmentâ€¦" : `Apply ${brushStrokes.length} stroke${brushStrokes.length === 1 ? "" : "s"}`}</button>}
+                  {brushMode && brushStrokes.length > 0 && <button disabled={brushApplying} onClick={() => setBrushStrokes([])} className="rounded bg-zinc-200 px-2 py-1 text-xs text-zinc-700 disabled:opacity-40 dark:bg-zinc-800 dark:text-zinc-200">Discard pending</button>}
+                  {lassoMode && <span className="text-xs text-zinc-500">click to place points ({lassoPoints.length}/3)</span>}
+                  {lassoMode && <button disabled={lassoPoints.length < 3} onClick={applyLasso} className="rounded bg-cyan-700 px-2 py-1 text-xs text-white disabled:opacity-40">Close &amp; repair</button>}
+                  {!brushMode && !lassoMode && renderSelId && (() => {
+                    const transform = manifest.find((inst) => inst.id === renderSelId)?.style_profile?.transform;
+                    return <span className="flex flex-wrap items-center gap-1 text-xs text-zinc-500">text warp
+                      <select aria-label="text warp preset" value={transform?.preset ?? "custom"} onChange={(event) => applyCanvasWarpPreset(event.target.value)} className="rounded border border-zinc-300 bg-white px-1 py-0.5 text-xs dark:border-zinc-700 dark:bg-zinc-900">
+                        {WARP_PRESETS.map((preset) => <option key={preset.value} value={preset.value}>{preset.label}</option>)}
+                      </select>
+                      {transform?.preset && transform.preset !== "none" && transform.preset !== "custom" && <label className="flex items-center gap-1">amount<input aria-label="warp amount" type="range" min="-25" max="25" step="0.5" value={transform.amount ?? 12} onChange={(e) => updateSelectedStyle({ transform: { ...transform, amount: Number(e.target.value) } })} onDoubleClick={() => updateSelectedStyle({ transform: { ...transform, amount: 12 } })} title="double-click to return to the preset baseline" /><span className="min-w-9 text-right font-mono text-[10px]">{Number(transform.amount ?? 12).toFixed(1)}</span></label>}
+                      {([['skew_x', 'X'], ['skew_y', 'Y'], ['arc', 'Arc']] as const).map(([key, label]) => <label key={key} className="flex items-center gap-1">{label}<span className="text-[10px]">−25</span><input aria-label={`${label} warp`} type="range" min="-25" max="25" step="0.5" value={transform?.[key] ?? 0} onChange={(e) => updateCanvasTransform(key, Number(e.target.value))} onDoubleClick={() => updateCanvasTransform(key, 0)} title="double-click to reset to 0" /><span className="min-w-10 text-right font-mono text-[10px]">{Number(transform?.[key] ?? 0).toFixed(1)}°</span><span className="text-[10px]">+25</span></label>)}
+                      {([['scale_x', 'width'], ['scale_y', 'height']] as const).map(([key, label]) => <label key={key} className="flex items-center gap-1">{label}<span className="text-[10px]">0.5x</span><input aria-label={`${label} stretch`} type="range" min="0.5" max="1.5" step="0.01" value={transform?.[key] ?? 1} onChange={(e) => updateCanvasTransform(key, Number(e.target.value))} onDoubleClick={() => updateCanvasTransform(key, 1)} title="double-click to reset to 1.00x" /><span className="min-w-9 text-right font-mono text-[10px]">{Number(transform?.[key] ?? 1).toFixed(2)}x</span><span className="text-[10px]">1.5x</span></label>)}
+                    </span>;
+                  })()}
+                </div>
+                <div className="relative inline-block max-w-full touch-none select-none">
+                  <img src={preRenderUrl || previewUrl || ""} alt="localized treatment canvas" draggable={false} className={`block max-w-full touch-none select-none rounded-lg border border-zinc-300 dark:border-zinc-800 ${(brushMode || lassoMode || colorPickMode === "localized") ? "cursor-crosshair" : ""}`}
+                    style={{ touchAction: "none", WebkitUserDrag: "none" } as React.CSSProperties}
+                    onDragStart={(event) => event.preventDefault()}
+                    onPointerDown={(event) => {
+                      if (sampleCanvasFill(event, "localized")) return;
+                      if (brushMode) beginBrushStroke(event);
+                      else if (lassoMode) {
+                        const point = pointOnLocalizedCanvas(event);
+                        if (point) { event.preventDefault(); setLassoPoints((points) => [...points, point]); }
+                      }
+                    }}
+                    onPointerMove={(event) => {
+                      if (brushMode) extendBrushStroke(event);
+                      else if (lassoMode) {
+                        const point = pointOnLocalizedCanvas(event);
+                        if (point) setBrushCursor(point);
+                      }
+                    }}
+                    onPointerUp={(event) => finishBrushStroke(event)}
+                    onPointerCancel={(event) => finishBrushStroke(event, true)}
+                    onLostPointerCapture={(event) => finishBrushStroke(event, true)}
+                    onPointerLeave={() => { if (!brushDrawing.current) setBrushCursor(null); }} />
+                  {imgDim && <svg className={`absolute inset-0 h-full w-full ${brushMode || lassoMode ? "pointer-events-none" : ""}`} viewBox={`0 0 ${imgDim[0]} ${imgDim[1]}`} preserveAspectRatio="none">
+                    {!brushMode && !lassoMode && orderedManifest.map((inst) => { const b = inst.bounding_box; const active = inst.id === renderSelId; return <rect key={inst.id} x={b.x} y={b.y} width={b.width} height={b.height} fill={active ? "rgba(6,182,212,.12)" : "transparent"} stroke={active ? "#06b6d4" : "rgba(255,255,255,.7)"} strokeWidth={active ? 2 : 1} onClick={() => setRenderSelId(inst.id)} className="cursor-pointer" />; })}
+                    {brushStrokes.map((stroke) => <polyline key={stroke.id} points={stroke.points.map((p) => p.join(",")).join(" ")} fill="none" stroke="#06b6d4" strokeWidth={brushRadius * 2} strokeLinecap="round" strokeLinejoin="round" opacity=".45" />)}
+                    {activeBrushStroke && <polyline points={activeBrushStroke.points.map((p) => p.join(",")).join(" ")} fill="none" stroke="#06b6d4" strokeWidth={brushRadius * 2} strokeLinecap="round" strokeLinejoin="round" opacity=".70" />}
+                    {brushMode && brushCursor && <circle cx={brushCursor[0]} cy={brushCursor[1]} r={brushRadius} fill="rgba(6,182,212,.10)" stroke="#06b6d4" strokeWidth="1.5" />}
+                    {lassoPoints.length > 0 && <>
+                      <polyline points={[...lassoPoints, ...(lassoMode && brushCursor ? [brushCursor] : [])].map((p) => p.join(",")).join(" ")} fill="rgba(6,182,212,.15)" stroke="#06b6d4" strokeWidth="2" strokeDasharray={lassoMode && brushCursor ? "5 3" : undefined} />
+                      {lassoPoints.map((point, index) => <circle key={`${point[0]}-${point[1]}-${index}`} cx={point[0]} cy={point[1]} r="3" fill="#06b6d4" stroke="white" strokeWidth="1" />)}
+                    </>}
+                  </svg>}
+                </div>
+              </Section>}
 
               {/* Render result */}
               {renderResult && (
-                <Section title="Localized Asset" icon={<Play size={14} />} className={stackClass(3)} localized>
+                <Section title="Render Outcome" icon={<Play size={14} />} className={stackClass(4)}>
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 {renderResult.qa_report?.overall_score != null && (
                   <Badge ok={renderResult.qa_passed}>
@@ -2877,16 +3502,7 @@ export default function App() {
                 </div>
               )}
               {renderResult.output_url ? (
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div>
-                    <p className="subtext mb-1 text-xs text-zinc-500">source</p>
-                    {previewUrl && <img src={previewUrl} alt="source" className="rounded-lg border border-zinc-300 dark:border-zinc-800" />}
-                  </div>
-                  <div>
-                    <p className="subtext mb-1 text-xs text-zinc-500">localized ({langDisplayName(targLang)})</p>
-                    <img src={renderResult.output_url} alt="localized" className="rounded-lg border border-zinc-300 dark:border-zinc-800" />
-                  </div>
-                </div>
+                <a href={renderResult.output_url} target="_blank" rel="noreferrer" className="inline-flex rounded bg-cyan-700 px-3 py-1.5 text-xs text-white">Open finalized localized image</a>
               ) : (
                 <p className="text-sm text-amber-600 dark:text-amber-400">Render did not produce an output image. Check logs below.</p>
               )}

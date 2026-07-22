@@ -1,0 +1,13 @@
+{
+  "partial": true,
+  "note": "major legible signage only (partial GT: recall-focused). 627x489 photo, Shinjuku Kabukicho gate; text null = box legible, transcription uncertain (obscured/decorative). Annotated 2026-07-20 by crop verification. Bounds are approximate for the compact vertical signs (japan-street's characters render smaller than china-street's, ~15px/char) -- treat as recall targets, not pixel-exact boxes.",
+  "regions": [
+    {"bbox": [190, 122, 243, 47],  "text": "歌舞伎町一番街", "lang": "ja"},
+    {"bbox": [53, 335, 20, 61],    "text": "劇場通り",       "lang": "ja", "vertical": true},
+    {"bbox": [455, 287, 27, 73],   "text": "お好み焼本陣",   "lang": "ja", "vertical": true},
+    {"bbox": [137, 222, 41, 46],   "text": "バンダイ",       "lang": "ja", "vertical": true},
+    {"bbox": [140, 272, 25, 15],   "text": "3F",            "lang": "en"},
+    {"bbox": [435, 217, 23, 38],   "text": "東南荘",         "lang": "ja", "vertical": true, "note": "trailing character partially occluded by the お好み焼本陣 sign hanging in front"},
+    {"bbox": [463, 371, 19, 11],   "text": "2F",            "lang": "en"}
+  ]
+}

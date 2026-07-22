@@ -91,7 +91,34 @@ def _norm_ed(s1: str, s2: str) -> float:
     return _ed(s1, s2) / denom
 
 
-def evaluate(image_path: Path, manifest, gt_path: Path | None):
+def _point_in_polygon(x, y, polygon) -> bool:
+    inside = False
+    prev_x, prev_y = polygon[-1]
+    for cur_x, cur_y in polygon:
+        if (cur_y > y) != (prev_y > y):
+            at_x = (prev_x - cur_x) * (y - cur_y) / (prev_y - cur_y) + cur_x
+            if x < at_x:
+                inside = not inside
+        prev_x, prev_y = cur_x, cur_y
+    return inside
+
+
+def _surface_coverage(box, surface) -> float:
+    """Fraction of a GT box covered by a scene surface."""
+    polygon = surface.polygon
+    if not polygon or len(polygon) < 3:
+        b = surface.bbox
+        ix, iy = max(box[0], b.x), max(box[1], b.y)
+        ax, ay = min(box[0] + box[2], b.x + b.width), min(box[1] + box[3], b.y + b.height)
+        return max(0, ax - ix) * max(0, ay - iy) / max(1, box[2] * box[3])
+    samples = 7
+    return sum(
+        _point_in_polygon(box[0] + box[2] * (col + 0.5) / samples, box[1] + box[3] * (row + 0.5) / samples, polygon)
+        for row in range(samples) for col in range(samples)
+    ) / float(samples * samples)
+
+
+def evaluate(image_path: Path, manifest, gt_path: Path | None, scene_regions=None):
     """compute detection and transcription metrics against ground truth.
 
     partial GT ({"partial": true}): only the MAJOR signage is annotated,
@@ -191,6 +218,18 @@ def evaluate(image_path: Path, manifest, gt_path: Path | None):
     scored = [m["norm_ed"] for m in matches if m["norm_ed"] is not None]
     mean_ed = sum(scored) / len(scored) if scored else 0.0
 
+    surface_metrics = None
+    if gt:
+        surface_regions = scene_regions or []
+        covered = sum(any(_surface_coverage(g["bbox"], s) >= 0.5 for s in surface_regions) for g in gt)
+        empty_surfaces = sum(not any(_surface_coverage(g["bbox"], s) >= 0.5 for g in gt) for s in surface_regions)
+        surface_metrics = {
+            "surface_recall": round(covered / len(gt), 3),
+            "surface_false_positive_rate": round(empty_surfaces / len(surface_regions), 3) if surface_regions else None,
+            "surfaces_with_gt": len(surface_regions) - empty_surfaces,
+            "surfaces_without_gt": empty_surfaces,
+        }
+
     return {
         "ground_truth_path": str(gt_path) if gt_path and gt_path.exists() else None,
         "gt_regions": len(gt),
@@ -207,6 +246,7 @@ def evaluate(image_path: Path, manifest, gt_path: Path | None):
         ],
         "best_threshold": round(best_t, 2),
         "best_threshold_f1": round(best_f1, 3),
+        "surface_metrics": surface_metrics,
     }
 
 
@@ -286,7 +326,7 @@ def main() -> None:
         })
 
     gt_path = Path(args.ground_truth) if args.ground_truth else None
-    metrics = evaluate(image_path, manifest, gt_path)
+    metrics = evaluate(image_path, manifest, gt_path, scene_regions)
 
     report = {
         "image": str(image_path),

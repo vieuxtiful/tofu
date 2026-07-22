@@ -240,7 +240,15 @@ class ClassicalCVBackend(SceneBackend):
                 found_real_quad = True
             roi = work[y:y + bh, x:x + bw].reshape(-1, 3)
             mean = roi.mean(axis=0)
-            std = float(roi.std())
+            # BT.601 luminance std, matching _classify_background's
+            # convention -- the previous whole-array 3-channel scalar std
+            # conflated CHROMA spread with brightness variation, so a
+            # saturated but perfectly flat colored panel (high
+            # inter-channel spread, zero spatial variation) could exceed
+            # the threshold and be mislabeled bordered_region, changing
+            # its downstream confidence floor.
+            luma = roi @ np.array([0.299, 0.587, 0.114])
+            std = float(luma.std())
             uniform = std < self.uniform_std
             if is_quad and uniform:
                 label = "panel"
@@ -369,17 +377,17 @@ class ClassicalCVBackend(SceneBackend):
         for i in range(n):
             groups.setdefault(find(i), []).append(i)
 
-        merged: List[Tuple[int, int, int, int]] = []
+        merged: List[Tuple[int, int, int, int, List[int]]] = []
         for members in groups.values():
             xs0 = min(raw[i][0] for i in members)
             ys0 = min(raw[i][1] for i in members)
             xs1 = max(raw[i][0] + raw[i][2] for i in members)
             ys1 = max(raw[i][1] + raw[i][3] for i in members)
-            merged.append((xs0, ys0, xs1 - xs0, ys1 - ys0))
+            merged.append((xs0, ys0, xs1 - xs0, ys1 - ys0, members))
 
         min_area = self.min_area_frac * work.shape[0] * work.shape[1]
         regions: List[SceneRegion] = []
-        for x, y, w, h in merged:
+        for x, y, w, h, members in merged:
             if w * h < min_area:
                 continue
             if w < 8 or h < 8:
@@ -393,12 +401,34 @@ class ClassicalCVBackend(SceneBackend):
             sy1 = min(work.shape[0], int((y + h) / inv))
             roi = work[sy0:sy1, sx0:sx1]
             mean = roi.reshape(-1, 3).mean(axis=0) if roi.size > 0 else np.array([128, 128, 128])
+            # convex hull over the member components' corners: an angled
+            # or stepped text run gets a polygon that hugs the actual
+            # glyph footprint far tighter than its axis-aligned bbox --
+            # this is what downstream polygon-aware containment (cicerone)
+            # and polygon-clipped erasure (cleanse) consume. raw member
+            # coords are already full-image space (see raw.append above).
+            corner_pts = np.array([
+                (cx, cy)
+                for i in members
+                for (cx, cy) in (
+                    (raw[i][0], raw[i][1]),
+                    (raw[i][0] + raw[i][2], raw[i][1]),
+                    (raw[i][0] + raw[i][2], raw[i][1] + raw[i][3]),
+                    (raw[i][0], raw[i][1] + raw[i][3]),
+                )
+            ], dtype=np.int32)
+            try:
+                hull = cv2.convexHull(corner_pts)
+                polygon = [(int(p[0][0]), int(p[0][1])) for p in hull]
+            except Exception:
+                polygon = None
             regions.append(SceneRegion(
                 bbox=BBox(x=x, y=y, width=w, height=h),
                 semantic_label="text_cluster",
                 confidence=0.55,
                 background_color=_hex(mean),
                 border_detected=False,
+                polygon=polygon,
             ))
         return regions
 
@@ -440,6 +470,22 @@ class ClassicalCVBackend(SceneBackend):
             kept.append(region)
             if len(kept) >= self.max_regions:
                 break
+
+        # region-interior texture: the same planar-shading classification
+        # the per-instance enrichment applies (_classify_background), run
+        # over each kept surface's own pixels. this is the SURFACE half
+        # of the scene/cleanse agreement gate -- cleanse can then demand
+        # that the instance-level verdict and the region-level verdict
+        # agree before trusting a cheap analytic fill. best-effort: a
+        # crop too small/degenerate simply leaves texture None.
+        for region in kept:
+            b = region.bbox
+            x0, y0 = max(0, b.x), max(0, b.y)
+            x1, y1 = min(w, b.x + b.width), min(h, b.y + b.height)
+            if x1 - x0 < 8 or y1 - y0 < 8:
+                continue
+            texture, _grads = _classify_background(img[y0:y1, x0:x1], None)
+            region.texture = texture
         return kept
 
 
@@ -619,6 +665,62 @@ def _classify_background(crop, mask) -> Tuple[Optional[str], Optional[List[str]]
     return "textured", None
 
 
+def _describe_surface_material(crop, texture: Optional[str], semantic_label: Optional[str]) -> Optional[str]:
+    """Return a conservative, user-facing material name.
+
+    ``texture`` remains the compact routing signal consumed by Cleanse.  This
+    helper deliberately does *not* turn every high-frequency crop into
+    "brick": text glyphs, foliage and patterned posters all have edges too.
+    Masonry needs both a repeated horizontal course and shorter vertical
+    joints.  Ambiguous textured regions stay honestly labelled as a textured
+    surface instead of exposing the detector's ``text_cluster`` implementation
+    term in the editor.
+    """
+    if semantic_label in {"panel", "bordered_region"}:
+        return "painted sign / panel"
+    if texture == "flat":
+        return "flat painted surface"
+    if texture == "smooth_gradient":
+        return "smooth shaded surface"
+    if texture != "textured" or crop is None:
+        return None
+    try:
+        import cv2
+        import numpy as np
+        h, w = crop.shape[:2]
+        if min(h, w) < 28:
+            return "textured surface"
+        gray = cv2.cvtColor(np.asarray(crop, dtype=np.uint8), cv2.COLOR_RGB2GRAY)
+        edges = cv2.Canny(gray, 55, 140)
+        lines = cv2.HoughLinesP(
+            edges, 1, np.pi / 180, threshold=max(16, min(w, h) // 5),
+            # Mortar joints are shorter than the horizontal courses, so the
+            # line floor must admit both without treating one-pixel texture
+            # noise as a material cue.
+            minLineLength=max(10, min(w, h) // 7), maxLineGap=max(3, min(w, h) // 12),
+        )
+        if lines is None:
+            return "textured surface"
+        horizontal = vertical = 0
+        horizontal_y: List[float] = []
+        for x0, y0, x1, y1 in np.asarray(lines).reshape(-1, 4):
+            dx, dy = abs(int(x1) - int(x0)), abs(int(y1) - int(y0))
+            if dx >= max(12, dy * 2):
+                horizontal += 1
+                horizontal_y.append((y0 + y1) / 2)
+            elif dy >= max(8, dx * 1.4):
+                vertical += 1
+        # Brick courses repeat at several distinct y positions and include
+        # perpendicular joints.  This is intentionally high precision: a
+        # generic "textured surface" is preferable to a false brick label.
+        distinct_courses = len({round(y / max(4, h * .08)) for y in horizontal_y})
+        if horizontal >= 3 and vertical >= 2 and distinct_courses >= 2:
+            return "brick / masonry"
+    except Exception:
+        pass
+    return "textured surface"
+
+
 def _containing_region(
     regions: List[SceneRegion], bbox: BBox
 ) -> Optional[SceneRegion]:
@@ -655,6 +757,25 @@ def analyze(asset: Any, text_manifest: TextManifest) -> TextManifest:
         except Exception:
             text_manifest.scene_regions = []
 
+    # Surface categories drive routing, while material names drive the UI.
+    # Populate the latter once per scene region, not once per overlapping text
+    # bbox, so a brick wall is presented as masonry even when the detector's
+    # internal grouping happens to call that area ``text_cluster``.
+    if img is not None:
+        h, w = img.shape[:2]
+        for region in text_manifest.scene_regions:
+            if region.material is not None:
+                continue
+            b = region.bbox
+            x0, y0 = max(0, b.x), max(0, b.y)
+            x1, y1 = min(w, b.x + b.width), min(h, b.y + b.height)
+            crop = img[y0:y1, x0:x1]
+            texture = region.texture
+            if texture is None and crop.size:
+                texture, _ = _classify_background(crop, None)
+                region.texture = texture
+            region.material = _describe_surface_material(crop, texture, region.semantic_label)
+
     for inst in text_manifest.instances:
         if inst.style_profile is None:
             inst.style_profile = StyleProfil()
@@ -689,6 +810,11 @@ def analyze(asset: Any, text_manifest: TextManifest) -> TextManifest:
             region = _containing_region(text_manifest.scene_regions, inst.bounding_box)
             if region is not None:
                 bp.semantic_label = region.semantic_label
+                if bp.material is None:
+                    bp.material = region.material
+
+        if bp.material is None:
+            bp.material = _describe_surface_material(crop, bp.texture, bp.semantic_label)
 
         # typography: weight/slant/size/rotation from the same glyph mask
         # the colors came from. user-set values are never overwritten.
@@ -702,7 +828,7 @@ def analyze(asset: Any, text_manifest: TextManifest) -> TextManifest:
         except Exception:
             typo = None
         if typo is not None:
-            if sp.font_weight is None and typo.weight in ("bold", "light"):
+            if sp.font_weight is None and typo.weight in ("heavy", "bold", "light"):
                 sp.font_weight = typo.weight
             if sp.italic is None and typo.italic:
                 sp.italic = True

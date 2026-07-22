@@ -37,6 +37,14 @@ export function fontNameForPath(path: string): string {
 }
 
 export function weightLabel(w: FontWeight): string {
+  // Font naming is not a fixed CSS scale.  In particular, many families use
+  // "Heavy" where others use "Black" for the same OS/2 weight class.  Keep
+  // the foundry's meaningful name in the source of truth instead of relabeling
+  // a selected Heavy face as Black in the editor.
+  const subfamily = (w.subfamily || "").trim();
+  if (/\b(?:heavy|black|ultra|extra[ -]?bold|semi[ -]?bold|demi[ -]?bold|bold|medium|regular|book|light|thin)\b/i.test(subfamily)) {
+    return subfamily;
+  }
   const wc = w.weight_class;
   if (wc <= 100) return "Thin";
   if (wc <= 200) return "Extra Light";

@@ -35,11 +35,13 @@ for video (future), inpainting must be temporally consistent — flicker
 is the killer failure mode.
 """
 
+import hashlib
 from pathlib import Path
-from typing import Any, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from tofu.core.types import TextManifest
 from tofu.utils.imaging import text_mask as _text_mask
+from tofu.layers import inpaint_providers
 
 DILATE_ITER = 3        # glyph-mask growth to catch anti-aliased edges (~3px)
 FEATHER_PX = 3.0       # soft-edge blend width at every fill boundary
@@ -56,6 +58,8 @@ MIN_RING_PIXELS = 20   # below this, gradient fit degrades to flat fill
 TELEA_RADIUS_DEFAULT = 3
 TELEA_RADIUS_MIN, TELEA_RADIUS_MAX = 2, 8
 EDGE_BORDER_PX = 2     # crop-edge sample width for the mask-polarity gate
+GROUP_GAP_PX = 12       # nearby glyph groups share one source-grounded repair
+MIN_MASK_PIXELS = 6     # a tiny Otsu component is not safe evidence by itself
 
 
 def _load_image(asset: Any):
@@ -126,6 +130,191 @@ def _region_mask(np, cv2, img_array, bbox, h: int, w: int):
     return full
 
 
+def _clip_to_polygon(np, cv2, mask, polygon, h: int, w: int):
+    """Restrict an erasure mask to a user/detector supplied polygon."""
+    if not polygon or len(polygon) < 3:
+        return mask
+    try:
+        points = np.asarray(polygon, dtype=np.int32).reshape((-1, 1, 2))
+        clip = np.zeros((h, w), dtype=np.uint8)
+        cv2.fillPoly(clip, [points], 255)
+        return mask & (clip > 0)
+    except Exception:
+        return mask  # malformed user geometry must fail open
+
+
+def _select_region_mask(np, cv2, img_array, bbox, h: int, w: int,
+                        instance_polygon=None, surface_polygon=None):
+    """Choose a conservative text-erasure mask and preserve its evidence.
+
+    The Scene polygon is deliberately *not* a hard erasure clip.  It is an
+    excellent source of context for a repair model, but a tight or imperfect
+    surface contour must not trim antialiasing, an outline, a shadow, or a
+    Japanese diacritic that happens to cross the inferred surface edge.  A
+    detector/user polygon can constrain the mask only when doing so keeps the
+    overwhelming majority of the observed glyph evidence.
+    """
+    segmented = _region_mask(np, cv2, img_array, bbox, h, w)
+    source = "stroke_mask"
+    fallback = False
+    if segmented is None or int(segmented.sum()) < MIN_MASK_PIXELS:
+        selected = _bbox_fallback_mask(np, bbox, h, w)
+        source = "bbox_fallback"
+        fallback = True
+    else:
+        selected = segmented
+
+    original_pixels = int(selected.sum())
+    polygon_applied = False
+    polygon_preserved = 1.0
+    if instance_polygon and len(instance_polygon) >= 3 and original_pixels:
+        clipped = _clip_to_polygon(np, cv2, selected, instance_polygon, h, w)
+        retained = int(clipped.sum()) / max(1, original_pixels)
+        # A segmentation contour is valuable, but never accept one which
+        # removes a material part of the independently observed ink mask.
+        if retained >= 0.78 and int(clipped.sum()) >= MIN_MASK_PIXELS:
+            selected = clipped
+            polygon_applied = True
+            polygon_preserved = round(retained, 4)
+
+    # Surface geometry is evidence about the repair context, not permission
+    # to erase less text.  Record whether it contains the selected mask so a
+    # low-confidence context route can fail safely into review.
+    surface_contains = None
+    if surface_polygon and len(surface_polygon) >= 3 and selected.any():
+        contained = _clip_to_polygon(np, cv2, selected, surface_polygon, h, w)
+        surface_contains = round(int(contained.sum()) / max(1, int(selected.sum())), 4)
+
+    density = int(selected.sum()) / max(1, bbox.width * bbox.height)
+    confidence = .96
+    if fallback:
+        confidence = .48
+    elif density < .015 or density > .90:
+        confidence = .68
+    if surface_contains is not None and surface_contains < .82:
+        confidence = min(confidence, .72)
+    evidence = {
+        "source": source,
+        "pixels": int(selected.sum()),
+        "bbox_density": round(density, 5),
+        "confidence": round(confidence, 3),
+        "fallback": fallback,
+        "instance_polygon_applied": polygon_applied,
+        "instance_polygon_retained": polygon_preserved,
+        "surface_mask_containment": surface_contains,
+        "surface_polygon_used_for_context": bool(surface_polygon and len(surface_polygon) >= 3),
+    }
+    return selected, evidence
+
+
+def _containing_surface(text_manifest, bbox):
+    """Return the scene surface that most covers an instance bbox."""
+    best, best_score = None, 0.0
+    for region in getattr(text_manifest, "scene_regions", []) or []:
+        rb = region.bbox
+        ix, iy = max(bbox.x, rb.x), max(bbox.y, rb.y)
+        ax, ay = min(bbox.x + bbox.width, rb.x + rb.width), min(bbox.y + bbox.height, rb.y + rb.height)
+        score = max(0, ax - ix) * max(0, ay - iy) / max(1, bbox.width * bbox.height)
+        if score > best_score:
+            best, best_score = region, score
+    return best if best_score >= 0.5 else None
+
+
+def _choose_strategy(inst, surface, image=None, mask=None, mask_evidence=None) -> str:
+    """Apply provider routing and preserve its evidence on the region."""
+    profile = getattr(inst, "background_profile", None)
+    texture = profile.texture if profile else None
+    surface_texture = getattr(surface, "texture", None) if surface else None
+    surface_label = getattr(surface, "semantic_label", None) if surface else None
+    if profile:
+        profile.surface_texture = surface_texture
+
+    route = inpaint_providers.route(inst, surface, image, mask)
+    strategy = route.strategy
+    if profile:
+        profile.cleanse_strategy = strategy
+    mask_evidence = mask_evidence or {}
+    mask_confidence = float(mask_evidence.get("confidence", 0.0))
+    # Strong Scene agreement cannot compensate for an uncertain text mask:
+    # deterministic reconstruction may run, but its result is review-bound.
+    auto_accept = bool(route.auto_accept and mask_confidence >= .85)
+    review_required = bool(route.review_required or not auto_accept)
+    reason = route.reason
+    if route.auto_accept and not auto_accept:
+        reason += "; mask evidence is below the auto-accept threshold"
+    inst.repair_provenance = {
+        "requested_provider": route.provider,
+        "strategy": route.strategy,
+        "confidence": route.confidence,
+        "auto_accepted": auto_accept,
+        "review_required": review_required,
+        "reason": reason,
+        "mask": mask_evidence,
+        "candidates": [],
+    }
+    return strategy
+
+
+def _masks_are_near(np, cv2, first, second) -> bool:
+    """Whether two masks should be repaired in a single local context."""
+    if not first.any() or not second.any():
+        return False
+    kernel = np.ones((3, 3), np.uint8)
+    expanded = cv2.dilate(first.astype(np.uint8), kernel,
+                           iterations=max(1, GROUP_GAP_PX)).astype(bool)
+    return bool((expanded & second).any())
+
+
+def _neural_groups(np, cv2, plans: List[Dict[str, Any]]) -> List[List[Dict[str, Any]]]:
+    """Group only compatible neural repairs on the same Scene surface.
+
+    Every group later receives the original image, never a previous model
+    result.  This removes order-dependence for adjacent subtitles/sign text
+    without merging unrelated surfaces merely because their boxes are close.
+    """
+    groups: List[List[Dict[str, Any]]] = []
+    for plan in plans:
+        provider = plan["provider"]
+        surface = plan["surface"]
+        for group in groups:
+            anchor = group[0]
+            if anchor["provider"] != provider or anchor["surface"] is not surface:
+                continue
+            if any(_masks_are_near(np, cv2, plan["mask"], member["mask"]) for member in group):
+                group.append(plan)
+                break
+        else:
+            groups.append([plan])
+    return groups
+
+
+def _record_candidate(inst, provider: str, accepted: bool, evidence: Dict[str, Any],
+                      decision: str, group_ids: List[str]) -> None:
+    if not inst.repair_provenance:
+        return
+    candidates = inst.repair_provenance.setdefault("candidates", [])
+    candidates.append({
+        "provider": provider,
+        "accepted": bool(accepted),
+        "decision": decision,
+        "group_ids": group_ids,
+        "evidence": evidence,
+    })
+
+
+def _repair_group_key(np, group: List[Dict[str, Any]], group_mask) -> str:
+    """Stable identity for one source/mask/model repair opportunity.
+
+    This intentionally excludes model output and acceptance state.  A local
+    candidate can therefore be reviewed and applied as a patch while the same
+    Cleanse plan remains reproducible on future preview/final compositions.
+    """
+    members = ",".join(sorted(plan["inst"].id for plan in group))
+    packed_mask = np.packbits(group_mask.astype(np.uint8)).tobytes()
+    digest = hashlib.sha256(members.encode("utf-8") + packed_mask).hexdigest()[:20]
+    return f"repair-{digest}"
+
+
 def _bbox_fallback_mask(np, bbox, h: int, w: int):
     """padded bbox-rectangle mask — the pre-Phase-3 behavior, used only
     when glyph segmentation could not separate text from background."""
@@ -173,7 +362,7 @@ def _feathered_blend(cv2, np, working_win, mask_win, fill_win):
     working_win[:] = np.clip(blended, 0, 255).astype(np.uint8)
 
 
-def _fill_flat(cv2, np, working, full_mask, h: int, w: int) -> None:
+def _fill_flat(cv2, np, working, full_mask, h: int, w: int, dominant_color: Optional[str] = None) -> None:
     win = _local_window(np, full_mask, RING_PX + int(FEATHER_PX) + 2, h, w)
     if win is None:
         return
@@ -187,6 +376,16 @@ def _fill_flat(cv2, np, working, full_mask, h: int, w: int) -> None:
         color = work_win[mask_win].reshape(-1, 3).mean(axis=0)
     else:
         return
+    # A ring touching an adjacent sign can be a much worse estimate than
+    # Scene's robust, instance-local dominant color.  Treat a large
+    # disagreement as contamination and anchor the flat reconstruction.
+    if dominant_color and isinstance(dominant_color, str) and len(dominant_color) == 7 and dominant_color.startswith("#"):
+        try:
+            anchor = np.array([int(dominant_color[i:i + 2], 16) for i in (1, 3, 5)], dtype=np.float64)
+            if np.linalg.norm(color - anchor) > 90:
+                color = anchor
+        except ValueError:
+            pass
     fill = np.broadcast_to(color, work_win.shape).astype(np.float64)
     _feathered_blend(cv2, np, work_win, mask_win, fill)
 
@@ -231,7 +430,7 @@ def _stroke_px(inst) -> Optional[float]:
     return ratio * ch.size
 
 
-def erase(asset: Any, text_manifest: TextManifest) -> Any:
+def erase(asset: Any, text_manifest: TextManifest, candidate_observer=None) -> Any:
     """erase detected text regions and reconstruct the background.
 
     per-region strategy is selected from inst.background_profile.texture
@@ -246,6 +445,12 @@ def erase(asset: Any, text_manifest: TextManifest) -> Any:
 
     returns:
         the cleansed asset (same modality as the input).
+
+        ``candidate_observer`` is an optional server-owned callback receiving
+        an unaccepted neural candidate and its exact mask.  Cleanse never
+        writes candidate files itself; this keeps its image-layer contract
+        pure while allowing the Render layer to expose an explicit review
+        patch rather than silently accepting model output.
     """
     base = _load_image(asset)
     if base is None:
@@ -262,47 +467,150 @@ def erase(asset: Any, text_manifest: TextManifest) -> Any:
     h, w = img_array.shape[:2]
     working = img_array.copy()
 
-    telea_mask = np.zeros((h, w), dtype=bool)
-    stroke_widths = []
-    touched = False
-
+    # Plan every mask against the untouched source first.  Selection and
+    # model-routing must never depend on pixels invented by an earlier repair.
+    plans: List[Dict[str, Any]] = []
     for inst in text_manifest.instances:
         if getattr(inst, "dnt", False):
             continue
         bbox = inst.bounding_box
         if bbox is None or bbox.width <= 0 or bbox.height <= 0:
             continue
-
-        full_mask = _region_mask(np, cv2, img_array, bbox, h, w)
-        if full_mask is None or not full_mask.any():
-            full_mask = _bbox_fallback_mask(np, bbox, h, w)
+        surface = _containing_surface(text_manifest, bbox)
+        instance_polygon = getattr(getattr(inst, "segmentation_mask", None), "polygon", None)
+        surface_polygon = getattr(surface, "polygon", None)
+        full_mask, mask_evidence = _select_region_mask(
+            np, cv2, img_array, bbox, h, w, instance_polygon, surface_polygon,
+        )
         if not full_mask.any():
             continue
-        touched = True
+        strategy = _choose_strategy(inst, surface, img_array, full_mask, mask_evidence)
+        plans.append({
+            "inst": inst,
+            "surface": surface,
+            "mask": full_mask,
+            "strategy": strategy,
+            "provider": (inst.repair_provenance or {}).get("requested_provider", "telea_fallback"),
+        })
 
-        texture = (
-            inst.background_profile.texture
-            if inst.background_profile else None
-        )
-        if texture == "flat":
-            _fill_flat(cv2, np, working, full_mask, h, w)
-        elif texture == "smooth_gradient":
+    touched = bool(plans)
+    telea_mask = np.zeros((h, w), dtype=bool)
+    stroke_widths: List[float] = []
+    neural_plans: List[Dict[str, Any]] = []
+
+    # Deterministic planar fills are intentionally executed separately.  They
+    # are source-context fits, not generated content, and remain the safest
+    # fast path where Scene and the instance agree.
+    for plan in plans:
+        inst, full_mask, strategy = plan["inst"], plan["mask"], plan["strategy"]
+        if strategy == "flat":
+            dominant_color = inst.background_profile.dominant_color if inst.background_profile else None
+            _fill_flat(cv2, np, working, full_mask, h, w, dominant_color)
+            if inst.repair_provenance:
+                inst.repair_provenance["executed_provider"] = "analytic"
+                _record_candidate(inst, "analytic", bool(inst.repair_provenance["auto_accepted"]),
+                                  {"kind": "flat_reconstruction"}, "deterministic", [inst.id])
+        elif strategy == "smooth_gradient":
             _fill_gradient(cv2, np, working, full_mask, h, w)
+            if inst.repair_provenance:
+                inst.repair_provenance["executed_provider"] = "analytic"
+                _record_candidate(inst, "analytic", bool(inst.repair_provenance["auto_accepted"]),
+                                  {"kind": "plane_reconstruction"}, "deterministic", [inst.id])
+        elif strategy == "neural":
+            neural_plans.append(plan)
         else:
-            # textured / patterned / unclassified: one batched inpaint
-            # pass at the end, rather than per-region calls that could
-            # produce mismatched seams between adjacent regions
             telea_mask |= full_mask
-            sw = _stroke_px(inst)
-            if sw:
-                stroke_widths.append(sw)
+            if inst.repair_provenance:
+                inst.repair_provenance["executed_provider"] = "telea_fallback"
+                _record_candidate(inst, "telea_fallback", False,
+                                  {"reason": "no promoted neural candidate"}, "review_required", [inst.id])
+            stroke = _stroke_px(inst)
+            if stroke:
+                stroke_widths.append(stroke)
+
+    # Compatible neural regions are sent together, *from img_array*.  In
+    # particular, an adjacent region never sees another model's output as its
+    # own context.  An unpromoted backend may be exercised for evidence but is
+    # never allowed to silently become the Cleansed base.
+    for group in _neural_groups(np, cv2, neural_plans):
+        group_mask = np.zeros((h, w), dtype=bool)
+        for plan in group:
+            group_mask |= plan["mask"]
+        provider_id = group[0]["provider"]
+        group_ids = [plan["inst"].id for plan in group]
+        group_key = _repair_group_key(np, group, group_mask)
+        outcome = inpaint_providers.repair(provider_id, img_array, group_mask)
+        repaired = outcome.image
+        accepted, quality = (
+            inpaint_providers.quality_gate(img_array, repaired, group_mask)
+            if repaired is not None else
+            (False, {"passed": False, "score": 0.0, "reason": "provider returned no candidate"})
+        )
+        provider_promoted = bool(inpaint_providers.provider_spec(provider_id).promoted)
+        accepted = bool(accepted and provider_promoted)
+        decision = "accepted" if accepted else (
+            "unpromoted_provider" if repaired is not None and not provider_promoted else "quality_gate_rejected"
+        )
+        artifact = None
+        if repaired is not None and candidate_observer is not None:
+            try:
+                artifact = candidate_observer({
+                    "group_key": group_key,
+                    "group_ids": group_ids,
+                    "provider": provider_id,
+                    "execution": outcome.evidence(),
+                    "quality_gate": quality,
+                    "decision": decision,
+                }, repaired, group_mask)
+            except Exception:
+                # Candidate presentation is useful evidence, never an
+                # availability dependency for Cleanse or final rendering.
+                artifact = None
+        for plan in group:
+            inst = plan["inst"]
+            if inst.repair_provenance:
+                inst.repair_provenance["execution"] = outcome.evidence()
+                inst.repair_provenance["quality_gate"] = quality
+                inst.repair_provenance["repair_group"] = group_ids
+                inst.repair_provenance["repair_group_key"] = group_key
+            _record_candidate(inst, provider_id, accepted,
+                              {"execution": outcome.evidence(), "quality_gate": quality,
+                               "artifact": artifact}, decision, group_ids)
+        if accepted and repaired is not None and repaired.shape == img_array.shape:
+            # The provider had to preserve the full known context to pass the
+            # gate.  We still blend only inside the selected erase footprint.
+            for plan in group:
+                full_mask = plan["mask"]
+                win = _local_window(np, full_mask, RING_PX + int(FEATHER_PX) + 2, h, w)
+                if win is not None:
+                    x0, y0, x1, y1 = win
+                    _feathered_blend(cv2, np, working[y0:y1, x0:x1],
+                                      full_mask[y0:y1, x0:x1], repaired[y0:y1, x0:x1])
+                if plan["inst"].repair_provenance:
+                    plan["inst"].repair_provenance["executed_provider"] = provider_id
+        else:
+            telea_mask |= group_mask
+            for plan in group:
+                inst = plan["inst"]
+                if inst.repair_provenance:
+                    inst.repair_provenance["rejected_candidate"] = provider_id
+                    inst.repair_provenance["executed_provider"] = "telea_fallback"
+                    inst.repair_provenance["auto_accepted"] = False
+                    inst.repair_provenance["review_required"] = True
+                stroke = _stroke_px(inst)
+                if stroke:
+                    stroke_widths.append(stroke)
 
     if telea_mask.any():
         radius = TELEA_RADIUS_DEFAULT
         if stroke_widths:
             avg_stroke = sum(stroke_widths) / len(stroke_widths)
             radius = int(max(TELEA_RADIUS_MIN, min(TELEA_RADIUS_MAX, round(avg_stroke / 2))))
-        working = cv2.inpaint(working, telea_mask.astype(np.uint8) * 255, radius, cv2.INPAINT_TELEA)
+        # Like neural groups, deterministic fallback samples the original
+        # image once, then is composited into the planned masks.  It cannot
+        # accumulate order-dependent repairs across regions.
+        telea = cv2.inpaint(img_array, telea_mask.astype(np.uint8) * 255, radius, cv2.INPAINT_TELEA)
+        working[telea_mask] = telea[telea_mask]
 
     if touched:
         base = base.convert("RGBA")

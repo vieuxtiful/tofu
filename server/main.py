@@ -25,6 +25,7 @@ run:  uvicorn main:app --reload --port 8000   (from server/)
 
 import dataclasses
 import hashlib
+import json
 import os
 import sys
 import time
@@ -50,9 +51,9 @@ from tofu.core.types import (
     RenderParams, StyleProfil,
 )
 from tofu.layers.tofu import ToFU, lang_to_script
-from tofu.layers import cicerone, memory, scribe
+from tofu.layers import cicerone, memory, scribe, cleanse, scene, verify, inpaint_providers
 from tofu.layers.cicerone import _to_easyocr_lang
-from tofu.utils.manifest_store import save_manifest, load_manifest
+from tofu.utils.manifest_store import save_manifest, load_manifest, _dict_to_manifest
 from tofu.utils import interchange
 
 import db
@@ -318,6 +319,33 @@ class RenderRequest(BaseModel):
     font: Optional[str] = None
     qa_threshold: Optional[float] = None
 
+class PreviewRenderRequest(BaseModel):
+    asset_id: str
+    targ_lang: str
+    manifest: Optional[Dict[str, Any]] = None
+
+class InpaintRequest(BaseModel):
+    asset_id: str
+    polygon: List[List[int]] = []
+    points: List[List[int]] = []
+    mode: str = "auto"
+    radius: int = 18
+    hardness: float = 0.85
+    # The localized canvas can be ahead of autosave.  Supplying this snapshot
+    # keeps manual treatment on the exact same Cleanse base as the preview,
+    # without mutating the stored manifest.
+    manifest: Optional[Dict[str, Any]] = None
+
+class CandidateApplyRequest(BaseModel):
+    cache_key: Optional[str] = None
+
+class TreatmentRestoreRequest(BaseModel):
+    patch_ids: List[str] = []
+
+class LocalizedBaselineRequest(BaseModel):
+    manifest: Dict[str, Any]
+    patch_ids: List[str] = []
+
 class ApproveRequest(BaseModel):
     asset_id: str
     targ_lang: str
@@ -359,6 +387,10 @@ class RegionUpdate(BaseModel):
     target_language: Optional[str] = None
     language: Optional[str] = None  ## per-region source language
     font: Optional[str] = None      ## per-region font (style_profile.font_family)
+    excluded: Optional[bool] = None
+    target_orientation: Optional[str] = None
+    word_order: Optional[str] = None
+    segmentation_mask: Optional[Dict[str, Any]] = None
 
 
 # --- upload + languages + fonts ---
@@ -738,6 +770,10 @@ def detect(req: DetectRequest):
     tm_matched = _lookup_tm_for_manifest(req.asset_id, manifest, path)
     _resolve_auto_fonts(manifest)  # after TM lookup so manifest.targ_lang is set
     save_manifest(UPLOAD_DIR, req.asset_id, manifest)
+    # A Render-entry baseline is meaningful only for the exact detected
+    # manifest it was captured from.  A fresh scan replaces that starting
+    # point, so a later Reset must never resurrect edits from a prior scan.
+    _localized_baseline_index(req.asset_id).unlink(missing_ok=True)
     _record_detection(req.asset_id, manifest)
     payload = jsonable(manifest)
     payload["engine"] = _engine_name(backend)
@@ -1000,6 +1036,13 @@ def detect_stream(
                     "regions": improved,
                 })
 
+            if (cicerone._engine_from_env() in {"auto", "hybrid"}
+                    and isinstance(backend, cicerone.EasyOCRBackend)
+                    and manifest.instances):
+                yield event({"stage": "hybrid_audit", "status": "running"})
+                corrected = cicerone.hybrid_audit(str(path), manifest.instances)
+                yield event({"stage": "hybrid_audit", "status": "complete", "corrected": corrected})
+
             # Savor's taste test on the FINAL recognized text -- this
             # endpoint calls build_manifest()/second_look() directly
             # (not cicerone.detect(), which already runs Savor as its
@@ -1031,7 +1074,10 @@ def detect_stream(
             if manifest.instances:
                 yield event({"stage": "menu", "status": "running"})
                 from tofu.layers.menu import browse
-                matched = browse(manifest.instances)
+                matched = browse(
+                    manifest.instances, asset=str(path),
+                    font_registry=get_validator().font_registry,
+                )
                 yield event({"stage": "menu", "status": "complete", "corrected": matched})
 
             # scene enrichment at capture time: profiles + typography
@@ -1060,6 +1106,7 @@ def detect_stream(
             _resolve_auto_fonts(manifest)
 
             save_manifest(UPLOAD_DIR, asset_id, manifest)
+            _localized_baseline_index(asset_id).unlink(missing_ok=True)
             _record_detection(asset_id, manifest)
             yield event({
                 "stage": "complete",
@@ -1081,6 +1128,24 @@ def get_manifest(asset_id: str):
     manifest = load_manifest(UPLOAD_DIR, asset_id)
     if manifest is None:
         raise HTTPException(404, f"no manifest for asset '{asset_id}'")
+    # Existing projects predate material labels.  Enrich those manifests on
+    # read from the source pixels only (no OCR/re-detection), so the Capture
+    # surface inspector can say "brick / masonry" or "painted sign / panel"
+    # instead of exposing implementation labels such as text_cluster.
+    missing_material = (
+        any(region.material is None for region in manifest.scene_regions)
+        or any((inst.background_profile is not None and inst.background_profile.material is None)
+               for inst in manifest.instances)
+    )
+    if missing_material:
+        try:
+            from tofu.layers import scene
+            manifest = scene.analyze(str(_asset_path(asset_id)), manifest)
+            save_manifest(UPLOAD_DIR, asset_id, manifest)
+        except Exception:
+            # Material is presentation enrichment.  A non-image or optional
+            # vision dependency must never block opening a valid project.
+            pass
     return jsonable(manifest)
 
 
@@ -1169,6 +1234,7 @@ def update_region(asset_id: str, rid: str, req: RegionUpdate):
     if req.text is not None: inst.text = req.text
     if req.target_text is not None: inst.target_text = req.target_text
     if req.dnt is not None: inst.dnt = req.dnt
+    if req.excluded is not None: inst.excluded = req.excluded
     if req.target_language is not None: inst.target_language = req.target_language
     if req.language is not None: inst.language = req.language
     if req.font is not None:
@@ -1176,6 +1242,27 @@ def update_region(asset_id: str, rid: str, req: RegionUpdate):
         if inst.style_profile is None:
             inst.style_profile = StyleProfil()
         inst.style_profile.font_family = req.font
+    supplied = getattr(req, "model_fields_set", getattr(req, "__fields_set__", set()))
+    if "target_orientation" in supplied or "word_order" in supplied:
+        if inst.style_profile is None:
+            inst.style_profile = StyleProfil()
+        if "target_orientation" in supplied:
+            inst.style_profile.target_orientation = req.target_orientation
+        if "word_order" in supplied:
+            inst.style_profile.word_order = req.word_order
+    if "segmentation_mask" in supplied and req.segmentation_mask is None:
+        inst.segmentation_mask = None
+    elif req.segmentation_mask is not None:
+        from tofu.core.types import Mask
+        polygon = req.segmentation_mask.get("polygon")
+        if not polygon or len(polygon) < 3:
+            raise HTTPException(422, "segmentation_mask.polygon requires at least three points")
+        holes = req.segmentation_mask.get("holes")
+        inst.segmentation_mask = Mask(
+            polygon=[tuple(point) for point in polygon],
+            confidence=float(req.segmentation_mask.get("confidence", 1.0)),
+            holes=[[tuple(point) for point in hole] for hole in holes] if holes else None,
+        )
     save_manifest(UPLOAD_DIR, asset_id, manifest)
     return jsonable(inst)
 
@@ -1358,6 +1445,405 @@ async def import_file(asset_id: str = "", file: UploadFile = File(...)):
 
 # --- render (scene → cleanse → scribe → verify) ---
 
+def _patch_index(asset_id: str) -> Path:
+    return OUTPUT_DIR / f"{asset_id}.patches.json"
+
+
+def _patch_archive_index(asset_id: str) -> Path:
+    """Durable patch metadata for localized-canvas redo/reset.
+
+    Active treatment is intentionally a small ordered layer.  Removing a
+    patch from it must not destroy its PNG or metadata because redo and a
+    render-entry reset need to restore that exact non-deterministic repair.
+    """
+    return OUTPUT_DIR / f"{asset_id}.patch-archive.json"
+
+
+def _localized_baseline_index(asset_id: str) -> Path:
+    return OUTPUT_DIR / f"{asset_id}.localized-baseline.json"
+
+
+def _candidate_dir() -> Path:
+    path = OUTPUT_DIR / "cleanse-cache" / "candidates"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _candidate_index(asset_id: str) -> Path:
+    return _candidate_dir() / f"{asset_id}.json"
+
+
+def _load_candidates(asset_id: str) -> List[Dict[str, Any]]:
+    try:
+        value = json.loads(_candidate_index(asset_id).read_text(encoding="utf-8"))
+        return value if isinstance(value, list) else []
+    except Exception:
+        return []
+
+
+def _save_candidate(asset_id: str, record: Dict[str, Any]) -> None:
+    records = [item for item in _load_candidates(asset_id) if item.get("id") != record["id"]]
+    records.append(record)
+    _candidate_index(asset_id).write_text(json.dumps(records, sort_keys=True), encoding="utf-8")
+
+
+def _candidate_observer(asset_id: str, cache_key: str):
+    """Return a server-owned sink for review-only neural repair overlays."""
+    def save(info: Dict[str, Any], candidate, mask):
+        from PIL import Image
+        import numpy as np
+
+        region = np.asarray(mask, dtype=bool)
+        ys, xs = np.nonzero(region)
+        if not len(xs):
+            return None
+        x0, y0, x1, y1 = int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1
+        rgba = np.dstack([
+            np.asarray(candidate, dtype=np.uint8)[y0:y1, x0:x1],
+            (region[y0:y1, x0:x1].astype(np.uint8) * 255),
+        ])
+        # Candidate identity incorporates the actual pixels.  A stochastic
+        # provider can therefore offer distinct variants without mutating the
+        # selected Cleanse base or overwriting a prior review artifact.
+        candidate_id = hashlib.sha256(
+            f"{asset_id}:{cache_key}:{info['group_key']}:{info['provider']}".encode("utf-8")
+            + rgba.tobytes()
+        ).hexdigest()[:24]
+        filename = f"{asset_id}-{candidate_id}.png"
+        path = _candidate_dir() / filename
+        if not path.exists():
+            Image.fromarray(rgba, "RGBA").save(path)
+        relative = f"cleanse-cache/candidates/{filename}"
+        record = {
+            "id": candidate_id,
+            "cache_key": cache_key,
+            "group_key": info["group_key"],
+            "group_ids": info["group_ids"],
+            "provider": info["provider"],
+            "decision": info["decision"],
+            "execution": info["execution"],
+            "quality_gate": info["quality_gate"],
+            "bbox": {"x": x0, "y": y0, "width": x1 - x0, "height": y1 - y0},
+            "file": relative,
+            "url": f"/outputs/{relative}",
+            "created_at": int(time.time() * 1000),
+        }
+        _save_candidate(asset_id, record)
+        # This returned object is JSON-safe and gets preserved in per-region
+        # provenance/cache sidecars for the localized-canvas review strip.
+        return {key: record[key] for key in ("id", "provider", "decision", "bbox", "url", "cache_key")}
+    return save
+
+
+def _find_candidate(asset_id: str, candidate_id: str) -> Optional[Dict[str, Any]]:
+    return next((item for item in _load_candidates(asset_id) if item.get("id") == candidate_id), None)
+
+
+def _load_patches(asset_id: str) -> List[Dict[str, Any]]:
+    try:
+        return json.loads(_patch_index(asset_id).read_text(encoding="utf-8"))
+    except Exception:
+        return []
+
+
+def _load_patch_archive(asset_id: str) -> List[Dict[str, Any]]:
+    try:
+        value = json.loads(_patch_archive_index(asset_id).read_text(encoding="utf-8"))
+        return value if isinstance(value, list) else []
+    except Exception:
+        # Existing projects predate the archive; their active patches are a
+        # valid seed and become archived on the next treatment mutation.
+        return _load_patches(asset_id)
+
+
+def _archive_patches(asset_id: str, patches: List[Dict[str, Any]]) -> None:
+    known = {patch.get("id"): patch for patch in _load_patch_archive(asset_id) if patch.get("id")}
+    for patch in patches:
+        if patch.get("id"):
+            known[patch["id"]] = patch
+    _patch_archive_index(asset_id).write_text(
+        json.dumps(list(known.values()), sort_keys=True), encoding="utf-8"
+    )
+
+
+def _flatten_patches(asset_id: str) -> Optional[Path]:
+    patches = _load_patches(asset_id)
+    target = OUTPUT_DIR / f"{asset_id}.patches.png"
+    if not patches:
+        target.unlink(missing_ok=True)
+        return None
+    from PIL import Image
+    with Image.open(_asset_path(asset_id)) as src:
+        layer = Image.new("RGBA", src.size, (0, 0, 0, 0))
+    for patch in patches:
+        crop = Image.open(OUTPUT_DIR / patch["file"]).convert("RGBA")
+        b = patch["bbox"]
+        layer.alpha_composite(crop, (b["x"], b["y"]))
+    layer.save(target)
+    return target
+
+
+def _patch_revision(asset_id: str) -> str:
+    return hashlib.sha256(json.dumps(_load_patches(asset_id), sort_keys=True).encode("utf-8")).hexdigest()[:12]
+
+
+def _composite_patches(asset_id: str, image):
+    from PIL import Image
+    flattened = OUTPUT_DIR / f"{asset_id}.patches.png"
+    if not flattened.exists():
+        return image
+    return Image.alpha_composite(image.convert("RGBA"), Image.open(flattened).convert("RGBA"))
+
+
+def _cleanse_cache_key(asset_id: str, manifest: TextManifest) -> str:
+    """Hash only inputs which determine the erased base, never translations."""
+    path = _asset_path(asset_id)
+    geometry = []
+    for inst in manifest.instances:
+        b = inst.bounding_box
+        geometry.append({"id": inst.id, "bbox": dataclasses.asdict(b) if b else None,
+                         "polygon": inst.segmentation_mask.polygon if inst.segmentation_mask else None,
+                         "background": dataclasses.asdict(inst.background_profile) if inst.background_profile else None,
+                         "dnt": inst.dnt})
+    payload = {
+        "schema": "cleanse-provider-router-v4",
+        "asset": [path.stat().st_mtime_ns, path.stat().st_size],
+        "regions": geometry,
+        # A provider promotion/configuration changes the pixels Cleanse is
+        # permitted to generate, so it is part of cache identity.  This call
+        # only reports configuration; it never imports or downloads weights.
+        "providers": inpaint_providers.provider_statuses(),
+    }
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode("utf-8")).hexdigest()[:20]
+
+
+def _cleansed_base(asset_id: str, manifest: TextManifest):
+    """Shared cache for preview and final render; never writes a manifest."""
+    from PIL import Image
+    key = _cleanse_cache_key(asset_id, manifest)
+    cache_dir = OUTPUT_DIR / "cleanse-cache"
+    cache_dir.mkdir(exist_ok=True)
+    image_path = cache_dir / f"{asset_id}-{key}.png"
+    # The sidecar is keyed with the pixels.  A mutable per-asset sidecar made
+    # a cache hit capable of restoring repair evidence for the wrong geometry
+    # or provider revision.
+    sidecar = cache_dir / f"{asset_id}-{key}.json"
+    if image_path.exists():
+        try:
+            cached = json.loads(sidecar.read_text(encoding="utf-8")) if sidecar.exists() else {}
+            provenance = cached.get("repair_provenance", {})
+            for inst in manifest.instances:
+                if inst.id in provenance:
+                    inst.repair_provenance = provenance[inst.id]
+        except Exception:
+            # The cached image remains valid even if an old/partial sidecar
+            # cannot be read.  The next clean recomputes evidence.
+            pass
+        return Image.open(image_path).convert("RGBA")
+    cleaned = cleanse.erase(str(_asset_path(asset_id)), manifest,
+                            candidate_observer=_candidate_observer(asset_id, key))
+    if cleaned is None or not hasattr(cleaned, "save"):
+        raise RuntimeError("cleanse produced no image")
+    cleaned.save(image_path)
+    provenance = {
+        inst.id: inst.repair_provenance
+        for inst in manifest.instances if inst.repair_provenance is not None
+    }
+    sidecar.write_text(json.dumps({
+        "schema": "cleanse-cache-v4",
+        "key": key,
+        "image": image_path.name,
+        "repair_provenance": provenance,
+    }, sort_keys=True), encoding="utf-8")
+    return cleaned.convert("RGBA")
+
+
+@app.post("/api/inpaint")
+def inpaint(req: InpaintRequest):
+    if len(req.polygon) < 3 and not req.points:
+        raise HTTPException(422, "a lasso polygon or brush stroke is required")
+    _asset_path(req.asset_id)
+    from tofu.layers.inpaint import make_patch
+    try:
+        # Treatment operates on the same cleansed/treatment base that the
+        # localized canvas displays.  It must not sample source text back into
+        # a region that Cleanse already removed.
+        manifest = _dict_to_manifest(req.manifest) if req.manifest else load_manifest(UPLOAD_DIR, req.asset_id)
+        if manifest is None:
+            raise HTTPException(404, f"no manifest for asset '{req.asset_id}'")
+        manifest.asset_id = req.asset_id
+        base = _composite_patches(req.asset_id, _cleansed_base(req.asset_id, manifest))
+        crop, bbox, strategy = make_patch(
+            base, [tuple(p) for p in req.polygon], req.mode,
+            [tuple(p) for p in req.points], req.radius, req.hardness,
+        )
+        patch_id = uuid.uuid4().hex[:12]
+        filename = f"{req.asset_id}.patch-{patch_id}.png"
+        crop.save(OUTPUT_DIR / filename)
+        patches = _load_patches(req.asset_id)
+        patches.append({"id": patch_id, "file": filename, "bbox": bbox,
+                        "polygon": req.polygon, "points": req.points,
+                        "mode": req.mode, "strategy": strategy,
+                        "radius": req.radius, "hardness": req.hardness,
+                        "parent_revision": _patch_revision(req.asset_id)})
+        _archive_patches(req.asset_id, patches)
+        _patch_index(req.asset_id).write_text(json.dumps(patches), encoding="utf-8")
+        _flatten_patches(req.asset_id)
+        return {"id": patch_id, "bbox": bbox, "patches": patches,
+                "revision": _patch_revision(req.asset_id)}
+    except Exception as exc:
+        raise HTTPException(422, f"inpaint failed: {type(exc).__name__}: {exc}")
+
+
+@app.post("/api/inpaint/candidate/{asset_id}/{candidate_id}")
+def apply_repair_candidate(asset_id: str, candidate_id: str,
+                           req: Optional[CandidateApplyRequest] = None):
+    """Apply an editor-approved neural candidate as an undoable patch.
+
+    Approval is explicit and affects only the treatment layer.  It never
+    flips a provider promotion flag or rewrites the deterministic Cleanse
+    cache, so later benchmark evidence remains attributable to the model.
+    """
+    _asset_path(asset_id)
+    record = _find_candidate(asset_id, candidate_id)
+    if record is None:
+        raise HTTPException(404, "repair candidate not found for this asset")
+    if req and req.cache_key and req.cache_key != record.get("cache_key"):
+        raise HTTPException(409, "repair candidate belongs to a stale Cleanse preview")
+    patches = _load_patches(asset_id)
+    # Candidate selection is an explicit but idempotent editor action.  A
+    # double-click or retry must return the existing treatment, never stack
+    # the same RGBA overlay twice.
+    existing = next((patch for patch in patches if patch.get("candidate_id") == candidate_id), None)
+    if existing is not None:
+        return {"id": existing["id"], "bbox": existing["bbox"], "patches": patches,
+                "revision": _patch_revision(asset_id), "already_applied": True}
+    candidate_root = _candidate_dir().resolve()
+    source = (OUTPUT_DIR / str(record.get("file", ""))).resolve()
+    if candidate_root not in source.parents or not source.is_file():
+        raise HTTPException(422, "repair candidate artifact is unavailable")
+    try:
+        from PIL import Image
+        patch_id = uuid.uuid4().hex[:12]
+        filename = f"{asset_id}.patch-{patch_id}.png"
+        Image.open(source).convert("RGBA").save(OUTPUT_DIR / filename)
+        patches.append({
+            "id": patch_id, "file": filename, "bbox": record["bbox"],
+            "mode": "review_candidate", "strategy": record.get("provider", "neural"),
+            "candidate_id": candidate_id, "parent_revision": _patch_revision(asset_id),
+        })
+        _archive_patches(asset_id, patches)
+        _patch_index(asset_id).write_text(json.dumps(patches), encoding="utf-8")
+        _flatten_patches(asset_id)
+        return {"id": patch_id, "bbox": record["bbox"], "patches": patches,
+                "revision": _patch_revision(asset_id), "already_applied": False}
+    except Exception as exc:
+        raise HTTPException(422, f"could not apply repair candidate: {type(exc).__name__}: {exc}")
+
+
+@app.delete("/api/inpaint/{asset_id}")
+@app.delete("/api/inpaint/{asset_id}/{patch_id}")
+def undo_inpaint(asset_id: str, patch_id: Optional[str] = None):
+    _asset_path(asset_id)
+    patches = _load_patches(asset_id)
+    removed = patches if patch_id is None else [p for p in patches if p.get("id") == patch_id]
+    remaining = [] if patch_id is None else [p for p in patches if p.get("id") != patch_id]
+    _archive_patches(asset_id, removed)
+    # Patch PNGs stay in the private output directory until the asset itself
+    # is cleaned up.  Deleting them here made redo/reset silently impossible.
+    _patch_index(asset_id).write_text(json.dumps(remaining), encoding="utf-8")
+    _flatten_patches(asset_id)
+    return {"ok": True, "patches": remaining, "revision": _patch_revision(asset_id)}
+
+
+@app.get("/api/treatment/{asset_id}")
+def treatment_state(asset_id: str):
+    _asset_path(asset_id)
+    patches = _load_patches(asset_id)
+    return {"patches": patches, "revision": _patch_revision(asset_id)}
+
+
+@app.put("/api/treatment/{asset_id}")
+def restore_treatment(asset_id: str, req: TreatmentRestoreRequest):
+    """Restore an ordered treatment layer for unified localized undo/redo."""
+    _asset_path(asset_id)
+    archive = {patch.get("id"): patch for patch in _load_patch_archive(asset_id) if patch.get("id")}
+    active = {patch.get("id"): patch for patch in _load_patches(asset_id) if patch.get("id")}
+    archive.update(active)
+    missing = [patch_id for patch_id in req.patch_ids if patch_id not in archive]
+    if missing:
+        raise HTTPException(422, f"treatment history is missing patch(es): {', '.join(missing)}")
+    selected = [archive[patch_id] for patch_id in req.patch_ids]
+    for patch in selected:
+        if not (OUTPUT_DIR / str(patch.get("file", ""))).is_file():
+            raise HTTPException(422, "treatment patch pixels are unavailable")
+    _archive_patches(asset_id, selected)
+    _patch_index(asset_id).write_text(json.dumps(selected), encoding="utf-8")
+    _flatten_patches(asset_id)
+    return {"patches": selected, "revision": _patch_revision(asset_id)}
+
+
+@app.get("/api/localized-baseline/{asset_id}")
+def get_localized_baseline(asset_id: str):
+    _asset_path(asset_id)
+    path = _localized_baseline_index(asset_id)
+    if not path.is_file():
+        raise HTTPException(404, "localized baseline has not been captured")
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise HTTPException(422, f"localized baseline is unreadable: {type(exc).__name__}")
+
+
+@app.put("/api/localized-baseline/{asset_id}")
+def capture_localized_baseline(asset_id: str, req: LocalizedBaselineRequest):
+    """Persist the first Render-entry state; manual edits never overwrite it."""
+    _asset_path(asset_id)
+    path = _localized_baseline_index(asset_id)
+    if path.is_file():
+        return json.loads(path.read_text(encoding="utf-8"))
+    # Validate snapshot before persisting it.  The baseline belongs to this
+    # asset even if an accidental client payload claims another id.
+    manifest = _dict_to_manifest(req.manifest)
+    manifest.asset_id = asset_id
+    payload = {"schema": 1, "manifest": jsonable(manifest), "patch_ids": req.patch_ids}
+    path.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+    return payload
+
+
+@app.get("/api/inpainting/providers")
+def inpainting_providers():
+    """Local provider capabilities; never probes or downloads model weights."""
+    return {"providers": inpaint_providers.provider_statuses()}
+
+
+@app.post("/api/preview/render")
+def preview_render(req: PreviewRenderRequest):
+    """Build an isolated preview from an optional unsaved manifest."""
+    path = _asset_path(req.asset_id)
+    manifest = _dict_to_manifest(req.manifest) if req.manifest else load_manifest(UPLOAD_DIR, req.asset_id)
+    if manifest is None:
+        raise HTTPException(404, f"no manifest for asset '{req.asset_id}'")
+    manifest.asset_id = req.asset_id
+    manifest.targ_lang = req.targ_lang
+    try:
+        manifest = scene.analyze(str(path), manifest)
+        cleansed = _cleansed_base(req.asset_id, manifest)
+        cleansed = _composite_patches(req.asset_id, cleansed)
+        localized = scribe.render(cleansed, manifest, req.targ_lang, font_registry=get_validator().font_registry)
+        if localized is None or not hasattr(localized, "save"):
+            raise RuntimeError("preview produced no image")
+        name = f"{req.asset_id}-{req.targ_lang}.preview.png"
+        localized.save(OUTPUT_DIR / name)
+        return {
+            "output_url": f"/outputs/{name}?v={int(time.time() * 1000)}",
+            "text_manifest": jsonable(manifest),
+            "cleanse_cache_key": _cleanse_cache_key(req.asset_id, manifest),
+        }
+    except Exception as exc:
+        raise HTTPException(500, f"preview render failed: {type(exc).__name__}: {exc}")
+
+
 @app.post("/api/render")
 def render(req: RenderRequest):
     """render via TofuPipeline (MANUAL cicerone seeded with the stored
@@ -1376,6 +1862,29 @@ def render(req: RenderRequest):
     pipeline = TofuPipeline(cfg, font_registry=get_validator().font_registry)
     pipeline.set_manual_manifest(manifest)
     result = pipeline.process(str(path), req.targ_lang, font=req.font)
+
+    # The synchronous endpoint is still retained for API clients, but its
+    # image must be byte-for-byte derived from the same cleanse/patch/scribe
+    # composition as preview and the SSE renderer.  Pipeline remains the
+    # authority for validation, logging and memory decisions.
+    if result.text_manifest is not None and not result.errors:
+        try:
+            shared_base = _composite_patches(
+                req.asset_id, _cleansed_base(req.asset_id, result.text_manifest)
+            )
+            result.output_asset = scribe.render(
+                shared_base, result.text_manifest, req.targ_lang,
+                font_registry=get_validator().font_registry,
+            )
+            result.qa_report = verify.assess(
+                result.output_asset, result.text_manifest, str(path), shared_base
+            )
+            result.success = bool(result.qa_report and result.qa_report.overall_score is not None
+                                  and result.qa_report.overall_score >= cfg.qa_threshold)
+            result.logs.append({"ts": datetime.now().strftime("%H:%M:%S"), "stage": "compose",
+                                "level": "info", "message": "used shared preview/final cleanse cache and patch layer"})
+        except Exception as exc:
+            result.errors.append(f"shared render composition failed: {type(exc).__name__}: {exc}")
 
     logs = result.logs
     errors = result.errors
@@ -1607,7 +2116,14 @@ def render_stream(
             yield event({"stage": "cleanse", "status": "running"})
             t0 = time.time()
             try:
-                cleansed_asset = cleanse.erase(str(render_path), erase_manifest)
+                # A full render shares the exact cached cleanse base used by
+                # preview.  Partial re-renders intentionally start from the
+                # prior localized output, so they retain their old behavior.
+                cleansed_asset = (
+                    _cleansed_base(asset_id, erase_manifest)
+                    if target_ids is None else cleanse.erase(str(render_path), erase_manifest)
+                )
+                cleansed_asset = _composite_patches(asset_id, cleansed_asset)
                 log("cleanse", "erased region(s)", t0=t0)
             except Exception as exc:
                 log("cleanse", f"failed: {type(exc).__name__}: {exc}", "error", t0=t0)

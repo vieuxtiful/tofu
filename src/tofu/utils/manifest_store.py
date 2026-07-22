@@ -65,6 +65,8 @@ def _region_to_dict(r: SceneRegion) -> dict:
         "background_color": r.background_color,
         "border_detected": r.border_detected,
         "polygon": r.polygon,
+        "texture": r.texture,
+        "material": r.material,
     }
 
 
@@ -80,6 +82,8 @@ def _dict_to_region(rdict: dict) -> SceneRegion:
             [tuple(p) for p in rdict["polygon"]]
             if rdict.get("polygon") else None
         ),
+        texture=rdict.get("texture"),
+        material=rdict.get("material"),
     )
 
 
@@ -103,6 +107,8 @@ def _inst_to_dict(inst: InstText) -> dict:
         "glyph_fallback": inst.glyph_fallback,
         "tm_suggestion": inst.tm_suggestion,
         "ocr_correction": inst.ocr_correction,
+        "recognition_history": inst.recognition_history,
+        "repair_provenance": inst.repair_provenance,
         "resolved_font_family": inst.resolved_font_family,
     }
     if inst.language is not None:
@@ -125,6 +131,8 @@ def _inst_to_dict(inst: InstText) -> dict:
             "font_size": s.font_size,
             "italic": s.italic,
             "underline": s.underline,
+            "underline_offset": s.underline_offset,
+            "underline_width": s.underline_width,
             "subscript": s.subscript,
             "superscript": s.superscript,
             "align_h": s.align_h,
@@ -139,14 +147,20 @@ def _inst_to_dict(inst: InstText) -> dict:
             "tsume": s.tsume,
             "stroke_color": s.stroke_color,
             "stroke_width": s.stroke_width,
+            "target_orientation": s.target_orientation,
+            "word_order": s.word_order,
+            "transform": s.transform,
         }
     if inst.background_profile:
         d["background_profile"] = {
             "semantic_label": inst.background_profile.semantic_label,
             "texture": inst.background_profile.texture,
+            "material": inst.background_profile.material,
             "gradients": inst.background_profile.gradients,
             "patterns": inst.background_profile.patterns,
             "dominant_color": inst.background_profile.dominant_color,
+            "surface_texture": inst.background_profile.surface_texture,
+            "cleanse_strategy": inst.background_profile.cleanse_strategy,
         }
     if inst.characteristics:
         d["characteristics"] = {
@@ -191,6 +205,8 @@ def _dict_to_manifest(data: dict) -> TextManifest:
                 font_size=sdict.get("font_size"),
                 italic=sdict.get("italic"),
                 underline=sdict.get("underline"),
+                underline_offset=sdict.get("underline_offset"),
+                underline_width=sdict.get("underline_width"),
                 subscript=sdict.get("subscript"),
                 superscript=sdict.get("superscript"),
                 align_h=sdict.get("align_h"),
@@ -205,6 +221,9 @@ def _dict_to_manifest(data: dict) -> TextManifest:
                 tsume=sdict.get("tsume"),
                 stroke_color=sdict.get("stroke_color"),
                 stroke_width=sdict.get("stroke_width"),
+                target_orientation=sdict.get("target_orientation"),
+                word_order=sdict.get("word_order"),
+                transform=sdict.get("transform"),
             )
         bg = None
         if idict.get("background_profile"):
@@ -212,9 +231,12 @@ def _dict_to_manifest(data: dict) -> TextManifest:
             bg = BgProfil(
                 semantic_label=gdict.get("semantic_label"),
                 texture=gdict.get("texture"),
+                material=gdict.get("material"),
                 gradients=gdict.get("gradients"),
                 patterns=gdict.get("patterns"),
                 dominant_color=gdict.get("dominant_color"),
+                surface_texture=gdict.get("surface_texture"),
+                cleanse_strategy=gdict.get("cleanse_strategy"),
             )
         chars = None
         if idict.get("characteristics"):
@@ -242,6 +264,8 @@ def _dict_to_manifest(data: dict) -> TextManifest:
             glyph_fallback=idict.get("glyph_fallback"),
             tm_suggestion=idict.get("tm_suggestion"),
             ocr_correction=idict.get("ocr_correction"),
+            recognition_history=idict.get("recognition_history"),
+            repair_provenance=idict.get("repair_provenance"),
             resolved_font_family=idict.get("resolved_font_family"),
             style_profile=style,
             background_profile=bg,
