@@ -15,6 +15,7 @@ from tofu.core.types import (
     VldtnClass,
     ScrptSpprt,
     VldtnSeverity,
+    VldtnInsight,
     TextManifest,
 )
 from tofu.layers.fonts import FontRegistry, HAVE_FONTTOOLS
@@ -270,10 +271,15 @@ class ToFU:
         # 4. text-expansion feasibility (pure font math; requires a manifest —
         #    e.g., re-validation after cicerone, or frontend-supplied regions)
         expansion_fit: Dict[str, float] = {}
+        insights: List[VldtnInsight] = []
         if text_manifest is not None:
             expansion_fit = self._check_expansion_feasibility(
                 text_manifest, targ_lang, context, issues, suggested_actions
             )
+            insights = [
+                *self._font_evidence_insights(text_manifest),
+                *self._semantic_substitution_insights(text_manifest),
+            ]
 
         # determine overall pass/fail (any error fails)
         passed = all(i.severity != VldtnSeverity.ERROR for i in issues)
@@ -286,7 +292,124 @@ class ToFU:
             render_quality_score=render_score,
             expansion_fit=expansion_fit,
             suggested_actions=suggested_actions,
+            insights=insights,
         )
+
+    @staticmethod
+    def _font_evidence_insights(text_manifest: TextManifest) -> List[VldtnInsight]:
+        """Translate Cicerone's persisted visual-font evidence into ToFU UX.
+
+        This is intentionally a read-only bridge between layers.  Cicerone
+        owns observation and font_matching owns retrieval; ToFU makes the
+        evidence useful at the decision gate without promoting a low-score
+        candidate, a paid face, or a contextual reference into an automatic
+        selection.
+        """
+        insights: List[VldtnInsight] = []
+        style_refs: Dict[tuple, VldtnInsight] = {}
+        for inst in text_manifest.instances:
+            match = inst.font_match if isinstance(inst.font_match, dict) else None
+            if not match:
+                continue
+            substitute = match.get("recommended_substitute")
+            if isinstance(substitute, dict) and substitute.get("font_path"):
+                confidence = match.get("confidence")
+                try:
+                    confidence = float(confidence) if confidence is not None else None
+                except (TypeError, ValueError):
+                    confidence = None
+                score = substitute.get("score")
+                try:
+                    score = float(score) if score is not None else None
+                except (TypeError, ValueError):
+                    score = None
+                accepted = match.get("status") == "matched"
+                family = str(substitute.get("family") or "installed font")
+                subfamily = substitute.get("subfamily")
+                label = f"{family}{f' {subfamily}' if subfamily else ''}"
+                source_text = (inst.text or "this region").strip()
+                insights.append(VldtnInsight(
+                    key=f"font-substitute:{inst.id}", kind="font_substitute",
+                    title="Visual font match" if accepted else "Visual font match needs review",
+                    detail=(
+                        f"{inst.id} ({source_text!r}) has a {confidence:.0%} local glyph-shape match; "
+                        f"{label} is the nearest installed {'match' if accepted else 'substitute'}."
+                        if confidence is not None else
+                        f"{inst.id} ({source_text!r}) has {label} as its nearest installed substitute."
+                    ),
+                    severity="info" if accepted else "review", region_id=inst.id,
+                    region_ids=[inst.id], confidence=confidence, visual_score=score,
+                    family=family, subfamily=str(subfamily) if subfamily else None,
+                    font_path=str(substitute["font_path"]), license="installed",
+                    source=str(match.get("provider") or "local_glyph_retrieval"),
+                ))
+
+            candidates = [*(match.get("candidates") or []), *(match.get("external_candidates") or [])]
+            for candidate in candidates:
+                if not isinstance(candidate, dict) or candidate.get("license") != "commercial":
+                    continue
+                family = str(candidate.get("family") or "Licensed font")
+                source = str(candidate.get("source") or "catalog")
+                ref_key = (family, candidate.get("url"), source)
+                existing = style_refs.get(ref_key)
+                if existing:
+                    existing.region_ids.append(inst.id)
+                    continue
+                is_reference = source == "contextual_style_reference"
+                detail = str(candidate.get("reason") or (
+                    "This licensed catalog candidate requires a licence and editor review before use."
+                ))
+                insight = VldtnInsight(
+                    key=f"style-reference:{family.lower().replace(' ', '-')}",
+                    kind="style_reference" if is_reference else "licensed_font_candidate",
+                    title="Licensed style reference" if is_reference else "Licensed font candidate",
+                    detail=detail, severity="warning", region_id=inst.id,
+                    region_ids=[inst.id], family=family,
+                    subfamily=str(candidate["subfamily"]) if candidate.get("subfamily") else None,
+                    license="commercial", foundry=candidate.get("foundry"),
+                    url=candidate.get("url"), source=source,
+                )
+                style_refs[ref_key] = insight
+                insights.append(insight)
+        return insights
+
+    @staticmethod
+    def _semantic_substitution_insights(text_manifest: TextManifest) -> List[VldtnInsight]:
+        """Surface Basil's target-order evidence at ToFU's preflight gate.
+
+        This remains advisory: preflight explains that a multi-box source is
+        one linguistic unit, but it never fills a target phrase or changes a
+        region's geometry.  That keeps the localization architecture honest
+        about the distinction between capture anchors and translated syntax.
+        """
+        insights: List[VldtnInsight] = []
+        for unit in text_manifest.semantic_units or []:
+            if len(unit.region_ids) < 2:
+                continue
+            substitution = unit.substitution if isinstance(unit.substitution, dict) else None
+            target_order = substitution.get("target_region_order") if substitution else None
+            applied = bool(substitution and substitution.get("applied"))
+            detail = (
+                f"{unit.source_text!r} is registered as {unit.entity_type.replace('_', ' ')} across "
+                f"{' → '.join(unit.region_ids)}. "
+            )
+            if applied and target_order:
+                cubes = substitution.get("spatial_anchor_order") or unit.region_ids
+                detail += (
+                    f"Its semantic blocks are {' → '.join(target_order)} and are plated into visual cubes "
+                    f"{' → '.join(cubes)}; Scribe preserves every captured box while Basil may route a "
+                    "block to a different cube."
+                )
+            else:
+                detail += "Use Translation substitution to enter a complete target phrase and review its anchor mapping."
+            insights.append(VldtnInsight(
+                key=f"semantic-substitution:{unit.id}", kind="semantic_substitution",
+                title="Semantic translation unit" if applied else "Translation substitution available",
+                detail=detail, severity="info" if applied else "review",
+                region_id=unit.region_ids[0], region_ids=list(unit.region_ids),
+                confidence=unit.confidence, source=unit.analysis_provider,
+            ))
+        return insights
 
     def _estimate_glyph_segmentation_score(self, language: str, context: Optional[Dict]) -> float:
         """

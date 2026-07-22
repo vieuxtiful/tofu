@@ -1,10 +1,13 @@
 import { Fragment, useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { FontFamily, FontOption, InstText, LanguageOption } from "./api";
-import { BookmarkCheck, Eye, EyeOff, Loader2, ScanText, Trash2, AlignLeft, AlignVerticalJustifyCenter, ArrowLeftRight } from "lucide-react";
+import { AlertTriangle, AlertCircle, BookmarkCheck, ChevronDown, Eye, EyeOff, GripVertical, Loader2, ScanText, Trash2, AlignLeft, AlignVerticalJustifyCenter, ArrowLeftRight } from "lucide-react";
+import { LuReplace } from "react-icons/lu";
 import { langDisplayName } from "./languageData";
+import { textLangMatchesTarget } from "./detectLanguage";
 import LanguageCombobox from "./LanguageCombobox";
 import { loadFontPreview, fontNameForPath, weightLabel } from "./FontCombobox";
 import { HiLockClosed, HiLockOpen } from "react-icons/hi";
+import { FaSearch } from "react-icons/fa";
 import "./bbox.css";
 
 /** capture: bbox/string registry (source text, source lang, OCR, delete).
@@ -41,7 +44,13 @@ interface RegionTableProps {
   onToggleLangLock?: (id: string) => void;
   onOrientationToggle?: (id: string) => void;
   onWordOrderToggle?: (id: string) => void;
+  /** Refresh visual font evidence.  External catalog lookup is opt-in. */
+  onFontMatch?: (id: string, allowExternal?: boolean) => void;
+  fontMatchingId?: string | null;
+  formerTargLang?: string | null;
+  targLang?: string;
   footer?: ReactNode;
+  onReorder?: (fromId: string, toId: string) => void;
 }
 
 function confColor(conf: number | null): string {
@@ -90,7 +99,7 @@ export default function RegionTable({
   mode, regions, selectedId, hoveredId, onSelect, onHover, onTextChange, onTargetChange,
   onDelete, onOcr, onToggleDnt, onTargetLangChange, onSrcLangChange, onFontChange,
   onApplyTargetLang, ocrLoading, languages, defaultTargLang, defaultSrcLang, fontsByLang, familiesByLang, onNeedFonts,
-  lockedLangs, onToggleLangLock, onOrientationToggle, onWordOrderToggle, footer,
+  lockedLangs, onToggleLangLock, onOrientationToggle, onWordOrderToggle, onFontMatch, fontMatchingId, formerTargLang, targLang, footer, onReorder,
 }: RegionTableProps) {
   const COLS = ALL_COLS.filter((c) => MODE_COLS[mode].includes(c.key));
   const rowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
@@ -103,6 +112,14 @@ export default function RegionTable({
     () => Object.fromEntries(ALL_COLS.map((c) => [c.key, c.w]))
   );
   const resizeRef = useRef<{ key: string; startX: number; startW: number } | null>(null);
+  const [rejectTooltipId, setRejectTooltipId] = useState<string | null>(null);
+  const [sortKey, setSortKey] = useState<"num" | "id" | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const canReorder = mode === "capture" && !!onReorder;
 
   // pagination (translate mode only) — rows per page determined by
   // actual table container height so pagination only appears when
@@ -127,11 +144,45 @@ export default function RegionTable({
   const [currentPage, setCurrentPage] = useState(0);
   useEffect(() => { if (currentPage > totalPages - 1) setCurrentPage(Math.max(0, totalPages - 1)); }, [totalPages, currentPage]);
   useEffect(() => { if (mode === "translate") setCurrentPage(0); }, [mode]);
+  const sortedRegions = (() => {
+    let r = regions;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      r = r.filter((inst) => (inst.text ?? "").toLowerCase().includes(q) || (inst.target_text ?? "").toLowerCase().includes(q));
+    }
+    if (sortKey) {
+      r = [...r].sort((a, b) => {
+        let cmp: number;
+        if (sortKey === "num") {
+          const ai = regions.indexOf(a);
+          const bi = regions.indexOf(b);
+          cmp = ai - bi;
+        } else {
+          cmp = a.id.localeCompare(b.id, undefined, { numeric: true });
+        }
+        return sortDir === "asc" ? cmp : -cmp;
+      });
+    }
+    return r;
+  })();
+
   const pagedRegions = needsPagination
-    ? regions.slice(currentPage * rowsPerPage, (currentPage + 1) * rowsPerPage)
-    : regions;
+    ? sortedRegions.slice(currentPage * rowsPerPage, (currentPage + 1) * rowsPerPage)
+    : sortedRegions;
 
   const availableCodes = languages.map((l) => l.code);
+
+  // Basil plating lookup: map semantic_region_id → assigned text so each
+  // cube can show what was replaced when cross-cube plating occurred.
+  const platingOriginals = (() => {
+    const map: Record<string, string> = {};
+    for (const r of regions) {
+      if (r.semantic_assignment?.semantic_region_id) {
+        map[r.semantic_assignment.semantic_region_id] = r.semantic_assignment.text;
+      }
+    }
+    return map;
+  })();
 
   // scroll selected row into view
   useEffect(() => {
@@ -309,6 +360,52 @@ export default function RegionTable({
                       <HiLockClosed size={12} className="text-cyan-600 dark:text-cyan-400" />
                       {headerLabel(c)}
                     </span>
+                  ) : c.key === "num" || c.key === "id" ? (
+                    <button
+                      onClick={() => {
+                        if (sortKey === c.key) {
+                          setSortDir((d) => d === "asc" ? "desc" : "asc");
+                        } else {
+                          setSortKey(c.key as "num" | "id");
+                          setSortDir("asc");
+                        }
+                      }}
+                      className="group flex items-center gap-0.5 hover:text-zinc-700 dark:hover:text-zinc-300"
+                      title={`sort by ${c.label}`}
+                    >
+                      {headerLabel(c)}
+                      <ChevronDown
+                        size={10}
+                        className={`transition-opacity ${
+                          sortKey === c.key
+                            ? "opacity-100"
+                            : "opacity-0 group-hover:opacity-50"
+                        }`}
+                        style={{ transform: sortKey === c.key && sortDir === "desc" ? "rotate(180deg)" : "none" }}
+                      />
+                    </button>
+                  ) : c.key === "source" || c.key === "srctgt" ? (
+                    <span className="flex items-center gap-1">
+                      <button
+                        onClick={() => setSearchOpen((v) => !v)}
+                        className="text-zinc-400 hover:text-cyan-600 dark:hover:text-cyan-400"
+                        title="search source text"
+                      >
+                        <FaSearch size={9} />
+                      </button>
+                      {headerLabel(c)}
+                      {searchOpen && (
+                        <input
+                          autoFocus
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          onClick={(e) => e.stopPropagation()}
+                          onKeyDown={(e) => { if (e.key === "Escape") { setSearchOpen(false); setSearchQuery(""); } }}
+                          placeholder="filter…"
+                          className="w-16 rounded border border-zinc-300 bg-white px-1 py-0.5 text-[10px] text-zinc-700 outline-none focus:border-cyan-600 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+                        />
+                      )}
+                    </span>
                   ) : (
                     headerLabel(c)
                   )}
@@ -330,7 +427,7 @@ export default function RegionTable({
             </tr>
           </thead>
           <tbody>
-            {pagedRegions.map((inst) => {
+            {pagedRegions.map((inst, pageIndex) => {
               const isSel = inst.id === selectedId;
               const isHovered = inst.id === hoveredId;
               const isExpanded = inst.id === expandedId;
@@ -346,6 +443,30 @@ export default function RegionTable({
                 <Fragment key={inst.id}>
                   <tr
                     ref={(el) => { rowRefs.current[inst.id] = el; }}
+                    draggable={canReorder}
+                    onDragStart={(e) => {
+                      if (!canReorder) return;
+                      setDraggedId(inst.id);
+                      e.dataTransfer.effectAllowed = "move";
+                      e.dataTransfer.setData("text/plain", inst.id);
+                    }}
+                    onDragOver={(e) => {
+                      if (!canReorder || !draggedId) return;
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = "move";
+                      if (inst.id !== draggedId) setDragOverId(inst.id);
+                    }}
+                    onDragLeave={() => {
+                      if (dragOverId === inst.id) setDragOverId(null);
+                    }}
+                    onDrop={(e) => {
+                      if (!canReorder || !draggedId) return;
+                      e.preventDefault();
+                      if (inst.id !== draggedId) onReorder!(draggedId, inst.id);
+                      setDraggedId(null);
+                      setDragOverId(null);
+                    }}
+                    onDragEnd={() => { setDraggedId(null); setDragOverId(null); }}
                     onClick={() => {
                       onSelect(inst.id);
                       if (mode === "translate") setExpandedId(isExpanded ? null : inst.id);
@@ -353,7 +474,11 @@ export default function RegionTable({
                     onMouseEnter={() => onHover(inst.id)}
                     onMouseLeave={() => onHover(null)}
                     className={`cursor-pointer border-b border-zinc-200 dark:border-zinc-800/50 ${
-                      isSel
+                      draggedId === inst.id
+                        ? "opacity-40"
+                        : dragOverId === inst.id
+                        ? "border-t-2 border-t-cyan-500 bg-cyan-50/50 dark:bg-cyan-950/20"
+                        : isSel
                         ? "bg-zinc-200/70 dark:bg-zinc-800/50"
                         : isHovered
                         ? "bg-zinc-200/40 dark:bg-zinc-800/30"
@@ -368,7 +493,16 @@ export default function RegionTable({
                         className="accent-cyan-600"
                       />
                     </td>
-                    <td className="px-2 py-1 text-xs text-zinc-500">{(inst.reading_order ?? 0) + 1}</td>
+                    {/* ``regions`` is supplied in visual reading order by
+                        App.  Persisted reading_order can be stale on older
+                        manifests, but the immutable rN identity stays in its
+                        own column and is never remapped. */}
+                    <td className="px-2 py-1 text-xs text-zinc-500">
+                      <span className={`flex items-center gap-0.5 ${canReorder ? "cursor-grab active:cursor-grabbing" : ""}`}>
+                        {canReorder && <GripVertical size={10} className="shrink-0 text-zinc-400 dark:text-zinc-600" />}
+                        {(needsPagination ? currentPage * rowsPerPage : 0) + pageIndex + 1}
+                      </span>
+                    </td>
                     <td className="truncate px-2 py-1 font-mono text-xs text-zinc-400">
                       <span className="flex items-center gap-1">
                         {inst.id}
@@ -395,12 +529,18 @@ export default function RegionTable({
                           <span className="block truncate text-xs text-zinc-700 dark:text-zinc-300" title={inst.text ?? ""}>
                             {inst.text || <span className="text-zinc-600">—</span>}
                           </span>
-                          <span
-                            className={`block truncate text-xs ${inst.target_text ? "text-emerald-600 dark:text-emerald-300" : "text-zinc-500 dark:text-zinc-600"}`}
-                            title={inst.target_text ?? ""}
-                          >
-                            {inst.target_text || "no translation yet"}
-                          </span>
+                          {inst.semantic_assignment && inst.semantic_assignment.semantic_region_id && inst.semantic_assignment.semantic_region_id !== inst.id ? (
+                            <span className="block truncate text-xs text-emerald-600 dark:text-emerald-300" title={inst.target_text ?? ""}>
+                              *{inst.target_text} <LuReplace size={10} className="inline shrink-0 text-cyan-600 dark:text-cyan-400" /> ({platingOriginals[inst.id] ?? inst.target_text})
+                            </span>
+                          ) : (
+                            <span
+                              className={`block truncate text-xs ${inst.target_text ? "text-emerald-600 dark:text-emerald-300" : "text-zinc-500 dark:text-zinc-600"}`}
+                              title={inst.target_text ?? ""}
+                            >
+                              {inst.target_text || "no translation yet"}
+                            </span>
+                          )}
                           {!inst.target_text && inst.tm_suggestion && (
                             <button
                               onClick={(e) => {
@@ -593,18 +733,112 @@ export default function RegionTable({
                               )}
                               </div>
                             </div>
-                            <textarea
-                              value={inst.target_text ?? ""}
-                              onChange={(e) => onTargetChange(inst.id, e.target.value)}
-                              onClick={(e) => e.stopPropagation()}
-                              rows={1}
-                              placeholder="enter translation…"
-                              className={`w-full resize-y rounded border border-zinc-300 bg-white px-2 py-1.5 text-xs outline-none focus:border-cyan-600 dark:border-zinc-800 dark:bg-zinc-900 dark:focus:border-cyan-800 ${
-                                inst.target_text ? "text-emerald-600 dark:text-emerald-300" : "text-zinc-600 dark:text-zinc-400"
-                              }`}
-                            />
+                            <div className="relative">
+                              <textarea
+                                value={inst.target_text ?? ""}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  if (val.trim() && targLang && !textLangMatchesTarget(val, targLang)) {
+                                    onTargetChange(inst.id, "");
+                                    setRejectTooltipId(inst.id);
+                                    setTimeout(() => setRejectTooltipId((cur) => cur === inst.id ? null : cur), 2500);
+                                  } else {
+                                    onTargetChange(inst.id, val);
+                                  }
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                                rows={1}
+                                placeholder="enter translation…"
+                                className={`w-full resize-y rounded border px-2 py-1.5 text-xs outline-none ${
+                                  formerTargLang && inst.target_text && inst.target_language === formerTargLang
+                                    ? "border-red-400 bg-red-50 dark:border-red-800/60 dark:bg-red-950/30"
+                                    : "border-zinc-300 bg-white dark:border-zinc-800 dark:bg-zinc-900"
+                                } focus:border-cyan-600 dark:focus:border-cyan-800 ${
+                                  inst.target_text ? "text-emerald-600 dark:text-emerald-300" : "text-zinc-600 dark:text-zinc-400"
+                                }`}
+                              />
+                              {formerTargLang && inst.target_text && inst.target_language === formerTargLang && (
+                                <div className="group pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
+                                  <AlertCircle size={14} className="text-red-500 dark:text-red-400" />
+                                  <div className="pointer-events-none absolute bottom-full right-0 mb-2 hidden whitespace-nowrap rounded-lg border border-zinc-300 bg-white px-3 py-2 text-xs text-zinc-700 shadow-lg group-hover:block dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 z-50">
+                                    <span className="flex items-center gap-1.5">
+                                      <AlertCircle size={12} className="shrink-0 text-red-500" />
+                                      <span>must edit to new target language</span>
+                                    </span>
+                                  </div>
+                                </div>
+                              )}
+                              {rejectTooltipId === inst.id && (
+                                <div className="lang-reject-tooltip pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 whitespace-nowrap rounded-lg border border-red-300 bg-white px-3 py-2 text-xs text-red-700 shadow-lg dark:border-red-800 dark:bg-zinc-900 dark:text-red-300">
+                                  incorrect target language.
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </div>
+                        {(() => {
+                          const match = inst.font_match;
+                          const licensed = [
+                            ...(match?.candidates ?? []),
+                            ...(match?.external_candidates ?? []),
+                          ].filter((candidate) => candidate.license === "commercial");
+                          const substitute = match?.recommended_substitute;
+                          const matching = fontMatchingId === inst.id;
+                          return (
+                            <div className="mt-2 rounded border border-zinc-200 bg-white/70 px-2 py-1.5 dark:border-zinc-800 dark:bg-zinc-900/60">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div className="flex min-w-0 items-center gap-1.5 text-[10px]">
+                                  <ScanText size={12} className="shrink-0 text-cyan-600 dark:text-cyan-400" />
+                                  <span className="font-medium text-zinc-700 dark:text-zinc-300">Glyph-shape font match</span>
+                                  {match ? (
+                                    <span className={match.status === "matched" ? "text-emerald-600 dark:text-emerald-300" : "text-amber-600 dark:text-amber-300"}>
+                                      {Math.round(match.confidence * 100)}% {match.status === "matched" ? "evidence" : "— review"}
+                                    </span>
+                                  ) : <span className="text-zinc-500 dark:text-zinc-500">not analyzed</span>}
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); onFontMatch?.(inst.id, false); }}
+                                    disabled={matching || !onFontMatch}
+                                    title="Compare the detected glyph silhouettes with installed fonts; it never changes your selected font automatically."
+                                    className="rounded px-1.5 py-0.5 text-[10px] text-cyan-700 transition hover:bg-cyan-500/15 disabled:opacity-50 dark:text-cyan-300"
+                                  >
+                                    {matching ? <Loader2 size={11} className="animate-spin" /> : "Analyze"}
+                                  </button>
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); onFontMatch?.(inst.id, true); }}
+                                    disabled={matching || !onFontMatch}
+                                    title="Optional: search a configured font catalog. ToFU will ask before sending this text crop outside the workspace."
+                                    className="rounded px-1.5 py-0.5 text-[10px] text-zinc-600 transition hover:bg-zinc-200 disabled:opacity-50 dark:text-zinc-400 dark:hover:bg-zinc-800"
+                                  >
+                                    Catalog…
+                                  </button>
+                                </div>
+                              </div>
+                              {substitute && (
+                                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-zinc-600 dark:text-zinc-400">
+                                  <span>{match?.status === "matched" ? "Installed match:" : "Nearest installed substitute (review):"} <strong className="font-medium text-zinc-800 dark:text-zinc-200">{substitute.family}{substitute.subfamily ? ` ${substitute.subfamily}` : ""}</strong></span>
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); onFontChange(inst.id, substitute.font_path); }}
+                                    title="Use this installed recommendation. This is an undoable style change."
+                                    className="rounded bg-cyan-500/15 px-1.5 py-0.5 text-cyan-700 transition hover:bg-cyan-500/25 dark:text-cyan-300"
+                                  >Use recommendation</button>
+                                </div>
+                              )}
+                              {licensed.map((candidate, index) => (
+                                <div key={`${candidate.family}-${index}`} className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-amber-700 dark:text-amber-300">
+                                  <AlertTriangle size={11} className="shrink-0" />
+                                  <span><strong className="font-medium">{candidate.family}{candidate.subfamily ? ` ${candidate.subfamily}` : ""}</strong>{candidate.source === "contextual_style_reference" ? " is a licensed style reference, not a detected match." : " is a licensed font candidate; it is not bundled with ToFU."}</span>
+                                  {candidate.url && <a href={candidate.url} target="_blank" rel="noreferrer" className="underline underline-offset-2 hover:text-amber-900 dark:hover:text-amber-100">Review license</a>}
+                                  {candidate.reason && <span className="basis-full text-amber-600/80 dark:text-amber-400/80">{candidate.reason}</span>}
+                                </div>
+                              ))}
+                              {match?.external_provider && !match.external_provider.enabled && (
+                                <p className="mt-1 text-[10px] text-zinc-500 dark:text-zinc-500">Catalog lookup unavailable: {match.external_provider.reason}</p>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </td>
                     </tr>
                   )}

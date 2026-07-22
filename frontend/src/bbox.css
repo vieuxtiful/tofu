@@ -76,14 +76,14 @@
   border-right-width: 2px;
 }
 
-/* entity type colors */
+/* entity type colors — --bbox-color is set by BBoxCanvas from user settings */
 .bbox-text {
-  border-color: #22d3ee;
-  background: rgba(34, 211, 238, 0.06);
+  border-color: var(--bbox-color, #22d3ee);
+  background: color-mix(in srgb, var(--bbox-color, #22d3ee) 6%, transparent);
 }
 .bbox-text .bbox-corners::before,
 .bbox-text .bbox-corners::after {
-  border-color: #22d3ee;
+  border-color: var(--bbox-color, #22d3ee);
 }
 
 .bbox-logo {
@@ -147,7 +147,7 @@
 
 /* hovered state (from table row hover) */
 .bbox.hovered {
-  box-shadow: 0 0 0 2px rgba(34, 211, 238, 0.4);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--bbox-color, #22d3ee) 40%, transparent);
   z-index: 5;
 }
 
@@ -231,11 +231,11 @@
   top: 1px;
   left: 4px;
   font-size: 9px;
-  color: rgba(34, 211, 238, 0.55);
+  color: color-mix(in srgb, var(--bbox-color, #22d3ee) 55%, transparent);
   user-select: none;
 }
 html.dark .bbox-surface-label {
-  color: rgba(34, 211, 238, 0.85);
+  color: color-mix(in srgb, var(--bbox-color, #22d3ee) 85%, transparent);
 }
 
 /* preview tooltip — shown on hover in translate preview mode */
@@ -277,7 +277,7 @@ html.dark .bbox-preview-tooltip {
   border-radius: 5px;
   background: rgba(9, 9, 11, 0.94);
   color: #d4d4d8;
-  border: 1px solid rgba(34, 211, 238, 0.3);
+  border: 1px solid color-mix(in srgb, var(--bbox-color, #22d3ee) 30%, transparent);
   pointer-events: none;
   z-index: 20;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);

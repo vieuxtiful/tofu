@@ -123,6 +123,15 @@ export default function FontCombobox({
     });
   }, [open, families]);
 
+  // preload all weight files for a family when it is expanded so each
+  // weight label renders in its own typeface immediately
+  useEffect(() => {
+    if (!expandedFamily) return;
+    const fam = families.find((f) => f.family === expandedFamily);
+    if (!fam) return;
+    fam.weights.forEach((w) => loadFontPreview(w.path, fam.family));
+  }, [expandedFamily, families]);
+
   const q = filter.trim().toLowerCase();
   const matches = (family: string): boolean => {
     if (!q) return true;

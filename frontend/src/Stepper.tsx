@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import { ArrowUpFromLine, VectorSquare } from "lucide-react";
+import { ArrowUpFromLine, VectorSquare, Flag } from "lucide-react";
 import { LiaLanguageSolid } from "react-icons/lia";
 import { SiOpentofu } from "react-icons/si";
 import { PiBoundingBoxFill } from "react-icons/pi";
@@ -17,6 +17,7 @@ interface StepperProps {
   canRender: boolean;     // ≥1 region translated
   canVerify: boolean;     // a render has completed
   theme: Theme;
+  flagStep?: Step | null;
 }
 
 // the TMS round-trip lifecycle: capture strings → export/translate/import → render → verify
@@ -28,7 +29,7 @@ const STEPS = [
   { id: 4 as Step, label: "Verify", icon: TbPhotoScan },
 ];
 
-export default function Stepper({ current, onStep, canCapture, canTranslate, canRender, canVerify, theme }: StepperProps) {
+export default function Stepper({ current, onStep, canCapture, canTranslate, canRender, canVerify, theme, flagStep }: StepperProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [overlay, setOverlay] = useState({ left: 0, width: 0, top: 0, height: 0 });
 
@@ -99,6 +100,11 @@ export default function Stepper({ current, onStep, canCapture, canTranslate, can
                 </span>
               )}
               {step.label}
+              {flagStep === step.id && (
+                <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-white shadow-sm" title="target language changed — translations need review">
+                  <Flag size={10} />
+                </span>
+              )}
             </button>
             {idx < STEPS.length - 1 && (
               <div className={`mx-1 h-4 w-px ${isDone ? "bg-[#0f2600] dark:bg-[#4f9f00]" : "bg-zinc-300 dark:bg-zinc-700"}`} />

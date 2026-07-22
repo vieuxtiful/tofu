@@ -110,6 +110,7 @@ class TestLineWrapping:
         inst = InstText(
             id="r1", bounding_box=bbox,
             text="x", target_text="a somewhat long sentence that must wrap",
+            style_profile=StyleProfil(transform={"wrap_text": True}),
         )
         manifest = TextManifest(asset_id="a", total_regions=1, instances=[inst])
         out = scribe.render(asset, manifest, "en")
@@ -127,7 +128,8 @@ class TestLineWrapping:
         asset = self._bbox_asset(150, 150)
         bbox = BBox(x=10, y=10, width=120, height=120)
         cjk_text = "" .join(["これはテスト用の日本語の文章です"])
-        inst = InstText(id="r1", bounding_box=bbox, text="x", target_text=cjk_text)
+        inst = InstText(id="r1", bounding_box=bbox, text="x", target_text=cjk_text,
+                        style_profile=StyleProfil(transform={"wrap_text": True}))
         manifest = TextManifest(asset_id="a", total_regions=1, instances=[inst])
         # must not raise, and must produce visible ink
         out = scribe.render(asset, manifest, "ja")
@@ -150,6 +152,18 @@ class TestLineWrapping:
         lines = scribe._wrap_lines(draw, "abcdefghij", font, max_width=30)
         assert len(lines) > 1
         assert "".join(lines) == "abcdefghij"
+
+    def test_wrap_is_opt_in_and_explicit_size_keeps_one_glyph_run(self):
+        draw = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
+        bbox = BBox(x=0, y=0, width=40, height=80)
+        _, lines, _ = scribe._fit_wrapped(
+            draw, "one two three", bbox, None, explicit_size=28, wrap_text=False,
+        )
+        assert lines == ["one two three"]
+        _, wrapped, _ = scribe._fit_wrapped(
+            draw, "one two three", bbox, None, explicit_size=28, wrap_text=True,
+        )
+        assert len(wrapped) > 1
 
     def test_no_descender_text_fits_as_tightly_as_single_line_fit(self):
         """regression: the fit check must use the ACTUAL rendered ink

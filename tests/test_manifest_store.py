@@ -29,6 +29,12 @@ def full_manifest() -> TextManifest:
             "requested_provider": "lama", "executed_provider": "telea_fallback",
             "confidence": .3, "review_required": True,
         },
+        font_match={
+            "schema": 1, "provider": "local_glyph_retrieval", "status": "review",
+            "confidence": .71, "margin": .04, "source_text": "å±…é…’å±‹",
+            "candidates": [{"family": "Example", "available": True, "license": "installed", "score": .72}],
+            "recommended_substitute": {"font_path": "example.ttf", "family": "Example", "score": .72},
+        },
     )
     return TextManifest(
         asset_id="asset-1", total_regions=1, instances=[inst],
@@ -58,6 +64,7 @@ class TestRoundTrip:
         assert i2.characteristics.font_style == "gothic-bold"
         assert i2.segmentation_mask.polygon == i.segmentation_mask.polygon
         assert i2.repair_provenance == i.repair_provenance
+        assert i2.font_match == i.font_match
         assert m2.img_dim == (960, 640)
         assert m2.scene_regions[0].semantic_label == "panel"
         assert m2.scene_regions[0].material == "painted sign / panel"

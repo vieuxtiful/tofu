@@ -89,6 +89,27 @@ class Mask:
     holes: Optional[List[Polygon]] = None  ## interior cutouts, if any
 
 @dataclass
+class GarnishProfile:
+    """Source-derived treatment applied only to newly rendered text pixels."""
+    edge_blur_px: float = 0.0
+    erosion_px: float = 0.0
+    dilation_px: float = 0.0
+    grain_strength: float = 0.0
+    gamma_shift: float = 1.0
+    smudge_strength: float = 0.0
+    smudge_angle_deg: float = 0.0
+    source_confidence: float = 0.0
+
+@dataclass
+class GarnishRegion:
+    """Editor-selected image-space subset of one rendered text instance."""
+    id: str
+    polygon: Polygon
+    enabled: Optional[bool] = None
+    profile: Optional[GarnishProfile] = None
+    source: str = "manual"
+
+@dataclass
 class SceneRegion: ## candidate text-bearing surface from scene's pre-pass
     bbox: BBox
     semantic_label: str                    ## "panel" | "bordered_region" | "surface" | backend-specific
@@ -98,6 +119,7 @@ class SceneRegion: ## candidate text-bearing surface from scene's pre-pass
     polygon: Optional[Polygon] = None
     texture: Optional[str] = None          ## region-interior classification: "flat" | "smooth_gradient" | "textured" -- the surface half of the scene/cleanse agreement gate
     material: Optional[str] = None         ## user-facing descriptor: "brick / masonry" | "painted sign" | "textured surface"
+    garnish_profile: Optional[GarnishProfile] = None
 
 @dataclass
 class InstText:
@@ -126,6 +148,12 @@ class InstText:
     ocr_correction: Optional[Dict[str, Any]] = None  ## recognition_correct: {applied, original_text/candidate_text, corrected_text?, reason}
     recognition_history: Optional[List[Dict[str, Any]]] = None  ## immutable audit trail of engine candidates and accepted/rejected corrections
     repair_provenance: Optional[Dict[str, Any]] = None  ## cleanse provider, confidence gate, fallback and review evidence
+    font_match: Optional[Dict[str, Any]] = None  ## evidence-gated visual font identification + installed/commercial alternatives; never silently overrides a user font choice
+    semantic_assignment: Optional[Dict[str, Any]] = None  ## Basil's explicit target-span-to-immutable-region assignment provenance
+    garnish_override: Optional[GarnishProfile] = None
+    garnish_enabled: Optional[bool] = None  ## None = inherit enabled; False bypasses treatment without discarding the override
+    garnish_scope: str = "whole_selection"  ## whole_selection | per_region; explicit so masks never change whole-selection semantics
+    garnish_regions: List[GarnishRegion] = field(default_factory=list)
     resolved_font_family: Optional[str] = None    ## what "auto" (style_profile.font_family=None) currently resolves to — scribe.resolve_auto_font()'s answer, for preview/display only; never itself passed as a render override
 
 @dataclass
@@ -180,6 +208,25 @@ class BgProfil:
     cleanse_strategy: Optional[str] = None # "flat" | "smooth_gradient" | "telea"
 
 @dataclass
+class SemanticTextUnit:
+    """A source reading unit registered against immutable Cicerone regions.
+
+    ``region_ids`` preserves source visual cube order. The individual IDs and
+    boxes never change; Basil can route a target semantic block into a
+    different existing cube before Scribe renders it.
+    """
+    id: str
+    region_ids: List[str]
+    source_text: str
+    bbox: BBox
+    entity_type: str = "unknown"
+    confidence: float = 0.0
+    analysis_provider: str = "deterministic_layout"
+    semantic_roles: Dict[str, str] = field(default_factory=dict)
+    review_required: bool = True
+    substitution: Optional[Dict[str, Any]] = None
+
+@dataclass
 class TextManifest: ## loc task manifest via cicerone
     asset_id: str
     total_regions: int
@@ -188,6 +235,7 @@ class TextManifest: ## loc task manifest via cicerone
     targ_lang: Optional[str] = None
     img_dim: Optional[tuple[int, int]] = None
     scene_regions: List[SceneRegion] = field(default_factory=list)
+    semantic_units: List[SemanticTextUnit] = field(default_factory=list)
     prcssng_time: Optional[float] = None
     asset_type: AssetType = AssetType.IMAGE
     frame_count: int = 1                  ## static image == 1; video == n frames
@@ -221,6 +269,31 @@ class VldtnClass:
     region_id: Optional[str] = None
 
 @dataclass
+class VldtnInsight:
+    """Non-blocking, evidence-backed advice surfaced by ToFU preflight.
+
+    Insights deliberately sit apart from validation issues: a visual font
+    retrieval result or a licensed style reference should guide an editor,
+    never fail a render or overwrite their chosen typeface.
+    """
+    key: str
+    kind: str                           # "font_substitute" | "style_reference" | provider-specific extension
+    title: str
+    detail: str
+    severity: str = "info"              # "info" | "review" | "warning"
+    region_id: Optional[str] = None
+    region_ids: List[str] = field(default_factory=list)
+    confidence: Optional[float] = None
+    visual_score: Optional[float] = None
+    family: Optional[str] = None
+    subfamily: Optional[str] = None
+    font_path: Optional[str] = None
+    license: Optional[str] = None
+    foundry: Optional[str] = None
+    url: Optional[str] = None
+    source: Optional[str] = None
+
+@dataclass
 class VldtnReport:
     passed: bool
     issues: List[VldtnClass] = field(default_factory=list)
@@ -229,6 +302,7 @@ class VldtnReport:
     render_quality_score: Optional[float] = None
     expansion_fit: Dict[str, float] = field(default_factory=dict)  ## region_id -> predicted_width / bbox_width
     suggested_actions: List[str] = field(default_factory=list)
+    insights: List[VldtnInsight] = field(default_factory=list)
 
 @dataclass
 class PipelineCfg:

@@ -15,3 +15,5 @@ pillow>=10.0                # scribe rendering + cicerone pre-resize
 numpy>=1.26                 # image array interchange
 fonttools>=4.38             # tofu layer-0 glyph coverage
 arabic-reshaper>=3.0        # scribe RTL shaping (phase 7)
+xlrd>=2.0.1                 # glossary .xls parsing
+openpyxl>=3.1.0            # glossary .xlsx parsing

@@ -68,6 +68,7 @@ from difflib import SequenceMatcher
 from typing import Any, Dict, List, Optional, Tuple
 
 from tofu.core.types import TextManifest, QAReport
+from tofu.layers import garnish
 from tofu.utils.imaging import text_mask as _text_mask
 
 NEUTRAL_SCORE = 1.0        # DNT: correctly excluded, not a failure to judge
@@ -75,6 +76,7 @@ UNTRANSLATED_SCORE = 0.0   # real detected text never addressed -- a genuine cov
 OCR_WEIGHT = 0.7           # legibility dominates: unreadable text is a failed localization
 SSIM_WEIGHT = 0.3
 STYLE_WEIGHT = 0.2
+GARNISH_WEIGHT = 0.15       # physical integration is a tiebreaker, not legibility
 RING_PX = 12                    # border ring width for background-reconstruction SSIM
 CROP_PAD_PX = 4                 # slack around the bbox for the OCR crop
 RESIDUAL_PENALTY_THRESHOLD = 0.3  # below this, treat as OCR noise, not a real leak
@@ -204,6 +206,126 @@ def _ring_ssim_score(np, source_np, localized_np, inst) -> Optional[float]:
         crop = img[y0:y1, x0:x1]
         return (0.299 * crop[..., 0] + 0.587 * crop[..., 1] + 0.114 * crop[..., 2])
     return _ssim(np, lum(source_np)[ring], lum(localized_np)[ring])
+
+
+def _bbox_crop(np, image, inst) -> Optional[Any]:
+    """Return an in-frame instance crop, or None for a degenerate bbox."""
+    if image is None:
+        return None
+    b = inst.bounding_box
+    h, w = image.shape[:2]
+    x0, y0 = max(0, b.x), max(0, b.y)
+    x1, y1 = min(w, b.x + b.width), min(h, b.y + b.height)
+    if x1 - x0 < 3 or y1 - y0 < 3:
+        return None
+    return image[y0:y1, x0:x1]
+
+
+def _edge_orientation_histogram(np, crop, mask) -> Optional[Tuple[Any, float]]:
+    """Normalized Sobel-orientation histogram plus mean edge energy.
+
+    Orientation captures glyph shape; the companion energy preserves the
+    sharp-versus-distressed distinction that orientation alone cannot see.
+    """
+    if crop is None or mask is None or mask.shape != crop.shape[:2] or not mask.any():
+        return None
+    lum = 0.299 * crop[..., 0] + 0.587 * crop[..., 1] + 0.114 * crop[..., 2]
+    gy, gx = np.gradient(lum.astype("float64"))
+    magnitude = np.hypot(gx, gy)
+    usable = mask & (magnitude > 1e-6)
+    if not usable.any():
+        return None
+    orientation = (np.arctan2(gy, gx) + np.pi) % (2 * np.pi)
+    hist, _ = np.histogram(
+        orientation[usable], bins=16, range=(0.0, 2 * np.pi), weights=magnitude[usable],
+    )
+    total = float(hist.sum())
+    return (hist / total, float(magnitude[usable].mean())) if total > 0 else None
+
+
+def _garnish_edge_similarity_score(np, source_np, localized_np, inst) -> Optional[float]:
+    """Compare source and localized glyph-edge orientation distributions.
+
+    This deliberately measures physical edge character rather than OCR text:
+    the words may differ, but a distressed, blurred, or sharp treatment should
+    retain a comparable distribution of local edge directions.
+    """
+    if source_np is None or localized_np is None or source_np.shape != localized_np.shape:
+        return None
+    src_crop = _bbox_crop(np, source_np, inst)
+    loc_crop = _bbox_crop(np, localized_np, inst)
+    if src_crop is None or loc_crop is None:
+        return None
+    src_edges = _edge_orientation_histogram(np, src_crop, _text_mask(source_np, inst.bounding_box))
+    loc_edges = _edge_orientation_histogram(np, loc_crop, _text_mask(localized_np, inst.bounding_box))
+    if src_edges is None or loc_edges is None:
+        return None
+    src_hist, src_energy = src_edges
+    loc_hist, loc_energy = loc_edges
+    orientation_similarity = float(np.minimum(src_hist, loc_hist).sum())
+    energy_similarity = min(src_energy, loc_energy) / max(src_energy, loc_energy, 1e-6)
+    return float(orientation_similarity * energy_similarity)
+
+
+def _ring_texture_statistics(np, image, inst) -> Optional[Tuple[float, float]]:
+    """Edge density and chroma spread in the same non-text ring as SSIM."""
+    if image is None:
+        return None
+    b = inst.bounding_box
+    h, w = image.shape[:2]
+    x0, y0 = max(0, b.x - RING_PX), max(0, b.y - RING_PX)
+    x1, y1 = min(w, b.x + b.width + RING_PX), min(h, b.y + b.height + RING_PX)
+    if x1 - x0 < 4 or y1 - y0 < 4:
+        return None
+    ring = np.ones((y1 - y0, x1 - x0), dtype=bool)
+    iy0, ix0 = max(0, b.y - y0), max(0, b.x - x0)
+    ring[iy0:iy0 + b.height, ix0:ix0 + b.width] = False
+    if not ring.any():
+        return None
+    crop = image[y0:y1, x0:x1].astype("float64")
+    lum = 0.299 * crop[..., 0] + 0.587 * crop[..., 1] + 0.114 * crop[..., 2]
+    gy, gx = np.gradient(lum)
+    # A scale-relative threshold makes this stable over both dark and bright
+    # signage without pulling in another image-processing dependency.
+    edge_density = float((np.hypot(gx, gy)[ring] > 12.0).mean())
+    chroma = crop.max(axis=2) - crop.min(axis=2)
+    chroma_std = float(chroma[ring].std())
+    return edge_density, chroma_std
+
+
+def _garnish_texture_match_score(np, source_np, localized_np, inst) -> Optional[float]:
+    """Compare local edge density and chroma variance around the text."""
+    if source_np is None or localized_np is None or source_np.shape != localized_np.shape:
+        return None
+    source_stats = _ring_texture_statistics(np, source_np, inst)
+    localized_stats = _ring_texture_statistics(np, localized_np, inst)
+    if source_stats is None or localized_stats is None:
+        return None
+    source_edge, source_chroma = source_stats
+    localized_edge, localized_chroma = localized_stats
+    # Each term is normalized independently so a colourful mural cannot hide
+    # an edge-density regression (or vice versa).
+    edge_distance = abs(source_edge - localized_edge) / max(source_edge, localized_edge, 0.05)
+    chroma_distance = abs(source_chroma - localized_chroma) / max(source_chroma, localized_chroma, 8.0)
+    return float(max(0.0, 1.0 - (edge_distance + chroma_distance) / 2.0))
+
+
+def _outside_mask_preservation_score(np, cleansed_np, localized_np, inst) -> Optional[float]:
+    """Check that non-glyph bbox pixels still equal the cleansed base."""
+    if cleansed_np is None or localized_np is None or cleansed_np.shape != localized_np.shape:
+        return None
+    mask = _text_mask(localized_np, inst.bounding_box)
+    clean_crop = _bbox_crop(np, cleansed_np, inst)
+    localized_crop = _bbox_crop(np, localized_np, inst)
+    if mask is None or clean_crop is None or localized_crop is None or mask.shape != clean_crop.shape[:2]:
+        return None
+    non_text = ~mask
+    if not non_text.any():
+        return None
+    mean_abs_diff = float(np.abs(
+        localized_crop.astype("float64")[non_text] - clean_crop.astype("float64")[non_text]
+    ).mean())
+    return float(max(0.0, 1.0 - mean_abs_diff / 255.0))
 
 
 def _residual_source_text_score(np, cleansed_np, inst, targ_lang: str) -> Optional[float]:
@@ -363,6 +485,9 @@ def assess(
     residual_scores: Dict[str, float] = {}
     color_scores: Dict[str, float] = {}
     size_scores: Dict[str, float] = {}
+    garnish_edge_scores: Dict[str, float] = {}
+    garnish_texture_scores: Dict[str, float] = {}
+    outside_mask_scores: Dict[str, float] = {}
     recommendations: List[str] = []
     targ_lang = text_manifest.targ_lang or "en"
 
@@ -446,6 +571,43 @@ def assess(
             if style_parts:
                 parts.append((sum(style_parts) / len(style_parts), STYLE_WEIGHT))
 
+            # Garnish is optional and its profile may be inherited from the
+            # containing Scene region.  Reuse the compositor's lookup and
+            # activation rules so Verify never scores an effect that Scribe/
+            # Garnish could not have applied.
+            profile = garnish._profile(text_manifest, inst)
+            if garnish._active(profile):
+                garnish_parts = []
+                edge = _garnish_edge_similarity_score(np, source_np, localized_np, inst)
+                if edge is not None:
+                    garnish_edge_scores[inst.id] = round(float(edge), 4)
+                    garnish_parts.append(edge)
+                    if edge < 0.5:
+                        recommendations.append(
+                            f"{inst.id}: garnish edge treatment does not yet match "
+                            "the source text's physical edge character."
+                        )
+                texture = _garnish_texture_match_score(np, source_np, localized_np, inst)
+                if texture is not None:
+                    garnish_texture_scores[inst.id] = round(float(texture), 4)
+                    garnish_parts.append(texture)
+                    if texture < 0.5:
+                        recommendations.append(
+                            f"{inst.id}: the local texture around the garnish differs "
+                            "substantially from the source scene."
+                        )
+                preserved = _outside_mask_preservation_score(np, cleansed_np, localized_np, inst)
+                if preserved is not None:
+                    outside_mask_scores[inst.id] = round(float(preserved), 4)
+                    garnish_parts.append(preserved)
+                    if preserved < 0.5:
+                        recommendations.append(
+                            f"{inst.id}: garnish changed non-text pixels inside its "
+                            "region; reduce blur, smudge, or dilation."
+                        )
+                if garnish_parts:
+                    parts.append((sum(garnish_parts) / len(garnish_parts), GARNISH_WEIGHT))
+
         raw_score = (
             sum(s * w for s, w in parts) / sum(w for _, w in parts)
             if parts else NEUTRAL_SCORE
@@ -490,6 +652,8 @@ def assess(
         scorer.append("residual-text")
     if color_scores or size_scores:
         scorer.append("style-consistency")
+    if garnish_edge_scores or garnish_texture_scores or outside_mask_scores:
+        scorer.append("garnish")
     return QAReport(
         overall_score=overall,
         per_asset_instance_score={text_manifest.asset_id: per_instance},
@@ -511,6 +675,9 @@ def assess(
             "residual_text": residual_scores,
             "style_color": color_scores,
             "style_size": size_scores,
+            "garnish_edge": garnish_edge_scores,
+            "garnish_texture": garnish_texture_scores,
+            "outside_mask": outside_mask_scores,
         },
         recommendations=recommendations,
     )

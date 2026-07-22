@@ -71,8 +71,33 @@ def _apply_style_transform(layer: Any, bbox: BBox, transform: Optional[Dict[str,
         scale_y = max(0.4, min(2.5, float(transform.get("scale_y", 1) or 1)))
         if preset == "none":
             preset, amount, arc = "custom", 0.0, 0.0
-        if not (sx or sy or arc or amount or scale_x != 1 or scale_y != 1):
+        offset_x = int(transform.get("offset_x", 0) or 0)
+        offset_y = int(transform.get("offset_y", 0) or 0)
+        truncate_x = bool(transform.get("truncate_offset_x", transform.get("truncate_offset", False)))
+        truncate_y = bool(transform.get("truncate_offset_y", transform.get("truncate_offset", False)))
+        if not (sx or sy or arc or amount or scale_x != 1 or scale_y != 1 or offset_x or offset_y):
             return layer
+
+        def _apply_offset(src):
+            """Shift a layer by (offset_x, offset_y) with optional per-axis
+            truncation to the bounding-box region.  Uses paste with the
+            source's own alpha as mask — universally supported across
+            Pillow versions, unlike the instance alpha_composite(dest=)
+            overload which silently fails on older releases."""
+            if not (offset_x or offset_y):
+                return src
+            shifted = Image.new("RGBA", src.size, (0, 0, 0, 0))
+            shifted.paste(src, (offset_x, offset_y), src)
+            if truncate_x or truncate_y:
+                cx0 = max(0, bbox.x) if truncate_x else 0
+                cy0 = max(0, bbox.y) if truncate_y else 0
+                cx1 = min(src.width, bbox.x + bbox.width) if truncate_x else src.width
+                cy1 = min(src.height, bbox.y + bbox.height) if truncate_y else src.height
+                if cx0 < cx1 and cy0 < cy1:
+                    mask = Image.new("RGBA", src.size, (0, 0, 0, 0))
+                    mask.paste(shifted.crop((cx0, cy0, cx1, cy1)), (cx0, cy0))
+                    return mask
+            return shifted
         cx, cy = bbox.x + bbox.width / 2, bbox.y + bbox.height / 2
         out = layer.transform(
             layer.size, Image.Transform.AFFINE,
@@ -92,7 +117,7 @@ def _apply_style_transform(layer: Any, bbox: BBox, transform: Optional[Dict[str,
                 resample=Image.Resampling.BICUBIC,
             )
         if not (arc or amount):
-            return out
+            return _apply_offset(out)
         # Shift each local column by a quadratic amount.  Bounding the work to
         # the region also prevents a UI slider from turning into a full-canvas
         # operation on a large source image.
@@ -129,7 +154,7 @@ def _apply_style_transform(layer: Any, bbox: BBox, transform: Optional[Dict[str,
             dy = int(round(offset_at(t)))
             column = out.crop((x, y0, x + 1, y1))
             warped.alpha_composite(column, (x, y0 + dy))
-        return warped
+        return _apply_offset(warped)
     except Exception:
         return layer
 
@@ -428,10 +453,13 @@ def _line_height(font) -> float:
         return float(getattr(font, "size", 12)) * 1.2
 
 
-def _wrap_lines(draw, text: str, font, max_width: float) -> List[str]:
+def _wrap_lines(draw, text: str, font, max_width: float,
+               tracking: float = 0, kerning: float = 0) -> List[str]:
     """greedy wrap targeting max_width: word-wrap when the text has
     space-delimited words, character-wrap otherwise (CJK and other
-    scripts that don't use spaces between words)."""
+    scripts that don't use spaces between words).  tracking and kerning
+    are included in the width estimate so wrapping matches the drawn
+    result."""
     if not text:
         return [""]
     use_words = " " in text.strip()
@@ -442,6 +470,9 @@ def _wrap_lines(draw, text: str, font, max_width: float) -> List[str]:
     for unit in units:
         candidate = f"{cur}{sep}{unit}" if cur else unit
         width = draw.textlength(candidate, font=font)
+        # account for inter-character spacing adjustments
+        n = len(candidate)
+        width += (tracking + kerning) * max(0, n - 1)
         if width <= max_width or not cur:
             cur = candidate
         else:
@@ -455,24 +486,33 @@ def _wrap_lines(draw, text: str, font, max_width: float) -> List[str]:
 def _fit_wrapped(
     draw, text: str, bbox: BBox, font_family: Optional[str],
     explicit_size: Optional[int] = None, leading: Optional[float] = None,
+    tracking: float = 0, kerning: float = 0, wrap_text: bool = False,
 ) -> Tuple[Any, List[str], float]:
-    """binary-search the largest font size whose greedy-wrapped text fits
-    bbox (both max line width and total block height), or use an
-    explicit size override. returns (font, lines, line_spacing_px)."""
+    """Fit text with opt-in wrapping.
+
+    When wrapping is off, a string remains one real glyph run: an explicit
+    font size is never silently reflowed just because it crosses a cube edge.
+    The caller can then clip it using the existing truncation controls.  When
+    enabled, greedy word/character wrapping is used only once its measured
+    extent crosses the cube width.
+    """
+    def layout(font):
+        return _wrap_lines(draw, text, font, bbox.width, tracking, kerning) if wrap_text else [text or ""]
+
     if explicit_size and explicit_size > 0:
         font = _get_font(font_family, explicit_size)
-        lines = _wrap_lines(draw, text, font, bbox.width)
+        lines = layout(font)
         spacing = leading if leading is not None else _line_height(font) * 0.2
         return font, lines, spacing
 
     lo, hi = MIN_FONT_PX, max(MIN_FONT_PX + 1, bbox.height * 2)
     best_font = _get_font(font_family, MIN_FONT_PX)
-    best_lines = _wrap_lines(draw, text, best_font, bbox.width)
+    best_lines = layout(best_font)
     best_spacing = leading if leading is not None else _line_height(best_font) * 0.2
     while lo <= hi:
         mid = (lo + hi) // 2
         font = _get_font(font_family, mid)
-        lines = _wrap_lines(draw, text, font, bbox.width)
+        lines = layout(font)
         spacing = leading if leading is not None else _line_height(font) * 0.2
         # fit check uses the ACTUAL rendered ink extent (PIL's own
         # multiline layout), not font.getmetrics()'s nominal ascent+
@@ -482,7 +522,11 @@ def _fit_wrapped(
         # smaller font (measured: "SALE" fit at size 53 instead of the
         # correct 69, visibly shrinking a region that fit fine as-is)
         l, t, r, b = draw.multiline_textbbox((0, 0), "\n".join(lines), font=font, spacing=spacing)
-        if (r - l) <= bbox.width and (b - t) <= bbox.height:
+        # PIL's textbbox ignores tracking/kerning; add the extra width
+        # to the fit check so a font size that overflows with spacing
+        # adjustments is correctly rejected
+        max_line_extra = max((tracking + kerning) * max(0, len(ln) - 1) for ln in lines) if lines else 0
+        if (r - l) + max_line_extra <= bbox.width and (b - t) <= bbox.height:
             best_font, best_lines, best_spacing, lo = font, lines, spacing, mid + 1
         else:
             hi = mid - 1
@@ -629,14 +673,16 @@ def _parse_color(color: Optional[str], opacity: Optional[float]) -> Tuple[int, i
 
 def _draw_line(draw, text: str, pos, font, fill, stroke_fill=None, stroke_w=0,
                style: Optional[StyleProfil] = None):
-    """draw one line of text with optional tracking (letter spacing) and
-    tsume (CJK compression)."""
+    """draw one line of text with optional tracking (letter spacing),
+    kerning (pairwise inter-character adjustment), and tsume (CJK compression)."""
     s = style or StyleProfil()
     tracking = s.tracking or 0
+    kerning = s.kerning or 0
     tsume = s.tsume or 0
 
-    if tracking or tsume:
+    if tracking or kerning or tsume:
         x, y = pos
+        n = len(text)
         for i, ch in enumerate(text):
             if tsume and i > 0:
                 x -= tsume * (font.size * 0.1)
@@ -648,6 +694,8 @@ def _draw_line(draw, text: str, pos, font, fill, stroke_fill=None, stroke_w=0,
                 x += (bbox[2] - bbox[0]) + tracking
             except Exception:
                 x += font.size + tracking
+            if kerning and i < n - 1:
+                x += kerning
     else:
         draw.text(pos, text, font=font, fill=fill,
                   stroke_width=stroke_w,
@@ -782,13 +830,22 @@ def render(
         pass
 
     render_params = render_params or {}
+    # Basil is the authoritative semantic-block → spatial-cube relation.
+    # target_text is retained for editable manifest compatibility, but a
+    # verified plating plan must win in final rendering just as it does in
+    # the Translate preview.
+    try:
+        from tofu.layers.basil import plated_texts
+        basil_overlay = plated_texts(text_manifest)
+    except Exception:
+        basil_overlay = {}
     for inst in text_manifest.instances:
         if getattr(inst, "dnt", False) or getattr(inst, "excluded", False):
             continue
         # untranslated regions are skipped, not re-rendered with source text:
         # a cleansed-but-empty region is honest; source text re-drawn in the
         # default style silently masquerades as output.
-        text = inst.target_text
+        text = basil_overlay.get(inst.id, inst.target_text)
         if not text:
             continue
         params = render_params.get(inst.id) or RenderParams(
@@ -872,8 +929,10 @@ def render(
             base = Image.alpha_composite(base, layer)
             continue
 
+        wrap_text = bool((s.transform or {}).get("wrap_text", False))
         font, lines, spacing = _fit_wrapped(
-            measure_draw, text, bbox, s.font_family, s.font_size, s.leading
+            measure_draw, text, bbox, s.font_family, s.font_size, s.leading,
+            s.tracking or 0, s.kerning or 0, wrap_text,
         )
         # super/subscript: re-fit at a reduced size (also re-wraps, since a
         # smaller font can fit differently) rather than the fitted size —
@@ -881,14 +940,20 @@ def render(
         if (s.superscript or s.subscript) and not (s.font_size and s.font_size > 0):
             small_size = max(MIN_FONT_PX, round(font.size * 0.65))
             font, lines, spacing = _fit_wrapped(
-                measure_draw, text, bbox, s.font_family, small_size, s.leading
+                measure_draw, text, bbox, s.font_family, small_size, s.leading,
+                s.tracking or 0, s.kerning or 0, wrap_text,
             )
 
         line_h = _line_height(font)
+        _tracking = s.tracking or 0
+        _kerning = s.kerning or 0
         line_metrics = []  # (line, width, left_bearing, top_bearing, bottom_bearing)
         for ln in lines:
             l, t, r, b = measure_draw.textbbox((0, 0), ln, font=font, stroke_width=stroke_w)
-            line_metrics.append((ln, r - l, l, t, b))
+            # tracking and kerning widen the line beyond the raw ink bbox;
+            # account for them so centering/alignment matches the drawn result
+            extra = (_tracking + _kerning) * max(0, len(ln) - 1)
+            line_metrics.append((ln, (r - l) + extra, l, t, b))
         # true ink extent for CENTERING (not the nominal ascent+descent
         # sum, which overestimates for text without descenders and would
         # visibly shift a single short line off-center); per-line spacing

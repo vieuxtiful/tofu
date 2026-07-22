@@ -157,6 +157,24 @@ export interface InstText {
     }>;
   } | null;
   resolved_font_family?: string | null;  // what "auto" (style_profile.font_family unset) currently renders with — display hint only, never an override
+  font_match?: FontMatch | null;
+  semantic_assignment?: {
+    schema: number;
+    unit_id: string;
+    source_text: string;
+    target_text: string;
+    text: string;
+    semantic_region_id?: string;
+    anchor_id?: string;
+    target_positions: number[];
+    method: string;
+    confidence: number;
+    geometry_unchanged: boolean;
+  } | null;
+  garnish_override?: GarnishProfile | null;
+  garnish_enabled?: boolean | null;
+  garnish_scope?: "whole_selection" | "per_region";
+  garnish_regions?: GarnishRegion[];
   segmentation_mask?: { polygon: number[][]; confidence: number; holes?: number[][][] | null } | null;
   style_profile?: {
     font_family: string | null;
@@ -183,7 +201,7 @@ export interface InstText {
     stroke_width: number | null;
     target_orientation: "horizontal" | "vertical" | null;
     word_order: "ltr" | "rtl" | null;
-    transform?: { skew_x?: number; skew_y?: number; arc?: number; preset?: string; amount?: number; scale_x?: number; scale_y?: number } | null;
+    transform?: { skew_x?: number; skew_y?: number; arc?: number; preset?: string; amount?: number; scale_x?: number; scale_y?: number; offset_x?: number; offset_y?: number; truncate_offset?: boolean; truncate_offset_x?: boolean; truncate_offset_y?: boolean; wrap_text?: boolean } | null;
   } | null;
   background_profile?: {
     semantic_label: string | null;  // containing scene surface: "panel" | "bordered_region" | ...
@@ -216,6 +234,21 @@ export interface SceneRegion {
   polygon: number[][] | null;
   texture: string | null;
   material?: string | null;
+  garnish_profile?: GarnishProfile | null;
+}
+
+export interface GarnishProfile {
+  edge_blur_px: number; erosion_px: number; dilation_px: number;
+  grain_strength: number; gamma_shift: number; smudge_strength: number;
+  smudge_angle_deg: number; source_confidence: number;
+}
+
+export interface GarnishRegion {
+  id: string;
+  polygon: number[][];
+  enabled?: boolean | null;
+  profile?: GarnishProfile | null;
+  source?: string;
 }
 
 export interface TextManifest {
@@ -225,12 +258,84 @@ export interface TextManifest {
   targ_lang: string | null;
   img_dim: [number, number] | null;  // original (width, height): the coordinate space of all bboxes
   scene_regions: SceneRegion[];
+  semantic_units?: SemanticTextUnit[];
   asset_type: string;
   frame_count: number;
   fps: number | null;
   duration: number | null;
   prcssng_time: number | null;
   instances: InstText[];
+}
+
+export interface SemanticTextUnit {
+  id: string;
+  region_ids: string[]; // source visual reading order; rN identity remains immutable
+  source_text: string;
+  bbox: BBox;
+  entity_type: string;
+  confidence: number;
+  analysis_provider: string;
+  semantic_roles: Record<string, string>;
+  review_required: boolean;
+  substitution?: {
+    applied?: boolean;
+    target_text?: string;
+    source_region_order?: string[];
+    spatial_anchor_order?: string[];
+    target_region_order?: string[];
+    assignments?: SemanticAssignment[];
+    method?: string;
+    confidence?: number;
+  } | null;
+}
+
+export interface SemanticAssignment {
+  region_id: string;
+  anchor_id?: string;
+  text: string;
+  target_positions: number[];
+  method: string;
+  confidence: number;
+}
+
+export interface SemanticSubstitutionPlan {
+  schema: number;
+  unit_id: string;
+  source_text: string;
+  target_text: string;
+  source_region_order: string[];
+  spatial_anchor_order?: string[];
+  target_region_order: string[];
+  assignments: SemanticAssignment[];
+  method: string;
+  confidence: number;
+  review_required: boolean;
+  warnings: string[];
+}
+
+export interface GlossaryMeta {
+  mode: string;
+  source_format: string;
+  filename: string;
+  uploaded_at: string;
+  entry_count: number;
+  language_pairs: string[][];
+}
+
+export interface GlossaryStatus {
+  global: GlossaryMeta | null;
+  project: GlossaryMeta | null;
+  effective_mode: string | null;
+  effective_entry_count: number;
+  effective_language_pairs: string[][];
+}
+
+export interface GlossaryUploadResult {
+  entry_count: number;
+  language_pairs: string[][];
+  mode: string;
+  source_format: string;
+  filename: string;
 }
 
 export interface ValidationIssue {
@@ -241,6 +346,25 @@ export interface ValidationIssue {
   region_id: string | null;
 }
 
+export interface PreflightInsight {
+  key: string;
+  kind: "font_substitute" | "style_reference" | "licensed_font_candidate" | string;
+  title: string;
+  detail: string;
+  severity: "info" | "review" | "warning" | string;
+  region_id: string | null;
+  region_ids: string[];
+  confidence: number | null;
+  visual_score: number | null;
+  family: string | null;
+  subfamily: string | null;
+  font_path: string | null;
+  license: string | null;
+  foundry: string | null;
+  url: string | null;
+  source: string | null;
+}
+
 export interface ValidationReport {
   passed: boolean;
   issues: ValidationIssue[];
@@ -249,6 +373,7 @@ export interface ValidationReport {
   render_quality_score: number | null;
   expansion_fit: Record<string, number>;
   suggested_actions: string[];
+  insights: PreflightInsight[];
 }
 
 export interface ProcessResult {
@@ -342,6 +467,38 @@ export interface ImportResult {
   missing: string[];
   extra: string[];
   translations: Record<string, string>;
+  format?: string;
+  matched_by?: Record<string, number>;
+  unresolved?: Array<{ id: string | null; source: string }>;
+  empty_targets?: number;
+}
+
+export interface FontMatchCandidate {
+  family: string;
+  subfamily?: string | null;
+  font_path?: string | null;
+  license: "installed" | "commercial" | "free" | "unknown";
+  available: boolean;
+  score?: number | null;
+  url?: string | null;
+  preview_url?: string | null;
+  foundry?: string | null;
+  source?: string | null;
+  reason?: string | null;
+}
+
+export interface FontMatch {
+  schema: number;
+  status: "matched" | "review" | "unavailable";
+  provider: string;
+  confidence: number;
+  margin: number;
+  source_text: string;
+  candidates: FontMatchCandidate[];
+  contextual_candidates?: string[];
+  recommended_substitute?: { font_path: string; family: string; subfamily?: string; score: number } | null;
+  external_candidates?: FontMatchCandidate[];
+  external_provider?: { name: string; enabled: boolean; reason?: string; error?: string };
 }
 
 async function json<T>(res: Response): Promise<T> {
@@ -573,6 +730,50 @@ export async function putManifest(
   );
 }
 
+export async function semanticSubstitution(
+  assetId: string,
+  unitId: string,
+  targetText: string,
+  targLang: string,
+  apply = false,
+): Promise<{ manifest: TextManifest; plan: SemanticSubstitutionPlan; applied: boolean }> {
+  return json(
+    await fetch(`/api/semantic-units/${encodeURIComponent(assetId)}/${encodeURIComponent(unitId)}/substitution`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target_text: targetText, targ_lang: targLang, apply }),
+    })
+  );
+}
+
+export async function uploadGlossary(
+  file: File,
+  scope: "global" | "project",
+  mode: "auxiliary" | "merge" | "replace",
+  projectId?: string,
+  srcLang?: string,
+  targLang?: string,
+): Promise<GlossaryUploadResult> {
+  const form = new FormData();
+  form.append("file", file);
+  const params = new URLSearchParams({ scope, mode });
+  if (projectId) params.set("project_id", projectId);
+  if (srcLang) params.set("src_lang", srcLang);
+  if (targLang) params.set("targ_lang", targLang);
+  return json(await fetch(`/api/glossary/upload?${params.toString()}`, { method: "POST", body: form }));
+}
+
+export async function fetchGlossaryStatus(projectId?: string): Promise<GlossaryStatus> {
+  const query = projectId ? `?project_id=${encodeURIComponent(projectId)}` : "";
+  return json(await fetch(`/api/glossary/status${query}`));
+}
+
+export async function deleteGlossary(scope: "global" | "project", projectId?: string): Promise<{ ok: boolean }> {
+  const params = new URLSearchParams({ scope });
+  if (projectId) params.set("project_id", projectId);
+  return json(await fetch(`/api/glossary/${scope}?${params.toString()}`, { method: "DELETE" }));
+}
+
 export async function addRegion(
   assetId: string,
   bbox: BBox,
@@ -661,6 +862,14 @@ export async function importFile(assetId: string, file: File): Promise<ImportRes
   return json(res);
 }
 
+export async function matchFonts(assetId: string, allowExternal = false): Promise<{ manifest: TextManifest; local_matched: number; external_matched: number }> {
+  return json(await fetch(`/api/font-match/${encodeURIComponent(assetId)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ allow_external: allowExternal }),
+  }));
+}
+
 // --- render ---
 
 export async function renderAsset(
@@ -686,6 +895,12 @@ export async function renderPreview(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ asset_id: assetId, targ_lang: targLang, manifest }),
   }));
+}
+export async function previewCandidateLocalized(assetId: string, candidateId: string, manifest?: TextManifest, targLang?: string): Promise<string> {
+  const result = await json<{ preview_url: string }>(await fetch(`/api/preview/candidate/${encodeURIComponent(assetId)}/${encodeURIComponent(candidateId)}`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ manifest, targ_lang: targLang }),
+  }));
+  return result.preview_url;
 }
 
 export interface InpaintPatch { id: string; bbox: BBox; polygon: number[][]; points?: number[][]; mode: string; strategy?: string; radius?: number; hardness?: number; candidate_id?: string; }

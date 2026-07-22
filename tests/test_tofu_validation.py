@@ -85,3 +85,47 @@ class TestStaticSupportMap:
         report = t.validate(None, "en")
         assert not report.passed
         assert any(i.code == "ToFU_001" for i in report.issues)
+
+
+class TestVisualFontEvidence:
+    def test_font_match_becomes_reviewable_preflight_insight(self):
+        manifest = manifest_with("MURS", 160)
+        manifest.instances[0].font_match = {
+            "provider": "local_glyph_retrieval", "status": "review",
+            "confidence": 0.61,
+            "recommended_substitute": {
+                "family": "Arial Narrow", "subfamily": "Bold",
+                "font_path": "C:/Windows/Fonts/arialn.ttf", "score": 0.79,
+            },
+            "candidates": [],
+        }
+
+        report = ToFU().validate(None, "it", text_manifest=manifest)
+
+        insight = next(item for item in report.insights if item.kind == "font_substitute")
+        assert insight.region_id == "r1"
+        assert insight.severity == "review"
+        assert insight.confidence == 0.61
+        assert insight.family == "Arial Narrow"
+        # ToFU must expose advice, never make an implicit style selection.
+        assert manifest.instances[0].style_profile is None
+
+    def test_licensed_style_reference_is_deduplicated_across_regions(self):
+        manifest = manifest_with("Rue", 120)
+        other = InstText(id="r2", bounding_box=BBox(x=0, y=45, width=140, height=40), text="MURS")
+        manifest.instances.append(other)
+        manifest.total_regions = 2
+        reference = {
+            "family": "Plaak", "license": "commercial", "available": False,
+            "source": "contextual_style_reference", "foundry": "205TF",
+            "url": "https://www.205.tf/Plaak", "reason": "Reference only.",
+        }
+        for inst in manifest.instances:
+            inst.font_match = {"status": "review", "candidates": [reference]}
+
+        report = ToFU().validate(None, "it", text_manifest=manifest)
+
+        references = [item for item in report.insights if item.kind == "style_reference"]
+        assert len(references) == 1
+        assert references[0].region_ids == ["r1", "r2"]
+        assert references[0].license == "commercial"

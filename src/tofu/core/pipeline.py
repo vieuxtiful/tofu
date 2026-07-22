@@ -10,7 +10,7 @@ from tofu.core.types import (
     TextManifest, VldtnReport, QAReport, RenderParams, StyleProfil,
     SceneRegion, AssetType, AssetInfo, infer_asset_info
 )
-from tofu.layers import tofu, cicerone, scene, cleanse, scribe, verify, memory
+from tofu.layers import tofu, cicerone, scene, cleanse, scribe, garnish, verify, memory
 
 # HYBRID pause checkpoints (pause protocol, not a third mode branch):
 # the pipeline yields control at these points so the user can refine
@@ -273,6 +273,13 @@ class TofuPipeline:
                 text_manifest=text_manifest,
                 validation_report=validation_report,
             )
+
+        # Layer 4b: Garnish — deterministic source-wear treatment, non-fatal.
+        try:
+            localized_asset = garnish.apply(localized_asset, text_manifest, cleansed_asset, self.font_registry)
+            self._log("garnish", "applied source-derived text-edge treatment")
+        except Exception as exc:
+            self._fail("garnish", exc)
 
         # HYBRID checkpoint 2: sign-off on the rendered result before QA
         signed_off = self._checkpoint(CHECKPOINT_SIGNOFF, localized_asset)

@@ -24,8 +24,9 @@ import validates that every ID in the file matches a manifest region.
 
 import csv
 import io
+import re
 import xml.etree.ElementTree as ET
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from xml.sax.saxutils import escape as xml_escape
 
 from tofu.core.types import TextManifest
@@ -122,21 +123,140 @@ def export_xliff(
 # XLIFF 1.2 import
 # ---------------------------------------------------------------------------
 
-def import_xliff(xml_text: str) -> Dict[str, str]:
-    """Parse XLIFF 1.2 and return {trans_unit_id: target_text}."""
-    tree = ET.fromstring(xml_text)
-    ns = {"x": "urn:oasis:names:tc:xliff:document:1.2"}
-    translations: Dict[str, str] = {}
+def _local_name(name: str) -> str:
+    """Namespace-agnostic XML local name (XLIFF CAT tools vary wildly)."""
+    return name.rsplit("}", 1)[-1].split(":")[-1].lower()
 
-    for unit in tree.findall(".//x:trans-unit", ns):
-        uid = unit.get("id")
-        if uid is None:
+
+def _local_attr(element: ET.Element, *names: str) -> Optional[str]:
+    wanted = {name.lower() for name in names}
+    for key, value in element.attrib.items():
+        if _local_name(key) in wanted and value:
+            return value
+    return None
+
+
+def _first_descendant(element: ET.Element, *names: str) -> Optional[ET.Element]:
+    wanted = {name.lower() for name in names}
+    for child in element.iter():
+        if child is element:
             continue
-        target_el = unit.find("x:target", ns)
-        if target_el is not None and target_el.text:
-            translations[uid] = target_el.text
+        if _local_name(child.tag) in wanted:
+            return child
+    return None
 
+
+def _segment_text(element: Optional[ET.Element]) -> str:
+    """Preserve text inside CAT markup such as <mrk>, <g>, and <ph>."""
+    if element is None:
+        return ""
+    return "".join(element.itertext()).strip()
+
+
+def _xliff_units(xml_text: str) -> List[Dict[str, Any]]:
+    """Extract target-bearing XLIFF 1.2 and 2.x/CAT units.
+
+    SDLXLIFF, MemoQ, Smartling, and Crowdin wrap targets in their own
+    namespaces and often place inline <mrk> tags inside target.  ElementTree's
+    namespace-exact ``find('x:target')`` silently dropped those translations;
+    local-name traversal deliberately accepts standards-compliant extensions
+    while leaving the immutable ToFU-ID mapping policy to the caller.
+    """
+    root = ET.fromstring(xml_text)
+    units: List[Dict[str, Any]] = []
+    for element in root.iter():
+        if _local_name(element.tag) not in {"trans-unit", "unit"}:
+            continue
+        unit_id = _local_attr(element, "id")
+        keys = [key for key in (
+            unit_id, _local_attr(element, "resname", "name"), _local_attr(element, "id")
+        ) if key]
+        source = _segment_text(_first_descendant(element, "source"))
+        target = _segment_text(_first_descendant(element, "target", "seg-target"))
+        notes = [
+            _segment_text(child) for child in element.iter()
+            if _local_name(child.tag) in {"note", "context"}
+        ]
+        # XLIFF 2.0 may put one or more <segment> children under a unit.  A
+        # segment id is a useful extra identity key, but unit id remains too.
+        segments = [child for child in element.iter() if _local_name(child.tag) == "segment"]
+        if segments:
+            for segment in segments:
+                segment_keys = [key for key in [_local_attr(segment, "id"), *keys] if key]
+                seg_source = _segment_text(_first_descendant(segment, "source")) or source
+                seg_target = _segment_text(_first_descendant(segment, "target", "seg-target"))
+                units.append({"keys": segment_keys, "source": seg_source, "target": seg_target, "notes": notes})
+        else:
+            units.append({"keys": keys, "source": source, "target": target, "notes": notes})
+    return units
+
+
+def import_xliff(xml_text: str) -> Dict[str, str]:
+    """Parse XLIFF and return the direct-ID subset for legacy callers."""
+    translations: Dict[str, str] = {}
+    for unit in _xliff_units(xml_text):
+        if unit["target"] and unit["keys"]:
+            translations[unit["keys"][0]] = unit["target"]
     return translations
+
+
+def _norm_segment(value: str) -> str:
+    return re.sub(r"\s+", " ", (value or "").strip()).casefold()
+
+
+def _bbox_from_notes(notes: List[str]) -> Optional[Tuple[int, int, int, int]]:
+    joined = " ".join(notes)
+    match = re.search(r"\bbbox\s*:\s*(-?\d+)\s*,\s*(-?\d+)\s*,\s*(\d+)\s*,\s*(\d+)", joined, re.I)
+    if not match:
+        return None
+    return tuple(int(value) for value in match.groups())
+
+
+def import_xliff_for_manifest(xml_text: str, manifest: TextManifest) -> Dict[str, Any]:
+    """Map CAT/XLIFF segments back to ToFU regions with auditable fallbacks.
+
+    Direct ``rN``/``resname`` identity wins.  When a CAT tool regenerates
+    IDs, we accept a unique exported bbox note, then a unique normalized source
+    segment.  Ambiguous source text fails closed and appears in ``unresolved``
+    rather than overwriting a different region.
+    """
+    ids = {inst.id: inst.id for inst in manifest.instances}
+    bboxes = {
+        (inst.bounding_box.x, inst.bounding_box.y, inst.bounding_box.width, inst.bounding_box.height): inst.id
+        for inst in manifest.instances
+    }
+    sources: Dict[str, List[str]] = {}
+    for inst in manifest.instances:
+        sources.setdefault(_norm_segment(inst.text or ""), []).append(inst.id)
+
+    translations: Dict[str, str] = {}
+    matched_by = {"id": 0, "bbox": 0, "source": 0}
+    unresolved, empty = [], 0
+    for unit in _xliff_units(xml_text):
+        target = unit["target"]
+        if not target:
+            empty += 1
+            continue
+        rid = next((ids[key] for key in unit["keys"] if key in ids), None)
+        method = "id" if rid else None
+        if rid is None:
+            bbox = _bbox_from_notes(unit["notes"])
+            if bbox in bboxes:
+                rid, method = bboxes[bbox], "bbox"
+        if rid is None:
+            normalized_source = _norm_segment(unit["source"])
+            source_matches = sources.get(normalized_source, []) if normalized_source else []
+            if len(source_matches) == 1:
+                rid, method = source_matches[0], "source"
+        if rid is None:
+            unresolved.append({"id": unit["keys"][0] if unit["keys"] else None, "source": unit["source"]})
+            continue
+        translations[rid] = target
+        matched_by[method] += 1
+    return {
+        "translations": translations, "matched_by": matched_by,
+        "unresolved": unresolved, "empty_targets": empty,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -320,12 +440,35 @@ def detect_format(filename: str) -> str:
     """Infer format from file extension."""
     ext = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
     return {
-        "xliff": "xliff", "xlf": "xliff",
+        "xliff": "xliff", "xlf": "xliff", "sdlxliff": "xliff",
+        "mxliff": "xliff", "mqxliff": "xliff", "txlf": "xliff",
         "tmx": "tmx",
         "tsv": "tsv",
         "csv": "csv",
         "txt": "txt",
     }.get(ext, "txt")
+
+
+def decode_translation_bytes(raw: bytes) -> str:
+    """Decode common CAT/TMS text exports without UTF-32-as-UTF-16 mojibake.
+
+    SDL Trados exports UTF-16 often enough that this belongs in interchange
+    rather than in one HTTP endpoint.  Four-byte BOMs must be tested first:
+    their leading two bytes also resemble UTF-16 and Python can decode that
+    wrong choice without raising, yielding nul-padded XML.
+    """
+    if raw.startswith((b"\xff\xfe\x00\x00", b"\x00\x00\xfe\xff")):
+        encodings = ("utf-32", "utf-16", "utf-8-sig")
+    elif raw.startswith((b"\xff\xfe", b"\xfe\xff")):
+        encodings = ("utf-16", "utf-8-sig", "utf-32")
+    else:
+        encodings = ("utf-8-sig", "utf-16", "utf-32")
+    for encoding in encodings:
+        try:
+            return raw.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    raise UnicodeDecodeError("translation", raw, 0, len(raw), "not valid UTF-8, UTF-16, or UTF-32")
 
 
 def import_file(filename: str, content: str) -> Dict[str, str]:

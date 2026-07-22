@@ -27,6 +27,7 @@ import dataclasses
 import hashlib
 import json
 import os
+import re
 import sys
 import time
 import uuid
@@ -51,10 +52,11 @@ from tofu.core.types import (
     RenderParams, StyleProfil,
 )
 from tofu.layers.tofu import ToFU, lang_to_script
-from tofu.layers import cicerone, memory, scribe, cleanse, scene, verify, inpaint_providers
+from tofu.layers import cicerone, memory, scribe, garnish, cleanse, scene, verify, inpaint_providers
 from tofu.layers.cicerone import _to_easyocr_lang
 from tofu.utils.manifest_store import save_manifest, load_manifest, _dict_to_manifest
 from tofu.utils import interchange
+from tofu.utils import glossary as glossary_utils
 
 import db
 
@@ -64,6 +66,8 @@ TM_THUMB_DIR = ROOT / "server" / "tm_thumbs"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 TM_THUMB_DIR.mkdir(parents=True, exist_ok=True)
+GLOSSARY_DIR = UPLOAD_DIR / "glossaries"
+GLOSSARY_DIR.mkdir(parents=True, exist_ok=True)
 db.init_db()
 
 
@@ -307,6 +311,11 @@ class RefineRegionRequest(BaseModel):
     engine: Optional[str] = None
     scale: Optional[int] = 2
 
+class FontMatchRequest(BaseModel):
+    # Commercial catalog matching transmits a text crop to the configured
+    # provider, so it is opt-in even when a server API key is available.
+    allow_external: bool = False
+
 class ExportRequest(BaseModel):
     asset_id: str
     format: str
@@ -323,6 +332,10 @@ class PreviewRenderRequest(BaseModel):
     asset_id: str
     targ_lang: str
     manifest: Optional[Dict[str, Any]] = None
+
+class CandidatePreviewRequest(BaseModel):
+    manifest: Optional[Dict[str, Any]] = None
+    targ_lang: Optional[str] = None
 
 class InpaintRequest(BaseModel):
     asset_id: str
@@ -391,6 +404,14 @@ class RegionUpdate(BaseModel):
     target_orientation: Optional[str] = None
     word_order: Optional[str] = None
     segmentation_mask: Optional[Dict[str, Any]] = None
+
+class SemanticSubstitutionRequest(BaseModel):
+    """A user-supplied phrase may have a grammatical order that differs
+    from its source sign's spatial order.  ``apply`` is deliberately false
+    by default: planning must never overwrite individual target fields."""
+    target_text: str
+    targ_lang: Optional[str] = None
+    apply: bool = False
 
 
 # --- upload + languages + fonts ---
@@ -462,7 +483,7 @@ def languages():
 
 
 @app.get("/api/fonts")
-def fonts(lang: str, limit: int = 8):
+def fonts(lang: str, limit: int = 24):
     script = lang_to_script.get(lang)
     if script is None:
         raise HTTPException(400, f"unknown language '{lang}'")
@@ -498,7 +519,25 @@ def serve_font_file(path: str):
 def validate(req: ValidateRequest):
     path = _asset_path(req.asset_id)
     context = {"font": req.font} if req.font else None
-    report = get_validator().validate(str(path), req.targ_lang, context)
+    manifest = load_manifest(UPLOAD_DIR, req.asset_id)
+    if manifest is not None and not manifest.semantic_units:
+        try:
+            from tofu.layers.basil import unify_manifest
+            unify_manifest(manifest)
+            save_manifest(UPLOAD_DIR, req.asset_id, manifest)
+        except Exception:
+            pass
+    # Preflight is the decision gate, so make persisted Cicerone evidence
+    # available even for projects scanned before glyph retrieval was added.
+    # This is local-only and never changes the user's selected font.
+    if manifest is not None and any(inst.text and inst.font_match is None for inst in manifest.instances):
+        try:
+            from tofu.layers.font_matching import identify_manifest_fonts
+            identify_manifest_fonts(str(path), manifest, get_validator().font_registry)
+            save_manifest(UPLOAD_DIR, req.asset_id, manifest)
+        except Exception:
+            pass
+    report = get_validator().validate(str(path), req.targ_lang, context, manifest)
     return jsonable(report)
 
 
@@ -767,6 +806,14 @@ def detect(req: DetectRequest):
         manifest = scene.analyze(str(path), manifest)
     except Exception:
         pass  # enrichment is best-effort; detection results stand alone
+    # Visual retrieval complements typography's weight/slant profile.  It is
+    # local-only during scan; commercial catalog lookup requires a later,
+    # explicit editor consent action.
+    try:
+        from tofu.layers.font_matching import identify_manifest_fonts
+        identify_manifest_fonts(str(path), manifest, get_validator().font_registry)
+    except Exception:
+        pass
     tm_matched = _lookup_tm_for_manifest(req.asset_id, manifest, path)
     _resolve_auto_fonts(manifest)  # after TM lookup so manifest.targ_lang is set
     save_manifest(UPLOAD_DIR, req.asset_id, manifest)
@@ -1092,6 +1139,17 @@ def detect_stream(
                     "regions": len(manifest.instances),
                 })
 
+            if manifest.instances:
+                yield event({"stage": "font_match", "status": "running"})
+                try:
+                    from tofu.layers.font_matching import identify_manifest_fonts
+                    matched_fonts = identify_manifest_fonts(
+                        str(path), manifest, get_validator().font_registry
+                    )
+                except Exception:
+                    matched_fonts = 0
+                yield event({"stage": "font_match", "status": "complete", "matched": matched_fonts})
+
             manifest.src_lang = _infer_src_lang(manifest)
 
             tm_matched = 0
@@ -1146,7 +1204,164 @@ def get_manifest(asset_id: str):
             # Material is presentation enrichment.  A non-image or optional
             # vision dependency must never block opening a valid project.
             pass
+    # Older manifests predate semantic reading-unit registration.  Upgrade
+    # that metadata on read without re-running OCR and without touching
+    # target_text: users keep every existing translation exactly as entered.
+    if not manifest.semantic_units:
+        try:
+            from tofu.layers.basil import unify_manifest
+            unify_manifest(manifest)
+            save_manifest(UPLOAD_DIR, asset_id, manifest)
+        except Exception:
+            pass
+    # Upgrade approved Basil plans created before block→cube anchoring.  This
+    # is a deterministic metadata/projection repair: no OCR or geometry is
+    # changed, but every client and Scribe now see the same plated order.
+    try:
+        from tofu.layers.basil import migrate_legacy_plating
+        if migrate_legacy_plating(manifest):
+            save_manifest(UPLOAD_DIR, asset_id, manifest)
+    except Exception:
+        pass
     return jsonable(manifest)
+
+
+@app.get("/api/semantic/providers")
+def semantic_providers(project_id: Optional[str] = None):
+    """Report only locally provisioned semantic/translation seams.
+
+    It is intentionally not an installer: language models are large and must
+    pass ToFU's benchmark gate before a deployment enables them.
+    """
+    from tofu.layers.basil import provider_statuses, set_active_glossary
+    effective, metadata = glossary_utils.resolve_active_glossary(GLOSSARY_DIR, project_id)
+    set_active_glossary(metadata if effective else None)
+    return {"providers": provider_statuses()}
+
+
+@app.post("/api/semantic-units/{asset_id}/{unit_id}/substitution")
+def semantic_substitution(asset_id: str, unit_id: str, req: SemanticSubstitutionRequest):
+    """Plan or explicitly apply target spans to immutable source anchors."""
+    manifest = load_manifest(UPLOAD_DIR, asset_id)
+    if manifest is None:
+        raise HTTPException(404, f"no manifest for asset '{asset_id}'")
+    from tofu.layers import basil
+    target_lang = req.targ_lang or manifest.targ_lang
+    project_id = db.project_for_asset(asset_id)
+    effective_lexicon, glossary_meta = glossary_utils.resolve_active_glossary(GLOSSARY_DIR, project_id)
+    basil.set_active_glossary(glossary_meta if effective_lexicon else None)
+    try:
+        plan = basil.plan_substitution(
+            manifest, unit_id, req.target_text, target_lang,
+            external_lexicon=effective_lexicon,
+        )
+    except KeyError as exc:
+        raise HTTPException(404, str(exc))
+    if req.apply:
+        try:
+            basil.apply_substitution(manifest, plan, target_lang)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc))
+        manifest.targ_lang = target_lang or manifest.targ_lang
+        _resolve_auto_fonts(manifest, target_lang)
+    # Persist unit registration and, on apply, the provenance. A plan never
+    # changes targets or geometry, so merely opening Translation substitution
+    # cannot alter what Render will produce.
+    save_manifest(UPLOAD_DIR, asset_id, manifest)
+    return {"manifest": jsonable(manifest), "plan": plan, "applied": bool(req.apply)}
+
+
+def _glossary_path(scope: str, project_id: Optional[str] = None) -> Path:
+    if scope not in {"global", "project"}:
+        raise HTTPException(422, "scope must be 'global' or 'project'")
+    if scope == "project":
+        if not project_id or not re.fullmatch(r"[A-Za-z0-9_-]+", project_id):
+            raise HTTPException(422, "project scope requires a valid project_id")
+        return GLOSSARY_DIR / f"project_{project_id}.json"
+    return GLOSSARY_DIR / "global.json"
+
+
+def _glossary_meta(path: Path) -> Optional[Dict[str, Any]]:
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return {key: value for key, value in data.items() if key != "lexicon"}
+    except Exception:
+        return None
+
+
+@app.post("/api/glossary/upload")
+async def upload_glossary(
+    file: UploadFile = File(...),
+    scope: str = "project",
+    project_id: Optional[str] = None,
+    mode: str = "auxiliary",
+    src_lang: Optional[str] = None,
+    targ_lang: Optional[str] = None,
+):
+    if mode not in {"auxiliary", "merge", "replace"}:
+        raise HTTPException(422, "mode must be auxiliary, merge, or replace")
+    path = _glossary_path(scope, project_id)
+    filename = file.filename or "glossary.txt"
+    raw = await file.read()
+    try:
+        parsed = glossary_utils.parse_glossary(filename, raw, src_lang, targ_lang)
+    except glossary_utils.GlossaryParseError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    if not parsed.entries:
+        raise HTTPException(422, "glossary contains no usable source/target entries with language pairs")
+    lexicon = glossary_utils.to_basil_lexicon(parsed)
+    payload = {
+        "mode": mode,
+        "source_format": parsed.source_format,
+        "uploaded_at": datetime.now().astimezone().isoformat(),
+        "filename": filename,
+        "entry_count": parsed.entry_count,
+        "language_pairs": [list(pair) for pair in parsed.language_pairs],
+        "lexicon": glossary_utils.serializable_lexicon(lexicon),
+    }
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    temporary.replace(path)
+    return {key: payload[key] for key in ("entry_count", "language_pairs", "mode", "source_format", "filename")}
+
+
+@app.get("/api/glossary/status")
+def glossary_status(project_id: Optional[str] = None):
+    global_meta = _glossary_meta(_glossary_path("global"))
+    project_meta = _glossary_meta(_glossary_path("project", project_id)) if project_id else None
+    effective, metadata = glossary_utils.resolve_active_glossary(GLOSSARY_DIR, project_id)
+    return {
+        "global": global_meta,
+        "project": project_meta,
+        "effective_mode": metadata.get("mode") if effective else None,
+        "effective_entry_count": metadata.get("entry_count", 0) if effective else 0,
+        "effective_language_pairs": metadata.get("language_pairs", []) if effective else [],
+    }
+
+
+@app.delete("/api/glossary/{scope}")
+def delete_glossary(scope: str, project_id: Optional[str] = None):
+    path = _glossary_path(scope, project_id)
+    if path.exists():
+        path.unlink()
+    return {"ok": True}
+
+
+@app.post("/api/font-match/{asset_id}")
+def font_match(asset_id: str, req: FontMatchRequest):
+    """Refresh local font evidence and, only with explicit consent, query a
+    configured commercial font catalog for unavailable/licensed candidates."""
+    path = _asset_path(asset_id)
+    manifest = load_manifest(UPLOAD_DIR, asset_id)
+    if manifest is None:
+        raise HTTPException(404, f"no manifest for asset '{asset_id}'")
+    from tofu.layers.font_matching import identify_manifest_fonts, external_catalog_match
+    local = identify_manifest_fonts(str(path), manifest, get_validator().font_registry)
+    external = external_catalog_match(str(path), manifest, get_validator().font_registry) if req.allow_external else 0
+    save_manifest(UPLOAD_DIR, asset_id, manifest)
+    return {"manifest": jsonable(manifest), "local_matched": local, "external_matched": external}
 
 
 @app.put("/api/manifest/{asset_id}")
@@ -1423,13 +1638,28 @@ async def import_file(asset_id: str = "", file: UploadFile = File(...)):
     manifest = load_manifest(UPLOAD_DIR, asset_id)
     if manifest is None:
         raise HTTPException(404, f"no manifest for asset '{asset_id}'")
-    content = (await file.read()).decode("utf-8-sig")
+    raw = await file.read()
+    try:
+        content = interchange.decode_translation_bytes(raw)
+    except UnicodeDecodeError:
+        raise HTTPException(422, "translation file is not valid UTF-8, UTF-16, or UTF-32 text")
     filename = file.filename or "import.txt"
-    translations = interchange.import_file(filename, content)
-    manifest_ids = {i.id for i in manifest.instances}
+    fmt = interchange.detect_format(filename)
+    mapping = None
+    try:
+        if fmt == "xliff":
+            mapping = interchange.import_xliff_for_manifest(content, manifest)
+            translations = mapping["translations"]
+        else:
+            translations = interchange.import_file(filename, content)
+    except Exception as exc:
+        raise HTTPException(422, f"could not parse {fmt.upper()} translation file: {type(exc).__name__}: {exc}")
+    manifest_ids = {i.id for i in manifest.instances if not i.dnt}
     imported_ids = set(translations.keys())
     missing = list(manifest_ids - imported_ids)
     extra = list(imported_ids - manifest_ids)
+    if mapping:
+        extra.extend(str(item.get("id")) for item in mapping["unresolved"] if item.get("id"))
     for inst in manifest.instances:
         if inst.id in translations:
             inst.target_text = translations[inst.id]
@@ -1440,7 +1670,13 @@ async def import_file(asset_id: str = "", file: UploadFile = File(...)):
         db.add_snapshot(pid, asset_id, _manifest_to_dict(manifest), reason="import")
         db.log_event(pid, "import",
                      f"imported {len(translations)} translation(s) from '{filename}'")
-    return {"imported": len(translations), "missing": missing, "extra": extra, "translations": translations}
+    return {
+        "imported": len(imported_ids & manifest_ids), "missing": missing,
+        "extra": extra, "translations": translations, "format": fmt,
+        "matched_by": mapping["matched_by"] if mapping else {"id": len(translations)},
+        "unresolved": mapping["unresolved"] if mapping else [],
+        "empty_targets": mapping["empty_targets"] if mapping else 0,
+    }
 
 
 # --- render (scene → cleanse → scribe → verify) ---
@@ -1831,6 +2067,7 @@ def preview_render(req: PreviewRenderRequest):
         cleansed = _cleansed_base(req.asset_id, manifest)
         cleansed = _composite_patches(req.asset_id, cleansed)
         localized = scribe.render(cleansed, manifest, req.targ_lang, font_registry=get_validator().font_registry)
+        localized = garnish.apply(localized, manifest, cleansed, get_validator().font_registry)
         if localized is None or not hasattr(localized, "save"):
             raise RuntimeError("preview produced no image")
         name = f"{req.asset_id}-{req.targ_lang}.preview.png"
@@ -1842,6 +2079,47 @@ def preview_render(req: PreviewRenderRequest):
         }
     except Exception as exc:
         raise HTTPException(500, f"preview render failed: {type(exc).__name__}: {exc}")
+
+
+@app.post("/api/preview/candidate/{asset_id}/{candidate_id}")
+def preview_candidate_localized(asset_id: str, candidate_id: str, req: CandidatePreviewRequest):
+    """Preview a background-only repair with current translated text layered on top."""
+    record = _find_candidate(asset_id, candidate_id)
+    if record is None:
+        raise HTTPException(404, "repair candidate not found")
+    manifest = _dict_to_manifest(req.manifest) if req.manifest else load_manifest(UPLOAD_DIR, asset_id)
+    if manifest is None:
+        raise HTTPException(404, f"no manifest for asset '{asset_id}'")
+    manifest.asset_id = asset_id
+    target = req.targ_lang or manifest.targ_lang or "en"
+    try:
+        from PIL import Image
+        manifest = scene.analyze(str(_asset_path(asset_id)), manifest)
+        base = _cleansed_base(asset_id, manifest).convert("RGBA")
+        candidate = Image.open(OUTPUT_DIR / record["file"]).convert("RGBA")
+        b = record["bbox"]
+        base.alpha_composite(candidate, (int(b["x"]), int(b["y"])))
+        localized = scribe.render(base, manifest, target, font_registry=get_validator().font_registry)
+        localized = garnish.apply(localized, manifest, base, get_validator().font_registry)
+        crop = localized.crop((int(b["x"]), int(b["y"]), int(b["x"] + b["width"]), int(b["y"] + b["height"])))
+        # Candidate previews are requested while text/style edits are being
+        # debounced.  A deterministic name lets an older request overwrite a
+        # newer candidate composite, so make the artifact content-addressed by
+        # the exact in-memory manifest and candidate evidence instead.
+        fingerprint = {
+            "candidate_id": candidate_id,
+            "candidate_file": record.get("file"),
+            "target": target,
+            "manifest": req.manifest if req.manifest is not None else jsonable(manifest),
+        }
+        version = hashlib.sha256(
+            json.dumps(fingerprint, sort_keys=True, default=str).encode("utf-8")
+        ).hexdigest()[:16]
+        name = f"{asset_id}-{candidate_id}-{version}.localized-preview.png"
+        crop.save(OUTPUT_DIR / name)
+        return {"preview_url": f"/outputs/{name}?v={version}"}
+    except Exception as exc:
+        raise HTTPException(422, f"candidate preview failed: {type(exc).__name__}: {exc}")
 
 
 @app.post("/api/render")
@@ -1876,6 +2154,7 @@ def render(req: RenderRequest):
                 shared_base, result.text_manifest, req.targ_lang,
                 font_registry=get_validator().font_registry,
             )
+            result.output_asset = garnish.apply(result.output_asset, result.text_manifest, shared_base, get_validator().font_registry)
             result.qa_report = verify.assess(
                 result.output_asset, result.text_manifest, str(path), shared_base
             )
@@ -2145,6 +2424,7 @@ def render_stream(
                     cleansed_asset, erase_manifest, targ_lang, render_params,
                     font_registry=validator.font_registry,
                 )
+                localized = garnish.apply(localized, manifest2, cleansed_asset, validator.font_registry)
                 log("scribe", f"rendered target text for '{targ_lang}'", t0=t0)
             except Exception as exc:
                 log("scribe", f"failed: {type(exc).__name__}: {exc}", "error", t0=t0)

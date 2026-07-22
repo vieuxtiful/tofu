@@ -29,6 +29,21 @@ FONT_EXTS = {".ttf", ".otf", ".ttc", ".otc"}
 FULL_THRESHOLD = 0.995    # tolerate trivial gaps in range-derived samples
 PARTIAL_THRESHOLD = 0.80
 
+import re
+_WEIGHT_TOKENS = re.compile(
+    r"\s+(?:black|heavy|ultra(?:\s*bold)?|extra\s*bold|extrabold|semi\s*bold|semibold|"
+    r"demi\s*bold|demibold|bold|medium|regular|book|light|thin|narrow|condensed|"
+    r"expanded|oblique|italic)$",
+    re.IGNORECASE,
+)
+
+
+def _normalize_family(raw: str) -> str:
+    """Strip trailing weight/width qualifiers from a family name so that
+    legacy name-ID-1 families like 'Arial Black' or 'Arial Narrow Bold'
+    collapse into 'Arial' when no typographic family (ID 16) is present."""
+    return _WEIGHT_TOKENS.sub("", raw).strip() or raw
+
 
 @dataclass
 class FontCoverage:
@@ -81,8 +96,15 @@ class FontRegistry:
             key = str(p) if len(faces) == 1 else f"{p}#{i}"
             try:
                 cmap = font.getBestCmap() or {}  # symbol fonts have no unicode cmap
-                name = font["name"].getDebugName(1) or p.stem
-                subfamily = font["name"].getDebugName(2) or "Regular"
+                # Prefer typographic family (name ID 16) over the legacy
+                # family (ID 1) so weight-specific families like "Arial Black"
+                # or "Arial Narrow Bold" are grouped under their parent
+                # family ("Arial") as weight variants in the dropdown.
+                # When ID 16 is absent, strip trailing weight/width qualifiers
+                # from ID 1 as a fallback normalization.
+                raw_family = font["name"].getDebugName(1) or p.stem
+                name = font["name"].getDebugName(16) or _normalize_family(raw_family)
+                subfamily = font["name"].getDebugName(17) or font["name"].getDebugName(2) or "Regular"
             except Exception:
                 continue
             units_per_em, advances = 1000, {}

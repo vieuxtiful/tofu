@@ -33,6 +33,7 @@ interface BBoxCanvasProps {
   controlledHeight?: number | null;
   onHeightChange?: (height: number) => void;
   onDoubleClickExpand?: () => void;
+  bboxColor?: string;
 }
 
 type DragState =
@@ -62,6 +63,7 @@ export default function BBoxCanvas({
   preview = false, canvasLabel, showPreviewControls = false,
   controlledZoom, onZoomChange, controlledScroll, onScrollChange,
   controlledHeight, onHeightChange, onDoubleClickExpand,
+  bboxColor = "#22d3ee",
 }: BBoxCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const syncBarRef = useRef<HTMLDivElement>(null);
@@ -382,12 +384,14 @@ export default function BBoxCanvas({
   return (
     <div
       className="bezier-card soft-shadow relative flex min-h-[180px] flex-col rounded-lg bg-zinc-100 dark:bg-zinc-900"
-      style={controlledHeight !== undefined
-        ? { height: controlledHeight ?? (preview ? 300 : "100%"), transition: "height 0.3s ease-in-out" }
-        : canvasHeight !== null
-          ? { height: canvasHeight, transition: "height 0.3s ease-in-out" }
-          : { height: preview ? 300 : "100%", transition: "height 0.3s ease-in-out" }
-      }
+      style={{
+        ...(controlledHeight !== undefined
+          ? { height: controlledHeight ?? (preview ? 300 : "100%"), transition: "height 0.3s ease-in-out" }
+          : canvasHeight !== null
+            ? { height: canvasHeight, transition: "height 0.3s ease-in-out" }
+            : { height: preview ? 300 : "100%", transition: "height 0.3s ease-in-out" }),
+        "--bbox-color": bboxColor,
+      } as React.CSSProperties}
     >
     <div
       ref={containerRef}
@@ -441,13 +445,13 @@ export default function BBoxCanvas({
                   const points = r.polygon.map(([x, y]) => `${px(x)},${px(y)}`).join(" ");
                   return (
                     <svg key={`sr-${i}`} className="absolute inset-0 overflow-visible" width={renderedW} height={natural.height * scale}>
-                      <polygon points={points} fill="rgba(34, 211, 238, 0.05)" stroke="rgba(34, 211, 238, 0.5)" strokeWidth="1" strokeDasharray="4 3" />
+                      <polygon points={points} fill={`${bboxColor}0D`} stroke={`${bboxColor}80`} strokeWidth="1" strokeDasharray="4 3" />
                       <text x={px(r.bbox.x + 3)} y={px(r.bbox.y + 14)} className="bbox-surface-label">{label}</text>
                     </svg>
                   );
                 }
                 return (
-                  <div key={`sr-${i}`} style={{ position: "absolute", left: px(r.bbox.x), top: px(r.bbox.y), width: px(r.bbox.width), height: px(r.bbox.height), border: "1px dashed rgba(34, 211, 238, 0.35)", borderRadius: 4, pointerEvents: "none" }}>
+                  <div key={`sr-${i}`} style={{ position: "absolute", left: px(r.bbox.x), top: px(r.bbox.y), width: px(r.bbox.width), height: px(r.bbox.height), border: `1px dashed ${bboxColor}59`, borderRadius: 4, pointerEvents: "none" }}>
                     <span className="bbox-surface-label">{label}</span>
                   </div>
                 );
@@ -490,12 +494,13 @@ export default function BBoxCanvas({
                     {inst.reading_order !== null && (
                       <div
                         className="bbox-badge"
-                        style={{ background: inst.confidence !== null && inst.confidence < 0.6 ? "#ef4444" : "#22d3ee" }}
+                        style={{ background: inst.confidence !== null && inst.confidence < 0.6 ? "#ef4444" : bboxColor }}
+                        title={`Region ${inst.id} · reading order ${visualOrder + 1}`}
                       >
-                        {/* The caller supplies reading-order presentation.  This
-                            matters for pre-fix manifests whose stored raw-y
-                            order was wrong for words sharing a baseline. */}
-                        {visualOrder + 1}
+                        {/* Immutable rN identity and visual reading order are
+                            different things.  Do not make VIEUX (r3) look
+                            like r2 merely because it is second in its line. */}
+                        {inst.id}
                       </div>
                     )}
                     {inst.confidence !== null && (
@@ -614,7 +619,7 @@ export default function BBoxCanvas({
             width: LOUPE_RADIUS * 2,
             height: LOUPE_RADIUS * 2,
             borderRadius: "50%",
-            border: "2px solid rgba(34, 211, 238, 0.8)",
+            border: `2px solid ${bboxColor}cc`,
             boxShadow: "0 0 12px rgba(0,0,0,0.6), inset 0 0 6px rgba(0,0,0,0.4)",
             backgroundImage: `url(${imageUrl})`,
             backgroundRepeat: "no-repeat",

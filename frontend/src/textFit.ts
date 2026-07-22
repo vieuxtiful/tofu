@@ -111,6 +111,9 @@ export function fitWrappedText(
    * `leading` param: a fixed inter-line gap instead of the font-size-
    * derived default. */
   leadingOverridePx?: number | null,
+  /** Explicit layout choice from Localized Asset Canvas.  Off keeps one
+   * glyph run even if it crosses the cube; on enables real wrap. */
+  wrapText = false,
 ): FitResult {
   const setSize = (size: number) => { ctx.font = fontSpec.replace("{size}", String(size)); };
   const safeBoxWidth = Math.max(1, boxWidth);
@@ -119,7 +122,7 @@ export function fitWrappedText(
 
   if (explicitSizePx && explicitSizePx > 0) {
     setSize(explicitSizePx);
-    const lines = wrapLines(ctx, text, safeBoxWidth);
+    const lines = wrapText ? wrapLines(ctx, text, safeBoxWidth) : [text];
     const spacing = spacingFor(explicitSizePx);
     return { fontSizePx: explicitSizePx, lines, lineAdvancePx: nominalLineHeight(ctx, explicitSizePx) + spacing };
   }
@@ -129,14 +132,14 @@ export function fitWrappedText(
   setSize(MIN_FONT_PX);
   let best: FitResult = {
     fontSizePx: MIN_FONT_PX,
-    lines: wrapLines(ctx, text, safeBoxWidth),
+    lines: wrapText ? wrapLines(ctx, text, safeBoxWidth) : [text],
     lineAdvancePx: nominalLineHeight(ctx, MIN_FONT_PX) * 1.2,
   };
 
   while (lo <= hi) {
     const mid = Math.floor((lo + hi) / 2);
     setSize(mid);
-    const lines = wrapLines(ctx, text, safeBoxWidth);
+    const lines = wrapText ? wrapLines(ctx, text, safeBoxWidth) : [text];
     const spacing = spacingFor(mid);
     const { width, height } = actualBlockSize(ctx, lines, spacing);
     if (width <= safeBoxWidth && height <= safeBoxHeight) {

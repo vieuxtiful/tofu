@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FaPlus, FaMinus } from "react-icons/fa";
-import { InstText, FontFamily } from "./api";
+import { InstText, FontFamily, SemanticTextUnit } from "./api";
 import { loadFontPreview, fontNameForPath } from "./FontCombobox";
 import { fitWrappedText, getMeasureContext, FitResult } from "./textFit";
 import "./bbox.css";
@@ -9,6 +9,7 @@ interface TargetPreviewCanvasProps {
   className?: string;
   imageUrl: string | null;
   manifest: InstText[];
+  semanticUnits?: SemanticTextUnit[];
   imgNaturalSize: { width: number; height: number } | null;
   familiesByLang?: Record<string, FontFamily[]>;
   defaultTargLang: string;
@@ -28,7 +29,7 @@ interface TargetPreviewCanvasProps {
 type PanState = { startClientX: number; startClientY: number; startScrollLeft: number; startScrollTop: number } | null;
 
 export default function TargetPreviewCanvas({
-  className, imageUrl, manifest, imgNaturalSize, familiesByLang, defaultTargLang, label,
+  className, imageUrl, manifest, semanticUnits = [], imgNaturalSize, familiesByLang, defaultTargLang, label,
   linked, showZoom = true, controlledZoom, onZoomChange, controlledScroll, onScrollChange,
   controlledHeight, onHeightChange, onDoubleClickExpand,
 }: TargetPreviewCanvasProps) {
@@ -40,6 +41,30 @@ export default function TargetPreviewCanvas({
   const lastDragHandleDown = useRef(0);
 
   const zoom = linked && controlledZoom !== undefined ? controlledZoom : internalZoom;
+  // Basil's persisted plan is authoritative after plating.  Keep the
+  // underlying boxes/styles from their cube instances, but project the
+  // target-language block text onto those cubes before measurement/drawing.
+  const displayManifest = useMemo(() => {
+    const plated = new Map<string, string>();
+    for (const unit of semanticUnits) {
+      const substitution = unit.substitution;
+      if (!substitution?.applied) continue;
+      const assignments = substitution.assignments ?? [];
+      const cubes = substitution.spatial_anchor_order ?? substitution.source_region_order ?? unit.region_ids;
+      const orderedBlocks = [...assignments].sort((left, right) =>
+        Math.min(...left.target_positions) - Math.min(...right.target_positions)
+      );
+      for (const assignment of assignments) {
+        // Legacy plans predate anchor_id.  Recover their deterministic
+        // block→cube relation in the client immediately, even before the
+        // server's persisted migration is fetched on the next reload.
+        const legacyIndex = orderedBlocks.indexOf(assignment);
+        const anchorId = assignment.anchor_id ?? cubes[legacyIndex] ?? assignment.region_id;
+        if (assignment.text.trim()) plated.set(anchorId, assignment.text);
+      }
+    }
+    return manifest.map((inst) => plated.has(inst.id) ? { ...inst, target_text: plated.get(inst.id)! } : inst);
+  }, [manifest, semanticUnits]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -221,7 +246,7 @@ export default function TargetPreviewCanvas({
   useEffect(() => {
     let cancelled = false;
     const loads: Promise<void>[] = [];
-    manifest.forEach((inst) => {
+    displayManifest.forEach((inst) => {
       const fontPath = inst.style_profile?.font_family ?? inst.resolved_font_family;
       if (!fontPath || !familiesByLang) return;
       const lang = inst.target_language ?? defaultTargLang;
@@ -233,7 +258,7 @@ export default function TargetPreviewCanvas({
       if (cancelled) return;
       const ctx = getMeasureContext();
       const next: Record<string, FitResult> = {};
-      for (const inst of manifest) {
+      for (const inst of displayManifest) {
         if (!inst.target_text || inst.dnt) continue;
         const spec = resolveTextSpec(inst);
         const fontSpecTemplate = `${spec.fontStyle} ${spec.fontWeight} {size}px ${spec.cssFontFamily}`;
@@ -249,12 +274,13 @@ export default function TargetPreviewCanvas({
           Math.max(1, inst.bounding_box.width),
           Math.max(1, inst.bounding_box.height),
           fontSpecTemplate, spec.explicitSizePx, spec.leadingPx,
+          Boolean(inst.style_profile?.transform?.wrap_text),
         );
       }
       setFitCache(next);
     });
     return () => { cancelled = true; };
-  }, [manifest, familiesByLang, defaultTargLang, resolveTextSpec]);
+  }, [displayManifest, familiesByLang, defaultTargLang, resolveTextSpec]);
 
   return (
     <div
@@ -298,7 +324,7 @@ export default function TargetPreviewCanvas({
                   pointerEvents: "none",
                 }}
               >
-                {manifest.map((inst) => {
+                {displayManifest.map((inst) => {
                   if (!inst.target_text || inst.dnt) return null;
                   const bg = inst.background_profile?.dominant_color ?? "transparent";
                   const spec = resolveTextSpec(inst);

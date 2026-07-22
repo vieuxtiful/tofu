@@ -36,12 +36,12 @@ export default function ImportPanel({ assetId, onImported }: ImportPanelProps) {
         ) : (
           <>
             <Upload size={18} />
-            <span className="subtext text-xs">drop or click to upload .xliff, .tmx, .tsv, .csv, .txt</span>
+            <span className="subtext text-xs">drop or click to upload XLIFF/CAT, TMX, TSV, CSV, or TXT</span>
           </>
         )}
         <input
           type="file"
-          accept=".xliff,.xlf,.tmx,.tsv,.csv,.txt"
+          accept=".xliff,.xlf,.sdlxliff,.mxliff,.mqxliff,.txlf,.tmx,.tsv,.csv,.txt"
           className="hidden"
           onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])}
         />

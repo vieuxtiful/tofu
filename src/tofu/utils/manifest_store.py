@@ -13,8 +13,37 @@ from typing import Optional
 
 from tofu.core.types import (
     TextManifest, InstText, BBox, Mask, AssetType,
-    StyleProfil, BgProfil, CharactText, SceneRegion,
+    StyleProfil, BgProfil, CharactText, SceneRegion, SemanticTextUnit, GarnishProfile, GarnishRegion,
 )
+
+
+def _garnish_to_dict(profile: Optional[GarnishProfile]) -> Optional[dict]:
+    return None if profile is None else {
+        "edge_blur_px": profile.edge_blur_px, "erosion_px": profile.erosion_px,
+        "dilation_px": profile.dilation_px, "grain_strength": profile.grain_strength,
+        "gamma_shift": profile.gamma_shift, "smudge_strength": profile.smudge_strength,
+        "smudge_angle_deg": profile.smudge_angle_deg, "source_confidence": profile.source_confidence,
+    }
+
+
+def _garnish_from_dict(data: Optional[dict]) -> Optional[GarnishProfile]:
+    if not isinstance(data, dict): return None
+    return GarnishProfile(**{key: float(data.get(key, default)) for key, default in {
+        "edge_blur_px": 0, "erosion_px": 0, "dilation_px": 0, "grain_strength": 0,
+        "gamma_shift": 1, "smudge_strength": 0, "smudge_angle_deg": 0, "source_confidence": 0,
+    }.items()})
+
+
+def _garnish_region_to_dict(region: GarnishRegion) -> dict:
+    return {"id": region.id, "polygon": region.polygon, "enabled": region.enabled,
+            "profile": _garnish_to_dict(region.profile), "source": region.source}
+
+
+def _garnish_region_from_dict(data: dict) -> GarnishRegion:
+    return GarnishRegion(id=str(data.get("id", "garnish-region")),
+                         polygon=[tuple(point) for point in data.get("polygon", [])],
+                         enabled=data.get("enabled"), profile=_garnish_from_dict(data.get("profile")),
+                         source=str(data.get("source", "manual")))
 
 
 def _manifest_path(store_dir: Path, asset_id: str) -> Path:
@@ -47,13 +76,51 @@ def _manifest_to_dict(m: TextManifest) -> dict:
         "targ_lang": m.targ_lang,
         "img_dim": list(m.img_dim) if m.img_dim else None,
         "scene_regions": [_region_to_dict(r) for r in (m.scene_regions or [])],
+        "semantic_units": [_semantic_unit_to_dict(u) for u in (m.semantic_units or [])],
         "asset_type": m.asset_type.value if hasattr(m.asset_type, "value") else str(m.asset_type),
         "frame_count": m.frame_count,
         "fps": m.fps,
         "duration": m.duration,
         "prcssng_time": m.prcssng_time,
         "instances": [_inst_to_dict(i) for i in m.instances],
+}
+
+
+def _semantic_unit_to_dict(unit: SemanticTextUnit) -> dict:
+    return {
+        "id": unit.id,
+        "region_ids": list(unit.region_ids),
+        "source_text": unit.source_text,
+        "bbox": {
+            "x": unit.bbox.x, "y": unit.bbox.y,
+            "width": unit.bbox.width, "height": unit.bbox.height,
+        },
+        "entity_type": unit.entity_type,
+        "confidence": unit.confidence,
+        "analysis_provider": unit.analysis_provider,
+        "semantic_roles": unit.semantic_roles,
+        "review_required": unit.review_required,
+        "substitution": unit.substitution,
     }
+
+
+def _dict_to_semantic_unit(data: dict) -> SemanticTextUnit:
+    bbox = data.get("bbox") or {}
+    return SemanticTextUnit(
+        id=str(data.get("id", "u-unknown")),
+        region_ids=[str(region_id) for region_id in data.get("region_ids", [])],
+        source_text=str(data.get("source_text", "")),
+        bbox=BBox(
+            x=int(bbox.get("x", 0)), y=int(bbox.get("y", 0)),
+            width=int(bbox.get("width", 0)), height=int(bbox.get("height", 0)),
+        ),
+        entity_type=str(data.get("entity_type", "unknown")),
+        confidence=float(data.get("confidence", 0.0)),
+        analysis_provider=str(data.get("analysis_provider", "deterministic_layout")),
+        semantic_roles=dict(data.get("semantic_roles") or {}),
+        review_required=bool(data.get("review_required", True)),
+        substitution=data.get("substitution"),
+    )
 
 
 def _region_to_dict(r: SceneRegion) -> dict:
@@ -67,6 +134,7 @@ def _region_to_dict(r: SceneRegion) -> dict:
         "polygon": r.polygon,
         "texture": r.texture,
         "material": r.material,
+        "garnish_profile": _garnish_to_dict(r.garnish_profile),
     }
 
 
@@ -84,6 +152,7 @@ def _dict_to_region(rdict: dict) -> SceneRegion:
         ),
         texture=rdict.get("texture"),
         material=rdict.get("material"),
+        garnish_profile=_garnish_from_dict(rdict.get("garnish_profile")),
     )
 
 
@@ -109,7 +178,13 @@ def _inst_to_dict(inst: InstText) -> dict:
         "ocr_correction": inst.ocr_correction,
         "recognition_history": inst.recognition_history,
         "repair_provenance": inst.repair_provenance,
+        "font_match": inst.font_match,
         "resolved_font_family": inst.resolved_font_family,
+        "semantic_assignment": inst.semantic_assignment,
+        "garnish_override": _garnish_to_dict(inst.garnish_override),
+        "garnish_enabled": inst.garnish_enabled,
+        "garnish_scope": inst.garnish_scope,
+        "garnish_regions": [_garnish_region_to_dict(region) for region in (inst.garnish_regions or [])],
     }
     if inst.language is not None:
         d["language"] = inst.language
@@ -266,7 +341,13 @@ def _dict_to_manifest(data: dict) -> TextManifest:
             ocr_correction=idict.get("ocr_correction"),
             recognition_history=idict.get("recognition_history"),
             repair_provenance=idict.get("repair_provenance"),
+            garnish_override=_garnish_from_dict(idict.get("garnish_override")),
+            garnish_enabled=idict.get("garnish_enabled"),
+            garnish_scope=idict.get("garnish_scope", "whole_selection"),
+            garnish_regions=[_garnish_region_from_dict(region) for region in idict.get("garnish_regions", []) if isinstance(region, dict)],
+            font_match=idict.get("font_match"),
             resolved_font_family=idict.get("resolved_font_family"),
+            semantic_assignment=idict.get("semantic_assignment"),
             style_profile=style,
             background_profile=bg,
             characteristics=chars,
@@ -280,6 +361,7 @@ def _dict_to_manifest(data: dict) -> TextManifest:
         targ_lang=data.get("targ_lang"),
         img_dim=tuple(data["img_dim"]) if data.get("img_dim") else None,
         scene_regions=[_dict_to_region(r) for r in data.get("scene_regions", [])],
+        semantic_units=[_dict_to_semantic_unit(u) for u in data.get("semantic_units", [])],
         asset_type=atype,
         frame_count=data.get("frame_count", 1),
         fps=data.get("fps"),

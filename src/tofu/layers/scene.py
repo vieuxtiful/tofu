@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from tofu.core.types import (
-    TextManifest, StyleProfil, BgProfil, SceneRegion, BBox, CharactText,
+    TextManifest, StyleProfil, BgProfil, SceneRegion, BBox, CharactText, GarnishProfile,
 )
 from tofu.utils.imaging import load_rgb as _load_rgb, text_mask as _text_mask
 
@@ -721,6 +721,45 @@ def _describe_surface_material(crop, texture: Optional[str], semantic_label: Opt
     return "textured surface"
 
 
+def _analyze_garnish_profile(crop, glyph_mask=None) -> GarnishProfile:
+    """Estimate conservative surface-compatible text wear from local pixels.
+
+    This is evidence for a tunable post-Scribe effect, not a generative style
+    transfer.  Low-confidence/flat surfaces therefore yield near-identity
+    profiles, which keeps Garnish harmless until Scene observes texture.
+    """
+    try:
+        import cv2
+        import numpy as np
+        if crop is None or crop.size == 0:
+            return GarnishProfile()
+        gray = cv2.cvtColor(np.asarray(crop, dtype=np.uint8), cv2.COLOR_RGB2GRAY).astype(np.float32)
+        low = cv2.GaussianBlur(gray, (0, 0), 1.2)
+        grain = float(np.std(gray - low) / 48.0)
+        lap = float(np.var(cv2.Laplacian(gray, cv2.CV_32F)))
+        # A truly flat surface has no evidence for weathering.  Gate all
+        # automatic treatment behind residual texture before allowing the
+        # stronger (but still capped) visible recommendations below.
+        texture_signal = max(0.0, min(1.0, (grain - 0.04) / 0.18))
+        if texture_signal <= 0.0:
+            return GarnishProfile()
+        edge_blur = texture_signal * max(0.0, min(3.0, (110.0 - min(110.0, lap)) / 60.0))
+        if glyph_mask is not None:
+            edge_blur *= 0.75
+        moments = cv2.moments(cv2.Canny(gray.astype(np.uint8), 45, 140))
+        angle = 0.0
+        if abs(moments.get("mu20", 0.0) - moments.get("mu02", 0.0)) > 1e-6:
+            import math
+            angle = math.degrees(0.5 * math.atan2(2 * moments.get("mu11", 0.0), moments.get("mu20", 0.0) - moments.get("mu02", 0.0)))
+        grain = max(0.0, min(0.5, grain))
+        confidence = max(0.0, min(0.8, 0.18 + grain * 1.3 + edge_blur * 0.22))
+        return GarnishProfile(edge_blur_px=edge_blur, grain_strength=grain,
+                              smudge_strength=min(0.35, edge_blur * 0.15),
+                              smudge_angle_deg=angle, source_confidence=confidence)
+    except Exception:
+        return GarnishProfile()
+
+
 def _containing_region(
     regions: List[SceneRegion], bbox: BBox
 ) -> Optional[SceneRegion]:
@@ -764,7 +803,7 @@ def analyze(asset: Any, text_manifest: TextManifest) -> TextManifest:
     if img is not None:
         h, w = img.shape[:2]
         for region in text_manifest.scene_regions:
-            if region.material is not None:
+            if region.material is not None and region.garnish_profile is not None:
                 continue
             b = region.bbox
             x0, y0 = max(0, b.x), max(0, b.y)
@@ -774,7 +813,10 @@ def analyze(asset: Any, text_manifest: TextManifest) -> TextManifest:
             if texture is None and crop.size:
                 texture, _ = _classify_background(crop, None)
                 region.texture = texture
-            region.material = _describe_surface_material(crop, texture, region.semantic_label)
+            if region.material is None:
+                region.material = _describe_surface_material(crop, texture, region.semantic_label)
+            if region.garnish_profile is None:
+                region.garnish_profile = _analyze_garnish_profile(crop)
 
     for inst in text_manifest.instances:
         if inst.style_profile is None:
@@ -844,4 +886,14 @@ def analyze(asset: Any, text_manifest: TextManifest) -> TextManifest:
             pos.setdefault("slant_deg", typo.slant_deg)
             pos.setdefault("stroke_ratio", typo.stroke_ratio)
             ch.positioning = pos
+    # Basil runs after the source OCR has been corrected and after scene has
+    # established the physical panel/sign context.  It only registers
+    # semantic reading units; it never changes an rN, box, or translation.
+    try:
+        from tofu.layers.basil import unify_manifest
+        unify_manifest(text_manifest)
+    except Exception:
+        # Semantic substitution is an editor enhancement.  A missing optional
+        # language model must never degrade Scene/Cleanse/Scribe execution.
+        pass
     return text_manifest
