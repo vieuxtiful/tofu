@@ -77,6 +77,19 @@ class TestScribe:
         region = out_np[b.y:b.y + b.height, b.x:b.x + b.width]
         assert (region < 200).any()  # dark glyphs on white
 
+    def test_emits_exact_per_instance_text_coverage_masks(self):
+        asset = make_asset(color=(255, 255, 255))
+        first = text_inst(x=20, y=30, w=100, h=35, text="one", target="ONE")
+        second = text_inst(x=145, y=90, w=100, h=35, text="two", target="TWO")
+        second.id = "r2"
+        out = scribe.render(asset, make_manifest([first, second]), "en")
+        assert set(out.text_masks) == {"r1", "r2"}
+        assert all(mask.mode == "L" and mask.size == out.size for mask in out.text_masks.values())
+        first_mask = np.asarray(out.text_masks["r1"])
+        second_mask = np.asarray(out.text_masks["r2"])
+        assert first_mask[30:65, 20:120].max() > 0
+        assert second_mask[30:65, 20:120].max() == 0
+
     def test_untranslated_region_left_empty(self):
         asset = make_asset(color=(255, 255, 255))
         out = scribe.render(asset, make_manifest([text_inst(target=None)]), "en")

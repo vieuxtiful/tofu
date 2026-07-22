@@ -2065,15 +2065,30 @@ def preview_render(req: PreviewRenderRequest):
     try:
         manifest = scene.analyze(str(path), manifest)
         cleansed = _cleansed_base(req.asset_id, manifest)
-        cleansed = _composite_patches(req.asset_id, cleansed)
-        localized = scribe.render(cleansed, manifest, req.targ_lang, font_registry=get_validator().font_registry)
-        localized = garnish.apply(localized, manifest, cleansed, get_validator().font_registry)
+        patched = _composite_patches(req.asset_id, cleansed)
+        localized = scribe.render(patched, manifest, req.targ_lang, font_registry=get_validator().font_registry)
+        localized = garnish.apply(localized, manifest, patched, get_validator().font_registry)
         if localized is None or not hasattr(localized, "save"):
             raise RuntimeError("preview produced no image")
-        name = f"{req.asset_id}-{req.targ_lang}.preview.png"
+        # Preview requests can overlap while an editor drags a control.  A
+        # fixed output name lets an older server request overwrite the bytes
+        # later read by a newer response, even when the client ignores the
+        # stale response.  Content-address the artifact by every composition
+        # input so browser cancellation is an optimisation, not correctness.
+        fingerprint = {
+            "asset_id": req.asset_id,
+            "target": req.targ_lang,
+            "manifest": jsonable(manifest),
+            "patch_revision": _patch_revision(req.asset_id),
+            "cleanse_cache_key": _cleanse_cache_key(req.asset_id, manifest),
+        }
+        version = hashlib.sha256(
+            json.dumps(fingerprint, sort_keys=True, default=str).encode("utf-8")
+        ).hexdigest()[:16]
+        name = f"{req.asset_id}-{req.targ_lang}-{version}.preview.png"
         localized.save(OUTPUT_DIR / name)
         return {
-            "output_url": f"/outputs/{name}?v={int(time.time() * 1000)}",
+            "output_url": f"/outputs/{name}?v={version}",
             "text_manifest": jsonable(manifest),
             "cleanse_cache_key": _cleanse_cache_key(req.asset_id, manifest),
         }
@@ -2095,7 +2110,10 @@ def preview_candidate_localized(asset_id: str, candidate_id: str, req: Candidate
     try:
         from PIL import Image
         manifest = scene.analyze(str(_asset_path(asset_id)), manifest)
-        base = _cleansed_base(asset_id, manifest).convert("RGBA")
+        # Candidate review must be composed over the same retained treatment
+        # layer as the localized canvas, otherwise its text and surface are a
+        # different image from the one the user will eventually apply to.
+        base = _composite_patches(asset_id, _cleansed_base(asset_id, manifest)).convert("RGBA")
         candidate = Image.open(OUTPUT_DIR / record["file"]).convert("RGBA")
         b = record["bbox"]
         base.alpha_composite(candidate, (int(b["x"]), int(b["y"])))

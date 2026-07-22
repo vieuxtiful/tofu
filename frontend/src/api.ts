@@ -888,12 +888,13 @@ export async function renderAsset(
 }
 
 export async function renderPreview(
-  assetId: string, targLang: string, manifest: TextManifest
+  assetId: string, targLang: string, manifest: TextManifest, signal?: AbortSignal
 ): Promise<{ output_url: string; text_manifest: TextManifest; cleanse_cache_key: string }> {
   return json(await fetch("/api/preview/render", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ asset_id: assetId, targ_lang: targLang, manifest }),
+    signal,
   }));
 }
 export async function previewCandidateLocalized(assetId: string, candidateId: string, manifest?: TextManifest, targLang?: string): Promise<string> {

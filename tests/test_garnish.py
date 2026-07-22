@@ -45,6 +45,20 @@ def test_disabled_garnish_bypasses_profile_without_losing_override():
     assert manifest.instances[0].garnish_override.edge_blur_px == 2.0
 
 
+def test_garnish_prefers_scribe_coverage_over_pixel_difference():
+    base = Image.new("RGB", (80, 50), "#64748b")
+    # Simulate a text colour that happens to equal its background: a diff mask
+    # cannot recover it, while Scribe's real alpha coverage still can.
+    scribed = base.copy()
+    mask = Image.new("L", scribed.size, 0)
+    ImageDraw.Draw(mask).rectangle((25, 16, 45, 25), fill=255)
+    scribed.text_masks = {"r1": mask}
+    manifest = _manifest(GarnishProfile(gamma_shift=1.5))
+    out = garnish.apply(scribed, manifest, base)
+    assert out.getpixel((30, 18)) != scribed.getpixel((30, 18))
+    assert out.getpixel((2, 2)) == scribed.getpixel((2, 2))
+
+
 def test_garnish_sub_region_is_persisted_and_clips_effect_to_its_polygon():
     base = Image.new("RGB", (80, 50), "#64748b")
     scribed = base.copy(); ImageDraw.Draw(scribed).rectangle((25, 16, 45, 25), fill="#b4b4b4")

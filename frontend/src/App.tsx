@@ -92,13 +92,6 @@ type PreviewTransaction = {
   error?: string;
 };
 
-type DraftGarnish = {
-  profile: NonNullable<InstText["garnish_override"]>;
-  bbox: BBox;
-  polygon?: number[][];
-  enabled: boolean;
-};
-
 type LocalizedSnapshot = {
   manifest: InstText[];
   patchIds: string[];
@@ -383,7 +376,6 @@ export default function App() {
   const previewCauseRef = useRef<PreviewCause>("initial");
   const candidatePreviewSeq = useRef(0);
   const [garnishExpanded, setGarnishExpanded] = useState(true);
-  const [draftGarnish, setDraftGarnish] = useState<DraftGarnish | null>(null);
   const [garnishRegionMode, setGarnishRegionMode] = useState(false);
   const [selectedGarnishRegionId, setSelectedGarnishRegionId] = useState<string | null>(null);
   const previewSyncing = previewTransaction.phase === "rendering";
@@ -398,6 +390,7 @@ export default function App() {
   const [brushCursor, setBrushCursor] = useState<[number, number] | null>(null);
   const [brushRadius, setBrushRadius] = useState(18);
   const [brushHardness, setBrushHardness] = useState(0.85);
+  const [localizedZoom, setLocalizedZoom] = useState(1);
   const brushDrawing = useRef<{ pointerId: number; stroke: BrushStroke } | null>(null);
   const [brushApplying, setBrushApplying] = useState(false);
   const [inpaintPatchIds, setInpaintPatchIds] = useState<string[]>([]);
@@ -1145,7 +1138,6 @@ export default function App() {
       return { ...inst, garnish_override: profile };
     });
     setManifest(next);
-    setDraftGarnish({ profile, bbox: b, polygon: perRegion ? selectedRegion?.polygon : undefined, enabled: true });
     previewCauseRef.current = "garnish";
     autoSave(next);
   }, [renderSelId, prevSelId, selectedGarnishRegionId, recordLocalizedChange, manifest, sceneRegions, autoSave, setManifest]);
@@ -1158,14 +1150,12 @@ export default function App() {
     const selectedRegion = (inst.garnish_regions ?? []).find((region) => region.id === selectedGarnishRegionId);
     const b = inst.bounding_box;
     const surface = sceneRegions.find((region) => b.x + b.width / 2 >= region.bbox.x && b.x + b.width / 2 <= region.bbox.x + region.bbox.width && b.y + b.height / 2 >= region.bbox.y && b.y + b.height / 2 <= region.bbox.y + region.bbox.height);
-    const profile = selectedRegion?.profile ?? inst.garnish_override ?? surface?.garnish_profile ?? DEFAULT_GARNISH_PROFILE;
     recordLocalizedChange();
     const next = manifest.map((inst) => {
       if (inst.id !== selected) return inst;
       return inst.garnish_scope === "per_region" && selectedGarnishRegionId ? { ...inst, garnish_regions: (inst.garnish_regions ?? []).map((region) => region.id === selectedGarnishRegionId ? { ...region, enabled } : region) } : { ...inst, garnish_enabled: enabled };
     });
     setManifest(next);
-    setDraftGarnish({ profile, bbox: b, polygon: inst.garnish_scope === "per_region" ? selectedRegion?.polygon : undefined, enabled });
     previewCauseRef.current = "garnish";
     autoSave(next);
   }, [renderSelId, prevSelId, selectedGarnishRegionId, recordLocalizedChange, manifest, sceneRegions, autoSave, setManifest]);
@@ -1266,10 +1256,12 @@ export default function App() {
   useEffect(() => {
     if (step !== 3 || !asset) return;
     const seq = ++previewRenderSeq.current;
+    const controller = new AbortController();
     const cause = previewCauseRef.current;
     previewCauseRef.current = "style";
     setPreviewTransaction({ phase: "debouncing", requestId: seq, cause });
     const timer = setTimeout(async () => {
+      if (controller.signal.aborted) return;
       try {
         const snapshot = currentManifest();
         if (!snapshot) {
@@ -1277,10 +1269,9 @@ export default function App() {
           return;
         }
         if (seq === previewRenderSeq.current) setPreviewTransaction({ phase: "rendering", requestId: seq, cause });
-        const result = await renderPreview(asset.asset_id, targLang, snapshot);
-        if (seq === previewRenderSeq.current) {
+        const result = await renderPreview(asset.asset_id, targLang, snapshot, controller.signal);
+        if (!controller.signal.aborted && seq === previewRenderSeq.current) {
           setPreRenderUrl(result.output_url);
-          setDraftGarnish(null); // authoritative server composition has arrived
           setPreviewRenderError(null);
           setPreviewCacheKey(result.cleanse_cache_key);
           setPreviewTransaction({ phase: "idle", requestId: seq, cause });
@@ -1315,7 +1306,7 @@ export default function App() {
           setRepairReviews(repairItems.filter((repair) => !unavailable.includes(repair)));
         }
       } catch (e) {
-        if (seq === previewRenderSeq.current) {
+        if (!controller.signal.aborted && seq === previewRenderSeq.current) {
           const error = String(e);
           setPreviewRenderError(error);
           setPreviewTransaction({ phase: "failed", requestId: seq, cause, error });
@@ -1323,10 +1314,10 @@ export default function App() {
         // The last good canvas remains visible while a transient preview
         // request fails; final Render still reports actionable errors.
       }
-    // Garnish gets a much shorter authoritative round trip; the draft proxy
-    // below covers the first frame while the backend finishes its exact mask.
-    }, cause === "garnish" ? 120 : 600);
-    return () => clearTimeout(timer);
+    // Garnish is an exact mask/filter pass and can remain responsive without
+    // a visually misleading client-side approximation.
+    }, cause === "garnish" ? 150 : 600);
+    return () => { controller.abort(); clearTimeout(timer); };
     // Scene's returned garnish metadata is presentation data.  It must not
     // be a dependency here: accepting it after a successful response would
     // otherwise schedule a second, latent canvas render.
@@ -4005,6 +3996,11 @@ export default function App() {
                 <div className="mb-2 flex items-center gap-2">
                   <p className="text-xs text-zinc-500">Modify, place, and warp text.</p>
                   {renderSelId && <button type="button" onClick={() => { setGarnishRegionMode((value) => !value); setLassoMode(false); setBrushMode(false); setLassoPoints([]); setBrushCursor(null); }} className={`bezier-card flex items-center justify-center rounded-lg px-2 py-1 text-sm transition ${garnishRegionMode ? "bg-violet-600 text-white hover:bg-violet-700" : "bg-white/60 text-violet-700 hover:bg-violet-100 dark:bg-zinc-900/60 dark:text-violet-300 dark:hover:bg-zinc-800"}`} title="Add Garnish region" aria-label="Add Garnish region"><GiCoolSpices size={16} /></button>}
+                  <div className="ml-auto flex items-center gap-1 text-[10px] text-zinc-500" aria-label="Localized canvas zoom">
+                    <button type="button" onClick={() => setLocalizedZoom((zoom) => Math.max(.5, Number((zoom - .25).toFixed(2))))} disabled={localizedZoom <= .5} className="rounded border border-zinc-300 px-1.5 py-0.5 disabled:opacity-35 dark:border-zinc-700" title="Zoom out">−</button>
+                    <button type="button" onClick={() => setLocalizedZoom(1)} className="min-w-10 rounded border border-zinc-300 px-1.5 py-0.5 dark:border-zinc-700" title="Fit canvas">{Math.round(localizedZoom * 100)}%</button>
+                    <button type="button" onClick={() => setLocalizedZoom((zoom) => Math.min(3, Number((zoom + .25).toFixed(2))))} disabled={localizedZoom >= 3} className="rounded border border-zinc-300 px-1.5 py-0.5 disabled:opacity-35 dark:border-zinc-700" title="Zoom in">+</button>
+                  </div>
                 </div>
                 {!brushMode && !lassoMode && renderSelId && (() => {
                   const inst = manifest.find((item) => item.id === renderSelId);
@@ -4060,8 +4056,9 @@ export default function App() {
                     </div>
                   </div>;
                 })()}
-                <div className="relative inline-block max-w-full touch-none select-none">
-                  <img src={preRenderUrl || previewUrl || "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="} alt="localized treatment canvas" draggable={false} className={`block max-w-full touch-none select-none rounded-lg border border-zinc-300 dark:border-zinc-800 ${nearFirstPoint ? "cursor-pointer" : (brushMode || lassoMode || garnishRegionMode || colorPickMode === "localized") ? "cursor-crosshair" : ""}`}
+                <div className="max-h-[68vh] max-w-full overflow-auto rounded-lg">
+                <div className="relative inline-block min-w-full touch-none select-none" style={{ width: `${localizedZoom * 100}%` }}>
+                  <img src={preRenderUrl || previewUrl || "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="} alt="localized treatment canvas" draggable={false} className={`block w-full max-w-none touch-none select-none rounded-lg border border-zinc-300 dark:border-zinc-800 ${nearFirstPoint ? "cursor-pointer" : (brushMode || lassoMode || garnishRegionMode || colorPickMode === "localized") ? "cursor-crosshair" : ""}`}
                     style={{ touchAction: "none", WebkitUserDrag: "none" } as React.CSSProperties}
                     onDragStart={(event) => event.preventDefault()}
                     onPointerDown={(event) => {
@@ -4094,21 +4091,6 @@ export default function App() {
                     onPointerCancel={(event) => finishBrushStroke(event, true)}
                     onLostPointerCapture={(event) => finishBrushStroke(event, true)}
                     onPointerLeave={() => { if (!brushDrawing.current) setBrushCursor(null); setNearFirstPoint(false); }} />
-                  {draftGarnish?.enabled && imgDim && (preRenderUrl || previewUrl) && (() => {
-                    const profile = draftGarnish.profile;
-                    const b = draftGarnish.bbox;
-                    const clipPath = draftGarnish.polygon?.length
-                      ? `polygon(${draftGarnish.polygon.map(([x, y]) => `${x * 100 / imgDim[0]}% ${y * 100 / imgDim[1]}%`).join(", ")})`
-                      : `inset(${b.y * 100 / imgDim[1]}% ${(imgDim[0] - b.x - b.width) * 100 / imgDim[0]}% ${(imgDim[1] - b.y - b.height) * 100 / imgDim[1]}% ${b.x * 100 / imgDim[0]}%)`;
-                    const smudge = profile.smudge_strength * 4;
-                    const radians = profile.smudge_angle_deg * Math.PI / 180;
-                    return <img aria-hidden src={preRenderUrl || previewUrl || ""} className="pointer-events-none absolute inset-0 block h-full w-full rounded-lg object-fill" style={{
-                      clipPath, opacity: Math.min(.8, .16 + profile.grain_strength * .35 + profile.edge_blur_px * .07),
-                      filter: `blur(${Math.min(8, profile.edge_blur_px)}px) contrast(${Math.round(profile.gamma_shift * 100)}%) saturate(${1 + profile.grain_strength})`,
-                      transform: `translate(${Math.cos(radians) * smudge}px, ${Math.sin(radians) * smudge}px)`,
-                      mixBlendMode: "soft-light",
-                    }} />;
-                  })()}
                   {imgDim && <svg className={`absolute inset-0 h-full w-full ${brushMode || lassoMode || garnishRegionMode ? "pointer-events-none" : ""}`} viewBox={`0 0 ${imgDim[0]} ${imgDim[1]}`} preserveAspectRatio="none">
                     {!brushMode && !lassoMode && !garnishRegionMode && orderedManifest.map((inst) => { const b = inst.bounding_box; const active = inst.id === renderSelId; return <rect key={inst.id} x={b.x} y={b.y} width={b.width} height={b.height} fill={active ? "rgba(6,182,212,.12)" : "transparent"} stroke={active ? "#06b6d4" : "rgba(255,255,255,.7)"} strokeWidth={active ? 2 : 1} onClick={() => setRenderSelId(inst.id)} className="cursor-pointer" />; })}
                     {!brushMode && !lassoMode && !garnishRegionMode && manifest.find((inst) => inst.id === renderSelId)?.garnish_regions?.map((region) => <polygon key={region.id} points={region.polygon.map((point) => point.join(",")).join(" ")} fill={region.id === selectedGarnishRegionId ? "rgba(139,92,246,.20)" : "rgba(139,92,246,.08)"} stroke={region.id === selectedGarnishRegionId ? "#7c3aed" : "rgba(124,58,237,.6)"} strokeWidth="1.5" />)}
@@ -4122,6 +4104,7 @@ export default function App() {
                     </>}
                   </svg>}
                 </div>
+                </div>
                 {previewRenderError && <div className="mb-2 flex items-center justify-between gap-2 rounded border border-amber-500/50 bg-amber-50 px-2 py-1 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-200"><span>Preview update failed; showing the last valid composition. {previewRenderError}</span><button type="button" onClick={() => { previewCauseRef.current = "style"; setPreviewRetryRevision((value) => value + 1); }} className="shrink-0 rounded bg-amber-700 px-1.5 py-0.5 text-[10px] text-white">retry</button></div>}
                 {inpaintingProviders.length > 0 && !cleanseDismissed && <p className="bezier-impression subtext mb-2 flex items-start gap-1 px-3 py-2 text-xs text-zinc-500 dark:text-zinc-600">
                   <MdTipsAndUpdates size={14} className="mt-0.5 shrink-0 text-[#2d8cf0]" /><span>Smart fill options are available below.</span>
@@ -4129,7 +4112,7 @@ export default function App() {
                 </p>}
                 {repairFallbackIds.length > 0 && <div className="mb-2 rounded border border-sky-500/40 bg-sky-50 px-2 py-2 text-xs text-sky-900 dark:bg-sky-950/30 dark:text-sky-100"><span className="font-medium">Texture treatment is ready for review.</span><span className="ml-1">{repairFallbackIds.length} region{repairFallbackIds.length === 1 ? " uses" : "s use"} the editable reconstruction base.</span></div>}
                 {repairReviews.length > 0 && <div className="mb-2 rounded border border-amber-500/50 bg-amber-50 px-2 py-2 text-xs text-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
-                  <span className="font-medium">Suggested repairs:</span><span className="ml-1">Compare a proposed repair with the localized canvas, then apply it only if it improves the surface.</span>
+                  <span className="font-medium">Smart fill:</span><span className="ml-1">Compare a proposed fill with the localized canvas, then apply it only if it improves the surface.</span>
                   {(() => {
                     const candidates = [...new Map(repairReviews.flatMap((review) => review.candidates.map((candidate) => [candidate.id, { review, candidate }] as const))).values()];
                     return candidates.length > 0 && <div className="mt-2 flex flex-wrap gap-2">

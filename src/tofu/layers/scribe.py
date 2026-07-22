@@ -781,6 +781,27 @@ def _shadow_layer(
     return layer
 
 
+def _capture_text_mask(masks: Dict[str, Any], inst_id: str, layer: Any) -> None:
+    """Accumulate an instance's rendered alpha coverage.
+
+    ``layer`` is the fully transformed, image-sized render layer.  Its alpha
+    channel is therefore the authoritative coverage of the glyphs, underline,
+    shadow, rotation, and warp that Scribe actually produced.  Garnish uses
+    this instead of trying to rediscover text by differencing the localized
+    image from a possibly patched Cleanse base.
+    """
+    from PIL import Image
+    import numpy as np
+
+    alpha = layer.getchannel("A")
+    existing = masks.get(inst_id)
+    if existing is None:
+        masks[inst_id] = alpha.copy()
+        return
+    merged = np.maximum(np.asarray(existing, dtype=np.uint8), np.asarray(alpha, dtype=np.uint8))
+    masks[inst_id] = Image.fromarray(merged, mode="L")
+
+
 def render(
     cleansed_asset: Any,
     text_manifest: TextManifest,
@@ -830,6 +851,11 @@ def render(
         pass
 
     render_params = render_params or {}
+    # Downstream post-processing must remain coupled to the structured text
+    # layer, not infer glyph coverage from output pixels.  These masks are
+    # deliberately attached only to this transient render result: they are
+    # preview/final composition data, never manifest state.
+    text_masks: Dict[str, Any] = {}
     # Basil is the authoritative semantic-block → spatial-cube relation.
     # target_text is retained for editable manifest compatibility, but a
     # verified plating plan must win in final rendering just as it does in
@@ -926,6 +952,7 @@ def render(
                 layer = layer.rotate(rotation, center=center, resample=Image.BICUBIC)
             else:
                 layer = _apply_style_transform(layer, bbox, s.transform)
+            _capture_text_mask(text_masks, inst.id, layer)
             base = Image.alpha_composite(base, layer)
             continue
 
@@ -1022,9 +1049,15 @@ def render(
                 rotation, center=center, resample=Image.BICUBIC
             )
 
+        _capture_text_mask(text_masks, inst.id, layer)
         base = Image.alpha_composite(base, layer)
 
     result = base.convert("RGB")
+    # PIL images permit transient attributes.  Keeping the coverage alongside
+    # the image avoids widening Scribe's public return type and preserves the
+    # existing render callers.  Garnish retains a conservative diff fallback
+    # for non-Scribe image inputs and any image operation that discards it.
+    result.text_masks = text_masks  # type: ignore[attr-defined]
     # attach preserved metadata so .save() callers can pass it through
     if _orig_dpi:
         result.info["dpi"] = _orig_dpi

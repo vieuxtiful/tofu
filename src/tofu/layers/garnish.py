@@ -82,7 +82,11 @@ def apply(scribed_asset: Any, text_manifest: TextManifest, base_asset: Any = Non
             return scribed_asset
         result = scribed.copy()
         source = np.asarray(scribed.convert("RGB"), dtype=np.int16)
+        # Scribe's exact alpha coverage is the preferred mask.  ``clean`` is
+        # retained exclusively for legacy image inputs that do not carry that
+        # transient sidecar.
         clean = np.asarray(base.convert("RGB"), dtype=np.int16)
+        text_masks = getattr(scribed_asset, "text_masks", None)
         for inst in text_manifest.instances:
             if not inst.target_text or inst.dnt or inst.excluded:
                 continue
@@ -100,10 +104,25 @@ def apply(scribed_asset: Any, text_manifest: TextManifest, base_asset: Any = Non
                 profile = (region.profile if region and region.profile else inherited)
                 if not _active(profile):
                     continue
-                diff = np.max(np.abs(source[y0:y1, x0:x1] - clean[y0:y1, x0:x1]), axis=2).astype(np.uint8)
-                _, mask = cv2.threshold(diff, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-                if not mask.any() and int(diff.max()) > 3:
-                    mask = np.where(diff > 5, 255, 0).astype(np.uint8)
+                coverage = text_masks.get(inst.id) if isinstance(text_masks, dict) else None
+                if coverage is not None:
+                    mask_full = np.asarray(coverage, dtype=np.uint8)
+                    if mask_full.shape[:2] != (scribed.height, scribed.width):
+                        # A malformed sidecar must not silently offset a
+                        # treatment.  The established diff path is safer.
+                        coverage = None
+                    else:
+                        # Keep anti-aliased coverage rather than collapsing it
+                        # to a binary threshold.  This is what lets edge blur
+                        # and grain feather naturally at actual glyph edges.
+                        mask = mask_full[y0:y1, x0:x1].copy()
+                if coverage is None:
+                    # Compatibility fallback for external/legacy Scribe
+                    # callers.  Smart Fill patches are already in ``base``.
+                    diff = np.max(np.abs(source[y0:y1, x0:x1] - clean[y0:y1, x0:x1]), axis=2).astype(np.uint8)
+                    _, mask = cv2.threshold(diff, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+                    if not mask.any() and int(diff.max()) > 3:
+                        mask = np.where(diff > 5, 255, 0).astype(np.uint8)
                 allowed = _region_mask(cv2, np, region.polygon, x0, y0, x1 - x0, y1 - y0) if region else None
                 if allowed is not None:
                     mask = cv2.bitwise_and(mask, allowed)
