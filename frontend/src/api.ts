@@ -202,7 +202,7 @@ export interface InstText {
     stroke_width: number | null;
     target_orientation: "horizontal" | "vertical" | null;
     word_order: "ltr" | "rtl" | null;
-    transform?: { skew_x?: number; skew_y?: number; skew_anchor?: string; arc?: number; preset?: string; amount?: number; scale_x?: number; scale_y?: number; offset_x?: number; offset_y?: number; wrap_text?: boolean; rotation?: number | null } | null;
+    transform?: { skew_x?: number; skew_y?: number; skew_anchor?: string; arc?: number; preset?: string; amount?: number; scale_x?: number; scale_y?: number; offset_x?: number; offset_y?: number; wrap_text?: boolean; rotation?: number | null; locked_fields?: string[] } | null;
   } | null;
   background_profile?: {
     semantic_label: string | null;  // containing scene surface: "panel" | "bordered_region" | ...
