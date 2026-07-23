@@ -103,6 +103,52 @@ def _apply_style_transform(layer: Any, bbox: BBox, transform: Optional[Dict[str,
         if not (sx or sy or arc or amount or scale_x != 1 or scale_y != 1 or offset_x or offset_y):
             return layer
 
+        def _quality_affine(src, coefficients):
+            """Affine-transform one glyph layer with adaptive supersampling.
+
+            Text is first rasterised by Pillow at its native target pixels.
+            Repeatedly rescaling that finished raster is what produced the
+            staircase edges reported by the localized canvas.  Restricting a
+            supersampled pass to this instance's ink bounds keeps the detail
+            in the original glyph coverage while avoiding a 16x full-image
+            allocation for a large source asset.  The final LANCZOS reduction
+            retains smooth contours at the actual output raster.
+            """
+            ink = src.getbbox()
+            if not ink:
+                return src
+            ix0, iy0, ix1, iy1 = ink
+            # Scale, shear and named warps may move ink beyond its initial
+            # tight extent.  This deliberately generous local pad avoids
+            # clipping an unwrapped run while remaining region-local.
+            extent = max(ix1 - ix0, iy1 - iy0, bbox.width, bbox.height)
+            pad = int(max(16, extent * 1.6 + abs(offset_x) + abs(offset_y) + abs(amount)))
+            left, top = max(0, ix0 - pad), max(0, iy0 - pad)
+            right, bottom = min(src.width, ix1 + pad), min(src.height, iy1 + pad)
+            if right <= left or bottom <= top:
+                return src
+            crop = src.crop((left, top, right, bottom))
+            # Four samples per target pixel is normally enough for glyph
+            # edges.  Adapt down rather than risking a pathological memory
+            # spike for a very large selected text region.
+            max_high_pixels = 18_000_000
+            factor = min(4, max(1, int((max_high_pixels / max(1, crop.width * crop.height)) ** .5)))
+            if factor < 2:
+                return src.transform(src.size, Image.Transform.AFFINE, coefficients, resample=Image.Resampling.BICUBIC)
+            a, b, c, d, e, f = coefficients
+            # Convert the global inverse map to the crop's local coordinate
+            # system, then to its supersampled coordinate system.
+            local = (
+                a, b, (a * left + b * top + c - left) * factor,
+                d, e, (d * left + e * top + f - top) * factor,
+            )
+            high = crop.resize((crop.width * factor, crop.height * factor), Image.Resampling.LANCZOS)
+            transformed = high.transform(high.size, Image.Transform.AFFINE, local, resample=Image.Resampling.BICUBIC)
+            reduced = transformed.resize(crop.size, Image.Resampling.LANCZOS)
+            result = Image.new("RGBA", src.size, (0, 0, 0, 0))
+            result.alpha_composite(reduced, (left, top))
+            return result
+
         def _apply_offset(src):
             """Shift a layer by (offset_x, offset_y) with optional per-axis
             truncation to the bounding-box region.  Uses paste with the
@@ -124,22 +170,21 @@ def _apply_style_transform(layer: Any, bbox: BBox, transform: Optional[Dict[str,
                     return mask
             return shifted
         cx, cy = bbox.x + bbox.width / 2, bbox.y + bbox.height / 2
-        out = layer.transform(
-            layer.size, Image.Transform.AFFINE,
-            (1, -sx, sx * cy, -sy, 1, sy * cx), resample=Image.Resampling.BICUBIC,
+        out = _quality_affine(
+            layer, (1, -sx, sx * cy, -sy, 1, sy * cx),
         ) if (sx or sy) else layer
         if scale_x != 1 or scale_y != 1:
             # Pillow's affine matrix maps output coordinates to source
             # coordinates.  Scaling about the region centre keeps this a
             # local text transform rather than a canvas-position dependent
-            # one.  BICUBIC preserves anti-aliased glyph contours better
-            # than nearest-neighbour expansion while the bounds prevent a
-            # slider from producing an unreviewable distortion.
-            out = out.transform(
-                out.size, Image.Transform.AFFINE,
+            # one.  Transforming the source glyph coverage through the
+            # adaptive supersampling helper preserves anti-aliased contours
+            # instead of introducing hard stair-steps during a width/height
+            # adjustment.
+            out = _quality_affine(
+                out,
                 (1 / scale_x, 0, cx - cx / scale_x,
                  0, 1 / scale_y, cy - cy / scale_y),
-                resample=Image.Resampling.BICUBIC,
             )
         if not (arc or amount):
             return _apply_offset(out)
