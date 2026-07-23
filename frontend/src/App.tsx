@@ -4,11 +4,11 @@ import {
   Play, Plus, RotateCcw, ScanText, ShieldAlert, Sparkles, SquareStack, Subscript, Superscript, Type, Underline, X,
 } from "lucide-react";
 import {
-  BBox, FontFamily, FontOption, ImportResult, InpaintPatch, InpaintingProvider, InstText, LanguageOption, Project,
+  BBox, FontFamily, FontOption, ImportResult, InpaintPatch, InstText, LanguageOption, Project,
   RenderResult, RenderStreamEvent, SceneRegion, SemanticSubstitutionPlan, SemanticTextUnit, TextManifest, UploadResponse, ValidationReport, GlossaryStatus,
   addRegion, approveRender, checkDuplicateAsset, deleteProjectAsset, deleteRegion, detectAssetStream,
   fetchFonts, fetchLanguages, getManifest, getProject, importFile, matchFonts, ocrRegion, putManifest,
-  applyRepairCandidate, captureLocalizedBaseline, createInpaintPatch, getInpaintingProviders, getLocalizedBaseline, getTreatment, previewCandidateLocalized, refineRegion, renderAsset, renderAssetStream, renderPreview, restoreTreatment, scanAssetLanguage, sha256File, snapshotAsset, undoInpaint,
+  applyRepairCandidate, captureLocalizedBaseline, createInpaintPatch, getLocalizedBaseline, getTreatment, previewCandidateLocalized, refineRegion, renderAsset, renderAssetStream, renderPreview, restoreTreatment, scanAssetLanguage, sha256File, snapshotAsset, undoInpaint,
   semanticSubstitution, updateProject, uploadAsset, validateAsset, fetchGlossaryStatus, uploadGlossary, deleteGlossary,
 } from "./api";
 import { FcCollapse } from "react-icons/fc";
@@ -24,6 +24,9 @@ import { HiLockClosed, HiLockOpen } from "react-icons/hi";
 import { LuUndo2, LuRedo2 } from "react-icons/lu";
 import { VscDebugRestart } from "react-icons/vsc";
 import { GiCoolSpices } from "react-icons/gi";
+import { providerLabel } from "./repairLabels";
+import type { LocalizedCandidatePreview, RepairCandidate, RepairReview } from "./localizedCanvasTypes";
+import SmartFillReview from "./SmartFillReview";
 import { langDisplayName, langFlag, LANGUAGE_REGIONS, REGION_ORDER } from "./languageData";
 import LanguageCombobox from "./LanguageCombobox";
 import FontCombobox, { loadFontPreview, fontNameForPath, weightLabel } from "./FontCombobox";
@@ -60,28 +63,6 @@ interface ScanState {
 type BrushStroke = {
   id: string;
   points: [number, number][];
-};
-
-type RepairCandidate = {
-  id: string;
-  provider: string;
-  decision: string;
-  url: string;
-  bbox: BBox;
-  cacheKey: string;
-};
-
-type RepairReview = {
-  id: string;
-  provider: string;
-  reason: string;
-  candidates: RepairCandidate[];
-};
-
-type LocalizedCandidatePreview = {
-  status: "loading" | "ready" | "error";
-  url?: string;
-  error?: string;
 };
 
 type PreviewCause = "garnish" | "text" | "style" | "treatment" | "initial";
@@ -367,7 +348,6 @@ export default function App() {
   const [previewCacheKey, setPreviewCacheKey] = useState<string | null>(null);
   const [previewTransaction, setPreviewTransaction] = useState<PreviewTransaction>({ phase: "idle", requestId: 0, cause: "initial" });
   const [previewRetryRevision, setPreviewRetryRevision] = useState(0);
-  const [inpaintingProviders, setInpaintingProviders] = useState<InpaintingProvider[]>([]);
   const [repairReviews, setRepairReviews] = useState<RepairReview[]>([]);
   const [localizedCandidatePreviews, setLocalizedCandidatePreviews] = useState<Record<string, LocalizedCandidatePreview>>({});
   const [candidatePreviewRevision, setCandidatePreviewRevision] = useState(0);
@@ -408,7 +388,9 @@ export default function App() {
   const localizedBaseline = useRef<LocalizedSnapshot | null>(null);
   const [canLocalizedUndo, setCanLocalizedUndo] = useState(false);
   const [canLocalizedRedo, setCanLocalizedRedo] = useState(false);
-  const [colorPickMode, setColorPickMode] = useState<boolean>(false);
+  // A shared canvas-picking mode: either canvas can supply the sampled colour.
+  // A named sentinel prevents the old boolean/null mismatch at reset time.
+  const [colorPickMode, setColorPickMode] = useState<"active" | null>(null);
   const [languages, setLanguages] = useState<LanguageOption[]>([]);
   const [targLang, setTargLang] = useState("es");
   const [formerTargLang, setFormerTargLang] = useState<string | null>(null);
@@ -806,7 +788,6 @@ export default function App() {
     setPreviewRenderError(null);
     setPreviewCacheKey(null);
     setPreviewTransaction({ phase: "idle", requestId: previewRenderSeq.current, cause: "initial" });
-    setInpaintingProviders([]);
     setRepairReviews([]);
     setRepairFallbackIds([]);
     brushDrawing.current = null;
@@ -821,7 +802,7 @@ export default function App() {
     localizedBaseline.current = null;
     setCanLocalizedUndo(false);
     setCanLocalizedRedo(false);
-    setColorPickMode(false);
+    setColorPickMode(null);
     manifestSkipHistory.current = true;
     setManifest([]);
     setManualOrder([]);
@@ -1253,7 +1234,7 @@ export default function App() {
       const color = `#${[r, g, b].map((value) => value.toString(16).padStart(2, "0")).join("")}`;
       event.preventDefault();
       updateSelectedStyle({ color });
-      setColorPickMode(false);
+      setColorPickMode(null);
       addToast("success", `sampled ${color} from ${surface === "source" ? "source" : "localized"} canvas`);
       return true;
     } catch {
@@ -1344,13 +1325,6 @@ export default function App() {
   }, [step, asset, targLang, manifest, patchRevision, previewRetryRevision]);
 
   useEffect(() => {
-    if (step !== 3) return;
-    getInpaintingProviders()
-      .then(({ providers }) => setInpaintingProviders(providers))
-      .catch(() => setInpaintingProviders([]));
-  }, [step]);
-
-  useEffect(() => {
     if (!asset) return;
     getTreatment(asset.asset_id)
       .then((state) => syncTreatmentPatches(state.patches))
@@ -1413,7 +1387,7 @@ export default function App() {
       const result = await applyRepairCandidate(asset.asset_id, candidate.id, candidate.cacheKey);
       syncTreatmentPatches(result.patches);
       setPatchRevision((revision) => revision + 1);
-      addToast("success", result.already_applied ? `${candidate.provider} repair is already in the treatment layer` : `applied ${candidate.provider} repair as an undoable treatment`);
+      addToast("success", result.already_applied ? `${providerLabel(candidate.provider)} is already in the treatment layer` : `applied ${providerLabel(candidate.provider)} as an undoable treatment`);
     } catch (e) { setErrorWithNotif(String(e)); }
   }, [asset, addToast, previewPending, previewCacheKey, syncTreatmentPatches, recordLocalizedChange]);
 
@@ -2620,13 +2594,6 @@ export default function App() {
 
   const translatableCount = manifest.filter((i) => !i.dnt).length;
   const translatedCount = manifest.filter((i) => !i.dnt && i.target_text).length;
-  const activeNeuralProvider = inpaintingProviders.find((provider) =>
-    provider.available && (provider.kind === "self_hosted" || provider.kind === "experimental")
-  );
-  const configuredNeuralProvider = inpaintingProviders.find((provider) =>
-    provider.enabled && (provider.kind === "self_hosted" || provider.kind === "experimental")
-  );
-
   const scanBlocked = scan !== null && scan.status !== "passed";
 
   const saveIndicator = (
@@ -3668,13 +3635,13 @@ export default function App() {
                         <input
                           type="number"
                           min={6}
-                          value={sp?.font_size ?? inst.characteristics?.size ?? ""}
+                          value={sp?.font_size ?? ""}
                           onChange={(e) => updateStyle({ font_size: e.target.value ? Number(e.target.value) : null })}
-                          placeholder="auto-fit"
-                          className={`w-20 rounded border border-zinc-300 bg-white px-1 py-0.5 text-xs dark:border-zinc-700 dark:bg-zinc-900 ${sp?.font_size == null && inst.characteristics?.size != null ? "text-cyan-600 dark:text-cyan-400" : "text-zinc-800 dark:text-zinc-200"}`}
+                          placeholder={inst.characteristics?.size != null ? `Detected: ${inst.characteristics.size}` : "Auto-fit"}
+                          className={`w-24 rounded border border-zinc-300 bg-white px-1 py-0.5 text-xs dark:border-zinc-700 dark:bg-zinc-900 ${sp?.font_size == null && inst.characteristics?.size != null ? "placeholder:text-cyan-600 dark:placeholder:text-cyan-400" : "text-zinc-800 dark:text-zinc-200"}`}
                         />
                         {inst.characteristics?.size != null && sp?.font_size == null && (
-                          <span className="subtext text-[10px] text-cyan-600/70 dark:text-cyan-400/70">detected</span>
+                          <span className="subtext text-[10px] text-cyan-600/70 dark:text-cyan-400/70">detected · auto-fit</span>
                         )}
                       </div>
                     </div>
@@ -3840,7 +3807,7 @@ export default function App() {
                           onClick={() => updateStyle({ color: null })}
                           className="subtext rounded px-2 py-0.5 text-xs text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800"
                         >auto (from scene)</button>
-                        <button onClick={() => setColorPickMode((v) => !v)}
+                        <button onClick={() => setColorPickMode((mode) => mode ? null : "active")}
                           className={`subtext flex items-center gap-1 rounded px-2 py-0.5 text-xs ${colorPickMode ? "bg-cyan-600 text-white" : "text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800"}`}
                           title="pick color"><FaEyeDropper size={11} /> pick color</button>
                         {currentColor && (
@@ -4125,7 +4092,7 @@ export default function App() {
                         {(inst.garnish_regions ?? []).map((region, index) => <option key={region.id} value={region.id}>region {index + 1}</option>)}
                       </select>}
                       {!recommended && <span className="text-[10px] text-violet-700/75 dark:text-violet-300/75">manual baseline</span>}
-                      {garnishPreviewSyncing && <span className="text-[10px] text-violet-700 dark:text-violet-300">natural integration</span>}
+                      {garnishPreviewSyncing && <span className="text-[10px] text-violet-700 dark:text-violet-300">updating treatment…</span>}
                       <button type="button" role="switch" aria-checked={enabled} aria-label="enable garnish" onClick={() => setSelectedGarnishEnabled(!enabled)} className={`relative ml-auto inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${enabled ? "bg-violet-600" : "bg-zinc-300 dark:bg-zinc-600"}`}>
                         <span className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${enabled ? "translate-x-3" : "translate-x-0"}`} />
                       </button>
@@ -4147,7 +4114,7 @@ export default function App() {
                         {selectedRegion && <button type="button" onClick={deleteSelectedGarnishRegion} className="self-center rounded bg-zinc-700 px-1.5 py-0.5 text-[10px] text-white">delete sub-region</button>}
                       </fieldset>
                     </div>
-                    {repairReviews.length > 0 && <div className="mt-2 rounded border border-amber-500/40 bg-amber-50/70 px-2 py-2 text-xs text-amber-900 dark:bg-amber-950/20 dark:text-amber-100">
+                    {false && repairReviews.length > 0 && <div className="mt-2 rounded border border-amber-500/40 bg-amber-50/70 px-2 py-2 text-xs text-amber-900 dark:bg-amber-950/20 dark:text-amber-100">
                       {repairReviews.length > 0 && !cleanseDismissed && <p className="bezier-impression subtext mb-1 flex items-start gap-1 text-[10px] text-amber-700/80 dark:text-amber-200/70">
                         <MdTipsAndUpdates size={12} className="mt-0.5 shrink-0 text-amber-600" /><span>Smart fill options are available below.</span>
                         <button onClick={() => setCleanseDismissed(true)} className="ml-auto shrink-0 rounded px-1.5 py-0.5 text-[9px] text-amber-400 hover:text-amber-600 dark:hover:text-amber-300 transition">dismiss</button>
@@ -4175,6 +4142,7 @@ export default function App() {
                         </div>;
                       })()}
                     </div>}
+                    <SmartFillReview reviews={repairReviews} fallbackIds={repairFallbackIds} dismissed={cleanseDismissed} previews={localizedCandidatePreviews} previewPending={previewPending} appliedIds={appliedCandidateIds} onDismiss={() => setCleanseDismissed(true)} onRetryPreview={() => setCandidatePreviewRevision((value) => value + 1)} onApply={applyReviewCandidate} />
                   </div>;
                 })()}
                 {previewRenderError && <div className="mb-2 flex items-center justify-between gap-2 rounded border border-amber-500/50 bg-amber-50 px-2 py-1 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-200"><span>Preview update failed; showing the last valid composition. {previewRenderError}</span><button type="button" onClick={() => { previewCauseRef.current = "style"; setPreviewRetryRevision((value) => value + 1); }} className="shrink-0 rounded bg-amber-700 px-1.5 py-0.5 text-[10px] text-white">retry</button></div>}
@@ -4184,7 +4152,7 @@ export default function App() {
                   <span className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-500 dark:border-zinc-700">automatic repair routing</span>
                   {(brushMode || lassoMode) && <label className="text-xs text-zinc-500">radius <input type="range" min="4" max="64" value={brushRadius} onChange={(e) => setBrushRadius(Number(e.target.value))} /><span className="ml-1 font-mono">{brushRadius}px</span></label>}
                   {brushMode && <label className="text-xs text-zinc-500">softness <input type="range" min="0.2" max="1" step="0.05" value={brushHardness} onChange={(e) => setBrushHardness(Number(e.target.value))} /></label>}
-                  {brushMode && brushStrokes.length > 0 && <button disabled={brushApplying} onClick={applyBrush} className="rounded bg-cyan-700 px-2 py-1 text-xs text-white disabled:opacity-40">{brushApplying ? "Applying treatmentâ€¦" : `Apply ${brushStrokes.length} stroke${brushStrokes.length === 1 ? "" : "s"}`}</button>}
+                  {brushMode && brushStrokes.length > 0 && <button disabled={brushApplying} onClick={applyBrush} className="rounded bg-cyan-700 px-2 py-1 text-xs text-white disabled:opacity-40">{brushApplying ? "Applying treatment…" : `Apply ${brushStrokes.length} stroke${brushStrokes.length === 1 ? "" : "s"}`}</button>}
                   {brushMode && brushStrokes.length > 0 && <button disabled={brushApplying} onClick={() => setBrushStrokes([])} className="rounded bg-zinc-200 px-2 py-1 text-xs text-zinc-700 disabled:opacity-40 dark:bg-zinc-800 dark:text-zinc-200">Discard pending</button>}
                   {(lassoMode || garnishRegionMode) && <span className="text-xs text-zinc-500">click to place points ({lassoPoints.length}/3)</span>}
                   {lassoMode && <button disabled={lassoPoints.length < 3} onClick={applyLasso} className="rounded bg-cyan-700 px-2 py-1 text-xs text-white disabled:opacity-40">Close &amp; repair</button>}
