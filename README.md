@@ -9,15 +9,17 @@
   <img src="images/tofu-wht-alt.png" width="38%">
 </div>
 
-<div align="center">
-ToFU (text-over-frame unification)
-</div>
-
 ---
 
 ## Summary
 
-ToFU is a seven-layer visual translation pipeline that detects, erases, and re-renders text in images while preserving the original scene's visual context. Given a source image and a target language, ToFU runs text detection and recognition (Cicerone), semantic surface analysis (Scene), source-text erasure and background inpainting (Cleanse), style-matched target-language rendering (Scribe), and quality verification (Verify) — with a visual translation memory (Memory) that accumulates approved localizations for reuse on future assets. Three auxiliary modules — Savor, Menu, and Wasabi — operate as post-recognition quality-control passes inside Cicerone, correcting glyph-level confusions, recovering known place names, and normalizing CJK character variants. The pipeline is engine-agnostic (EasyOCR or PaddleOCR), runs entirely on CPU, and gates output on measurable accuracy thresholds.
+ToFU (text-over-frame-unification) is a seven-layer visual translation pipeline that detects, erases, and re-renders text in images while preserving the original scene's visual context. Given a source image and a target language, ToFU runs text detection and recognition (Cicerone), semantic surface analysis (Scene), source-text erasure and background inpainting (Cleanse), style-matched target-language rendering (Scribe), and quality verification (Verify) — with a visual translation memory (Memory) that accumulates approved localizations for reuse on future assets. Three auxiliary modules — Savor, Menu, and Wasabi — operate as post-recognition quality-control passes inside Cicerone, correcting glyph-level confusions, recovering known place names, and normalizing CJK character variants. The pipeline is engine-agnostic (EasyOCR or PaddleOCR), runs entirely on CPU, and gates output on measurable accuracy thresholds.
+
+---
+
+<div style="image" align="center">
+  <img src="images/screen-1.png" width="90%">
+</div>
 
 ---
 
@@ -225,6 +227,41 @@ npm run dev
 ```
 
 Open http://localhost:5173.
+
+---
+
+## LLM Comparison
+
+<div style="image" align="center">
+  <img src="images/gemini-example.png" width="90%">
+</div>
+
+
+
+<div style="image" align="center">
+  <img src="images/chatgpt-example.png" width="90%">
+</div>
+
+
+
+<div style="image" align="center">
+  <img src="images/tofu-example.png" width="90%">
+</div>
+
+
+<div style="image" align="left">
+  
+<img src="images/status-green.png" alt="#00ff07" width="12" height="12"> residual artifacts
+
+<img src="images/status-blue.png" alt="#008aff" width="12" height="12"> untranslated strings
+
+<img src="images/status-white.png" alt="#ffffff" width="12" height="12"> mistranslated strings
+
+<img src="images/status-red.png" alt="#ff174b" width="12" height="12"> unorthodox translations
+
+<img src="images/status-yellow.png" alt="#fff117" width="12" height="12"> mistranslated strings
+
+</div>
 
 ---
 
