@@ -4207,6 +4207,13 @@ export default function App() {
                           ))}
                         </div>
                       </div>
+                      <button
+                        onClick={() => setWarpCollapsed((v) => !v)}
+                        className="ml-auto shrink-0 self-start rounded p-1 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800 transition"
+                        title={warpCollapsed ? "expand" : "collapse"}
+                      >
+                        <FcCollapse style={{ transform: warpCollapsed ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
+                      </button>
                       <div className={`style-panel-morph ml-2 flex-1 ${!warpCollapsed ? "expanded" : ""}`}>
                         <div className="flex flex-wrap items-center gap-2 pt-1">
                       {transform?.preset && transform.preset !== "none" && transform.preset !== "custom" && <label className="subtext flex items-center gap-1 text-xs text-zinc-500">amount<input aria-label="warp amount" type="range" min="-25" max="25" step="0.5" value={transform.amount ?? 12} onChange={(e) => updateSelectedStyle({ transform: { ...transform, amount: Number(e.target.value) } })} onDoubleClick={() => updateSelectedStyle({ transform: { ...transform, amount: 12 } })} title="double-click to return to the preset baseline" /><span className="min-w-9 text-right font-mono text-[10px]">{Number(transform.amount ?? 12).toFixed(1)}</span></label>}
@@ -4216,13 +4223,6 @@ export default function App() {
                       <label className="subtext flex items-center gap-0.5 text-[10px] text-zinc-400" title="When off, keep one glyph run even when it crosses the cube edge. When on, wrap only after the measured text exceeds the cube width."><input type="checkbox" checked={transform?.wrap_text ?? false} onChange={(e) => updateSelectedStyle({ transform: { ...transform, wrap_text: e.target.checked } })} /> wrap</label>
                         </div>
                       </div>
-                      <button
-                        onClick={() => setWarpCollapsed((v) => !v)}
-                        className="shrink-0 rounded p-1 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800 transition"
-                        title={warpCollapsed ? "expand" : "collapse"}
-                      >
-                        <FcCollapse style={{ transform: warpCollapsed ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
-                      </button>
                     </div>;
                   })()}
                 </div>
