@@ -4,7 +4,7 @@ from PIL import Image
 
 from tofu.core.types import BBox, InstText, Mask, TextManifest
 from tofu.layers import cleanse, scribe, verify
-from tofu.layers.scribe import _apply_style_transform
+from tofu.layers.scribe import _apply_style_transform, _pixel_bbox
 
 
 def make_asset(w=300, h=200, color=(90, 140, 90)):
@@ -68,6 +68,13 @@ class TestCleanse:
 
 
 class TestScribe:
+    def test_editor_geometry_is_snapped_before_rasterization(self):
+        # JSON/client values may be floats even though persisted BBox fields
+        # are typed as ints.  Rendering must not pass half-pixel origins to
+        # Pillow after a position or size edit.
+        snapped = _pixel_bbox(BBox(x=20.49, y=30.51, width=99.51, height=39.49))
+        assert snapped == BBox(x=20, y=31, width=100, height=39)
+
     def test_renders_target_text_pixels(self):
         asset = make_asset(color=(255, 255, 255))
         inst = text_inst(target="HELLO")

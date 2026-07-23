@@ -56,6 +56,24 @@ VERTICAL_ASPECT_MIN = 1.3
 VERTICAL_ROW_FACTOR = 1.15  # row height as a multiple of font size
 
 
+def _pixel(value: float) -> int:
+    """Snap a final paint coordinate to the image raster.
+
+    Layout stays floating-point for accurate fitting and centering.  A final
+    fractional origin, however, makes otherwise identical glyphs change edge
+    coverage as a user nudges a capture box by one pixel.
+    """
+    return int(round(value))
+
+
+def _pixel_bbox(bbox: BBox) -> BBox:
+    """Normalize externally edited geometry before text rasterization."""
+    return BBox(
+        x=_pixel(bbox.x), y=_pixel(bbox.y),
+        width=max(1, _pixel(bbox.width)), height=max(1, _pixel(bbox.height)),
+    )
+
+
 def _apply_style_transform(layer: Any, bbox: BBox, transform: Optional[Dict[str, Any]]) -> Any:
     """Apply deterministic, local text shaping before the detected rotation.
 
@@ -621,7 +639,7 @@ def _render_vertical_layer(
         l, t, r, b = draw.textbbox((0, 0), ch, font=font, stroke_width=stroke_w)
         w = r - l
         x = bbox.x + (bbox.width - w) / 2 - l
-        draw.text((x, y - t), ch, font=font, fill=fill,
+        draw.text((_pixel(x), _pixel(y - t)), ch, font=font, fill=fill,
                   stroke_width=stroke_w,
                   stroke_fill=stroke_fill if stroke_w > 0 else None)
         y += row_h - compress
@@ -663,7 +681,7 @@ def _render_vertical_words_layer(base_size, words: List[str], font, fill, stroke
         y = bbox.y + (bbox.height - total_h) / 2
         for ch in word:
             l, t, r, _ = draw.textbbox((0, 0), ch, font=font, stroke_width=stroke_w)
-            draw.text((x + (column_w - (r - l)) / 2 - l, y - t), ch, font=font, fill=fill, stroke_width=stroke_w, stroke_fill=stroke_fill if stroke_w > 0 else None)
+            draw.text((_pixel(x + (column_w - (r - l)) / 2 - l), _pixel(y - t)), ch, font=font, fill=fill, stroke_width=stroke_w, stroke_fill=stroke_fill if stroke_w > 0 else None)
             y += font.size * VERTICAL_ROW_FACTOR
         x += column_w + gap
     return layer
@@ -895,7 +913,7 @@ def render(
             position=inst.bounding_box,
             style=inst.style_profile,
         )
-        bbox = params.position or inst.bounding_box
+        bbox = _pixel_bbox(params.position or inst.bounding_box)
         if bbox is None or bbox.width <= 0 or bbox.height <= 0:
             continue
         style = params.style
@@ -1038,12 +1056,12 @@ def render(
             ly = y_cursor - t_off
             if s.shadow:
                 shadow_layer = _shadow_layer(
-                    base.size, ln, font, s, stroke_w, w, line_h, (lx, ly)
+                    base.size, ln, font, s, stroke_w, w, line_h, (_pixel(lx), _pixel(ly))
                 )
                 layer = Image.alpha_composite(layer, shadow_layer)
             line_layer = _render_line_layer(
                 base.size, ln, font, fill, stroke_fill, stroke_w, s,
-                w, line_h, (lx, ly),
+                w, line_h, (_pixel(lx), _pixel(ly)),
             )
             layer = Image.alpha_composite(layer, line_layer)
 
@@ -1053,9 +1071,9 @@ def render(
                 # offset and thickness are independent from an outline: a
                 # user can tune an underline without unexpectedly changing
                 # the glyph stroke itself.
-                uy = ly + b_off + (s.underline_offset if s.underline_offset is not None else 1)
+                uy = _pixel(ly + b_off + (s.underline_offset if s.underline_offset is not None else 1))
                 draw = ImageDraw.Draw(layer)
-                draw.line([(lx, uy), (lx + w, uy)], fill=fill,
+                draw.line([(_pixel(lx), uy), (_pixel(lx + w), uy)], fill=fill,
                           width=max(1, int(round(s.underline_width if s.underline_width is not None else (stroke_w / 2) or 1))))
             y_cursor += line_h + spacing
 
