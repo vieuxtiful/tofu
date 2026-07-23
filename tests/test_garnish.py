@@ -27,11 +27,12 @@ def test_garnish_identity_and_outside_pixels_preserved():
 
 def test_garnish_profile_manifest_round_trip():
     manifest = _manifest(GarnishProfile(edge_blur_px=1.2, grain_strength=.2, source_confidence=.7))
-    manifest.instances[0].garnish_override = GarnishProfile(gamma_shift=1.2)
+    manifest.instances[0].garnish_override = GarnishProfile(gamma_shift=1.2, edge_smoothing=True)
     manifest.instances[0].garnish_enabled = False
     restored = _dict_to_manifest(_manifest_to_dict(manifest))
     assert restored.scene_regions[0].garnish_profile.edge_blur_px == 1.2
     assert restored.instances[0].garnish_override.gamma_shift == 1.2
+    assert restored.instances[0].garnish_override.edge_smoothing is True
     assert restored.instances[0].garnish_enabled is False
 
 
@@ -99,6 +100,15 @@ def test_smudge_angle_uses_a_rotated_motion_path():
     vys, vxs = np.nonzero(vertical)
     assert np.ptp(hxs) > np.ptp(hys)
     assert np.ptp(vys) > np.ptp(vxs)
+
+
+def test_edge_smoothing_rounds_coverage_without_spreading_it():
+    alpha = np.zeros((25, 25), dtype=np.uint8)
+    alpha[8:17, 8:17] = 255
+    alpha[7, 12] = 255  # one-pixel raster stair-step above the edge
+    smoothed = garnish._smooth_coverage(cv2, np, alpha)
+    assert not np.any(smoothed[alpha == 0])
+    assert smoothed[7, 12] == 0
 
 
 def test_flat_scene_has_no_automatic_garnish_profile():

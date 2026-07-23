@@ -238,7 +238,7 @@ export interface SceneRegion {
 }
 
 export interface GarnishProfile {
-  edge_blur_px: number; erosion_px: number; dilation_px: number;
+  edge_blur_px: number; edge_smoothing: boolean; erosion_px: number; dilation_px: number;
   grain_strength: number; gamma_shift: number; smudge_strength: number;
   smudge_angle_deg: number; source_confidence: number;
 }
@@ -888,12 +888,12 @@ export async function renderAsset(
 }
 
 export async function renderPreview(
-  assetId: string, targLang: string, manifest: TextManifest, signal?: AbortSignal
+  assetId: string, targLang: string, manifest: TextManifest, signal?: AbortSignal, fastPath = false
 ): Promise<{ output_url: string; text_manifest: TextManifest; cleanse_cache_key: string }> {
   return json(await fetch("/api/preview/render", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ asset_id: assetId, targ_lang: targLang, manifest }),
+    body: JSON.stringify({ asset_id: assetId, targ_lang: targLang, manifest, fast_path: fastPath }),
     signal,
   }));
 }

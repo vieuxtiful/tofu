@@ -92,6 +92,10 @@ class Mask:
 class GarnishProfile:
     """Source-derived treatment applied only to newly rendered text pixels."""
     edge_blur_px: float = 0.0
+    # Smooth existing anti-aliased coverage without expanding it into the
+    # surrounding surface.  This is intentionally distinct from edge_blur,
+    # which creates a visible soft-focus/engrained edge.
+    edge_smoothing: bool = False
     erosion_px: float = 0.0
     dilation_px: float = 0.0
     grain_strength: float = 0.0

@@ -118,6 +118,7 @@ export default function RegionTable({
   const [searchQuery, setSearchQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [draggedId, setDraggedId] = useState<string | null>(null);
+  const draggedIdRef = useRef<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const canReorder = mode === "capture" && !!onReorder;
 
@@ -446,27 +447,30 @@ export default function RegionTable({
                     draggable={canReorder}
                     onDragStart={(e) => {
                       if (!canReorder) return;
+                      draggedIdRef.current = inst.id;
                       setDraggedId(inst.id);
                       e.dataTransfer.effectAllowed = "move";
                       e.dataTransfer.setData("text/plain", inst.id);
                     }}
                     onDragOver={(e) => {
-                      if (!canReorder || !draggedId) return;
+                      if (!canReorder) return;
                       e.preventDefault();
                       e.dataTransfer.dropEffect = "move";
-                      if (inst.id !== draggedId) setDragOverId(inst.id);
+                      if (draggedIdRef.current && inst.id !== draggedIdRef.current) setDragOverId(inst.id);
                     }}
                     onDragLeave={() => {
                       if (dragOverId === inst.id) setDragOverId(null);
                     }}
                     onDrop={(e) => {
-                      if (!canReorder || !draggedId) return;
+                      if (!canReorder) return;
                       e.preventDefault();
-                      if (inst.id !== draggedId) onReorder!(draggedId, inst.id);
+                      const fromId = draggedIdRef.current;
+                      if (fromId && inst.id !== fromId) onReorder!(fromId, inst.id);
+                      draggedIdRef.current = null;
                       setDraggedId(null);
                       setDragOverId(null);
                     }}
-                    onDragEnd={() => { setDraggedId(null); setDragOverId(null); }}
+                    onDragEnd={() => { draggedIdRef.current = null; setDraggedId(null); setDragOverId(null); }}
                     onClick={() => {
                       onSelect(inst.id);
                       if (mode === "translate") setExpandedId(isExpanded ? null : inst.id);

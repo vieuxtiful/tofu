@@ -332,6 +332,9 @@ class PreviewRenderRequest(BaseModel):
     asset_id: str
     targ_lang: str
     manifest: Optional[Dict[str, Any]] = None
+    # Garnish/treatment controls do not alter scene interpretation or the
+    # Cleanse cache key.  Their preview can safely skip that expensive pass.
+    fast_path: bool = False
 
 class CandidatePreviewRequest(BaseModel):
     manifest: Optional[Dict[str, Any]] = None
@@ -2063,7 +2066,12 @@ def preview_render(req: PreviewRenderRequest):
     manifest.asset_id = req.asset_id
     manifest.targ_lang = req.targ_lang
     try:
-        manifest = scene.analyze(str(path), manifest)
+        # Garnish and treatment edits keep the same geometry, material and
+        # Cleanse base.  Re-running Scene/typography on every slider tick is
+        # unnecessary latency; an incomplete manifest still takes the safe
+        # full path.
+        if not req.fast_path or not manifest.scene_regions:
+            manifest = scene.analyze(str(path), manifest)
         cleansed = _cleansed_base(req.asset_id, manifest)
         patched = _composite_patches(req.asset_id, cleansed)
         localized = scribe.render(patched, manifest, req.targ_lang, font_registry=get_validator().font_registry)
@@ -2109,7 +2117,11 @@ def preview_candidate_localized(asset_id: str, candidate_id: str, req: Candidate
     target = req.targ_lang or manifest.targ_lang or "en"
     try:
         from PIL import Image
-        manifest = scene.analyze(str(_asset_path(asset_id)), manifest)
+        # Candidate artifacts are created from an already analysed manifest.
+        # Re-running Scene for each thumbnail is pure latency once the caller
+        # has supplied those regions.
+        if not manifest.scene_regions:
+            manifest = scene.analyze(str(_asset_path(asset_id)), manifest)
         # Candidate review must be composed over the same retained treatment
         # layer as the localized canvas, otherwise its text and surface are a
         # different image from the one the user will eventually apply to.

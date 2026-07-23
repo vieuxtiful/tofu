@@ -825,13 +825,20 @@ def analyze(asset: Any, text_manifest: TextManifest) -> TextManifest:
             inst.background_profile = BgProfil()
         if img is None or inst.bounding_box is None:
             continue
+        sp, bp = inst.style_profile, inst.background_profile
+        ch = inst.characteristics
+        if (sp.color is not None and bp.dominant_color is not None
+                and bp.texture is not None and bp.gradients is not None
+                and bp.material is not None and ch is not None
+                and ch.font_style is not None and ch.size is not None
+                and ch.positioning is not None):
+            continue
         try:
             text_hex, bg_hex, bg_std, glyph_mask, crop = _estimate_colors(
                 img, inst.bounding_box
             )
         except Exception:
             continue
-        sp, bp = inst.style_profile, inst.background_profile
         if sp.color is None and text_hex:
             sp.color = text_hex
         if bp.dominant_color is None and bg_hex:

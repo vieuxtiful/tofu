@@ -30,7 +30,7 @@ def _profile(manifest: TextManifest, inst) -> Optional[GarnishProfile]:
 
 
 def _active(profile: Optional[GarnishProfile]) -> bool:
-    return bool(profile and (profile.edge_blur_px or profile.erosion_px or profile.dilation_px
+    return bool(profile and (profile.edge_blur_px or profile.edge_smoothing or profile.erosion_px or profile.dilation_px
                              or profile.grain_strength or profile.smudge_strength
                              or abs(profile.gamma_shift - 1.0) > 1e-3))
 
@@ -68,6 +68,20 @@ def _region_mask(cv2, np, polygon, x0: int, y0: int, width: int, height: int):
     return allowed
 
 
+def _smooth_coverage(cv2, np, alpha):
+    """Round raster stair-steps without making text bleed outward.
+
+    Gaussian alpha blur is useful for intentionally weathered lettering, but
+    it is the wrong remedy for a slightly jagged raster: it expands coverage
+    and reads as out-of-focus text.  Median smoothing is support-preserving;
+    masking the result back to the original support keeps it surgical.
+    """
+    if alpha.size == 0:
+        return alpha
+    smoothed = cv2.medianBlur(alpha, 3)
+    return np.where(alpha > 0, smoothed, 0).astype(np.uint8)
+
+
 def apply(scribed_asset: Any, text_manifest: TextManifest, base_asset: Any = None, font_registry: Optional[Any] = None) -> Any:
     """Apply deterministic text-edge treatment; identity without a base/profile."""
     if base_asset is None:
@@ -94,10 +108,15 @@ def apply(scribed_asset: Any, text_manifest: TextManifest, base_asset: Any = Non
             x0, y0 = max(0, b.x), max(0, b.y); x1, y1 = min(scribed.width, b.x + b.width), min(scribed.height, b.y + b.height)
             if x1 <= x0 or y1 <= y0: continue
             inherited = _profile(text_manifest, inst)
-            # Scope is explicit.  Merely retaining editor sub-regions must
-            # never turn a later whole-selection adjustment into a partial
-            # render.  This is also what makes the UI toggle live-previewable.
-            targets = inst.garnish_regions if inst.garnish_scope == "per_region" else [None]
+            # Whole-selection treatment is the base for every region.  In
+            # per_region mode the inherited profile applies to the entire
+            # instance first; sub-regions with their own profiles composite
+            # on top within their polygon areas so sibling glyphs outside
+            # remain untouched.
+            if inst.garnish_scope == "per_region":
+                targets: list = [None] + [r for r in inst.garnish_regions if r.enabled is not False and r.profile is not None]
+            else:
+                targets = [None]
             for region in targets:
                 if region is not None and region.enabled is False:
                     continue
@@ -135,6 +154,8 @@ def apply(scribed_asset: Any, text_manifest: TextManifest, base_asset: Any = Non
                     k = max(1, int(round(profile.erosion_px)) * 2 + 1); mask = cv2.erode(mask, np.ones((k, k), np.uint8))
                 if profile.dilation_px > 0:
                     k = max(1, int(round(profile.dilation_px)) * 2 + 1); mask = cv2.dilate(mask, np.ones((k, k), np.uint8))
+                if profile.edge_smoothing:
+                    mask = _smooth_coverage(cv2, np, mask)
                 alpha = Image.fromarray(mask, "L")
                 if edge_blur > 0: alpha = alpha.filter(ImageFilter.GaussianBlur(radius=min(10, edge_blur)))
                 alpha_np = np.asarray(alpha, dtype=np.uint8)
@@ -156,6 +177,20 @@ def apply(scribed_asset: Any, text_manifest: TextManifest, base_asset: Any = Non
                     outer = cv2.dilate(mask, np.ones((5, 5), np.uint8)); inner = cv2.erode(mask, np.ones((3, 3), np.uint8))
                     edge_weight = np.clip(cv2.subtract(outer, inner).astype(np.float32) / 255.0, 0, 1) * 0.7 + 0.3
                     rgb += noise * edge_weight[:, :, np.newaxis]
+                if edge_blur > 0:
+                    # Engrain: in the soft edge band (partial alpha after blur),
+                    # blend text RGB toward the underlying surface so edges look
+                    # embedded rather than casting a text-colored halo.  The
+                    # parabola 4*a*(1-a) peaks at 50% alpha and vanishes at
+                    # full opacity / full transparency, targeting only the
+                    # feathered boundary where jagged pixels need dulling.
+                    surface_rgb = np.asarray(
+                        (result if region else base).crop((x0, y0, x1, y1)).convert("RGB"),
+                        dtype=np.float32,
+                    )
+                    a = alpha_np.astype(np.float32) / 255.0
+                    engrain = 4.0 * a * (1.0 - a)
+                    rgb = rgb * (1 - engrain[:, :, np.newaxis]) + surface_rgb * engrain[:, :, np.newaxis]
                 layer = Image.fromarray(np.dstack([np.clip(rgb, 0, 255).astype(np.uint8), alpha_np]), "RGBA")
                 # A whole-instance pass replaces the cleansed base as before.
                 # A selected sub-region instead starts from the current result

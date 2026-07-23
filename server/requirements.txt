@@ -13,6 +13,7 @@ python-multipart>=0.0.9
 pydantic>=2.6
 pillow>=10.0                # scribe rendering + cicerone pre-resize
 numpy>=1.26                 # image array interchange
+opencv-python-headless>=4.8 # garnish layer (dilate/erode/threshold); also pulled by easyocr but pinned explicitly
 fonttools>=4.38             # tofu layer-0 glyph coverage
 arabic-reshaper>=3.0        # scribe RTL shaping (phase 7)
 xlrd>=2.0.1                 # glossary .xls parsing

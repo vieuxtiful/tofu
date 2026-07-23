@@ -38,6 +38,13 @@ FALLBACK_FONTS = ("arial.ttf", "DejaVuSans.ttf", "segoeui.ttf")
 MIN_FONT_PX = 6
 ITALIC_SHEAR = 0.2  # x' = x + ITALIC_SHEAR * y, applied LOCAL to the text layer
 
+# Font file cache: _get_font is called in a binary search loop (up to ~50
+# iterations per instance) and each call re-reads the .ttf/.ttc from disk.
+# The cache keys on (font_family, size) and is bounded to avoid unbounded
+# growth across many font sizes.
+_font_cache: Dict[Tuple[Optional[str], int], Any] = {}
+_FONT_CACHE_MAX = 256
+
 # vertical CJK column rendering: a region is treated as a vertical column
 # when its bbox is narrow-and-tall AND the effective target language uses
 # vertical writing conventions. the aspect threshold mirrors cicerone's
@@ -193,6 +200,10 @@ def _get_font(font_family: Optional[str], size: int):
     to load and fell through to the Latin-only FALLBACK_FONTS chain —
     exactly defeating both resolve_face() and check_glyph_coverage().
     """
+    cache_key = (font_family, size)
+    cached = _font_cache.get(cache_key)
+    if cached is not None:
+        return cached
     from PIL import ImageFont
     candidates = ([font_family] if font_family else []) + list(FALLBACK_FONTS)
     for cand in candidates:
@@ -202,10 +213,16 @@ def _get_font(font_family: Optional[str], size: int):
             if idx.isdigit():
                 path, index = base, int(idx)
         try:
-            return ImageFont.truetype(path, size, index=index)
+            font = ImageFont.truetype(path, size, index=index)
+            if len(_font_cache) < _FONT_CACHE_MAX:
+                _font_cache[cache_key] = font
+            return font
         except Exception:
             continue
-    return ImageFont.load_default()
+    font = ImageFont.load_default()
+    if len(_font_cache) < _FONT_CACHE_MAX:
+        _font_cache[cache_key] = font
+    return font
 
 
 def _default_fallback_path(fonts: Dict[str, Any]) -> Optional[str]:

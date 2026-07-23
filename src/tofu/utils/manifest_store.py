@@ -19,7 +19,8 @@ from tofu.core.types import (
 
 def _garnish_to_dict(profile: Optional[GarnishProfile]) -> Optional[dict]:
     return None if profile is None else {
-        "edge_blur_px": profile.edge_blur_px, "erosion_px": profile.erosion_px,
+        "edge_blur_px": profile.edge_blur_px, "edge_smoothing": profile.edge_smoothing,
+        "erosion_px": profile.erosion_px,
         "dilation_px": profile.dilation_px, "grain_strength": profile.grain_strength,
         "gamma_shift": profile.gamma_shift, "smudge_strength": profile.smudge_strength,
         "smudge_angle_deg": profile.smudge_angle_deg, "source_confidence": profile.source_confidence,
@@ -28,10 +29,11 @@ def _garnish_to_dict(profile: Optional[GarnishProfile]) -> Optional[dict]:
 
 def _garnish_from_dict(data: Optional[dict]) -> Optional[GarnishProfile]:
     if not isinstance(data, dict): return None
-    return GarnishProfile(**{key: float(data.get(key, default)) for key, default in {
+    values = {key: float(data.get(key, default)) for key, default in {
         "edge_blur_px": 0, "erosion_px": 0, "dilation_px": 0, "grain_strength": 0,
         "gamma_shift": 1, "smudge_strength": 0, "smudge_angle_deg": 0, "source_confidence": 0,
-    }.items()})
+    }.items()}
+    return GarnishProfile(edge_smoothing=bool(data.get("edge_smoothing", False)), **values)
 
 
 def _garnish_region_to_dict(region: GarnishRegion) -> dict:
