@@ -324,9 +324,23 @@ export default function TargetPreviewCanvas({
                   pointerEvents: "none",
                 }}
               >
+                {/* Keep source-text suppression beneath every target glyph.
+                    A per-region background attached to the text container
+                    creates an accidental occlusion layer when semantic cubes
+                    overlap after plating. */}
                 {displayManifest.map((inst) => {
                   if (!inst.target_text || inst.dnt) return null;
-                  const bg = inst.background_profile?.dominant_color ?? "transparent";
+                  const bg = inst.background_profile?.dominant_color;
+                  if (!bg || bg === "transparent") return null;
+                  return <div key={`background-${inst.id}`} style={{
+                    position: "absolute",
+                    left: px(inst.bounding_box.x), top: px(inst.bounding_box.y),
+                    width: px(inst.bounding_box.width), height: px(inst.bounding_box.height),
+                    background: bg, zIndex: 0,
+                  }} />;
+                })}
+                {displayManifest.map((inst) => {
+                  if (!inst.target_text || inst.dnt) return null;
                   const spec = resolveTextSpec(inst);
                   const fit = fitCache[inst.id];
                   // wrap/fit not computed yet (fonts still loading) —
@@ -357,6 +371,17 @@ export default function TargetPreviewCanvas({
                       ? inst.target_text.split(/\s+/).filter(Boolean).reverse()
                       : inst.target_text.split(/\s+/).filter(Boolean))
                     : [];
+                  const spatial = inst.style_profile?.transform ?? {};
+                  const anchor = (spatial.skew_anchor ?? "center").replace("middle", "center").replace("_", " ");
+                  const contentTransform = [
+                    spatial.offset_x ? `translateX(${Number(spatial.offset_x) * scale}px)` : null,
+                    spatial.offset_y ? `translateY(${Number(spatial.offset_y) * scale}px)` : null,
+                    spec.baselineShiftPx ? `translateY(${-spec.baselineShiftPx * scale}px)` : null,
+                    spec.rotationDeg ? `rotate(${spec.rotationDeg}deg)` : null,
+                    spatial.skew_x ? `skewX(${Number(spatial.skew_x)}deg)` : null,
+                    spatial.skew_y ? `skewY(${Number(spatial.skew_y)}deg)` : null,
+                    spatial.scale_x || spatial.scale_y ? `scale(${Number(spatial.scale_x ?? 1)}, ${Number(spatial.scale_y ?? 1)})` : null,
+                  ].filter(Boolean).join(" ") || undefined;
                   return (
                     <div
                       key={inst.id}
@@ -366,23 +391,20 @@ export default function TargetPreviewCanvas({
                         top: px(inst.bounding_box.y),
                         width: px(inst.bounding_box.width),
                         height: px(inst.bounding_box.height),
-                        background: bg !== "transparent" ? bg : undefined,
-                        display: "flex",
-                        flexDirection: isVertical ? "row" : "column",
-                        justifyContent: isVertical
-                          ? (spec.alignV === "top" ? "flex-start" : spec.alignV === "bottom" ? "flex-end" : "center")
-                          : (spec.alignV === "top" ? "flex-start" : spec.alignV === "bottom" ? "flex-end" : "center"),
-                        alignItems: isVertical
-                          ? (alignH === "right" ? "flex-end" : alignH === "center" ? "center" : "flex-start")
-                          : defaultAlignItems,
-                        overflow: "hidden",
+                        // Boxes are spatial anchors, not crop masks.  Let a
+                        // transformed glyph occupy its actual visual extent.
+                        overflow: "visible",
+                        zIndex: 1,
                         pointerEvents: "none",
-                        transform: [
-                          spec.baselineShiftPx ? `translateY(${-spec.baselineShiftPx * scale}px)` : null,
-                          spec.rotationDeg ? `rotate(${spec.rotationDeg}deg)` : null,
-                        ].filter(Boolean).join(" ") || undefined,
                       }}
                     >
+                      <div style={{
+                        width: "100%", height: "100%", display: "flex",
+                        flexDirection: isVertical ? "row" : "column",
+                        justifyContent: spec.alignV === "top" ? "flex-start" : spec.alignV === "bottom" ? "flex-end" : "center",
+                        alignItems: isVertical ? (alignH === "right" ? "flex-end" : alignH === "center" ? "center" : "flex-start") : defaultAlignItems,
+                        transform: contentTransform, transformOrigin: anchor,
+                      }}>
                       {isVertical ? (
                         // vertical: each word is a column of characters
                         verticalWords.map((word, wi) => (
@@ -443,6 +465,7 @@ export default function TargetPreviewCanvas({
                         </span>
                       ))
                       )}
+                      </div>
                     </div>
                   );
                 })}

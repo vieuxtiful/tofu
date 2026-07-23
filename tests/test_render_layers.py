@@ -2,7 +2,7 @@
 import numpy as np
 from PIL import Image
 
-from tofu.core.types import BBox, InstText, Mask, TextManifest
+from tofu.core.types import BBox, InstText, Mask, RenderParams, StyleProfil, TextManifest
 from tofu.layers import cleanse, scribe, verify
 from tofu.layers.scribe import _apply_style_transform, _pixel_bbox
 
@@ -97,6 +97,32 @@ class TestScribe:
         assert first_mask[30:65, 20:120].max() > 0
         assert second_mask[30:65, 20:120].max() == 0
 
+    def test_same_color_stroke_uses_one_effective_ink_at_region_opacity(self):
+        """A same-colour stroke must not stay opaque around translucent fill."""
+        asset = make_asset(color=(255, 255, 255))
+        inst = text_inst(x=30, y=30, w=170, h=70, target="TOFU")
+        inst.style_profile = StyleProfil(
+            font_size=42,
+            color="#204a87",
+            stroke_color="#204a87",
+            stroke_width=4,
+        )
+        out = scribe.render(
+            asset,
+            make_manifest([inst]),
+            "en",
+            render_params={
+                "r1": RenderParams(position=inst.bounding_box, style=inst.style_profile, opacity=0.5)
+            },
+        )
+        coverage = np.asarray(out.text_masks["r1"])
+        ink = coverage[coverage > 0]
+        assert ink.size > 0
+        # 50%-opaque fill and stroke must share the same maximum alpha.  The
+        # old split treatment produced an opaque (255) outline around a 127
+        # alpha fill, which made the join visibly discernible when zoomed.
+        assert 120 <= ink.max() <= 128
+
     def test_untranslated_region_left_empty(self):
         asset = make_asset(color=(255, 255, 255))
         out = scribe.render(asset, make_manifest([text_inst(target=None)]), "en")
@@ -130,6 +156,22 @@ class TestScribe:
         b = _apply_style_transform(layer, bbox, spec)
         assert np.array_equal(np.asarray(a), np.asarray(b))
         assert not np.array_equal(np.asarray(a), np.asarray(layer))
+
+    def test_transformed_text_can_extend_beyond_its_capture_anchor(self):
+        """Capture boxes are anchors, never crop masks for neighbouring text."""
+        asset = make_asset(color=(255, 255, 255))
+        inst = text_inst(x=70, y=60, w=90, h=36, target="LOCALIZED")
+        inst.style_profile = StyleProfil(
+            color="#000000",
+            transform={"offset_x": 45, "offset_y": -12, "skew_x": 30, "scale_x": 1.3},
+        )
+        out = np.asarray(scribe.render(asset, make_manifest([inst]), "en"))
+        changed = np.any(out != 255, axis=2)
+        # The transformed visual ink can cross its source-region edge.  It is
+        # still bounded by the output image itself, and the original box
+        # remains immutable for capture, cleanup, and semantic identity.
+        assert np.any(changed[:, 160:])
+        assert inst.adjusted_bbox is None
 
 
 class TestVerifyMetrics:

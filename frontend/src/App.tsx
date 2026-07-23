@@ -572,6 +572,12 @@ export default function App() {
   const manifestUndoStack = useRef<InstText[][]>([]);
   const manifestRedoStack = useRef<InstText[][]>([]);
   const manifestSkipHistory = useRef(false);
+  // Batch undo: during a drag or text-typing session, suppress per-pixel /
+  // per-keystroke undo entries and push a single pre-interaction snapshot
+  // when the batch ends.  One undo then returns to the state before the
+  // interaction started, not to each intermediate position.
+  const manifestBatching = useRef(false);
+  const manifestBatchAnchor = useRef<InstText[] | null>(null);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const syncUndoRedo = useCallback(() => {
@@ -581,7 +587,7 @@ export default function App() {
   const setManifest = useCallback((updater: InstText[] | ((prev: InstText[]) => InstText[])) => {
     setManifestRaw((prev) => {
       const next = typeof updater === "function" ? (updater as (p: InstText[]) => InstText[])(prev) : updater;
-      if (!manifestSkipHistory.current) {
+      if (!manifestSkipHistory.current && !manifestBatching.current) {
         manifestUndoStack.current.push(prev);
         if (manifestUndoStack.current.length > 50) manifestUndoStack.current.shift();
         manifestRedoStack.current = [];
@@ -590,6 +596,23 @@ export default function App() {
       syncUndoRedo();
       return next;
     });
+  }, [syncUndoRedo]);
+  const beginManifestBatch = useCallback(() => {
+    if (manifestBatching.current) return;
+    manifestBatchAnchor.current = manifest;
+    manifestBatching.current = true;
+  }, [manifest]);
+  const endManifestBatch = useCallback(() => {
+    if (!manifestBatching.current) return;
+    const anchor = manifestBatchAnchor.current;
+    if (anchor !== null) {
+      manifestUndoStack.current.push(anchor);
+      if (manifestUndoStack.current.length > 50) manifestUndoStack.current.shift();
+      manifestRedoStack.current = [];
+    }
+    manifestBatching.current = false;
+    manifestBatchAnchor.current = null;
+    syncUndoRedo();
   }, [syncUndoRedo]);
   const undoManifest = useCallback(() => {
     setManifestRaw((prev) => {
@@ -4053,7 +4076,7 @@ export default function App() {
                     onLostPointerCapture={(event) => finishBrushStroke(event, true)}
                     onPointerLeave={() => { if (!brushDrawing.current) setBrushCursor(null); setNearFirstPoint(false); }} />
                   {imgDim && <svg className={`absolute inset-0 h-full w-full ${brushMode || lassoMode || garnishRegionMode ? "pointer-events-none" : ""}`} viewBox={`0 0 ${imgDim[0]} ${imgDim[1]}`} preserveAspectRatio="none">
-                    {!brushMode && !lassoMode && !garnishRegionMode && orderedManifest.map((inst) => { const active = inst.id === renderSelId; const b = active ? (inst.adjusted_bbox ?? inst.bounding_box) : inst.bounding_box; return <g key={inst.id}>{active && inst.adjusted_bbox && <rect x={inst.bounding_box.x} y={inst.bounding_box.y} width={inst.bounding_box.width} height={inst.bounding_box.height} fill="none" stroke="rgba(6,182,212,.55)" strokeWidth="1.5" strokeDasharray="5 3" />}<rect x={b.x} y={b.y} width={b.width} height={b.height} fill={active ? "rgba(6,182,212,.12)" : "transparent"} stroke={active ? "#06b6d4" : "rgba(255,255,255,.7)"} strokeWidth={active ? 2 : 1} onClick={() => setRenderSelId(inst.id)} className="cursor-pointer" /></g>; })}
+                    {!brushMode && !lassoMode && !garnishRegionMode && orderedManifest.map((inst) => { const active = inst.id === renderSelId; const b = inst.bounding_box; return <rect key={inst.id} x={b.x} y={b.y} width={b.width} height={b.height} fill={active ? "rgba(6,182,212,.10)" : "transparent"} stroke="none" onClick={() => setRenderSelId(inst.id)} className="cursor-pointer" />; })}
                     {!brushMode && !lassoMode && !garnishRegionMode && manifest.find((inst) => inst.id === renderSelId)?.garnish_regions?.map((region) => <polygon key={region.id} points={region.polygon.map((point) => point.join(",")).join(" ")} fill={region.id === selectedGarnishRegionId ? "rgba(139,92,246,.20)" : "rgba(139,92,246,.08)"} stroke={region.id === selectedGarnishRegionId ? "#7c3aed" : "rgba(124,58,237,.6)"} strokeWidth="1.5" />)}
                     {brushStrokes.map((stroke) => <polyline key={stroke.id} points={stroke.points.map((p) => p.join(",")).join(" ")} fill="none" stroke="#06b6d4" strokeWidth={brushRadius * 2} strokeLinecap="round" strokeLinejoin="round" opacity=".45" />)}
                     {activeBrushStroke && <polyline points={activeBrushStroke.points.map((p) => p.join(",")).join(" ")} fill="none" stroke="#06b6d4" strokeWidth={brushRadius * 2} strokeLinecap="round" strokeLinejoin="round" opacity=".70" />}

@@ -759,6 +759,27 @@ def _parse_color(color: Optional[str], opacity: Optional[float]) -> Tuple[int, i
     return (r, g, b, a)
 
 
+def _resolve_text_ink(
+    fill_color: Optional[str],
+    stroke_color: Optional[str],
+    opacity: Optional[float],
+) -> Tuple[Tuple[int, int, int, int], Optional[Tuple[int, int, int, int]]]:
+    """Resolve fill/stroke into the exact RGBA inks Scribe composites.
+
+    Opacity is a region-level appearance setting, so it must affect both
+    components.  Applying it only to the fill leaves an opaque halo at the
+    fill/stroke join even when the editor selected the very same colour for
+    both.  Returning the *same tuple* for equal effective inks also makes the
+    single Pillow text draw an unbroken ink shape rather than two treatments
+    that merely happen to share RGB channels.
+    """
+    fill = _parse_color(fill_color, opacity)
+    stroke = _parse_color(stroke_color, opacity) if stroke_color else None
+    if stroke == fill:
+        stroke = fill
+    return fill, stroke
+
+
 def _draw_line(draw, text: str, pos, font, fill, stroke_fill=None, stroke_w=0,
                style: Optional[StyleProfil] = None):
     """draw one line of text with optional tracking (letter spacing),
@@ -973,17 +994,11 @@ def render(
 
         measure_draw = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
         s = style or StyleProfil()
-        # Keep captured geometry immutable.  Consumers which evaluate the
-        # localized result (Garnish and Verify) follow this derived position;
-        # source analysis, Cleanse and XLIFF identity continue to use the
-        # original bounding_box.
-        transform_offset = s.transform or {}
-        adjusted_x = int(transform_offset.get("offset_x", 0) or 0)
-        adjusted_y = int(transform_offset.get("offset_y", 0) or 0)
-        inst.adjusted_bbox = (
-            BBox(x=bbox.x + adjusted_x, y=bbox.y + adjusted_y, width=bbox.width, height=bbox.height)
-            if adjusted_x or adjusted_y else None
-        )
+        # Capture geometry is immutable semantic identity, not a visual crop
+        # boundary.  Transformed ink may extend into adjacent canvas space;
+        # downstream treatment and verification use the emitted alpha mask,
+        # while an obsolete adjusted_bbox is cleared on every render.
+        inst.adjusted_bbox = None
         effective_lang = inst.target_language or targ_lang
         if font_registry is not None and (s.font_family or s.font_weight or s.italic):
             resolved_path, synthetic_italic = resolve_face(
@@ -1017,8 +1032,11 @@ def render(
             s = dataclasses.replace(s, font_family=covering_path)
 
         stroke_w = int(s.stroke_width) if s.stroke_width else 0
-        fill = _parse_color(s.color, params.opacity)
-        stroke_fill = _parse_color(s.stroke_color, None) if s.stroke_color else None
+        # Resolve both text components through the same opacity rule.  This
+        # is especially important for equal fill/stroke colours: a 50%-alpha
+        # fill surrounded by a 100%-alpha stroke produces a visible internal
+        # boundary at close zoom instead of one continuous ink shape.
+        fill, stroke_fill = _resolve_text_ink(s.color, s.stroke_color, params.opacity)
 
         # detected baseline rotation (Phase 1 typography) applies when no
         # explicit override was given — RenderParams.rotation always wins,

@@ -10,6 +10,7 @@ script support, and predicts potential rendering issues.
 """
 
 from typing import Optional, Dict, List, Any
+import math
 from tofu.core.types import (
     VldtnReport,
     VldtnClass,
@@ -625,6 +626,32 @@ class ToFU:
                         region_id=inst.id,
                     )
                 )
+
+            # Strict preview/final parity: transformed ink is always clipped
+            # to this same captured region.  This intentionally warns rather
+            # than silently expanding a cube or permitting neighbour bleed.
+            transform = (inst.style_profile.transform if inst.style_profile else None) or {}
+            skew_x = float(transform.get("skew_x", 0) or 0)
+            skew_y = float(transform.get("skew_y", 0) or 0)
+            scale_x = float(transform.get("scale_x", 1) or 1)
+            scale_y = float(transform.get("scale_y", 1) or 1)
+            offset_x = float(transform.get("offset_x", 0) or 0)
+            offset_y = float(transform.get("offset_y", 0) or 0)
+            transform_active = any((offset_x, offset_y, skew_x, skew_y, abs(scale_x - 1), abs(scale_y - 1)))
+            if transform_active:
+                shear_x = abs(math.tan(math.radians(max(-45.0, min(45.0, skew_x))))) * bbox.height / 2
+                shear_y = abs(math.tan(math.radians(max(-45.0, min(45.0, skew_y))))) * bbox.width / 2
+                expansion_x = abs(scale_x - 1) * bbox.width / 2 + abs(offset_x) + shear_x
+                expansion_y = abs(scale_y - 1) * bbox.height / 2 + abs(offset_y) + shear_y
+                if expansion_x > 0.5 or expansion_y > 0.5:
+                    issues.append(VldtnClass(
+                        severity=VldtnSeverity.WARNING,
+                        code="ToFU_007",
+                        message=(f"transformed text for region '{inst.id}' will be clipped at its "
+                                 "bounding-box edge when it exceeds the captured cube."),
+                        suggestion="reduce offset/skew/stretch, resize the region, or enable wrap.",
+                        region_id=inst.id,
+                    ))
 
         return fits
 
