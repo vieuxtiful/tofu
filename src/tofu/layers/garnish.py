@@ -120,9 +120,28 @@ def apply(scribed_asset: Any, text_manifest: TextManifest, base_asset: Any = Non
             if not inst.target_text or inst.dnt or inst.excluded:
                 continue
             # Treatment follows the rendered text when an editor applies an
-            # offset; source-surface matching intentionally remains captured.
+            # offset/warp; source-surface matching intentionally remains
+            # captured.  Prefer Scribe's real alpha bounds over the capture
+            # box so an adjacent region can never crop this treatment window.
             b = inst.adjusted_bbox or inst.bounding_box
-            x0, y0 = max(0, b.x), max(0, b.y); x1, y1 = min(scribed.width, b.x + b.width), min(scribed.height, b.y + b.height)
+            coverage_full = text_masks.get(inst.id) if isinstance(text_masks, dict) else None
+            if coverage_full is not None:
+                coverage_arr = np.asarray(coverage_full, dtype=np.uint8)
+                if coverage_arr.shape[:2] == (scribed.height, scribed.width):
+                    ys, xs = np.nonzero(coverage_arr)
+                    if xs.size:
+                        # Room for blur/smudge/SDF feathering; the final alpha
+                        # mask still limits every changed pixel precisely.
+                        pad = 16
+                        x0, y0 = max(0, int(xs.min()) - pad), max(0, int(ys.min()) - pad)
+                        x1, y1 = min(scribed.width, int(xs.max()) + 1 + pad), min(scribed.height, int(ys.max()) + 1 + pad)
+                    else:
+                        x0 = y0 = x1 = y1 = 0
+                else:
+                    coverage_full = None
+            if coverage_full is None:
+                x0, y0 = max(0, b.x), max(0, b.y)
+                x1, y1 = min(scribed.width, b.x + b.width), min(scribed.height, b.y + b.height)
             if x1 <= x0 or y1 <= y0: continue
             inherited = _profile(text_manifest, inst)
             # Whole-selection treatment is the base for every region.  In
@@ -215,10 +234,13 @@ def apply(scribed_asset: Any, text_manifest: TextManifest, base_asset: Any = Non
                     engrain = 4.0 * a * (1.0 - a) * engrain_scale
                     rgb = rgb * (1 - engrain[:, :, np.newaxis]) + surface_rgb * engrain[:, :, np.newaxis]
                 layer = Image.fromarray(np.dstack([np.clip(rgb, 0, 255).astype(np.uint8), alpha_np]), "RGBA")
-                # A whole-instance pass replaces the cleansed base as before.
-                # A selected sub-region instead starts from the current result
-                # so sibling glyphs outside its polygon remain untouched.
-                target_crop = result.crop((x0, y0, x1, y1)) if region else base.crop((x0, y0, x1, y1))
+                # Every treatment is an alpha-masked edit over the accumulated
+                # localized result.  Reconstructing a whole-instance crop from
+                # ``base`` erases an earlier region wherever two capture boxes
+                # overlap (for example, the V in VECCHI under MURI's box), even
+                # when their glyph masks never overlap.  Capture boxes are
+                # processing anchors, not replacement rectangles.
+                target_crop = result.crop((x0, y0, x1, y1))
                 target_crop.alpha_composite(layer)
                 result.alpha_composite(target_crop, (x0, y0))
         return result.convert("RGB")

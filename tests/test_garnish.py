@@ -61,6 +61,30 @@ def test_garnish_prefers_scribe_coverage_over_pixel_difference():
     assert out.getpixel((2, 2)) == scribed.getpixel((2, 2))
 
 
+def test_garnish_never_erases_an_earlier_glyph_inside_a_later_region_box():
+    """Overlapping anchors must not turn Garnish into a rectangular eraser."""
+    base = Image.new("RGB", (100, 50), "#64748b")
+    scribed = base.copy()
+    draw = ImageDraw.Draw(scribed)
+    # r1's left/right visual footprint enters r2's capture box, but its
+    # glyph coverage does not overlap r2's own glyph coverage.
+    draw.rectangle((25, 16, 52, 28), fill="#b4b4b4")
+    draw.rectangle((62, 16, 75, 28), fill="#d4d4d4")
+    r1 = InstText(id="r1", bounding_box=BBox(20, 12, 40, 22), text="VECCHI", target_text="VECCHI")
+    r2 = InstText(id="r2", bounding_box=BBox(45, 12, 38, 22), text="MURI", target_text="MURI",
+                  garnish_override=GarnishProfile(gamma_shift=1.5))
+    manifest = TextManifest(asset_id="g", total_regions=2, img_dim=(100, 50), instances=[r1, r2])
+    r1_mask = Image.new("L", scribed.size, 0); ImageDraw.Draw(r1_mask).rectangle((25, 16, 52, 28), fill=255)
+    r2_mask = Image.new("L", scribed.size, 0); ImageDraw.Draw(r2_mask).rectangle((62, 16, 75, 28), fill=255)
+    scribed.text_masks = {"r1": r1_mask, "r2": r2_mask}
+
+    out = garnish.apply(scribed, manifest, base)
+    # (48, 20) lies inside r2's bounding box but belongs only to r1.  It
+    # previously reset to the cleansed base while r2's garnish was applied.
+    assert out.getpixel((48, 20)) == scribed.getpixel((48, 20))
+    assert out.getpixel((68, 20)) != scribed.getpixel((68, 20))
+
+
 def test_garnish_sub_region_is_persisted_and_clips_effect_to_its_polygon():
     base = Image.new("RGB", (80, 50), "#64748b")
     scribed = base.copy(); ImageDraw.Draw(scribed).rectangle((25, 16, 45, 25), fill="#b4b4b4")

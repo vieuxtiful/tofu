@@ -34,6 +34,8 @@ interface BBoxCanvasProps {
   onHeightChange?: (height: number) => void;
   onDoubleClickExpand?: () => void;
   bboxColor?: string;
+  onDragStart?: () => void;
+  onDragEnd?: () => void;
 }
 
 type DragState =
@@ -63,7 +65,7 @@ export default function BBoxCanvas({
   preview = false, canvasLabel, showPreviewControls = false,
   controlledZoom, onZoomChange, controlledScroll, onScrollChange,
   controlledHeight, onHeightChange, onDoubleClickExpand,
-  bboxColor = "#22d3ee",
+  bboxColor = "#22d3ee", onDragStart, onDragEnd,
 }: BBoxCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const syncBarRef = useRef<HTMLDivElement>(null);
@@ -344,9 +346,12 @@ export default function BBoxCanvas({
     if (drag?.type === "draw" && drawRect && drawRect.width > 5 && drawRect.height > 5) {
       onAddRegion(drawRect);
     }
+    if (drag && (drag.type === "move" || drag.type === "resize")) {
+      onDragEnd?.();
+    }
     setDrag(null);
     setDrawRect(null);
-  }, [drag, drawRect, onAddRegion]);
+  }, [drag, drawRect, onAddRegion, onDragEnd]);
 
   useEffect(() => {
     if (!drag) return;
@@ -373,10 +378,13 @@ export default function BBoxCanvas({
       className={`bbox-handle ${handle}`}
       onMouseDown={(e) => {
         const pt = toImgCoords(e.clientX, e.clientY);
-        if (pt) startDrag(e, {
+        if (pt) {
+          onDragStart?.();
+          startDrag(e, {
           type: "resize", id: inst.id, handle,
           startMouseX: pt.x, startMouseY: pt.y, origBBox: inst.bounding_box,
         });
+        }
       }}
     />
   );
@@ -480,11 +488,14 @@ export default function BBoxCanvas({
                         e.stopPropagation();
                         onSelect(inst.id);
                         const pt = toImgCoords(e.clientX, e.clientY);
-                        if (pt) setDrag({
+                        if (pt) {
+                          onDragStart?.();
+                          setDrag({
                           type: "move", id: inst.id,
                           startMouseX: pt.x, startMouseY: pt.y,
                           origBBox: inst.bounding_box,
                         });
+                        }
                       }
                     }}
                     onMouseEnter={() => handleBboxMouseEnter(inst.id)}

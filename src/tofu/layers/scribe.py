@@ -182,11 +182,18 @@ def _apply_style_transform(layer: Any, bbox: BBox, transform: Optional[Dict[str,
             out = layer
         if not (arc or amount):
             return _apply_offset(out)
-        # Shift each local column by a quadratic amount.  Bounding the work to
-        # the region also prevents a UI slider from turning into a full-canvas
-        # operation on a large source image.
-        x0, y0 = max(0, bbox.x), max(0, bbox.y)
-        x1, y1 = min(out.width, bbox.x + bbox.width), min(out.height, bbox.y + bbox.height)
+        # Shift each local column by a quadratic amount.  The work window is
+        # the actual ink extent, not the captured anchor: transformed text
+        # can legitimately cross an adjacent region boundary.  Include enough
+        # vertical room for the largest arc displacement without allocating a
+        # full-canvas remap for a small text run.
+        ink = out.getbbox()
+        if not ink:
+            return _apply_offset(out)
+        ix0, iy0, ix1, iy1 = ink
+        warp_pad = int(max(2, abs(amount if amount else arc) + 2))
+        x0, y0 = max(0, ix0 - 2), max(0, iy0 - warp_pad)
+        x1, y1 = min(out.width, ix1 + 2), min(out.height, iy1 + warp_pad)
         warped = Image.new("RGBA", out.size, (0, 0, 0, 0))
         def offset_at(t: float) -> float:
             """Bounded Photoshop-style *deterministic* warp approximations.
@@ -1043,7 +1050,14 @@ def render(
         # including an explicit 0.0 (a falsy check here would wrongly let
         # a detected rotation override an explicit "no rotation" request)
         rotation = params.rotation
-        if params.rotation is None and inst.characteristics and inst.characteristics.positioning:
+        if rotation is None:
+            editor_rotation = (s.transform or {}).get("rotation")
+            if editor_rotation is not None:
+                try:
+                    rotation = float(editor_rotation)
+                except (TypeError, ValueError):
+                    rotation = None
+        if rotation is None and inst.characteristics and inst.characteristics.positioning:
             detected_rot = inst.characteristics.positioning.get("rotation_deg")
             if detected_rot:
                 rotation = detected_rot

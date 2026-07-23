@@ -233,7 +233,7 @@ export default function TargetPreviewCanvas({
       strokeWidthPx: sp?.stroke_width ?? 0,
       subscript: sp?.subscript ?? false,
       superscript: sp?.superscript ?? false,
-      rotationDeg: inst.characteristics?.positioning?.rotation_deg ?? 0,
+      rotationDeg: sp?.transform?.rotation ?? inst.characteristics?.positioning?.rotation_deg ?? 0,
     };
   }, [familiesByLang, defaultTargLang]);
 

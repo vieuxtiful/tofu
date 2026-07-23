@@ -30,6 +30,8 @@ import SmartFillReview from "./SmartFillReview";
 import { langDisplayName, langFlag, LANGUAGE_REGIONS, REGION_ORDER } from "./languageData";
 import LanguageCombobox from "./LanguageCombobox";
 import FontCombobox, { loadFontPreview, fontNameForPath, weightLabel } from "./FontCombobox";
+import HexColorInput from "./HexColorInput";
+import RotationDial from "./RotationDial";
 import BBoxCanvas from "./BBoxCanvas";
 import TargetPreviewCanvas from "./TargetPreviewCanvas";
 import RegionTable from "./RegionTable";
@@ -1291,8 +1293,12 @@ export default function App() {
           return;
         }
         if (seq === previewRenderSeq.current) setPreviewTransaction({ phase: "rendering", requestId: seq, cause });
-        const result = await renderPreview(asset.asset_id, targLang, snapshot, controller.signal,
-          cause === "garnish" || cause === "treatment");
+        // Style, text, and transform edits cannot change Scene or the
+        // cleansed base.  Fast-path them while retaining the full path for an
+        // initial/incomplete manifest; the server still re-cleanses on a real
+        // geometry cache miss.
+        const fastPreview = cause === "garnish" || cause === "treatment" || cause === "style" || cause === "text";
+        const result = await renderPreview(asset.asset_id, targLang, snapshot, controller.signal, fastPreview);
         if (!controller.signal.aborted && seq === previewRenderSeq.current) {
           setPreRenderUrl(result.output_url);
           setPreviewRenderError(null);
@@ -1344,7 +1350,7 @@ export default function App() {
       }
     // Garnish is an exact mask/filter pass and can remain responsive without
     // a visually misleading client-side approximation.
-    }, cause === "garnish" ? 150 : 600);
+    }, cause === "garnish" || cause === "treatment" ? 150 : 350);
     return () => { controller.abort(); clearTimeout(timer); };
     // Scene's returned garnish metadata is presentation data.  It must not
     // be a dependency here: accepting it after a successful response would
@@ -1479,7 +1485,7 @@ export default function App() {
     finally { setBrushApplying(false); }
   }, [asset, brushStrokes, brushRadius, brushIntensity, brushApplying, addToast, flushCurrentManifest, syncTreatmentPatches, recordLocalizedChange]);
 
-  const updateCanvasTransform = useCallback((key: "skew_x" | "skew_y" | "arc" | "scale_x" | "scale_y" | "offset_x" | "offset_y", value: number) => {
+  const updateCanvasTransform = useCallback((key: "skew_x" | "skew_y" | "arc" | "scale_x" | "scale_y" | "offset_x" | "offset_y" | "rotation", value: number) => {
     const transform = manifest.find((inst) => inst.id === (renderSelId ?? prevSelId))?.style_profile?.transform ?? {};
     // A manual slider is intentionally a Custom transform.  It must not
     // retain a named preset's hidden amount and give the user a result they
@@ -1488,11 +1494,12 @@ export default function App() {
     updateSelectedStyle({ transform: { ...manualTransform, preset: "custom", [key]: value } });
   }, [renderSelId, prevSelId, manifest, updateSelectedStyle]);
 
-  type CanvasTransformKey = "skew_x" | "skew_y" | "scale_x" | "scale_y" | "offset_x" | "offset_y";
+  type CanvasTransformKey = "skew_x" | "skew_y" | "scale_x" | "scale_y" | "offset_x" | "offset_y" | "rotation";
   const transformHistoryRef = useRef<Record<CanvasTransformKey, { undoStack: number[]; redoStack: number[] }>>({
     skew_x: { undoStack: [], redoStack: [] }, skew_y: { undoStack: [], redoStack: [] },
     scale_x: { undoStack: [], redoStack: [] }, scale_y: { undoStack: [], redoStack: [] },
     offset_x: { undoStack: [], redoStack: [] }, offset_y: { undoStack: [], redoStack: [] },
+    rotation: { undoStack: [], redoStack: [] },
   });
   const trackTransformChange = useCallback((key: CanvasTransformKey, previous: number, next: number) => {
     if (!Number.isFinite(next) || previous === next) return;
@@ -1521,7 +1528,7 @@ export default function App() {
   const applyCanvasWarpPreset = useCallback((preset: string) => {
     const transform = manifest.find((inst) => inst.id === (renderSelId ?? prevSelId))?.style_profile?.transform ?? {};
     if (preset === "none") {
-      updateSelectedStyle({ transform: { ...transform, preset: "none", amount: 0, arc: 0, skew_x: 0, skew_y: 0, skew_anchor: "center", scale_x: 1, scale_y: 1, offset_x: 0, offset_y: 0, wrap_text: false } });
+      updateSelectedStyle({ transform: { ...transform, preset: "none", amount: 0, arc: 0, skew_x: 0, skew_y: 0, skew_anchor: "center", scale_x: 1, scale_y: 1, offset_x: 0, offset_y: 0 } });
       return;
     }
     updateSelectedStyle({ transform: { ...transform, preset, amount: transform.amount && transform.amount !== 0 ? transform.amount : 12 } });
@@ -3120,6 +3127,8 @@ export default function App() {
               onImgLoad={setImgSize}
               onExpandToggle={setCanvasExpandedH}
               bboxColor={bboxColor}
+              onDragStart={beginManifestBatch}
+              onDragEnd={endManifestBatch}
             />
             </div>
             <div>
@@ -3149,6 +3158,8 @@ export default function App() {
               lockedLangs={lockedLangs}
               onToggleLangLock={toggleLangLock}
               onReorder={onReorder}
+              onBatchBegin={beginManifestBatch}
+              onBatchEnd={endManifestBatch}
               footer={canvasExpandedH ? (
                 <ExportPanel
                   assetId={asset?.asset_id ?? ""}
@@ -3436,6 +3447,8 @@ export default function App() {
                 onHeightChange={canvasesLinked ? setSharedCanvasH : undefined}
                 onDoubleClickExpand={canvasesLinked ? toggleLinkedCanvasHeight : undefined}
                 bboxColor={bboxColor}
+                onDragStart={beginManifestBatch}
+                onDragEnd={endManifestBatch}
               />
               <TargetPreviewCanvas
                 className="mt-[2px]"
@@ -3536,6 +3549,8 @@ export default function App() {
                 fontMatchingId={fontMatchingId}
                 formerTargLang={formerTargLang}
                 targLang={targLang}
+                onBatchBegin={beginManifestBatch}
+                onBatchEnd={endManifestBatch}
               />
             </div>
           </div>
@@ -3654,6 +3669,7 @@ export default function App() {
             const families = familiesByLang[langForInst] ?? [];
             const currentFont = sp?.font_family ?? null;
             const currentColor = sp?.color ?? null;
+            const colorPickerValue = /^#[0-9a-fA-F]{6}$/.test(currentColor ?? "") ? currentColor! : "#000000";
             const currentStrokeColor = sp?.stroke_color ?? null;
             const isJapanese = langForInst === "ja";
             const selectedFontFamily = currentFont ? families.find((f) => f.weights.some((w) => w.path === currentFont) || f.best_path === currentFont) : null;
@@ -3863,7 +3879,7 @@ export default function App() {
                       <div className="flex items-center gap-2">
                         <input
                           type="color"
-                          value={currentColor ?? "#000000"}
+                          value={colorPickerValue}
                           onChange={(e) => updateStyle({ color: e.target.value })}
                           className="h-7 w-10 rounded border border-zinc-300 dark:border-zinc-700"
                         />
@@ -3874,9 +3890,7 @@ export default function App() {
                         <button onClick={() => setColorPickMode((mode) => mode ? null : "active")}
                           className={`subtext flex items-center gap-1 rounded px-2 py-0.5 text-xs ${colorPickMode ? "bg-cyan-600 text-white" : "text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800"}`}
                           title="pick color"><FaEyeDropper size={11} /> pick color</button>
-                        {currentColor && (
-                          <span className="subtext font-mono text-xs text-zinc-500">{currentColor}</span>
-                        )}
+                        <HexColorInput value={currentColor} onChange={(color) => updateStyle({ color })} />
                       </div>
                     </div>
 
@@ -4243,6 +4257,7 @@ export default function App() {
                         <div className="flex flex-wrap items-center gap-2 pt-1">
                       {transform?.preset && transform.preset !== "none" && transform.preset !== "custom" && <label className="subtext flex items-center gap-1 text-xs text-zinc-500">amount<input aria-label="warp amount" type="range" min="-25" max="25" step="0.5" value={transform.amount ?? 12} onChange={(e) => updateSelectedStyle({ transform: { ...transform, amount: Number(e.target.value) } })} onDoubleClick={() => updateSelectedStyle({ transform: { ...transform, amount: 12 } })} title="double-click to return to the preset baseline" /><span className="min-w-9 text-right font-mono text-[10px]">{Number(transform.amount ?? 12).toFixed(1)}</span></label>}
                       {([['skew_x', 'X'], ['skew_y', 'Y']] as const).map(([key, label]) => { const hist = transformHistoryRef.current[key]; const canUndoT = !!(hist && hist.undoStack.length > 0); const canRedoT = !!(hist && hist.redoStack.length > 0); return <label key={key} className="subtext flex items-center gap-1 text-xs text-zinc-500">{label}<span className="text-[10px]">−45</span><input aria-label={`${label} warp`} type="range" min="-45" max="45" step="0.5" value={transform?.[key] ?? 0} onChange={(e) => { const v = Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 0, v); updateCanvasTransform(key, v); }} onDoubleClick={() => { trackTransformChange(key, transform?.[key] ?? 0, 0); updateCanvasTransform(key, 0); }} title="double-click to reset to 0" /><input type="number" min="-45" max="45" step="0.5" value={transform?.[key] ?? 0} onChange={(e) => { const v = e.target.value === "" ? 0 : Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 0, v); updateCanvasTransform(key, v); }} className="w-12 rounded border border-zinc-300 bg-white px-1 py-0.5 text-right font-mono text-[10px] dark:border-zinc-700 dark:bg-zinc-900" /><span className="text-[10px]">°</span><button type="button" onClick={() => undoTransformKey(key, 0)} disabled={!canUndoT} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="undo"><LuUndo2 size={10} /></button><button type="button" onClick={() => redoTransformKey(key)} disabled={!canRedoT} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="redo"><LuRedo2 size={10} /></button></label>; })}
+                      {(() => { const key = "rotation" as const; const current = Number(transform?.rotation ?? 0); const hist = transformHistoryRef.current[key]; return <span className="subtext flex items-center gap-1 text-xs text-zinc-500" title="Drag, click, or type to rotate text. Double-click the dial or value to reset."><span>rotate</span><RotationDial value={current} onChange={(value) => { trackTransformChange(key, current, value); updateCanvasTransform(key, value); }} onReset={() => { trackTransformChange(key, current, 0); updateCanvasTransform(key, 0); }} /><button type="button" onClick={() => undoTransformKey(key, 0)} disabled={!hist.undoStack.length} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="undo"><LuUndo2 size={10} /></button><button type="button" onClick={() => redoTransformKey(key)} disabled={!hist.redoStack.length} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="redo"><LuRedo2 size={10} /></button></span>; })()}
                       <span className="subtext flex items-center gap-1 text-xs text-zinc-500" title="Choose the point that stays fixed while skewing or stretching."><span>anchor</span><span className="grid grid-cols-3 gap-px rounded border border-zinc-300 p-0.5 dark:border-zinc-700">{(["top_left", "top_center", "top_right", "middle_left", "center", "middle_right", "bottom_left", "bottom_center", "bottom_right"] as const).map((anchor) => <button key={anchor} type="button" aria-label={`transform anchor ${anchor.replace("_", " ")}`} onClick={() => updateSelectedStyle({ transform: { ...transform, skew_anchor: anchor } })} className={`h-2.5 w-2.5 rounded-sm ${((transform?.skew_anchor ?? "center") === anchor) ? "bg-cyan-600" : "bg-zinc-300 hover:bg-zinc-400 dark:bg-zinc-600 dark:hover:bg-zinc-500"}`} />)}</span></span>
                       {([['scale_x', 'width'], ['scale_y', 'height']] as const).map(([key, label]) => { const hist = transformHistoryRef.current[key]; const canUndoT = !!(hist && hist.undoStack.length > 0); const canRedoT = !!(hist && hist.redoStack.length > 0); return <label key={key} className="subtext flex items-center gap-1 text-xs text-zinc-500">{label}<span className="text-[10px]">0.5x</span><input aria-label={`${label} stretch`} type="range" min="0.5" max="1.5" step="0.01" value={transform?.[key] ?? 1} onChange={(e) => { const v = Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 1, v); updateCanvasTransform(key, v); }} onDoubleClick={() => { trackTransformChange(key, transform?.[key] ?? 1, 1); updateCanvasTransform(key, 1); }} title="double-click to reset to 1.00x" /><input type="number" min="0.5" max="1.5" step="0.01" value={transform?.[key] ?? 1} onChange={(e) => { const v = e.target.value === "" ? 1 : Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 1, v); updateCanvasTransform(key, v); }} className="w-12 rounded border border-zinc-300 bg-white px-1 py-0.5 text-right font-mono text-[10px] dark:border-zinc-700 dark:bg-zinc-900" /><span className="text-[10px]">x</span><button type="button" onClick={() => undoTransformKey(key, 1)} disabled={!canUndoT} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="undo"><LuUndo2 size={10} /></button><button type="button" onClick={() => redoTransformKey(key)} disabled={!canRedoT} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="redo"><LuRedo2 size={10} /></button></label>; })}
                       {([['offset_x', 'pos X'], ['offset_y', 'pos Y']] as const).map(([key, label]) => { const hist = transformHistoryRef.current[key]; const canUndoT = !!(hist && hist.undoStack.length > 0); const canRedoT = !!(hist && hist.redoStack.length > 0); return <span key={key} className="subtext flex items-center gap-1 text-xs text-zinc-500"><label className="flex items-center gap-1">{label}<span className="text-[10px]">−50</span><input aria-label={`${label} position`} type="range" min="-50" max="50" step="1" value={transform?.[key] ?? 0} onChange={(e) => { const v = Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 0, v); updateCanvasTransform(key, v); }} onDoubleClick={() => { trackTransformChange(key, transform?.[key] ?? 0, 0); updateCanvasTransform(key, 0); }} title="double-click to snap to original position" /><input type="number" min="-50" max="50" step="1" value={transform?.[key] ?? 0} onChange={(e) => { const v = e.target.value === "" ? 0 : Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 0, v); updateCanvasTransform(key, v); }} className="w-12 rounded border border-zinc-300 bg-white px-1 py-0.5 text-right font-mono text-[10px] dark:border-zinc-700 dark:bg-zinc-900" /><span className="text-[10px]">px</span></label><button type="button" onClick={() => undoTransformKey(key, 0)} disabled={!canUndoT} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="undo"><LuUndo2 size={10} /></button><button type="button" onClick={() => redoTransformKey(key)} disabled={!canRedoT} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="redo"><LuRedo2 size={10} /></button></span>; })}

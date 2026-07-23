@@ -51,6 +51,8 @@ interface RegionTableProps {
   targLang?: string;
   footer?: ReactNode;
   onReorder?: (fromId: string, toId: string) => void;
+  onBatchBegin?: () => void;
+  onBatchEnd?: () => void;
 }
 
 function confColor(conf: number | null): string {
@@ -99,7 +101,7 @@ export default function RegionTable({
   mode, regions, selectedId, hoveredId, onSelect, onHover, onTextChange, onTargetChange,
   onDelete, onOcr, onToggleDnt, onTargetLangChange, onSrcLangChange, onFontChange,
   onApplyTargetLang, ocrLoading, languages, defaultTargLang, defaultSrcLang, fontsByLang, familiesByLang, onNeedFonts,
-  lockedLangs, onToggleLangLock, onOrientationToggle, onWordOrderToggle, onFontMatch, fontMatchingId, formerTargLang, targLang, footer, onReorder,
+  lockedLangs, onToggleLangLock, onOrientationToggle, onWordOrderToggle, onFontMatch, fontMatchingId, formerTargLang, targLang, footer, onReorder, onBatchBegin, onBatchEnd,
 }: RegionTableProps) {
   const COLS = ALL_COLS.filter((c) => MODE_COLS[mode].includes(c.key));
   const rowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
@@ -522,6 +524,8 @@ export default function RegionTable({
                         <input
                           value={inst.text ?? ""}
                           onChange={(e) => onTextChange(inst.id, e.target.value)}
+                          onFocus={onBatchBegin}
+                          onBlur={onBatchEnd}
                           onClick={(e) => e.stopPropagation()}
                           className="w-full rounded bg-transparent px-1 py-0.5 text-xs text-zinc-800 outline-none focus:bg-zinc-200 dark:text-zinc-200 dark:focus:bg-zinc-800"
                           placeholder="—"
@@ -740,6 +744,8 @@ export default function RegionTable({
                             <div className="relative">
                               <textarea
                                 value={inst.target_text ?? ""}
+                                onFocus={onBatchBegin}
+                                onBlur={onBatchEnd}
                                 onChange={(e) => {
                                   const val = e.target.value;
                                   if (val.trim() && targLang && !textLangMatchesTarget(val, targLang)) {

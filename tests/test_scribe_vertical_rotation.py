@@ -133,6 +133,16 @@ class TestRotationPropagation:
         # explicit rotation=0.0 overrides the detected 15deg -> matches upright
         assert np.array_equal(out, out_upright)
 
+    def test_editor_transform_rotation_overrides_detected_rotation(self):
+        asset = Image.new("RGB", (400, 300), (255, 255, 255))
+        manifest, _ = self._manifest_with_rotation(15.0)
+        manifest.instances[0].style_profile.transform = {"rotation": 0.0}
+        out = np.asarray(scribe.render(asset, manifest, "en"))
+        upright_asset = Image.new("RGB", (400, 300), (255, 255, 255))
+        upright_manifest, _ = self._manifest_with_rotation(0.0)
+        upright = np.asarray(scribe.render(upright_asset, upright_manifest, "en"))
+        assert np.array_equal(out, upright)
+
 
 class TestShadow:
     def _render_with_shadow(self, shadow):
