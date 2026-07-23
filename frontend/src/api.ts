@@ -175,6 +175,7 @@ export interface InstText {
   garnish_enabled?: boolean | null;
   garnish_scope?: "whole_selection" | "per_region";
   garnish_regions?: GarnishRegion[];
+  adjusted_bbox?: BBox | null;
   segmentation_mask?: { polygon: number[][]; confidence: number; holes?: number[][][] | null } | null;
   style_profile?: {
     font_family: string | null;
@@ -201,7 +202,7 @@ export interface InstText {
     stroke_width: number | null;
     target_orientation: "horizontal" | "vertical" | null;
     word_order: "ltr" | "rtl" | null;
-    transform?: { skew_x?: number; skew_y?: number; arc?: number; preset?: string; amount?: number; scale_x?: number; scale_y?: number; offset_x?: number; offset_y?: number; truncate_offset?: boolean; truncate_offset_x?: boolean; truncate_offset_y?: boolean; wrap_text?: boolean } | null;
+    transform?: { skew_x?: number; skew_y?: number; skew_anchor?: string; arc?: number; preset?: string; amount?: number; scale_x?: number; scale_y?: number; offset_x?: number; offset_y?: number; wrap_text?: boolean } | null;
   } | null;
   background_profile?: {
     semantic_label: string | null;  // containing scene surface: "panel" | "bordered_region" | ...
@@ -238,7 +239,7 @@ export interface SceneRegion {
 }
 
 export interface GarnishProfile {
-  edge_blur_px: number; edge_smoothing: boolean; erosion_px: number; dilation_px: number;
+  edge_blur_px: number; edge_smoothing: boolean; edge_smoothing_strength: number; erosion_px: number; dilation_px: number;
   grain_strength: number; gamma_shift: number; smudge_strength: number;
   smudge_angle_deg: number; source_confidence: number;
 }
@@ -905,7 +906,7 @@ export async function previewCandidateLocalized(assetId: string, candidateId: st
 }
 
 export interface InpaintPatch { id: string; bbox: BBox; polygon: number[][]; points?: number[][]; mode: string; strategy?: string; radius?: number; hardness?: number; candidate_id?: string; }
-export interface TreatmentRequest { polygon?: number[][]; points?: number[][]; mode?: "auto" | "content_aware" | "texture"; radius?: number; hardness?: number; }
+export interface TreatmentRequest { polygon?: number[][]; points?: number[][]; mode?: "blur"; radius?: number; hardness?: number; blur_strength?: number; }
 export async function createInpaintPatch(assetId: string, treatment: TreatmentRequest, manifest?: TextManifest) {
   return json(await fetch("/api/inpaint", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ asset_id: assetId, ...treatment, manifest }) })) as Promise<{ id: string; bbox: BBox; patches: InpaintPatch[]; revision: string }>;
 }

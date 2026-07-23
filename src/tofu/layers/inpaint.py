@@ -9,6 +9,7 @@ def make_patch(
     points: List[Tuple[int, int]] | None = None,
     radius: int = 18,
     hardness: float = 0.85,
+    blur_strength: float = 0.5,
 ):
     """Return an RGBA treatment crop, bbox, and applied strategy.
 
@@ -54,18 +55,40 @@ def make_patch(
     # pixels: connected edge structure favours Navier--Stokes propagation;
     # otherwise Telea is the more conservative local heal.  The explicit
     # modes remain API-compatible for old persisted patches and tests.
-    if mode == "auto":
+    if mode == "blur":
+        intensity = max(0.0, min(1.0, float(blur_strength)))
+        sigma = max(1.0, float(radius) * max(0.1, intensity))
+        blurred = cv2.GaussianBlur(arr, (0, 0), sigma)
+        # Text-aware masking: detect high-frequency text edges via Laplacian
+        # and blend only those pixels, leaving smooth background untouched.
+        gray = cv2.cvtColor(arr, cv2.COLOR_RGB2GRAY)
+        laplacian = np.abs(cv2.Laplacian(gray, cv2.CV_64F))
+        # Smooth the contrast map so the blur feather follows stroke widths
+        contrast = cv2.GaussianBlur(laplacian.astype(np.float32), (0, 0), sigma * 0.5)
+        cmax = float(contrast.max())
+        if cmax > 0:
+            contrast = contrast / cmax
+        # Intensity scales how aggressively text pixels adopt the blurred version
+        text_weight = np.clip(contrast * intensity * 2.0, 0, 1)[..., np.newaxis]
+        result = (arr.astype(np.float32) * (1.0 - text_weight) +
+                  blurred.astype(np.float32) * text_weight)
+        crop = np.clip(result, 0, 255).astype(np.uint8)[y0:y1, x0:x1]
+        strategy = "text_blur"
+    elif mode == "auto":
         expanded = cv2.dilate(mask, np.ones((5, 5), np.uint8), iterations=2)
         ring = (expanded > 0) & ~(mask > 0)
         gray = cv2.cvtColor(arr, cv2.COLOR_RGB2GRAY)
         edges = cv2.Canny(gray, 70, 150)
         edge_density = float((edges[ring] > 0).mean()) if ring.any() else 0.0
         strategy = "navier_stokes" if edge_density >= 0.10 else "telea"
+        flag = cv2.INPAINT_NS if strategy == "navier_stokes" else cv2.INPAINT_TELEA
+        out = cv2.inpaint(arr, mask, max(2, min(9, int(radius / 4) or 3)), flag)
+        crop = out[y0:y1, x0:x1]
     else:
         strategy = "navier_stokes" if mode in {"texture", "navier_stokes"} else "telea"
-    flag = cv2.INPAINT_NS if strategy == "navier_stokes" else cv2.INPAINT_TELEA
-    out = cv2.inpaint(arr, mask, max(2, min(9, int(radius / 4) or 3)), flag)
-    crop = out[y0:y1, x0:x1]
+        flag = cv2.INPAINT_NS if strategy == "navier_stokes" else cv2.INPAINT_TELEA
+        out = cv2.inpaint(arr, mask, max(2, min(9, int(radius / 4) or 3)), flag)
+        crop = out[y0:y1, x0:x1]
     # A slightly feathered alpha gives a healing-brush seam instead of a hard
     # stamped edge.  It never changes the actual treatment pixels.
     blur = max(0, int((1.0 - max(0.0, min(1.0, hardness))) * radius))

@@ -12,6 +12,7 @@ def full_manifest() -> TextManifest:
     inst = InstText(
         id="r1",
         bounding_box=BBox(x=10, y=20, width=100, height=40),
+        adjusted_bbox=BBox(x=18, y=13, width=100, height=40),
         segmentation_mask=Mask(polygon=[(10, 20), (110, 20), (110, 60), (10, 60)],
                                confidence=0.87),
         text="居酒屋", target_text="izakaya", language="ja",
@@ -65,6 +66,8 @@ class TestRoundTrip:
         assert i2.segmentation_mask.polygon == i.segmentation_mask.polygon
         assert i2.repair_provenance == i.repair_provenance
         assert i2.font_match == i.font_match
+        assert i2.bounding_box == BBox(x=10, y=20, width=100, height=40)
+        assert i2.adjusted_bbox == BBox(x=18, y=13, width=100, height=40)
         assert m2.img_dim == (960, 640)
         assert m2.scene_regions[0].semantic_label == "panel"
         assert m2.scene_regions[0].material == "painted sign / panel"

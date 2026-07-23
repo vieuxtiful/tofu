@@ -347,6 +347,7 @@ class InpaintRequest(BaseModel):
     mode: str = "auto"
     radius: int = 18
     hardness: float = 0.85
+    blur_strength: float = 0.5
     # The localized canvas can be ahead of autosave.  Supplying this snapshot
     # keeps manual treatment on the exact same Cleanse base as the preview,
     # without mutating the stored manifest.
@@ -1915,6 +1916,7 @@ def inpaint(req: InpaintRequest):
         crop, bbox, strategy = make_patch(
             base, [tuple(p) for p in req.polygon], req.mode,
             [tuple(p) for p in req.points], req.radius, req.hardness,
+            req.blur_strength,
         )
         patch_id = uuid.uuid4().hex[:12]
         filename = f"{req.asset_id}.patch-{patch_id}.png"

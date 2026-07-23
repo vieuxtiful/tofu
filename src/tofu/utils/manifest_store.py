@@ -20,6 +20,7 @@ from tofu.core.types import (
 def _garnish_to_dict(profile: Optional[GarnishProfile]) -> Optional[dict]:
     return None if profile is None else {
         "edge_blur_px": profile.edge_blur_px, "edge_smoothing": profile.edge_smoothing,
+        "edge_smoothing_strength": profile.edge_smoothing_strength,
         "erosion_px": profile.erosion_px,
         "dilation_px": profile.dilation_px, "grain_strength": profile.grain_strength,
         "gamma_shift": profile.gamma_shift, "smudge_strength": profile.smudge_strength,
@@ -30,7 +31,7 @@ def _garnish_to_dict(profile: Optional[GarnishProfile]) -> Optional[dict]:
 def _garnish_from_dict(data: Optional[dict]) -> Optional[GarnishProfile]:
     if not isinstance(data, dict): return None
     values = {key: float(data.get(key, default)) for key, default in {
-        "edge_blur_px": 0, "erosion_px": 0, "dilation_px": 0, "grain_strength": 0,
+        "edge_blur_px": 0, "edge_smoothing_strength": .5, "erosion_px": 0, "dilation_px": 0, "grain_strength": 0,
         "gamma_shift": 1, "smudge_strength": 0, "smudge_angle_deg": 0, "source_confidence": 0,
     }.items()}
     return GarnishProfile(edge_smoothing=bool(data.get("edge_smoothing", False)), **values)
@@ -167,6 +168,12 @@ def _inst_to_dict(inst: InstText) -> dict:
             "width": inst.bounding_box.width,
             "height": inst.bounding_box.height,
         },
+        "adjusted_bbox": ({
+            "x": inst.adjusted_bbox.x,
+            "y": inst.adjusted_bbox.y,
+            "width": inst.adjusted_bbox.width,
+            "height": inst.adjusted_bbox.height,
+        } if inst.adjusted_bbox else None),
         "text": inst.text,
         "target_text": inst.target_text,
         "confidence": inst.confidence,
@@ -259,6 +266,12 @@ def _dict_to_manifest(data: dict) -> TextManifest:
             width=idict["bounding_box"]["width"],
             height=idict["bounding_box"]["height"],
         )
+        adjusted_bbox = None
+        if isinstance(idict.get("adjusted_bbox"), dict):
+            abox = idict["adjusted_bbox"]
+            adjusted_bbox = BBox(
+                x=abox["x"], y=abox["y"], width=abox["width"], height=abox["height"],
+            )
         mask = None
         if idict.get("segmentation_mask"):
             mdict = idict["segmentation_mask"]
@@ -328,6 +341,7 @@ def _dict_to_manifest(data: dict) -> TextManifest:
         instances.append(InstText(
             id=idict["id"],
             bounding_box=bbox,
+            adjusted_bbox=adjusted_bbox,
             segmentation_mask=mask,
             text=idict.get("text"),
             target_text=idict.get("target_text"),

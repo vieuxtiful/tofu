@@ -87,8 +87,10 @@ def _apply_style_transform(layer: Any, bbox: BBox, transform: Optional[Dict[str,
     try:
         from PIL import Image
         import math
-        sx = math.tan(math.radians(float(transform.get("skew_x", 0) or 0)))
-        sy = math.tan(math.radians(float(transform.get("skew_y", 0) or 0)))
+        skew_x_deg = max(-45.0, min(45.0, float(transform.get("skew_x", 0) or 0)))
+        skew_y_deg = max(-45.0, min(45.0, float(transform.get("skew_y", 0) or 0)))
+        sx = math.tan(math.radians(skew_x_deg))
+        sy = math.tan(math.radians(skew_y_deg))
         arc = float(transform.get("arc", 0) or 0)
         preset = str(transform.get("preset", "custom") or "custom").strip().lower().replace(" ", "_")
         amount = float(transform.get("amount", arc) or 0)
@@ -98,8 +100,6 @@ def _apply_style_transform(layer: Any, bbox: BBox, transform: Optional[Dict[str,
             preset, amount, arc = "custom", 0.0, 0.0
         offset_x = int(transform.get("offset_x", 0) or 0)
         offset_y = int(transform.get("offset_y", 0) or 0)
-        truncate_x = bool(transform.get("truncate_offset_x", transform.get("truncate_offset", False)))
-        truncate_y = bool(transform.get("truncate_offset_y", transform.get("truncate_offset", False)))
         if not (sx or sy or arc or amount or scale_x != 1 or scale_y != 1 or offset_x or offset_y):
             return layer
 
@@ -122,7 +122,8 @@ def _apply_style_transform(layer: Any, bbox: BBox, transform: Optional[Dict[str,
             # tight extent.  This deliberately generous local pad avoids
             # clipping an unwrapped run while remaining region-local.
             extent = max(ix1 - ix0, iy1 - iy0, bbox.width, bbox.height)
-            pad = int(max(16, extent * 1.6 + abs(offset_x) + abs(offset_y) + abs(amount)))
+            shear_pad = abs(sx) * bbox.height + abs(sy) * bbox.width
+            pad = int(max(16, extent * 1.6 + abs(offset_x) + abs(offset_y) + abs(amount) + shear_pad))
             left, top = max(0, ix0 - pad), max(0, iy0 - pad)
             right, bottom = min(src.width, ix1 + pad), min(src.height, iy1 + pad)
             if right <= left or bottom <= top:
@@ -132,9 +133,7 @@ def _apply_style_transform(layer: Any, bbox: BBox, transform: Optional[Dict[str,
             # edges.  Adapt down rather than risking a pathological memory
             # spike for a very large selected text region.
             max_high_pixels = 18_000_000
-            factor = min(4, max(1, int((max_high_pixels / max(1, crop.width * crop.height)) ** .5)))
-            if factor < 2:
-                return src.transform(src.size, Image.Transform.AFFINE, coefficients, resample=Image.Resampling.BICUBIC)
+            factor = min(4, max(2, int((max_high_pixels / max(1, crop.width * crop.height)) ** .5)))
             a, b, c, d, e, f = coefficients
             # Convert the global inverse map to the crop's local coordinate
             # system, then to its supersampled coordinate system.
@@ -150,42 +149,37 @@ def _apply_style_transform(layer: Any, bbox: BBox, transform: Optional[Dict[str,
             return result
 
         def _apply_offset(src):
-            """Shift a layer by (offset_x, offset_y) with optional per-axis
-            truncation to the bounding-box region.  Uses paste with the
-            source's own alpha as mask — universally supported across
-            Pillow versions, unlike the instance alpha_composite(dest=)
-            overload which silently fails on older releases."""
+            """Shift a layer by (offset_x, offset_y).
+
+            paste WITHOUT a mask argument copies RGBA directly on a
+            transparent destination (dest_alpha = src_alpha), preserving
+            anti-aliased edge pixels. The previous mask=src form squared
+            semi-transparent alphas (dest_alpha = src_alpha^2 / 255) and
+            produced jagged, darkened edges on every positional nudge."""
             if not (offset_x or offset_y):
                 return src
             shifted = Image.new("RGBA", src.size, (0, 0, 0, 0))
-            shifted.paste(src, (offset_x, offset_y), src)
-            if truncate_x or truncate_y:
-                cx0 = max(0, bbox.x) if truncate_x else 0
-                cy0 = max(0, bbox.y) if truncate_y else 0
-                cx1 = min(src.width, bbox.x + bbox.width) if truncate_x else src.width
-                cy1 = min(src.height, bbox.y + bbox.height) if truncate_y else src.height
-                if cx0 < cx1 and cy0 < cy1:
-                    mask = Image.new("RGBA", src.size, (0, 0, 0, 0))
-                    mask.paste(shifted.crop((cx0, cy0, cx1, cy1)), (cx0, cy0))
-                    return mask
+            shifted.paste(src, (offset_x, offset_y))
             return shifted
+        anchor = str(transform.get("skew_anchor", "center") or "center").strip().lower()
         cx, cy = bbox.x + bbox.width / 2, bbox.y + bbox.height / 2
-        out = _quality_affine(
-            layer, (1, -sx, sx * cy, -sy, 1, sy * cx),
-        ) if (sx or sy) else layer
-        if scale_x != 1 or scale_y != 1:
-            # Pillow's affine matrix maps output coordinates to source
-            # coordinates.  Scaling about the region centre keeps this a
-            # local text transform rather than a canvas-position dependent
-            # one.  Transforming the source glyph coverage through the
-            # adaptive supersampling helper preserves anti-aliased contours
-            # instead of introducing hard stair-steps during a width/height
-            # adjustment.
-            out = _quality_affine(
-                out,
-                (1 / scale_x, 0, cx - cx / scale_x,
-                 0, 1 / scale_y, cy - cy / scale_y),
-            )
+        if "left" in anchor: cx = bbox.x
+        elif "right" in anchor: cx = bbox.x + bbox.width
+        if "top" in anchor: cy = bbox.y
+        elif "bottom" in anchor: cy = bbox.y + bbox.height
+        if sx or sy or scale_x != 1 or scale_y != 1:
+            # Compose inverse scale and inverse shear into one sampling pass.
+            # Pillow maps destination coordinates back to source coordinates;
+            # combining K * S^-1 avoids the former double resample when both
+            # skew and stretch were active.  Note that y-shear depends on
+            # the inverse X scale (not inverse Y scale).
+            inv_x, inv_y = 1 / scale_x, 1 / scale_y
+            out = _quality_affine(layer, (
+                inv_x, -sx * inv_y, cx * (1 - inv_x) + sx * cy * inv_y,
+                -sy * inv_x, inv_y, cy * (1 - inv_y) + sy * cx * inv_x,
+            ))
+        else:
+            out = layer
         if not (arc or amount):
             return _apply_offset(out)
         # Shift each local column by a quadratic amount.  Bounding the work to
@@ -219,11 +213,26 @@ def _apply_style_transform(layer: Any, bbox: BBox, transform: Optional[Dict[str,
                 return magnitude * t * (1.0 - abs(t))
             return magnitude * (t * t - 1.0)
 
-        for x in range(x0, x1):
-            t = (x - cx) / max(1.0, bbox.width / 2)
-            dy = int(round(offset_at(t)))
-            column = out.crop((x, y0, x + 1, y1))
-            warped.alpha_composite(column, (x, y0 + dy))
+        region_w = x1 - x0
+        region_h = y1 - y0
+        if region_w <= 0 or region_h <= 0:
+            return _apply_offset(out)
+        import cv2
+        import numpy as np
+        region_arr = np.asarray(out.crop((x0, y0, x1, y1)))
+        map_x = np.tile(np.arange(region_w, dtype=np.float32), (region_h, 1))
+        map_y = np.zeros((region_h, region_w), dtype=np.float32)
+        for i in range(region_w):
+            t = (x0 + i - cx) / max(1.0, bbox.width / 2)
+            dy = offset_at(t)
+            map_y[:, i] = np.arange(region_h, dtype=np.float32) - dy
+        # BORDER_TRANSPARENT leaves an uninitialised destination in OpenCV
+        # when no explicit destination array is supplied, which made two
+        # identical preview renders occasionally differ at the warp boundary.
+        remapped = cv2.remap(region_arr, map_x, map_y, cv2.INTER_LANCZOS4,
+                             borderMode=cv2.BORDER_CONSTANT, borderValue=(0, 0, 0, 0))
+        warped = Image.new("RGBA", out.size, (0, 0, 0, 0))
+        warped.alpha_composite(Image.fromarray(remapped, "RGBA"), (x0, y0))
         return _apply_offset(warped)
     except Exception:
         return layer
@@ -602,11 +611,10 @@ def _fit_wrapped(
         # smaller font (measured: "SALE" fit at size 53 instead of the
         # correct 69, visibly shrinking a region that fit fine as-is)
         l, t, r, b = draw.multiline_textbbox((0, 0), "\n".join(lines), font=font, spacing=spacing)
-        # PIL's textbbox ignores tracking/kerning; add the extra width
-        # to the fit check so a font size that overflows with spacing
-        # adjustments is correctly rejected
-        max_line_extra = max((tracking + kerning) * max(0, len(ln) - 1) for ln in lines) if lines else 0
-        if (r - l) + max_line_extra <= bbox.width and (b - t) <= bbox.height:
+        # font size is determined by raw ink extent only — tracking and
+        # kerning widen the line but must not shrink the chosen size,
+        # otherwise increasing spacing silently shrinks the glyphs
+        if (r - l) <= bbox.width and (b - t) <= bbox.height:
             best_font, best_lines, best_spacing, lo = font, lines, spacing, mid + 1
         else:
             hi = mid - 1
@@ -965,6 +973,17 @@ def render(
 
         measure_draw = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
         s = style or StyleProfil()
+        # Keep captured geometry immutable.  Consumers which evaluate the
+        # localized result (Garnish and Verify) follow this derived position;
+        # source analysis, Cleanse and XLIFF identity continue to use the
+        # original bounding_box.
+        transform_offset = s.transform or {}
+        adjusted_x = int(transform_offset.get("offset_x", 0) or 0)
+        adjusted_y = int(transform_offset.get("offset_y", 0) or 0)
+        inst.adjusted_bbox = (
+            BBox(x=bbox.x + adjusted_x, y=bbox.y + adjusted_y, width=bbox.width, height=bbox.height)
+            if adjusted_x or adjusted_y else None
+        )
         effective_lang = inst.target_language or targ_lang
         if font_registry is not None and (s.font_family or s.font_weight or s.italic):
             resolved_path, synthetic_italic = resolve_face(

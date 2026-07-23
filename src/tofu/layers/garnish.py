@@ -68,18 +68,33 @@ def _region_mask(cv2, np, polygon, x0: int, y0: int, width: int, height: int):
     return allowed
 
 
-def _smooth_coverage(cv2, np, alpha):
-    """Round raster stair-steps without making text bleed outward.
+def _smooth_coverage(cv2, np, alpha, strength: float = 0.5):
+    """Round raster stair-steps with controlled edge feathering.
 
-    Gaussian alpha blur is useful for intentionally weathered lettering, but
-    it is the wrong remedy for a slightly jagged raster: it expands coverage
-    and reads as out-of-focus text.  Median smoothing is support-preserving;
-    masking the result back to the original support keeps it surgical.
+    A pure median only rounds alpha values WITHIN existing non-zero
+    pixels — it cannot repair the perceptual jaggedness AT the coverage
+    boundary, because that boundary itself stays hard.  A Gaussian
+    feathers beyond the original coverage edge, which is what an editor
+    asking for "softer edges" actually wants; applied alone, though, it
+    reads as out-of-focus text.
+
+    The blend between the Gaussian-feathered alpha and the original
+    alpha controls how much feather escapes: ``strength * 0.4`` is the
+    Gaussian weight, the rest is original.  At strength=0.5, 20% of
+    the Gaussian feather leaks past the edge (conservative but visibly
+    smoother); at strength=1.0, 40% leaks (noticeable softening).  No
+    hard support clamp is applied — that would eliminate the only
+    useful effect of the Gaussian component.
     """
     if alpha.size == 0:
         return alpha
-    smoothed = cv2.medianBlur(alpha, 3)
-    return np.where(alpha > 0, smoothed, 0).astype(np.uint8)
+    # Preserve Scribe's existing interior alpha exactly.  A distance ramp is
+    # generated only outside the glyph, so feathering cannot soften stems.
+    width_out = max(1.0, max(0.0, min(1.0, float(strength))) * 5.0)
+    binary = (alpha > 0).astype(np.uint8)
+    exterior_distance = cv2.distanceTransform(1 - binary, cv2.DIST_L2, 3)
+    ramp = np.clip(255.0 * (1.0 - exterior_distance / width_out), 0, 255).astype(np.uint8)
+    return np.where(binary > 0, alpha, ramp).astype(np.uint8)
 
 
 def apply(scribed_asset: Any, text_manifest: TextManifest, base_asset: Any = None, font_registry: Optional[Any] = None) -> Any:
@@ -104,7 +119,9 @@ def apply(scribed_asset: Any, text_manifest: TextManifest, base_asset: Any = Non
         for inst in text_manifest.instances:
             if not inst.target_text or inst.dnt or inst.excluded:
                 continue
-            b = inst.bounding_box
+            # Treatment follows the rendered text when an editor applies an
+            # offset; source-surface matching intentionally remains captured.
+            b = inst.adjusted_bbox or inst.bounding_box
             x0, y0 = max(0, b.x), max(0, b.y); x1, y1 = min(scribed.width, b.x + b.width), min(scribed.height, b.y + b.height)
             if x1 <= x0 or y1 <= y0: continue
             inherited = _profile(text_manifest, inst)
@@ -155,7 +172,8 @@ def apply(scribed_asset: Any, text_manifest: TextManifest, base_asset: Any = Non
                 if profile.dilation_px > 0:
                     k = max(1, int(round(profile.dilation_px)) * 2 + 1); mask = cv2.dilate(mask, np.ones((k, k), np.uint8))
                 if profile.edge_smoothing:
-                    mask = _smooth_coverage(cv2, np, mask)
+                    strength = getattr(profile, "edge_smoothing_strength", 0.5)
+                    mask = _smooth_coverage(cv2, np, mask, strength)
                 alpha = Image.fromarray(mask, "L")
                 if edge_blur > 0: alpha = alpha.filter(ImageFilter.GaussianBlur(radius=min(10, edge_blur)))
                 alpha_np = np.asarray(alpha, dtype=np.uint8)
@@ -164,7 +182,9 @@ def apply(scribed_asset: Any, text_manifest: TextManifest, base_asset: Any = Non
                 if allowed is not None:
                     # Permit a small natural feather but never let a selected
                     # word's treatment leak across the rest of the instance.
-                    margin = max(1, int(math.ceil(edge_blur + smudge_strength * 4)))
+                    feather_px = (max(0.0, min(1.0, float(getattr(profile, "edge_smoothing_strength", 0.5))) * 5.0)
+                                  if profile.edge_smoothing else 0.0)
+                    margin = max(1, int(math.ceil(edge_blur + feather_px + smudge_strength * 4)))
                     alpha_np = cv2.bitwise_and(alpha_np, cv2.dilate(allowed, np.ones((margin * 2 + 1, margin * 2 + 1), np.uint8)))
                 rgb = source[y0:y1, x0:x1].astype(np.float32)
                 if abs(profile.gamma_shift - 1.0) > 1e-3:
@@ -177,7 +197,9 @@ def apply(scribed_asset: Any, text_manifest: TextManifest, base_asset: Any = Non
                     outer = cv2.dilate(mask, np.ones((5, 5), np.uint8)); inner = cv2.erode(mask, np.ones((3, 3), np.uint8))
                     edge_weight = np.clip(cv2.subtract(outer, inner).astype(np.float32) / 255.0, 0, 1) * 0.7 + 0.3
                     rgb += noise * edge_weight[:, :, np.newaxis]
-                if edge_blur > 0:
+                feather_px = (max(0.0, min(1.0, float(getattr(profile, "edge_smoothing_strength", 0.5))) * 5.0)
+                              if profile.edge_smoothing else 0.0)
+                if edge_blur > 0 or feather_px > 0:
                     # Engrain: in the soft edge band (partial alpha after blur),
                     # blend text RGB toward the underlying surface so edges look
                     # embedded rather than casting a text-colored halo.  The
@@ -189,7 +211,8 @@ def apply(scribed_asset: Any, text_manifest: TextManifest, base_asset: Any = Non
                         dtype=np.float32,
                     )
                     a = alpha_np.astype(np.float32) / 255.0
-                    engrain = 4.0 * a * (1.0 - a)
+                    engrain_scale = max(0.2, min(1.0, 1.0 / max(1.0, feather_px))) if feather_px > 0 else 1.0
+                    engrain = 4.0 * a * (1.0 - a) * engrain_scale
                     rgb = rgb * (1 - engrain[:, :, np.newaxis]) + surface_rgb * engrain[:, :, np.newaxis]
                 layer = Image.fromarray(np.dstack([np.clip(rgb, 0, 255).astype(np.uint8), alpha_np]), "RGBA")
                 # A whole-instance pass replaces the cleansed base as before.

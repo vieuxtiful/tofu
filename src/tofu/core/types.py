@@ -96,6 +96,7 @@ class GarnishProfile:
     # surrounding surface.  This is intentionally distinct from edge_blur,
     # which creates a visible soft-focus/engrained edge.
     edge_smoothing: bool = False
+    edge_smoothing_strength: float = 0.5
     erosion_px: float = 0.0
     dilation_px: float = 0.0
     grain_strength: float = 0.0
@@ -129,6 +130,10 @@ class SceneRegion: ## candidate text-bearing surface from scene's pre-pass
 class InstText:
     id: str
     bounding_box: BBox
+    # Render-only spatial position derived from style_profile.transform's
+    # offset.  The captured bounding_box is immutable source geometry used by
+    # Cicerone, Cleanse, XLIFF identity, and reading order.
+    adjusted_bbox: Optional[BBox] = None
     segmentation_mask: Optional[Mask] = None
     text: Optional[str] = None
     target_text: Optional[str] = None    ## translated string scribe renders (from TM or translator)

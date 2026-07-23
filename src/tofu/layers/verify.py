@@ -126,7 +126,7 @@ def _get_reader(lang: str):
 def _ocr_roundtrip_score(np, localized_np, inst, targ_lang: str) -> Optional[float]:
     """similarity between the intended target text and what OCR reads
     back from the rendered crop. None if the metric cannot run."""
-    b = inst.bounding_box
+    b = inst.adjusted_bbox or inst.bounding_box
     h, w = localized_np.shape[:2]
     x0 = max(0, b.x - CROP_PAD_PX)
     y0 = max(0, b.y - CROP_PAD_PX)
@@ -151,7 +151,7 @@ def _ink_presence_score(np, source_np, localized_np, inst) -> Optional[float]:
     edge energy (glyphs create gradients a flat fill cannot)."""
     if source_np is None or source_np.shape != localized_np.shape:
         return None
-    b = inst.bounding_box
+    b = inst.adjusted_bbox or inst.bounding_box
     h, w = localized_np.shape[:2]
     x0, y0 = max(0, b.x), max(0, b.y)
     x1, y1 = min(w, b.x + b.width), min(h, b.y + b.height)
@@ -190,7 +190,7 @@ def _ring_ssim_score(np, source_np, localized_np, inst) -> Optional[float]:
     bbox — pixels the pipeline had no license to change."""
     if source_np.shape != localized_np.shape:
         return None
-    b = inst.bounding_box
+    b = inst.adjusted_bbox or inst.bounding_box
     h, w = source_np.shape[:2]
     x0, y0 = max(0, b.x - RING_PX), max(0, b.y - RING_PX)
     x1, y1 = min(w, b.x + b.width + RING_PX), min(h, b.y + b.height + RING_PX)
@@ -212,7 +212,7 @@ def _bbox_crop(np, image, inst) -> Optional[Any]:
     """Return an in-frame instance crop, or None for a degenerate bbox."""
     if image is None:
         return None
-    b = inst.bounding_box
+    b = inst.adjusted_bbox or inst.bounding_box
     h, w = image.shape[:2]
     x0, y0 = max(0, b.x), max(0, b.y)
     x1, y1 = min(w, b.x + b.width), min(h, b.y + b.height)
@@ -256,8 +256,9 @@ def _garnish_edge_similarity_score(np, source_np, localized_np, inst) -> Optiona
     loc_crop = _bbox_crop(np, localized_np, inst)
     if src_crop is None or loc_crop is None:
         return None
-    src_edges = _edge_orientation_histogram(np, src_crop, _text_mask(source_np, inst.bounding_box))
-    loc_edges = _edge_orientation_histogram(np, loc_crop, _text_mask(localized_np, inst.bounding_box))
+    b = inst.adjusted_bbox or inst.bounding_box
+    src_edges = _edge_orientation_histogram(np, src_crop, _text_mask(source_np, b))
+    loc_edges = _edge_orientation_histogram(np, loc_crop, _text_mask(localized_np, b))
     if src_edges is None or loc_edges is None:
         return None
     src_hist, src_energy = src_edges
@@ -271,7 +272,7 @@ def _ring_texture_statistics(np, image, inst) -> Optional[Tuple[float, float]]:
     """Edge density and chroma spread in the same non-text ring as SSIM."""
     if image is None:
         return None
-    b = inst.bounding_box
+    b = inst.adjusted_bbox or inst.bounding_box
     h, w = image.shape[:2]
     x0, y0 = max(0, b.x - RING_PX), max(0, b.y - RING_PX)
     x1, y1 = min(w, b.x + b.width + RING_PX), min(h, b.y + b.height + RING_PX)
@@ -314,7 +315,7 @@ def _outside_mask_preservation_score(np, cleansed_np, localized_np, inst) -> Opt
     """Check that non-glyph bbox pixels still equal the cleansed base."""
     if cleansed_np is None or localized_np is None or cleansed_np.shape != localized_np.shape:
         return None
-    mask = _text_mask(localized_np, inst.bounding_box)
+    mask = _text_mask(localized_np, inst.adjusted_bbox or inst.bounding_box)
     clean_crop = _bbox_crop(np, cleansed_np, inst)
     localized_crop = _bbox_crop(np, localized_np, inst)
     if mask is None or clean_crop is None or localized_crop is None or mask.shape != clean_crop.shape[:2]:
@@ -401,7 +402,7 @@ def _style_color_score(np, localized_np, inst) -> Optional[float]:
     target = _parse_hex_color(sp.color if sp else None)
     if target is None:
         return None
-    b = inst.bounding_box
+    b = inst.adjusted_bbox or inst.bounding_box
     mask = _text_mask(localized_np, b)
     if mask is None or not mask.any():
         return None
@@ -421,7 +422,7 @@ def _style_size_score(np, localized_np, inst) -> Optional[float]:
     ch = inst.characteristics
     if not ch or not ch.size or ch.size <= 0:
         return None
-    b = inst.bounding_box
+    b = inst.adjusted_bbox or inst.bounding_box
     mask = _text_mask(localized_np, b)
     if mask is None or not mask.any():
         return None

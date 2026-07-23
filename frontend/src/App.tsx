@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle, AlignCenter, AlignEndHorizontal, AlignEndVertical, AlignJustify, AlignLeft, AlignRight, AlignStartHorizontal, AlignStartVertical, ArrowLeft, ArrowLeftRight, ArrowUpFromLine, Baseline, Bold, BookmarkCheck, Box, Check, ChevronDown, FileImage, FolderOpen, Hexagon, History, Home, Italic, Languages, Loader2,
-  Play, Plus, RotateCcw, ScanText, ShieldAlert, Sparkles, SquareStack, Subscript, Superscript, Type, Underline, X,
+  Play, Plus, RotateCcw, ScanText, ShieldAlert, Sparkles, SquareStack, Subscript, Superscript, Trash2, Type, Underline, X,
 } from "lucide-react";
 import {
   BBox, FontFamily, FontOption, ImportResult, InpaintPatch, InstText, LanguageOption, Project,
@@ -79,7 +79,7 @@ type LocalizedSnapshot = {
 };
 
 const DEFAULT_GARNISH_PROFILE = {
-  edge_blur_px: 0, edge_smoothing: false, erosion_px: 0, dilation_px: 0, grain_strength: 0,
+  edge_blur_px: 0, edge_smoothing: false, edge_smoothing_strength: 0.5, erosion_px: 0, dilation_px: 0, grain_strength: 0,
   gamma_shift: 1, smudge_strength: 0, smudge_angle_deg: 0, source_confidence: 1,
 };
 
@@ -373,7 +373,7 @@ export default function App() {
   const [activeBrushStroke, setActiveBrushStroke] = useState<BrushStroke | null>(null);
   const [brushCursor, setBrushCursor] = useState<[number, number] | null>(null);
   const [brushRadius, setBrushRadius] = useState(18);
-  const [brushHardness, setBrushHardness] = useState(0.85);
+  const [brushIntensity, setBrushIntensity] = useState(50);
   const [localizedZoom, setLocalizedZoom] = useState(1);
   const [localizedDragMode, setLocalizedDragMode] = useState(false);
   const localizedPanRef = useRef<{ startX: number; startY: number; scrollLeft: number; scrollTop: number } | null>(null);
@@ -713,6 +713,10 @@ export default function App() {
   const [warpCollapsed, setWarpCollapsed] = useState(false);
   const [cleanseDismissed, setCleanseDismissed] = useState(false);
   const warpRef = useRef<HTMLDivElement>(null);
+  const [garnishScopeOpen, setGarnishScopeOpen] = useState(false);
+  const [garnishRegionDropdownOpen, setGarnishRegionDropdownOpen] = useState(false);
+  const garnishScopeRef = useRef<HTMLDivElement>(null);
+  const garnishRegionDropdownRef = useRef<HTMLDivElement>(null);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [pendingUploadFile, setPendingUploadFile] = useState<File | null>(null);
   const [pendingDuplicateFile, setPendingDuplicateFile] = useState<{ file: File; projectName: string } | null>(null);
@@ -1331,18 +1335,6 @@ export default function App() {
       .catch(() => { setInpaintPatchIds([]); setAppliedCandidateIds([]); });
   }, [asset, syncTreatmentPatches]);
 
-  const applyLasso = useCallback(async () => {
-    if (!asset || lassoPoints.length < 3) return;
-    try {
-      recordLocalizedChange();
-      const snapshot = await flushCurrentManifest();
-      const result = await createInpaintPatch(asset.asset_id, { polygon: lassoPoints, mode: "auto", radius: brushRadius, hardness: brushHardness }, snapshot ?? undefined);
-      syncTreatmentPatches(result.patches);
-      setLassoPoints([]);
-      setPatchRevision((v) => v + 1);
-      addToast("success", "lasso area inpainted");
-    } catch (e) { setErrorWithNotif(String(e)); }
-  }, [asset, lassoPoints, addToast, brushRadius, brushHardness, flushCurrentManifest, syncTreatmentPatches, recordLocalizedChange]);
 
   const addGarnishRegion = useCallback(() => {
     const selected = renderSelId ?? prevSelId;
@@ -1451,21 +1443,18 @@ export default function App() {
     try {
       recordLocalizedChange();
       const snapshot = await flushCurrentManifest();
-      // Submit one immutable stroke at a time.  Each patch is built from the
-      // current treatment base on the server, so sequential edits persist and
-      // an error never discards strokes that were not yet attempted.
       let remaining = [...brushStrokes];
       for (const stroke of brushStrokes) {
-        const result = await createInpaintPatch(asset.asset_id, { points: stroke.points, mode: "auto", radius: brushRadius, hardness: brushHardness }, snapshot ?? undefined);
+        const result = await createInpaintPatch(asset.asset_id, { points: stroke.points, mode: "blur", radius: brushRadius, blur_strength: brushIntensity / 100 }, snapshot ?? undefined);
         syncTreatmentPatches(result.patches);
         remaining = remaining.filter((candidate) => candidate.id !== stroke.id);
         setBrushStrokes(remaining);
       }
       setPatchRevision((v) => v + 1);
-      addToast("success", "context-aware treatment applied");
+      addToast("success", "text blur applied");
     } catch (e) { setErrorWithNotif(String(e)); }
     finally { setBrushApplying(false); }
-  }, [asset, brushStrokes, brushRadius, brushHardness, brushApplying, addToast, flushCurrentManifest, syncTreatmentPatches, recordLocalizedChange]);
+  }, [asset, brushStrokes, brushRadius, brushIntensity, brushApplying, addToast, flushCurrentManifest, syncTreatmentPatches, recordLocalizedChange]);
 
   const updateCanvasTransform = useCallback((key: "skew_x" | "skew_y" | "arc" | "scale_x" | "scale_y" | "offset_x" | "offset_y", value: number) => {
     const transform = manifest.find((inst) => inst.id === (renderSelId ?? prevSelId))?.style_profile?.transform ?? {};
@@ -1476,10 +1465,40 @@ export default function App() {
     updateSelectedStyle({ transform: { ...manualTransform, preset: "custom", [key]: value } });
   }, [renderSelId, prevSelId, manifest, updateSelectedStyle]);
 
+  type CanvasTransformKey = "skew_x" | "skew_y" | "scale_x" | "scale_y" | "offset_x" | "offset_y";
+  const transformHistoryRef = useRef<Record<CanvasTransformKey, { undoStack: number[]; redoStack: number[] }>>({
+    skew_x: { undoStack: [], redoStack: [] }, skew_y: { undoStack: [], redoStack: [] },
+    scale_x: { undoStack: [], redoStack: [] }, scale_y: { undoStack: [], redoStack: [] },
+    offset_x: { undoStack: [], redoStack: [] }, offset_y: { undoStack: [], redoStack: [] },
+  });
+  const trackTransformChange = useCallback((key: CanvasTransformKey, previous: number, next: number) => {
+    if (!Number.isFinite(next) || previous === next) return;
+    const history = transformHistoryRef.current[key];
+    if (history.undoStack[history.undoStack.length - 1] !== previous) history.undoStack.push(previous);
+    if (history.undoStack.length > 50) history.undoStack.shift();
+    history.redoStack = [];
+  }, []);
+  const undoTransformKey = useCallback((key: CanvasTransformKey, fallback: number) => {
+    const history = transformHistoryRef.current[key];
+    const previous = history.undoStack.pop();
+    if (previous === undefined) return;
+    const current = manifest.find((inst) => inst.id === (renderSelId ?? prevSelId))?.style_profile?.transform?.[key] ?? fallback;
+    history.redoStack.push(Number(current));
+    updateCanvasTransform(key, previous);
+  }, [manifest, renderSelId, prevSelId, updateCanvasTransform]);
+  const redoTransformKey = useCallback((key: CanvasTransformKey) => {
+    const history = transformHistoryRef.current[key];
+    const next = history.redoStack.pop();
+    if (next === undefined) return;
+    const current = manifest.find((inst) => inst.id === (renderSelId ?? prevSelId))?.style_profile?.transform?.[key] ?? next;
+    history.undoStack.push(Number(current));
+    updateCanvasTransform(key, next);
+  }, [manifest, renderSelId, prevSelId, updateCanvasTransform]);
+
   const applyCanvasWarpPreset = useCallback((preset: string) => {
     const transform = manifest.find((inst) => inst.id === (renderSelId ?? prevSelId))?.style_profile?.transform ?? {};
     if (preset === "none") {
-      updateSelectedStyle({ transform: { ...transform, preset: "none", amount: 0, arc: 0, skew_x: 0, skew_y: 0, scale_x: 1, scale_y: 1, offset_x: 0, offset_y: 0, truncate_offset_x: false, truncate_offset_y: false, wrap_text: false } });
+      updateSelectedStyle({ transform: { ...transform, preset: "none", amount: 0, arc: 0, skew_x: 0, skew_y: 0, skew_anchor: "center", scale_x: 1, scale_y: 1, offset_x: 0, offset_y: 0, wrap_text: false } });
       return;
     }
     updateSelectedStyle({ transform: { ...transform, preset, amount: transform.amount && transform.amount !== 0 ? transform.amount : 12 } });
@@ -2399,6 +2418,28 @@ export default function App() {
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
   }, [warpOpen]);
+
+  useEffect(() => {
+    if (!garnishScopeOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (garnishScopeRef.current && !garnishScopeRef.current.contains(e.target as Node)) {
+        setGarnishScopeOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [garnishScopeOpen]);
+
+  useEffect(() => {
+    if (!garnishRegionDropdownOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (garnishRegionDropdownRef.current && !garnishRegionDropdownRef.current.contains(e.target as Node)) {
+        setGarnishRegionDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [garnishRegionDropdownOpen]);
 
   useEffect(() => {
     if (hasEditsAfterImport) {
@@ -3985,7 +4026,7 @@ export default function App() {
                       if (sampleCanvasFill(event, "localized")) return;
                       if (brushMode) beginBrushStroke(event);
                       else if (lassoMode || garnishRegionMode) {
-                        if (nearFirstPoint && lassoPoints.length >= 3) { event.preventDefault(); if (garnishRegionMode) addGarnishRegion(); else applyLasso(); return; }
+                        if (nearFirstPoint && lassoPoints.length >= 3) { event.preventDefault(); if (garnishRegionMode) addGarnishRegion(); return; }
                         const point = pointOnLocalizedCanvas(event);
                         if (point) { event.preventDefault(); setLassoPoints((points) => [...points, point]); }
                       }
@@ -4012,7 +4053,7 @@ export default function App() {
                     onLostPointerCapture={(event) => finishBrushStroke(event, true)}
                     onPointerLeave={() => { if (!brushDrawing.current) setBrushCursor(null); setNearFirstPoint(false); }} />
                   {imgDim && <svg className={`absolute inset-0 h-full w-full ${brushMode || lassoMode || garnishRegionMode ? "pointer-events-none" : ""}`} viewBox={`0 0 ${imgDim[0]} ${imgDim[1]}`} preserveAspectRatio="none">
-                    {!brushMode && !lassoMode && !garnishRegionMode && orderedManifest.map((inst) => { const b = inst.bounding_box; const active = inst.id === renderSelId; return <rect key={inst.id} x={b.x} y={b.y} width={b.width} height={b.height} fill={active ? "rgba(6,182,212,.12)" : "transparent"} stroke={active ? "#06b6d4" : "rgba(255,255,255,.7)"} strokeWidth={active ? 2 : 1} onClick={() => setRenderSelId(inst.id)} className="cursor-pointer" />; })}
+                    {!brushMode && !lassoMode && !garnishRegionMode && orderedManifest.map((inst) => { const active = inst.id === renderSelId; const b = active ? (inst.adjusted_bbox ?? inst.bounding_box) : inst.bounding_box; return <g key={inst.id}>{active && inst.adjusted_bbox && <rect x={inst.bounding_box.x} y={inst.bounding_box.y} width={inst.bounding_box.width} height={inst.bounding_box.height} fill="none" stroke="rgba(6,182,212,.55)" strokeWidth="1.5" strokeDasharray="5 3" />}<rect x={b.x} y={b.y} width={b.width} height={b.height} fill={active ? "rgba(6,182,212,.12)" : "transparent"} stroke={active ? "#06b6d4" : "rgba(255,255,255,.7)"} strokeWidth={active ? 2 : 1} onClick={() => setRenderSelId(inst.id)} className="cursor-pointer" /></g>; })}
                     {!brushMode && !lassoMode && !garnishRegionMode && manifest.find((inst) => inst.id === renderSelId)?.garnish_regions?.map((region) => <polygon key={region.id} points={region.polygon.map((point) => point.join(",")).join(" ")} fill={region.id === selectedGarnishRegionId ? "rgba(139,92,246,.20)" : "rgba(139,92,246,.08)"} stroke={region.id === selectedGarnishRegionId ? "#7c3aed" : "rgba(124,58,237,.6)"} strokeWidth="1.5" />)}
                     {brushStrokes.map((stroke) => <polyline key={stroke.id} points={stroke.points.map((p) => p.join(",")).join(" ")} fill="none" stroke="#06b6d4" strokeWidth={brushRadius * 2} strokeLinecap="round" strokeLinejoin="round" opacity=".45" />)}
                     {activeBrushStroke && <polyline points={activeBrushStroke.points.map((p) => p.join(",")).join(" ")} fill="none" stroke="#06b6d4" strokeWidth={brushRadius * 2} strokeLinecap="round" strokeLinejoin="round" opacity=".70" />}
@@ -4058,7 +4099,7 @@ export default function App() {
                   </button>
                 </div>
                 </div>
-                {!brushMode && !lassoMode && renderSelId && (() => {
+                {!brushMode && !garnishRegionMode && renderSelId && (() => {
                   const inst = manifest.find((item) => item.id === renderSelId);
                   const surface = sceneRegions.find((region) => {
                     const b = inst?.bounding_box; return !!b && b.x + b.width / 2 >= region.bbox.x && b.x + b.width / 2 <= region.bbox.x + region.bbox.width && b.y + b.height / 2 >= region.bbox.y && b.y + b.height / 2 <= region.bbox.y + region.bbox.height;
@@ -4084,13 +4125,8 @@ export default function App() {
                       <button type="button" onClick={() => setGarnishExpanded((value) => !value)} className="flex items-center gap-1 font-semibold" aria-expanded={garnishExpanded}>
                         <ChevronDown size={14} className={`transition-transform ${garnishExpanded ? "" : "-rotate-90"}`} /><GiCoolSpices size={14} /> Garnish
                       </button>
-                      <select aria-label="Garnish application scope" value={perRegion ? "per_region" : "whole_selection"} onChange={(event) => setSelectedGarnishScope(event.target.value as "whole_selection" | "per_region")} className="rounded border border-violet-400/40 bg-white/70 px-1 py-0.5 text-[10px] dark:bg-zinc-900">
-                        <option value="whole_selection">whole selection</option>
-                        <option value="per_region">per region</option>
-                      </select>
-                      {perRegion && <select aria-label="Garnish region" value={selectedRegion?.id ?? ""} onChange={(event) => setSelectedGarnishRegionId(event.target.value || null)} className="rounded border border-violet-400/40 bg-white/70 px-1 py-0.5 text-[10px] dark:bg-zinc-900">
-                        {(inst.garnish_regions ?? []).map((region, index) => <option key={region.id} value={region.id}>region {index + 1}</option>)}
-                      </select>}
+                      <div className="relative shrink-0" ref={garnishScopeRef}><button type="button" onClick={() => setGarnishScopeOpen((v) => !v)} className="bezier-card flex items-center gap-1.5 rounded-md bg-white/60 px-2 py-1 text-[10px] text-violet-700 transition hover:bg-violet-100 dark:bg-zinc-900/60 dark:text-violet-300 dark:hover:bg-zinc-800">{perRegion ? "per region" : "whole selection"}<ChevronDown size={10} className={`transition ${garnishScopeOpen ? "rotate-180" : ""}`} /></button><div className={`dropdown-morph bezier-card absolute left-0 top-full z-[200] mt-1 w-36 rounded-lg bg-white p-1 dark:bg-zinc-900${garnishScopeOpen ? " expanded" : ""}`} style={garnishScopeOpen ? { boxShadow: "1px 1px 0 var(--bc-shadow), 2px 2px 6px rgba(0,0,0,0.06)" } : undefined}><button type="button" onClick={() => { setSelectedGarnishScope("whole_selection"); setGarnishScopeOpen(false); }} className={`flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-[10px] transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${!perRegion ? "bg-zinc-100 font-medium text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100" : "text-zinc-600 dark:text-zinc-400"}`}>whole selection</button><button type="button" onClick={() => { setSelectedGarnishScope("per_region"); setGarnishScopeOpen(false); }} className={`flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-[10px] transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${perRegion ? "bg-zinc-100 font-medium text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100" : "text-zinc-600 dark:text-zinc-400"}`}>per region</button></div></div>
+                      {perRegion && <div className="relative shrink-0" ref={garnishRegionDropdownRef}><button type="button" onClick={() => setGarnishRegionDropdownOpen((v) => !v)} className="bezier-card flex items-center gap-1.5 rounded-md bg-white/60 px-2 py-1 text-[10px] text-violet-700 transition hover:bg-violet-100 dark:bg-zinc-900/60 dark:text-violet-300 dark:hover:bg-zinc-800">{selectedRegion ? `region ${(inst.garnish_regions ?? []).findIndex((r) => r.id === selectedRegion.id) + 1}` : "select region"}<ChevronDown size={10} className={`transition ${garnishRegionDropdownOpen ? "rotate-180" : ""}`} /></button><div className={`dropdown-morph bezier-card absolute left-0 top-full z-[200] mt-1 w-40 rounded-lg bg-white p-1 dark:bg-zinc-900${garnishRegionDropdownOpen ? " expanded" : ""}`} style={garnishRegionDropdownOpen ? { boxShadow: "1px 1px 0 var(--bc-shadow), 2px 2px 6px rgba(0,0,0,0.06)" } : undefined}>{(inst.garnish_regions ?? []).map((region, index) => (<div key={region.id} className="flex items-center gap-1"><button type="button" onClick={() => { setSelectedGarnishRegionId(region.id); setGarnishRegionDropdownOpen(false); }} className={`flex flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-[10px] transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${region.id === selectedGarnishRegionId ? "bg-zinc-100 font-medium text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100" : "text-zinc-600 dark:text-zinc-400"}`}>region {index + 1}</button><button type="button" onClick={() => { setSelectedGarnishRegionId(region.id); deleteSelectedGarnishRegion(); setGarnishRegionDropdownOpen(false); }} className="shrink-0 rounded-md p-1 text-zinc-400 transition hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-900/30 dark:hover:text-red-400" title="Delete region" aria-label={`Delete region ${index + 1}`}><Trash2 size={12} /></button></div>))}</div></div>}
                       {!recommended && <span className="text-[10px] text-violet-700/75 dark:text-violet-300/75">manual baseline</span>}
                       {garnishPreviewSyncing && <span className="text-[10px] text-violet-700 dark:text-violet-300">updating treatment…</span>}
                       <button type="button" role="switch" aria-checked={enabled} aria-label="enable garnish" onClick={() => setSelectedGarnishEnabled(!enabled)} className={`relative ml-auto inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${enabled ? "bg-violet-600" : "bg-zinc-300 dark:bg-zinc-600"}`}>
@@ -4100,10 +4136,11 @@ export default function App() {
                     <div className={`dropdown-morph${garnishExpanded ? " expanded" : ""}`}>
                       <fieldset disabled={!enabled} className="flex flex-wrap gap-x-2 gap-y-1 border-t border-violet-400/25 px-2 py-2 disabled:opacity-45">
                         {slider("edge blur", "edge_blur_px", 0, 10, 0.1, "px")}
-                        <label className="flex min-w-36 flex-1 items-center gap-1.5 text-[10px]" title="Smooth jagged glyph edges without spreading them into a blur.">
+                        <label className="flex min-w-36 flex-1 items-center gap-1.5 text-[10px]" title="Feather glyph edges outward into the surface for natural integration.">
                           <input aria-label="garnish edge smoothing" type="checkbox" checked={Boolean(g.edge_smoothing)} onChange={(event) => updateSelectedGarnish({ edge_smoothing: event.target.checked })} />
-                          <span className="font-medium">edge smoothing</span><span className="text-zinc-500">no spread</span>
+                          <span className="font-medium">edge smoothing</span><span className="text-zinc-500">feather</span>
                         </label>
+                        {Boolean(g.edge_smoothing) && slider("feather", "edge_smoothing_strength", 0, 1, 0.05, "", 2)}
                         {slider("wear", "erosion_px", 0, 5, 0.1, "px")}
                         {slider("thicken", "dilation_px", 0, 5, 0.1, "px")}
                         {slider("grain", "grain_strength", 0, 1, 0.02, "", 2)}
@@ -4111,7 +4148,6 @@ export default function App() {
                         {slider("smudge", "smudge_strength", 0, 1, 0.02, "", 2)}
                         {slider("angle", "smudge_angle_deg", 0, 360, 1, "°", 0)}
                         {recommended && <button type="button" onClick={useSelectedSceneGarnish} className="self-center rounded bg-violet-700 px-1.5 py-0.5 text-[10px] text-white">use AI preset</button>}
-                        {selectedRegion && <button type="button" onClick={deleteSelectedGarnishRegion} className="self-center rounded bg-zinc-700 px-1.5 py-0.5 text-[10px] text-white">delete sub-region</button>}
                       </fieldset>
                     </div>
                     {false && repairReviews.length > 0 && <div className="mt-2 rounded border border-amber-500/40 bg-amber-50/70 px-2 py-2 text-xs text-amber-900 dark:bg-amber-950/20 dark:text-amber-100">
@@ -4147,17 +4183,15 @@ export default function App() {
                 })()}
                 {previewRenderError && <div className="mb-2 flex items-center justify-between gap-2 rounded border border-amber-500/50 bg-amber-50 px-2 py-1 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-200"><span>Preview update failed; showing the last valid composition. {previewRenderError}</span><button type="button" onClick={() => { previewCauseRef.current = "style"; setPreviewRetryRevision((value) => value + 1); }} className="shrink-0 rounded bg-amber-700 px-1.5 py-0.5 text-[10px] text-white">retry</button></div>}
                 <div className="mb-2 flex flex-wrap items-center gap-2">
-                  <button onClick={() => { setBrushMode((v) => !v); setLassoMode(false); setBrushCursor(null); }} className={`rounded px-2 py-1 text-xs ${brushMode ? "bg-cyan-600 text-white" : "bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"}`}>{brushMode ? "Stop brush" : "Healing brush"}</button>
-                  <button onClick={() => { setLassoMode((v) => !v); setGarnishRegionMode(false); setBrushMode(false); setLassoPoints([]); setBrushCursor(null); }} className={`rounded px-2 py-1 text-xs ${lassoMode ? "bg-cyan-600 text-white" : "bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"}`}>{lassoMode ? "Cancel lasso" : "Content-aware lasso"}</button>
-                  <span className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-500 dark:border-zinc-700">automatic repair routing</span>
-                  {(brushMode || lassoMode) && <label className="text-xs text-zinc-500">radius <input type="range" min="4" max="64" value={brushRadius} onChange={(e) => setBrushRadius(Number(e.target.value))} /><span className="ml-1 font-mono">{brushRadius}px</span></label>}
-                  {brushMode && <label className="text-xs text-zinc-500">softness <input type="range" min="0.2" max="1" step="0.05" value={brushHardness} onChange={(e) => setBrushHardness(Number(e.target.value))} /></label>}
-                  {brushMode && brushStrokes.length > 0 && <button disabled={brushApplying} onClick={applyBrush} className="rounded bg-cyan-700 px-2 py-1 text-xs text-white disabled:opacity-40">{brushApplying ? "Applying treatment…" : `Apply ${brushStrokes.length} stroke${brushStrokes.length === 1 ? "" : "s"}`}</button>}
+                  <button onClick={() => { setBrushMode((v) => !v); setLassoMode(false); setBrushCursor(null); }} className={`rounded px-2 py-1 text-xs ${brushMode ? "bg-cyan-600 text-white" : "bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"}`}>{brushMode ? "Stop blur" : "Blur brush"}</button>
+                  {brushMode && <label className="text-xs text-zinc-500">size <input type="range" min="4" max="64" value={brushRadius} onChange={(e) => setBrushRadius(Number(e.target.value))} /><span className="ml-1 font-mono">{brushRadius}px</span></label>}
+                  {brushMode && <label className="text-xs text-zinc-500">intensity <input type="range" min="0" max="100" value={brushIntensity} onChange={(e) => setBrushIntensity(Number(e.target.value))} /><span className="ml-1 font-mono">{brushIntensity}</span></label>}
+                  {brushMode && brushStrokes.length > 0 && <button disabled={brushApplying} onClick={applyBrush} className="rounded bg-cyan-700 px-2 py-1 text-xs text-white disabled:opacity-40">{brushApplying ? "Applying…" : `Apply ${brushStrokes.length} stroke${brushStrokes.length === 1 ? "" : "s"}`}</button>}
                   {brushMode && brushStrokes.length > 0 && <button disabled={brushApplying} onClick={() => setBrushStrokes([])} className="rounded bg-zinc-200 px-2 py-1 text-xs text-zinc-700 disabled:opacity-40 dark:bg-zinc-800 dark:text-zinc-200">Discard pending</button>}
-                  {(lassoMode || garnishRegionMode) && <span className="text-xs text-zinc-500">click to place points ({lassoPoints.length}/3)</span>}
-                  {lassoMode && <button disabled={lassoPoints.length < 3} onClick={applyLasso} className="rounded bg-cyan-700 px-2 py-1 text-xs text-white disabled:opacity-40">Close &amp; repair</button>}
+                  {garnishRegionMode && <span className="text-xs text-zinc-500">click to place points ({lassoPoints.length}/3)</span>}
                   {garnishRegionMode && <button disabled={lassoPoints.length < 3} onClick={addGarnishRegion} className="rounded bg-violet-700 px-2 py-1 text-xs text-white disabled:opacity-40">Save Garnish region</button>}
-                  {!brushMode && !lassoMode && renderSelId && (() => {
+                  {garnishRegionMode && <button onClick={() => { setGarnishRegionMode(false); setLassoPoints([]); setNearFirstPoint(false); }} className="rounded bg-zinc-200 px-2 py-1 text-xs text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">Cancel</button>}
+                  {!brushMode && !garnishRegionMode && renderSelId && (() => {
                     const transform = manifest.find((inst) => inst.id === renderSelId)?.style_profile?.transform;
                     return <div className="flex items-center gap-2">
                       <span className="subtext text-[10px] font-semibold uppercase tracking-wider text-zinc-400">text warp</span>
@@ -4185,9 +4219,10 @@ export default function App() {
                       <div className={`style-panel-morph ml-2 flex-1 ${!warpCollapsed ? "expanded" : ""}`}>
                         <div className="flex flex-wrap items-center gap-2 pt-1">
                       {transform?.preset && transform.preset !== "none" && transform.preset !== "custom" && <label className="subtext flex items-center gap-1 text-xs text-zinc-500">amount<input aria-label="warp amount" type="range" min="-25" max="25" step="0.5" value={transform.amount ?? 12} onChange={(e) => updateSelectedStyle({ transform: { ...transform, amount: Number(e.target.value) } })} onDoubleClick={() => updateSelectedStyle({ transform: { ...transform, amount: 12 } })} title="double-click to return to the preset baseline" /><span className="min-w-9 text-right font-mono text-[10px]">{Number(transform.amount ?? 12).toFixed(1)}</span></label>}
-                      {([['skew_x', 'X'], ['skew_y', 'Y']] as const).map(([key, label]) => <label key={key} className="subtext flex items-center gap-1 text-xs text-zinc-500">{label}<span className="text-[10px]">−25</span><input aria-label={`${label} warp`} type="range" min="-25" max="25" step="0.5" value={transform?.[key] ?? 0} onChange={(e) => updateCanvasTransform(key, Number(e.target.value))} onDoubleClick={() => updateCanvasTransform(key, 0)} title="double-click to reset to 0" /><span className="min-w-10 text-right font-mono text-[10px]">{Number(transform?.[key] ?? 0).toFixed(1)}°</span><span className="text-[10px]">+25</span></label>)}
-                      {([['scale_x', 'width'], ['scale_y', 'height']] as const).map(([key, label]) => <label key={key} className="subtext flex items-center gap-1 text-xs text-zinc-500">{label}<span className="text-[10px]">0.5x</span><input aria-label={`${label} stretch`} type="range" min="0.5" max="1.5" step="0.01" value={transform?.[key] ?? 1} onChange={(e) => updateCanvasTransform(key, Number(e.target.value))} onDoubleClick={() => updateCanvasTransform(key, 1)} title="double-click to reset to 1.00x" /><span className="min-w-9 text-right font-mono text-[10px]">{Number(transform?.[key] ?? 1).toFixed(2)}x</span><span className="text-[10px]">1.5x</span></label>)}
-                      {([['offset_x', 'pos X', 'truncate_offset_x'], ['offset_y', 'pos Y', 'truncate_offset_y']] as const).map(([key, label, truncKey]) => <span key={key} className="subtext flex items-center gap-1 text-xs text-zinc-500"><label className="flex items-center gap-1">{label}<span className="text-[10px]">−50</span><input aria-label={`${label} position`} type="range" min="-50" max="50" step="1" value={transform?.[key] ?? 0} onChange={(e) => updateCanvasTransform(key, Number(e.target.value))} onDoubleClick={() => updateCanvasTransform(key, 0)} title="double-click to snap to original position" /><span className="min-w-9 text-right font-mono text-[10px]">{Number(transform?.[key] ?? 0).toFixed(0)}px</span><span className="text-[10px]">+50</span></label><label className="flex items-center gap-0.5 text-[10px] text-zinc-400"><input type="checkbox" checked={transform?.[truncKey] ?? false} onChange={(e) => updateSelectedStyle({ transform: { ...transform, [truncKey]: e.target.checked } })} /> truncate</label></span>)}
+                      {([['skew_x', 'X'], ['skew_y', 'Y']] as const).map(([key, label]) => { const hist = transformHistoryRef.current[key]; const canUndoT = !!(hist && hist.undoStack.length > 0); const canRedoT = !!(hist && hist.redoStack.length > 0); return <label key={key} className="subtext flex items-center gap-1 text-xs text-zinc-500">{label}<span className="text-[10px]">−45</span><input aria-label={`${label} warp`} type="range" min="-45" max="45" step="0.5" value={transform?.[key] ?? 0} onChange={(e) => { const v = Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 0, v); updateCanvasTransform(key, v); }} onDoubleClick={() => { trackTransformChange(key, transform?.[key] ?? 0, 0); updateCanvasTransform(key, 0); }} title="double-click to reset to 0" /><input type="number" min="-45" max="45" step="0.5" value={transform?.[key] ?? 0} onChange={(e) => { const v = e.target.value === "" ? 0 : Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 0, v); updateCanvasTransform(key, v); }} className="w-12 rounded border border-zinc-300 bg-white px-1 py-0.5 text-right font-mono text-[10px] dark:border-zinc-700 dark:bg-zinc-900" /><span className="text-[10px]">°</span><button type="button" onClick={() => undoTransformKey(key, 0)} disabled={!canUndoT} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="undo"><LuUndo2 size={10} /></button><button type="button" onClick={() => redoTransformKey(key)} disabled={!canRedoT} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="redo"><LuRedo2 size={10} /></button></label>; })}
+                      <span className="subtext flex items-center gap-1 text-xs text-zinc-500" title="Choose the point that stays fixed while skewing or stretching."><span>anchor</span><span className="grid grid-cols-3 gap-px rounded border border-zinc-300 p-0.5 dark:border-zinc-700">{(["top_left", "top_center", "top_right", "middle_left", "center", "middle_right", "bottom_left", "bottom_center", "bottom_right"] as const).map((anchor) => <button key={anchor} type="button" aria-label={`transform anchor ${anchor.replace("_", " ")}`} onClick={() => updateSelectedStyle({ transform: { ...transform, skew_anchor: anchor } })} className={`h-2.5 w-2.5 rounded-sm ${((transform?.skew_anchor ?? "center") === anchor) ? "bg-cyan-600" : "bg-zinc-300 hover:bg-zinc-400 dark:bg-zinc-600 dark:hover:bg-zinc-500"}`} />)}</span></span>
+                      {([['scale_x', 'width'], ['scale_y', 'height']] as const).map(([key, label]) => { const hist = transformHistoryRef.current[key]; const canUndoT = !!(hist && hist.undoStack.length > 0); const canRedoT = !!(hist && hist.redoStack.length > 0); return <label key={key} className="subtext flex items-center gap-1 text-xs text-zinc-500">{label}<span className="text-[10px]">0.5x</span><input aria-label={`${label} stretch`} type="range" min="0.5" max="1.5" step="0.01" value={transform?.[key] ?? 1} onChange={(e) => { const v = Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 1, v); updateCanvasTransform(key, v); }} onDoubleClick={() => { trackTransformChange(key, transform?.[key] ?? 1, 1); updateCanvasTransform(key, 1); }} title="double-click to reset to 1.00x" /><input type="number" min="0.5" max="1.5" step="0.01" value={transform?.[key] ?? 1} onChange={(e) => { const v = e.target.value === "" ? 1 : Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 1, v); updateCanvasTransform(key, v); }} className="w-12 rounded border border-zinc-300 bg-white px-1 py-0.5 text-right font-mono text-[10px] dark:border-zinc-700 dark:bg-zinc-900" /><span className="text-[10px]">x</span><button type="button" onClick={() => undoTransformKey(key, 1)} disabled={!canUndoT} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="undo"><LuUndo2 size={10} /></button><button type="button" onClick={() => redoTransformKey(key)} disabled={!canRedoT} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="redo"><LuRedo2 size={10} /></button></label>; })}
+                      {([['offset_x', 'pos X'], ['offset_y', 'pos Y']] as const).map(([key, label]) => { const hist = transformHistoryRef.current[key]; const canUndoT = !!(hist && hist.undoStack.length > 0); const canRedoT = !!(hist && hist.redoStack.length > 0); return <span key={key} className="subtext flex items-center gap-1 text-xs text-zinc-500"><label className="flex items-center gap-1">{label}<span className="text-[10px]">−50</span><input aria-label={`${label} position`} type="range" min="-50" max="50" step="1" value={transform?.[key] ?? 0} onChange={(e) => { const v = Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 0, v); updateCanvasTransform(key, v); }} onDoubleClick={() => { trackTransformChange(key, transform?.[key] ?? 0, 0); updateCanvasTransform(key, 0); }} title="double-click to snap to original position" /><input type="number" min="-50" max="50" step="1" value={transform?.[key] ?? 0} onChange={(e) => { const v = e.target.value === "" ? 0 : Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 0, v); updateCanvasTransform(key, v); }} className="w-12 rounded border border-zinc-300 bg-white px-1 py-0.5 text-right font-mono text-[10px] dark:border-zinc-700 dark:bg-zinc-900" /><span className="text-[10px]">px</span></label><button type="button" onClick={() => undoTransformKey(key, 0)} disabled={!canUndoT} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="undo"><LuUndo2 size={10} /></button><button type="button" onClick={() => redoTransformKey(key)} disabled={!canRedoT} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="redo"><LuRedo2 size={10} /></button></span>; })}
                       <label className="subtext flex items-center gap-0.5 text-[10px] text-zinc-400" title="When off, keep one glyph run even when it crosses the cube edge. When on, wrap only after the measured text exceeds the cube width."><input type="checkbox" checked={transform?.wrap_text ?? false} onChange={(e) => updateSelectedStyle({ transform: { ...transform, wrap_text: e.target.checked } })} /> wrap</label>
                         </div>
                       </div>

@@ -753,7 +753,9 @@ def _analyze_garnish_profile(crop, glyph_mask=None) -> GarnishProfile:
             angle = math.degrees(0.5 * math.atan2(2 * moments.get("mu11", 0.0), moments.get("mu20", 0.0) - moments.get("mu02", 0.0)))
         grain = max(0.0, min(0.5, grain))
         confidence = max(0.0, min(0.8, 0.18 + grain * 1.3 + edge_blur * 0.22))
-        return GarnishProfile(edge_blur_px=edge_blur, grain_strength=grain,
+        smoothing_strength = max(0.2, min(1.0, 0.2 + texture_signal * 0.8))
+        return GarnishProfile(edge_blur_px=edge_blur, edge_smoothing=True,
+                              edge_smoothing_strength=smoothing_strength, grain_strength=grain,
                               smudge_strength=min(0.35, edge_blur * 0.15),
                               smudge_angle_deg=angle, source_confidence=confidence)
     except Exception:

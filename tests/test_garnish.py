@@ -27,12 +27,13 @@ def test_garnish_identity_and_outside_pixels_preserved():
 
 def test_garnish_profile_manifest_round_trip():
     manifest = _manifest(GarnishProfile(edge_blur_px=1.2, grain_strength=.2, source_confidence=.7))
-    manifest.instances[0].garnish_override = GarnishProfile(gamma_shift=1.2, edge_smoothing=True)
+    manifest.instances[0].garnish_override = GarnishProfile(gamma_shift=1.2, edge_smoothing=True, edge_smoothing_strength=.5)
     manifest.instances[0].garnish_enabled = False
     restored = _dict_to_manifest(_manifest_to_dict(manifest))
     assert restored.scene_regions[0].garnish_profile.edge_blur_px == 1.2
     assert restored.instances[0].garnish_override.gamma_shift == 1.2
     assert restored.instances[0].garnish_override.edge_smoothing is True
+    assert restored.instances[0].garnish_override.edge_smoothing_strength == .5
     assert restored.instances[0].garnish_enabled is False
 
 
@@ -102,13 +103,22 @@ def test_smudge_angle_uses_a_rotated_motion_path():
     assert np.ptp(vys) > np.ptp(vxs)
 
 
-def test_edge_smoothing_rounds_coverage_without_spreading_it():
+def test_edge_smoothing_feathers_outward_preserving_interior():
     alpha = np.zeros((25, 25), dtype=np.uint8)
     alpha[8:17, 8:17] = 255
     alpha[7, 12] = 255  # one-pixel raster stair-step above the edge
-    smoothed = garnish._smooth_coverage(cv2, np, alpha)
-    assert not np.any(smoothed[alpha == 0])
-    assert smoothed[7, 12] == 0
+    smoothed = garnish._smooth_coverage(cv2, np, alpha, .5)
+    assert np.array_equal(smoothed[alpha > 0], alpha[alpha > 0])
+    assert np.any(smoothed[alpha == 0] > 0)
+    assert smoothed[12, 12] == 255
+
+
+def test_edge_smoothing_strength_controls_feather_width():
+    alpha = np.zeros((31, 31), dtype=np.uint8)
+    alpha[10:21, 10:21] = 255
+    narrow = garnish._smooth_coverage(cv2, np, alpha, .2)
+    wide = garnish._smooth_coverage(cv2, np, alpha, 1.0)
+    assert np.count_nonzero(wide[alpha == 0]) > np.count_nonzero(narrow[alpha == 0])
 
 
 def test_flat_scene_has_no_automatic_garnish_profile():
@@ -117,3 +127,10 @@ def test_flat_scene_has_no_automatic_garnish_profile():
     assert profile.edge_blur_px == 0
     assert profile.grain_strength == 0
     assert profile.smudge_strength == 0
+
+
+def test_textured_scene_recommends_bounded_sdf_feathering():
+    textured = np.random.default_rng(7).integers(70, 185, size=(48, 64, 3), dtype=np.uint8)
+    profile = scene._analyze_garnish_profile(textured)
+    assert profile.edge_smoothing is True
+    assert .2 <= profile.edge_smoothing_strength <= 1.0
