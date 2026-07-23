@@ -13,16 +13,17 @@ type Props = {
   onDismiss: () => void;
   onRetryPreview: () => void;
   onApply: (candidate: RepairCandidate) => void;
+  onHoverRegion?: (id: string | null) => void;
 };
 
 /** Candidate choice remains explicit: no repair is committed from this panel. */
-export default function SmartFillReview({ reviews, fallbackIds, dismissed, previews, previewPending, appliedIds, onDismiss, onRetryPreview, onApply }: Props) {
+export default function SmartFillReview({ reviews, fallbackIds, dismissed, previews, previewPending, appliedIds, onDismiss, onRetryPreview, onApply, onHoverRegion }: Props) {
   const candidates = Array.from(new Map(
     reviews.flatMap((review) => review.candidates.map((candidate) => [candidate.id, { review, candidate }]))
   ).values());
   if (!reviews.length && !fallbackIds.length) return null;
 
-  return <div className="mt-2 rounded border border-amber-500/40 bg-amber-50/70 px-2 py-2 text-xs text-amber-900 dark:bg-amber-950/20 dark:text-amber-100">
+  return <div className="mt-2 rounded border border-amber-500/40 bg-amber-50/70 px-2 py-2 text-xs text-amber-900 dark:bg-amber-950/20 dark:text-amber-100" onMouseLeave={() => onHoverRegion?.(null)}>
     {!dismissed && <p className="bezier-impression subtext mb-1 flex items-start gap-1 text-[10px] text-amber-700/80 dark:text-amber-200/70">
       <MdTipsAndUpdates size={12} className="mt-0.5 shrink-0 text-amber-600" /><span>Smart fill options are available below.</span>
       <button onClick={onDismiss} className="ml-auto shrink-0 rounded px-1.5 py-0.5 text-[9px] text-amber-400 transition hover:text-amber-600 dark:hover:text-amber-300">dismiss</button>
@@ -36,7 +37,7 @@ export default function SmartFillReview({ reviews, fallbackIds, dismissed, previ
           const loading = preview?.status === "loading";
           const failed = preview?.status === "error";
           const applied = appliedIds.includes(candidate.id);
-          return <div key={candidate.id} className="flex w-20 flex-col items-center gap-1 rounded border border-amber-500/40 bg-white/80 p-1 dark:bg-zinc-900/70">
+          return <div key={candidate.id} className="flex w-20 flex-col items-center gap-1 rounded border border-amber-500/40 bg-white/80 p-1 dark:bg-zinc-900/70" onMouseEnter={() => onHoverRegion?.(review.id)} onMouseLeave={() => onHoverRegion?.(null)}>
             {ready && <img src={preview.url} alt={`localized suggested ${providerLabel(candidate.provider).toLowerCase()} for ${review.id}`} className="h-12 w-16 rounded object-contain" />}
             {loading && <div className="flex h-12 w-16 items-center justify-center rounded bg-amber-100/70 text-amber-700 dark:bg-amber-950/40"><SquareLoader size="xs" /></div>}
             {failed && <img src={candidate.url} alt={`repair-only background suggestion for ${review.id}`} className="h-12 w-16 rounded object-contain opacity-75" />}

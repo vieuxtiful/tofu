@@ -351,6 +351,7 @@ export default function App() {
   const [previewTransaction, setPreviewTransaction] = useState<PreviewTransaction>({ phase: "idle", requestId: 0, cause: "initial" });
   const [previewRetryRevision, setPreviewRetryRevision] = useState(0);
   const [repairReviews, setRepairReviews] = useState<RepairReview[]>([]);
+  const [smartFillHoverId, setSmartFillHoverId] = useState<string | null>(null);
   const [localizedCandidatePreviews, setLocalizedCandidatePreviews] = useState<Record<string, LocalizedCandidatePreview>>({});
   const [candidatePreviewRevision, setCandidatePreviewRevision] = useState(0);
   const [repairFallbackIds, setRepairFallbackIds] = useState<string[]>([]);
@@ -405,6 +406,10 @@ export default function App() {
   const [renderResult, setRenderResult] = useState<RenderResult | null>(null);
   const [renderSelId, setRenderSelId] = useState<string | null>(null);
   const [prevSelId, setPrevSelId] = useState<string | null>(null);
+
+  // A Smart Fill card can disappear while its preview refreshes.  Selection
+  // changes are therefore a second, independent stale-hover backstop.
+  useEffect(() => { setSmartFillHoverId(null); }, [renderSelId]);
   const [styleCollapsed, setStyleCollapsed] = useState(false);
   const [canvasExpandedH, setCanvasExpandedH] = useState(false);
   const [styleExpandedH, setStyleExpandedH] = useState(false);
@@ -1485,8 +1490,17 @@ export default function App() {
     finally { setBrushApplying(false); }
   }, [asset, brushStrokes, brushRadius, brushIntensity, brushApplying, addToast, flushCurrentManifest, syncTreatmentPatches, recordLocalizedChange]);
 
-  const updateCanvasTransform = useCallback((key: "skew_x" | "skew_y" | "arc" | "scale_x" | "scale_y" | "offset_x" | "offset_y" | "rotation", value: number) => {
+  type CanvasTransformKey = "skew_x" | "skew_y" | "arc" | "scale_x" | "scale_y" | "offset_x" | "offset_y" | "rotation";
+  const LOCKABLE_TRANSFORM_KEYS: CanvasTransformKey[] = ["skew_x", "skew_y", "arc", "rotation", "scale_x", "scale_y", "offset_x", "offset_y"];
+
+  const isTransformLocked = useCallback((key: CanvasTransformKey): boolean => {
+    const transform = manifest.find((inst) => inst.id === (renderSelId ?? prevSelId))?.style_profile?.transform;
+    return Boolean(transform?.locked_fields?.includes(key));
+  }, [manifest, renderSelId, prevSelId]);
+
+  const updateCanvasTransform = useCallback((key: CanvasTransformKey, value: number) => {
     const transform = manifest.find((inst) => inst.id === (renderSelId ?? prevSelId))?.style_profile?.transform ?? {};
+    if (transform.locked_fields?.includes(key)) return;
     // A manual slider is intentionally a Custom transform.  It must not
     // retain a named preset's hidden amount and give the user a result they
     // cannot read back from the controls.
@@ -1494,9 +1508,9 @@ export default function App() {
     updateSelectedStyle({ transform: { ...manualTransform, preset: "custom", [key]: value } });
   }, [renderSelId, prevSelId, manifest, updateSelectedStyle]);
 
-  type CanvasTransformKey = "skew_x" | "skew_y" | "scale_x" | "scale_y" | "offset_x" | "offset_y" | "rotation";
   const transformHistoryRef = useRef<Record<CanvasTransformKey, { undoStack: number[]; redoStack: number[] }>>({
     skew_x: { undoStack: [], redoStack: [] }, skew_y: { undoStack: [], redoStack: [] },
+    arc: { undoStack: [], redoStack: [] },
     scale_x: { undoStack: [], redoStack: [] }, scale_y: { undoStack: [], redoStack: [] },
     offset_x: { undoStack: [], redoStack: [] }, offset_y: { undoStack: [], redoStack: [] },
     rotation: { undoStack: [], redoStack: [] },
@@ -1508,27 +1522,50 @@ export default function App() {
     if (history.undoStack.length > 50) history.undoStack.shift();
     history.redoStack = [];
   }, []);
+  const toggleTransformLock = useCallback((key: CanvasTransformKey) => {
+    const transform = manifest.find((inst) => inst.id === (renderSelId ?? prevSelId))?.style_profile?.transform ?? {};
+    const locked = new Set(transform.locked_fields ?? []);
+    if (locked.has(key)) locked.delete(key); else locked.add(key);
+    updateSelectedStyle({ transform: { ...transform, locked_fields: Array.from(locked) } });
+  }, [manifest, renderSelId, prevSelId, updateSelectedStyle]);
+  const toggleAllTransformLocks = useCallback(() => {
+    const transform = manifest.find((inst) => inst.id === (renderSelId ?? prevSelId))?.style_profile?.transform ?? {};
+    const allLocked = LOCKABLE_TRANSFORM_KEYS.every((key) => transform.locked_fields?.includes(key));
+    updateSelectedStyle({ transform: { ...transform, locked_fields: allLocked ? [] : [...LOCKABLE_TRANSFORM_KEYS] } });
+  }, [manifest, renderSelId, prevSelId, updateSelectedStyle]);
   const undoTransformKey = useCallback((key: CanvasTransformKey, fallback: number) => {
+    if (isTransformLocked(key)) return;
     const history = transformHistoryRef.current[key];
     const previous = history.undoStack.pop();
     if (previous === undefined) return;
     const current = manifest.find((inst) => inst.id === (renderSelId ?? prevSelId))?.style_profile?.transform?.[key] ?? fallback;
     history.redoStack.push(Number(current));
     updateCanvasTransform(key, previous);
-  }, [manifest, renderSelId, prevSelId, updateCanvasTransform]);
+  }, [manifest, renderSelId, prevSelId, updateCanvasTransform, isTransformLocked]);
   const redoTransformKey = useCallback((key: CanvasTransformKey) => {
+    if (isTransformLocked(key)) return;
     const history = transformHistoryRef.current[key];
     const next = history.redoStack.pop();
     if (next === undefined) return;
     const current = manifest.find((inst) => inst.id === (renderSelId ?? prevSelId))?.style_profile?.transform?.[key] ?? next;
     history.undoStack.push(Number(current));
     updateCanvasTransform(key, next);
-  }, [manifest, renderSelId, prevSelId, updateCanvasTransform]);
+  }, [manifest, renderSelId, prevSelId, updateCanvasTransform, isTransformLocked]);
 
   const applyCanvasWarpPreset = useCallback((preset: string) => {
     const transform = manifest.find((inst) => inst.id === (renderSelId ?? prevSelId))?.style_profile?.transform ?? {};
     if (preset === "none") {
-      updateSelectedStyle({ transform: { ...transform, preset: "none", amount: 0, arc: 0, skew_x: 0, skew_y: 0, skew_anchor: "center", scale_x: 1, scale_y: 1, offset_x: 0, offset_y: 0 } });
+      const locked = new Set(transform.locked_fields ?? []);
+      const reset: Record<string, number | string> = { preset: "none", amount: 0, skew_anchor: "center" };
+      if (!locked.has("arc")) reset.arc = 0;
+      if (!locked.has("skew_x")) reset.skew_x = 0;
+      if (!locked.has("skew_y")) reset.skew_y = 0;
+      if (!locked.has("scale_x")) reset.scale_x = 1;
+      if (!locked.has("scale_y")) reset.scale_y = 1;
+      if (!locked.has("offset_x")) reset.offset_x = 0;
+      if (!locked.has("offset_y")) reset.offset_y = 0;
+      if (!locked.has("rotation")) reset.rotation = 0;
+      updateSelectedStyle({ transform: { ...transform, ...reset } });
       return;
     }
     updateSelectedStyle({ transform: { ...transform, preset, amount: transform.amount && transform.amount !== 0 ? transform.amount : 12 } });
@@ -3796,13 +3833,14 @@ export default function App() {
                       <label className="subtext mb-1 block text-xs text-zinc-500">shape (degrees / arc)</label>
                       <div className="grid grid-cols-3 gap-1">
                         {([['skew_x', 'X'], ['skew_y', 'Y'], ['arc', 'Arc']] as const).map(([key, label]) => (
-                          <label key={key} className="text-[10px] text-zinc-500">{label}
+                          <label key={key} className="text-[10px] text-zinc-500"><span className="flex items-center justify-between">{label}<button type="button" onClick={() => toggleTransformLock(key)} className={`rounded p-0.5 ${isTransformLocked(key) ? "text-cyan-600 dark:text-cyan-400" : "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"}`} title={isTransformLocked(key) ? "Unlock" : "Lock"}>{isTransformLocked(key) ? <HiLockClosed size={9} /> : <HiLockOpen size={9} />}</button></span>
                             <input type="number" step="1" min="-25" max="25"
                               value={sp?.transform?.[key] ?? 0}
-                              onChange={(e) => updateStyle({ transform: { ...(sp?.transform ?? {}), [key]: Number(e.target.value || 0) } })}
-                              onDoubleClick={() => updateStyle({ transform: { ...(sp?.transform ?? {}), [key]: 0 } })}
+                              disabled={isTransformLocked(key)}
+                              onChange={(e) => { const value = Number(e.target.value || 0); if (!isTransformLocked(key)) { trackTransformChange(key, sp?.transform?.[key] ?? 0, value); updateCanvasTransform(key, value); } }}
+                              onDoubleClick={() => { if (!isTransformLocked(key)) { trackTransformChange(key, sp?.transform?.[key] ?? 0, 0); updateCanvasTransform(key, 0); } }}
                               title="double-click to reset to 0"
-                              className="mt-0.5 w-full rounded border border-zinc-300 bg-white px-1 py-0.5 text-xs dark:border-zinc-700 dark:bg-zinc-900" />
+                              className="mt-0.5 w-full rounded border border-zinc-300 bg-white px-1 py-0.5 text-xs disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900" />
                           </label>
                         ))}
                       </div>
@@ -4039,10 +4077,23 @@ export default function App() {
                 <div className="relative inline-block max-w-full">
                   <img src={previewUrl} alt="source reference" className={`block max-w-full rounded-lg border border-zinc-300 dark:border-zinc-800 ${colorPickMode ? "cursor-crosshair" : ""}`}
                     onPointerDown={(event) => { sampleCanvasFill(event, "source"); }} />
-                  {imgDim && renderSelId && manifest.find((inst) => inst.id === renderSelId) && (() => {
-                    const b = manifest.find((inst) => inst.id === renderSelId)!.bounding_box;
-                    return <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox={`0 0 ${imgDim[0]} ${imgDim[1]}`} preserveAspectRatio="none"><rect x={b.x} y={b.y} width={b.width} height={b.height} fill="none" stroke="#06b6d4" strokeWidth="2" /></svg>;
-                  })()}
+                  {imgDim && (renderSelId || smartFillHoverId) && <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox={`0 0 ${imgDim[0]} ${imgDim[1]}`} preserveAspectRatio="none">
+                    {renderSelId && (() => {
+                      const inst = visibleManifest.find((item) => item.id === renderSelId);
+                      if (!inst) return null;
+                      const b = inst.bounding_box;
+                      return <rect x={b.x} y={b.y} width={b.width} height={b.height} fill="none" stroke="#06b6d4" strokeWidth="2" pointerEvents="none" />;
+                    })()}
+                    {smartFillHoverId && (() => {
+                      const inst = visibleManifest.find((item) => item.id === smartFillHoverId);
+                      if (!inst) return null;
+                      const b = inst.bounding_box;
+                      const perimeter = Math.max(1, 2 * (b.width + b.height));
+                      return <rect x={b.x} y={b.y} width={b.width} height={b.height} fill="none" stroke="#f59e0b" strokeWidth="2" strokeDasharray="4 2" pointerEvents="none">
+                        <animate attributeName="stroke-dashoffset" from="0" to={-perimeter} dur="15s" repeatCount="indefinite" />
+                      </rect>;
+                    })()}
+                  </svg>}
                 </div>
               </Section>}
 
@@ -4090,7 +4141,34 @@ export default function App() {
                     onLostPointerCapture={(event) => finishBrushStroke(event, true)}
                     onPointerLeave={() => { if (!brushDrawing.current) setBrushCursor(null); setNearFirstPoint(false); }} />
                   {imgDim && <svg className={`absolute inset-0 h-full w-full ${brushMode || lassoMode || garnishRegionMode ? "pointer-events-none" : ""}`} viewBox={`0 0 ${imgDim[0]} ${imgDim[1]}`} preserveAspectRatio="none">
-                    {!brushMode && !lassoMode && !garnishRegionMode && orderedManifest.map((inst) => { const active = inst.id === renderSelId; const b = inst.bounding_box; return <rect key={inst.id} x={b.x} y={b.y} width={b.width} height={b.height} fill={active ? "rgba(6,182,212,.10)" : "transparent"} stroke="none" onClick={() => setRenderSelId(inst.id)} className="cursor-pointer" />; })}
+                    {!brushMode && !lassoMode && !garnishRegionMode && <>
+                      {/* Hit-testing layer stays invisible so UI outlines never mask glyph pixels. */}
+                      {visibleManifest.map((inst) => { const b = inst.bounding_box; return <rect key={inst.id} x={b.x} y={b.y} width={b.width} height={b.height} fill="transparent" stroke="none" onClick={() => setRenderSelId(inst.id)} className="cursor-pointer" />; })}
+                      {renderSelId && (() => {
+                        const inst = visibleManifest.find((item) => item.id === renderSelId);
+                        if (!inst) return null;
+                        const b = inst.bounding_box;
+                        const corners: Array<{ cx: number; cy: number; d: string }> = [
+                          { cx: b.x, cy: b.y, d: "M0,4 L0,0 L4,0" },
+                          { cx: b.x + b.width, cy: b.y, d: "M0,0 L-4,0 L0,4" },
+                          { cx: b.x, cy: b.y + b.height, d: "M0,0 L0,-4 L4,0" },
+                          { cx: b.x + b.width, cy: b.y + b.height, d: "M0,0 L-4,0 L0,-4" },
+                        ];
+                        return <>
+                          <rect x={b.x} y={b.y} width={b.width} height={b.height} fill="rgba(6,182,212,.06)" stroke="#06b6d4" strokeWidth="1.5" pointerEvents="none" />
+                          {corners.map((corner, index) => <path key={index} d={corner.d} transform={`translate(${corner.cx},${corner.cy})`} stroke="#06b6d4" strokeWidth="2" fill="none" pointerEvents="none" />)}
+                        </>;
+                      })()}
+                      {smartFillHoverId && (() => {
+                        const inst = visibleManifest.find((item) => item.id === smartFillHoverId);
+                        if (!inst) return null;
+                        const b = inst.bounding_box;
+                        const perimeter = Math.max(1, 2 * (b.width + b.height));
+                        return <rect x={b.x} y={b.y} width={b.width} height={b.height} fill="rgba(245,158,11,.12)" stroke="#f59e0b" strokeWidth="2" strokeDasharray="4 2" pointerEvents="none">
+                          <animate attributeName="stroke-dashoffset" from="0" to={-perimeter} dur="15s" repeatCount="indefinite" />
+                        </rect>;
+                      })()}
+                    </>}
                     {!brushMode && !lassoMode && !garnishRegionMode && manifest.find((inst) => inst.id === renderSelId)?.garnish_regions?.map((region) => <polygon key={region.id} points={region.polygon.map((point) => point.join(",")).join(" ")} fill={region.id === selectedGarnishRegionId ? "rgba(139,92,246,.20)" : "rgba(139,92,246,.08)"} stroke={region.id === selectedGarnishRegionId ? "#7c3aed" : "rgba(124,58,237,.6)"} strokeWidth="1.5" />)}
                     {brushStrokes.map((stroke) => <polyline key={stroke.id} points={stroke.points.map((p) => p.join(",")).join(" ")} fill="none" stroke="#06b6d4" strokeWidth={brushRadius * 2} strokeLinecap="round" strokeLinejoin="round" opacity=".45" />)}
                     {activeBrushStroke && <polyline points={activeBrushStroke.points.map((p) => p.join(",")).join(" ")} fill="none" stroke="#06b6d4" strokeWidth={brushRadius * 2} strokeLinecap="round" strokeLinejoin="round" opacity=".70" />}
@@ -4215,7 +4293,7 @@ export default function App() {
                         </div>;
                       })()}
                     </div>}
-                    <SmartFillReview reviews={repairReviews} fallbackIds={repairFallbackIds} dismissed={cleanseDismissed} previews={localizedCandidatePreviews} previewPending={previewPending} appliedIds={appliedCandidateIds} onDismiss={() => setCleanseDismissed(true)} onRetryPreview={() => setCandidatePreviewRevision((value) => value + 1)} onApply={applyReviewCandidate} />
+                    <SmartFillReview reviews={repairReviews} fallbackIds={repairFallbackIds} dismissed={cleanseDismissed} previews={localizedCandidatePreviews} previewPending={previewPending} appliedIds={appliedCandidateIds} onDismiss={() => setCleanseDismissed(true)} onRetryPreview={() => setCandidatePreviewRevision((value) => value + 1)} onApply={applyReviewCandidate} onHoverRegion={setSmartFillHoverId} />
                   </div>;
                 })()}
                 {previewRenderError && <div className="mb-2 flex items-center justify-between gap-2 rounded border border-amber-500/50 bg-amber-50 px-2 py-1 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-200"><span>Preview update failed; showing the last valid composition. {previewRenderError}</span><button type="button" onClick={() => { previewCauseRef.current = "style"; setPreviewRetryRevision((value) => value + 1); }} className="shrink-0 rounded bg-amber-700 px-1.5 py-0.5 text-[10px] text-white">retry</button></div>}
@@ -4230,8 +4308,19 @@ export default function App() {
                   {garnishRegionMode && <button onClick={() => { setGarnishRegionMode(false); setLassoPoints([]); setNearFirstPoint(false); }} className="rounded bg-zinc-200 px-2 py-1 text-xs text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">Cancel</button>}
                   {!brushMode && !garnishRegionMode && renderSelId && (() => {
                     const transform = manifest.find((inst) => inst.id === renderSelId)?.style_profile?.transform;
+                    const allTransformLocksActive = LOCKABLE_TRANSFORM_KEYS.every((key) => isTransformLocked(key));
                     return <div className="flex items-center gap-2">
                       <span className="subtext text-[10px] font-semibold uppercase tracking-wider text-zinc-400">text warp</span>
+                      <button
+                        type="button"
+                        onClick={toggleAllTransformLocks}
+                        className="rounded p-0.5 transition hover:scale-110"
+                        title={allTransformLocksActive ? "Unlock all transform values" : "Lock all transform values"}
+                      >
+                        {allTransformLocksActive
+                          ? <HiLockClosed size={12} className="text-cyan-600 dark:text-cyan-400" />
+                          : <HiLockOpen size={12} className="text-zinc-400 dark:text-zinc-500" />}
+                      </button>
                       <div className="relative shrink-0" ref={warpRef}>
                         <button onClick={() => setWarpOpen((v) => !v)} className="bezier-card flex items-center gap-1.5 rounded-md bg-white/60 px-2 py-1 text-xs text-zinc-700 transition hover:bg-zinc-100 dark:bg-zinc-900/60 dark:text-zinc-300 dark:hover:bg-zinc-800">
                           {WARP_PRESETS.find((p) => p.value === (transform?.preset ?? "custom"))?.label ?? "Custom"}
@@ -4256,11 +4345,17 @@ export default function App() {
                       <div className={`style-panel-morph ml-2 flex-1 ${!warpCollapsed ? "expanded" : ""}`}>
                         <div className="flex flex-wrap items-center gap-2 pt-1">
                       {transform?.preset && transform.preset !== "none" && transform.preset !== "custom" && <label className="subtext flex items-center gap-1 text-xs text-zinc-500">amount<input aria-label="warp amount" type="range" min="-25" max="25" step="0.5" value={transform.amount ?? 12} onChange={(e) => updateSelectedStyle({ transform: { ...transform, amount: Number(e.target.value) } })} onDoubleClick={() => updateSelectedStyle({ transform: { ...transform, amount: 12 } })} title="double-click to return to the preset baseline" /><span className="min-w-9 text-right font-mono text-[10px]">{Number(transform.amount ?? 12).toFixed(1)}</span></label>}
-                      {([['skew_x', 'X'], ['skew_y', 'Y']] as const).map(([key, label]) => { const hist = transformHistoryRef.current[key]; const canUndoT = !!(hist && hist.undoStack.length > 0); const canRedoT = !!(hist && hist.redoStack.length > 0); return <label key={key} className="subtext flex items-center gap-1 text-xs text-zinc-500">{label}<span className="text-[10px]">−45</span><input aria-label={`${label} warp`} type="range" min="-45" max="45" step="0.5" value={transform?.[key] ?? 0} onChange={(e) => { const v = Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 0, v); updateCanvasTransform(key, v); }} onDoubleClick={() => { trackTransformChange(key, transform?.[key] ?? 0, 0); updateCanvasTransform(key, 0); }} title="double-click to reset to 0" /><input type="number" min="-45" max="45" step="0.5" value={transform?.[key] ?? 0} onChange={(e) => { const v = e.target.value === "" ? 0 : Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 0, v); updateCanvasTransform(key, v); }} className="w-12 rounded border border-zinc-300 bg-white px-1 py-0.5 text-right font-mono text-[10px] dark:border-zinc-700 dark:bg-zinc-900" /><span className="text-[10px]">°</span><button type="button" onClick={() => undoTransformKey(key, 0)} disabled={!canUndoT} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="undo"><LuUndo2 size={10} /></button><button type="button" onClick={() => redoTransformKey(key)} disabled={!canRedoT} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="redo"><LuRedo2 size={10} /></button></label>; })}
-                      {(() => { const key = "rotation" as const; const current = Number(transform?.rotation ?? 0); const hist = transformHistoryRef.current[key]; return <span className="subtext flex items-center gap-1 text-xs text-zinc-500" title="Drag, click, or type to rotate text. Double-click the dial or value to reset."><span>rotate</span><RotationDial value={current} onChange={(value) => { trackTransformChange(key, current, value); updateCanvasTransform(key, value); }} onReset={() => { trackTransformChange(key, current, 0); updateCanvasTransform(key, 0); }} /><button type="button" onClick={() => undoTransformKey(key, 0)} disabled={!hist.undoStack.length} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="undo"><LuUndo2 size={10} /></button><button type="button" onClick={() => redoTransformKey(key)} disabled={!hist.redoStack.length} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="redo"><LuRedo2 size={10} /></button></span>; })()}
+                      {([['skew_x', 'X'], ['skew_y', 'Y']] as const).map(([key, label]) => {
+                        const hist = transformHistoryRef.current[key];
+                        const locked = isTransformLocked(key);
+                        const canUndoT = !!(hist && hist.undoStack.length > 0);
+                        const canRedoT = !!(hist && hist.redoStack.length > 0);
+                        return <label key={key} className="subtext flex items-center gap-1 text-xs text-zinc-500">{label}<span className="text-[10px]">−45</span><input aria-label={`${label} warp`} type="range" min="-45" max="45" step="0.5" value={transform?.[key] ?? 0} disabled={locked} onChange={(e) => { const v = Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 0, v); updateCanvasTransform(key, v); }} onDoubleClick={() => { trackTransformChange(key, transform?.[key] ?? 0, 0); updateCanvasTransform(key, 0); }} title="double-click to reset to 0" /><input type="number" min="-45" max="45" step="0.5" value={transform?.[key] ?? 0} disabled={locked} onChange={(e) => { const v = e.target.value === "" ? 0 : Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 0, v); updateCanvasTransform(key, v); }} className="w-12 rounded border border-zinc-300 bg-white px-1 py-0.5 text-right font-mono text-[10px] disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900" /><span className="text-[10px]">°</span><button type="button" onClick={() => undoTransformKey(key, 0)} disabled={!canUndoT || locked} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="undo"><LuUndo2 size={10} /></button><button type="button" onClick={() => redoTransformKey(key)} disabled={!canRedoT || locked} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="redo"><LuRedo2 size={10} /></button><button type="button" onClick={() => toggleTransformLock(key)} className={`rounded p-0.5 transition ${locked ? "text-cyan-600 dark:text-cyan-400" : "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"}`} title={locked ? "Unlock" : "Lock"}>{locked ? <HiLockClosed size={10} /> : <HiLockOpen size={10} />}</button></label>;
+                      })}
+                      {(() => { const key = "rotation" as const; const current = Number(transform?.rotation ?? 0); const hist = transformHistoryRef.current[key]; const locked = isTransformLocked(key); return <span className="subtext flex items-center gap-1 text-xs text-zinc-500" title="Drag, click, or type to rotate text. Double-click the dial or value to reset."><span>rotate</span><RotationDial value={current} disabled={locked} onChange={(value) => { trackTransformChange(key, current, value); updateCanvasTransform(key, value); }} onReset={() => { trackTransformChange(key, current, 0); updateCanvasTransform(key, 0); }} /><button type="button" onClick={() => undoTransformKey(key, 0)} disabled={!hist.undoStack.length || locked} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="undo"><LuUndo2 size={10} /></button><button type="button" onClick={() => redoTransformKey(key)} disabled={!hist.redoStack.length || locked} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="redo"><LuRedo2 size={10} /></button><button type="button" onClick={() => toggleTransformLock(key)} className={`rounded p-0.5 transition ${locked ? "text-cyan-600 dark:text-cyan-400" : "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"}`} title={locked ? "Unlock" : "Lock"}>{locked ? <HiLockClosed size={10} /> : <HiLockOpen size={10} />}</button></span>; })()}
                       <span className="subtext flex items-center gap-1 text-xs text-zinc-500" title="Choose the point that stays fixed while skewing or stretching."><span>anchor</span><span className="grid grid-cols-3 gap-px rounded border border-zinc-300 p-0.5 dark:border-zinc-700">{(["top_left", "top_center", "top_right", "middle_left", "center", "middle_right", "bottom_left", "bottom_center", "bottom_right"] as const).map((anchor) => <button key={anchor} type="button" aria-label={`transform anchor ${anchor.replace("_", " ")}`} onClick={() => updateSelectedStyle({ transform: { ...transform, skew_anchor: anchor } })} className={`h-2.5 w-2.5 rounded-sm ${((transform?.skew_anchor ?? "center") === anchor) ? "bg-cyan-600" : "bg-zinc-300 hover:bg-zinc-400 dark:bg-zinc-600 dark:hover:bg-zinc-500"}`} />)}</span></span>
-                      {([['scale_x', 'width'], ['scale_y', 'height']] as const).map(([key, label]) => { const hist = transformHistoryRef.current[key]; const canUndoT = !!(hist && hist.undoStack.length > 0); const canRedoT = !!(hist && hist.redoStack.length > 0); return <label key={key} className="subtext flex items-center gap-1 text-xs text-zinc-500">{label}<span className="text-[10px]">0.5x</span><input aria-label={`${label} stretch`} type="range" min="0.5" max="1.5" step="0.01" value={transform?.[key] ?? 1} onChange={(e) => { const v = Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 1, v); updateCanvasTransform(key, v); }} onDoubleClick={() => { trackTransformChange(key, transform?.[key] ?? 1, 1); updateCanvasTransform(key, 1); }} title="double-click to reset to 1.00x" /><input type="number" min="0.5" max="1.5" step="0.01" value={transform?.[key] ?? 1} onChange={(e) => { const v = e.target.value === "" ? 1 : Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 1, v); updateCanvasTransform(key, v); }} className="w-12 rounded border border-zinc-300 bg-white px-1 py-0.5 text-right font-mono text-[10px] dark:border-zinc-700 dark:bg-zinc-900" /><span className="text-[10px]">x</span><button type="button" onClick={() => undoTransformKey(key, 1)} disabled={!canUndoT} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="undo"><LuUndo2 size={10} /></button><button type="button" onClick={() => redoTransformKey(key)} disabled={!canRedoT} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="redo"><LuRedo2 size={10} /></button></label>; })}
-                      {([['offset_x', 'pos X'], ['offset_y', 'pos Y']] as const).map(([key, label]) => { const hist = transformHistoryRef.current[key]; const canUndoT = !!(hist && hist.undoStack.length > 0); const canRedoT = !!(hist && hist.redoStack.length > 0); return <span key={key} className="subtext flex items-center gap-1 text-xs text-zinc-500"><label className="flex items-center gap-1">{label}<span className="text-[10px]">−50</span><input aria-label={`${label} position`} type="range" min="-50" max="50" step="1" value={transform?.[key] ?? 0} onChange={(e) => { const v = Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 0, v); updateCanvasTransform(key, v); }} onDoubleClick={() => { trackTransformChange(key, transform?.[key] ?? 0, 0); updateCanvasTransform(key, 0); }} title="double-click to snap to original position" /><input type="number" min="-50" max="50" step="1" value={transform?.[key] ?? 0} onChange={(e) => { const v = e.target.value === "" ? 0 : Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 0, v); updateCanvasTransform(key, v); }} className="w-12 rounded border border-zinc-300 bg-white px-1 py-0.5 text-right font-mono text-[10px] dark:border-zinc-700 dark:bg-zinc-900" /><span className="text-[10px]">px</span></label><button type="button" onClick={() => undoTransformKey(key, 0)} disabled={!canUndoT} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="undo"><LuUndo2 size={10} /></button><button type="button" onClick={() => redoTransformKey(key)} disabled={!canRedoT} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="redo"><LuRedo2 size={10} /></button></span>; })}
+                      {([['scale_x', 'width'], ['scale_y', 'height']] as const).map(([key, label]) => { const hist = transformHistoryRef.current[key]; const locked = isTransformLocked(key); const canUndoT = !!(hist && hist.undoStack.length > 0); const canRedoT = !!(hist && hist.redoStack.length > 0); return <label key={key} className="subtext flex items-center gap-1 text-xs text-zinc-500">{label}<span className="text-[10px]">0.5x</span><input aria-label={`${label} stretch`} type="range" min="0.5" max="1.5" step="0.01" value={transform?.[key] ?? 1} disabled={locked} onChange={(e) => { const v = Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 1, v); updateCanvasTransform(key, v); }} onDoubleClick={() => { trackTransformChange(key, transform?.[key] ?? 1, 1); updateCanvasTransform(key, 1); }} title="double-click to reset to 1.00x" /><input type="number" min="0.5" max="1.5" step="0.01" value={transform?.[key] ?? 1} disabled={locked} onChange={(e) => { const v = e.target.value === "" ? 1 : Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 1, v); updateCanvasTransform(key, v); }} className="w-12 rounded border border-zinc-300 bg-white px-1 py-0.5 text-right font-mono text-[10px] disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900" /><span className="text-[10px]">x</span><button type="button" onClick={() => undoTransformKey(key, 1)} disabled={!canUndoT || locked} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="undo"><LuUndo2 size={10} /></button><button type="button" onClick={() => redoTransformKey(key)} disabled={!canRedoT || locked} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="redo"><LuRedo2 size={10} /></button><button type="button" onClick={() => toggleTransformLock(key)} className={`rounded p-0.5 transition ${locked ? "text-cyan-600 dark:text-cyan-400" : "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"}`} title={locked ? "Unlock" : "Lock"}>{locked ? <HiLockClosed size={10} /> : <HiLockOpen size={10} />}</button></label>; })}
+                      {([['offset_x', 'pos X'], ['offset_y', 'pos Y']] as const).map(([key, label]) => { const hist = transformHistoryRef.current[key]; const locked = isTransformLocked(key); const canUndoT = !!(hist && hist.undoStack.length > 0); const canRedoT = !!(hist && hist.redoStack.length > 0); return <span key={key} className="subtext flex items-center gap-1 text-xs text-zinc-500"><label className="flex items-center gap-1">{label}<span className="text-[10px]">−50</span><input aria-label={`${label} position`} type="range" min="-50" max="50" step="1" value={transform?.[key] ?? 0} disabled={locked} onChange={(e) => { const v = Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 0, v); updateCanvasTransform(key, v); }} onDoubleClick={() => { trackTransformChange(key, transform?.[key] ?? 0, 0); updateCanvasTransform(key, 0); }} title="double-click to snap to original position" /><input type="number" min="-50" max="50" step="1" value={transform?.[key] ?? 0} disabled={locked} onChange={(e) => { const v = e.target.value === "" ? 0 : Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 0, v); updateCanvasTransform(key, v); }} className="w-12 rounded border border-zinc-300 bg-white px-1 py-0.5 text-right font-mono text-[10px] disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900" /><span className="text-[10px]">px</span></label><button type="button" onClick={() => undoTransformKey(key, 0)} disabled={!canUndoT || locked} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="undo"><LuUndo2 size={10} /></button><button type="button" onClick={() => redoTransformKey(key)} disabled={!canRedoT || locked} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="redo"><LuRedo2 size={10} /></button><button type="button" onClick={() => toggleTransformLock(key)} className={`rounded p-0.5 transition ${locked ? "text-cyan-600 dark:text-cyan-400" : "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"}`} title={locked ? "Unlock" : "Lock"}>{locked ? <HiLockClosed size={10} /> : <HiLockOpen size={10} />}</button></span>; })}
                       <label className="subtext flex items-center gap-0.5 text-[10px] text-zinc-400" title="When off, keep one glyph run even when it crosses the cube edge. When on, wrap only after the measured text exceeds the cube width."><input type="checkbox" checked={transform?.wrap_text ?? false} onChange={(e) => updateSelectedStyle({ transform: { ...transform, wrap_text: e.target.checked } })} /> wrap</label>
                         </div>
                       </div>
