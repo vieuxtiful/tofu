@@ -1,6 +1,18 @@
 @import 'tailwindcss';
 
-@plugin "daisyui";
+/* daisyUI was removed deliberately, not overlooked. It sat in package.json
+   with an `@plugin "daisyui"` line here, but that directive is Tailwind 4
+   syntax and this stylesheet was Tailwind 3 — so it was passed through
+   verbatim into the built CSS and the plugin never loaded. The UI was
+   therefore designed and tuned with daisyUI inert.
+
+   Switching it on during the v4 migration was a regression, not a fix: it
+   added ~88 kB of component CSS for components this app never uses, and it
+   restyles the two places that happen to use a bare daisyUI class name --
+   the hidden checkbox in Buttons.tsx (ThemeSwitch relies on uikit.css
+   zeroing it out) and the `indicator` on NotificationBell.tsx (daisyUI
+   would add display:inline-flex). Re-adding it is one npm install plus one
+   @plugin line, if a future component actually wants it. */
 
 @custom-variant dark (&:is(.dark *));
 
