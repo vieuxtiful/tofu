@@ -17,8 +17,8 @@ const GarnishSlider = styled(Slider)(({ theme }) => ({
   height: 3,
   // The wide rectangular thumb needs a little extra room at its minimum
   // position so its left border is never clipped.
-  marginLeft: 10,
-  padding: "13px 15px 13px 23px",
+  marginLeft: 4,
+  padding: "13px 15px 13px 17px",
   "& .MuiSlider-thumb": {
     height: 16,
     width: 39,
@@ -81,9 +81,9 @@ export default function GarnishSliderField({
 }: GarnishSliderFieldProps) {
   return (
     <label className="subtext flex min-w-36 flex-1 flex-col gap-0.5 text-[10px]">
-      <span className="flex items-baseline justify-between gap-1 px-[14px]">
+      <span className="flex w-[calc(45%+8px)] items-baseline justify-between gap-1 pl-[18px]">
         <span className="font-medium">{label}</span>
-        <span className="font-mono">{Number(value).toFixed(digits)}{suffix}</span>
+        <span className="translate-x-2 font-mono">{Number(value).toFixed(digits)}{suffix}</span>
       </span>
       <span className="relative flex h-5 items-center">
         <GarnishSlider

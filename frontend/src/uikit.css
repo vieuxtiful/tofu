@@ -1233,6 +1233,91 @@ html.light .penumbra-switch {
   overflow: visible;
 }
 
+/* Garnish expands from its chevron into a compact side column, using the
+   same timing as the Text Warp disclosure rather than mounting abruptly. */
+.garnish-controls-morph {
+  display: flex;
+  align-items: center;
+  flex: 0 1 0;
+  max-width: 0;
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    max-width 0.4s ease-in-out,
+    max-height 0.4s ease-in-out,
+    opacity 0.25s ease-out;
+}
+
+.garnish-controls-morph.expanded {
+  flex: 1 1 0%;
+  max-width: 100%;
+  max-height: 600px;
+  overflow: visible;
+  opacity: 1;
+  pointer-events: auto;
+  transition:
+    max-width 0.4s ease-in-out,
+    max-height 0.4s ease-in-out,
+    opacity 0.25s ease-in 0.15s;
+}
+
+/* Smart Fill keeps its body mounted so its inpainting choices can animate
+   smoothly instead of popping in and out on disclosure. */
+.smart-fill-content {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  pointer-events: none;
+  transition: grid-template-rows 0.28s ease-in-out, opacity 0.2s ease-out;
+}
+
+.smart-fill-content > div {
+  overflow: hidden;
+}
+
+.smart-fill-content.expanded {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  pointer-events: auto;
+  transition: grid-template-rows 0.32s ease-in-out, opacity 0.22s ease-in 0.08s;
+}
+
+/* Garnish uses a compact native checkbox toggle instead of the theme-switch
+   wrapper.  Its purple knob stays darker than both the rail and its border. */
+.garnish-activation-toggle {
+  appearance: none;
+  cursor: pointer;
+  position: relative;
+  border: 2px solid #8b5cf6;
+  border-radius: 9999px;
+  background: #c4b5fd;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.garnish-activation-toggle::after {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 10px;
+  height: 10px;
+  content: "";
+  border-radius: 9999px;
+  background: #5b21b6;
+  transition: transform 0.2s ease, background-color 0.2s ease;
+}
+
+.garnish-activation-toggle:checked {
+  border-color: #8b5cf6;
+  background: #a78bfa;
+}
+
+.garnish-activation-toggle:checked::after {
+  transform: translateX(12px);
+  background: #4c1d95;
+}
+
 /* ── Dropdown Morph ── reusable expand/collapse animation for all dropdown menus.
    Apply `.dropdown-morph` to the dropdown container and toggle `.expanded` to
    open/close. Mirrors the style-panel-morph easing for visual continuity. */
