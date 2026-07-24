@@ -1,0 +1,27 @@
+## 🍢 ToFU — isolated PaddleOCR interpreter (.venv-paddle)
+## vieuxtiful
+##
+## PP-OCRv5 (DBNet + SVTR) is cicerone's CJK engine. it is NOT optional and
+## NOT a fallback: EasyOCR/CRAFT fragments stacked vertical CJK signage into
+## one box per character, and PP-OCRv5's DB detector + angle classifier reads
+## those columns natively (measured 4x recall / 4x transcription accuracy on
+## dense CJK street scenes, CP-1, scripts/eval_paddle.py).
+##
+## it lives in its OWN interpreter because paddlepaddle force-replaces the
+## app venv's numpy/opencv on install. nothing here may be installed into
+## .venv — cicerone talks to it out-of-process through
+## scripts/paddle_worker.py, exchanging JSON over temp files.
+##
+## create:
+##   py -3.13 -m venv .venv-paddle
+##   .venv-paddle\Scripts\python -m pip install -r server/requirements-paddle.txt
+##
+## cicerone finds it via PaddleOCRBackend.is_available() (defaults to
+## <repo>/.venv-paddle, override with TOFU_PADDLE_VENV). when the venv is
+## absent the backend degrades to NullBackend instead of raising — so a
+## missing venv looks like "no CJK recall", not a crash. check
+## is_available() first when CJK detection quality regresses.
+
+paddlepaddle==3.3.1
+paddleocr==3.7.0
+numpy==2.3.5

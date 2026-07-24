@@ -39,6 +39,20 @@ Notes:
 - `PYTHONUTF8=1` is required on Windows — EasyOCR's model-download progress bar prints characters that crash a cp1252 console.
 - First detection downloads OCR models (~100 MB) to `~/.EasyOCR` and takes ~20 s; warm detections run in a few seconds on CPU.
 
+### Dependency pinning
+
+ToFU runs **three** interpreters on purpose, each with its own manifest:
+
+| venv | manifest | purpose |
+|---|---|---|
+| `.venv` | `server/requirements.txt` | app + pipeline (CPU torch) |
+| `.venv-paddle` | `server/requirements-paddle.txt` | PP-OCRv5, CJK detection — out-of-process |
+| `.venv-inpaint` | `server/requirements-inpaint.txt` | LaMa neural repair (CUDA torch) — out-of-process |
+
+Versions are pinned exactly (`==`), not floored (`>=`), so measurements in the technical paper are reproducible from the manifest. `server/requirements.lock.txt` is the fully-resolved transitive set for byte-identical rebuilds; regenerate it with `pip freeze` after any intentional dependency change.
+
+**Install exactly one OpenCV distribution.** Multiple opencv wheels unpack into the same `site-packages/cv2/`, so whichever wrote last silently wins and the manifest stops describing what actually imports. This was a live bug: `opencv-contrib-python` 4.10 was shadowing a pinned headless 5.0, and Scene's contour rescue pass missed the banner on `images/japan-street.jpeg` as a result. Removing the duplicate fixed it with no code change. The server never opens a GUI window and no contrib-only module is used anywhere, so `opencv-python-headless` is the correct choice.
+
 ## OCR backends
 
 Cicerone now supports two detection/recognition engines behind the same `OCRBackend` interface:
@@ -46,7 +60,16 @@ Cicerone now supports two detection/recognition engines behind the same `OCRBack
 - **EasyOCR** (default): CRAFT detector + CRNN recognizer; mature for stylized scene text.
 - **PaddleOCR** (opt-in): DBNet detector + SVTR_LCNet recognizer; generally stronger on rotated, curved, dense, and CJK street signs.
 
-Switch the active engine per request with the `engine` query param (`/api/detect/stream?engine=paddleocr`) or via the `OCR_ENGINE` environment variable (`easyocr` or `paddleocr`). PaddleOCR is listed in `server/requirements.txt` and `src/tofu/requirements.txt` but is only imported when used, so EasyOCR-only installs keep working.
+Switch the active engine per request with the `engine` query param (`/api/detect/stream?engine=paddleocr`) or via the `OCR_ENGINE` environment variable (`easyocr` or `paddleocr`).
+
+PaddleOCR is **not** installed into the app venv and is never imported in-process — `paddlepaddle` force-replaces the app venv's numpy/opencv. It gets its own interpreter, installed from `server/requirements-paddle.txt`:
+
+```
+py -3.13 -m venv .venv-paddle
+.venv-paddle\Scripts\python -m pip install -r server\requirements-paddle.txt
+```
+
+Cicerone locates it via `PaddleOCRBackend.is_available()` (defaults to `<repo>/.venv-paddle`, override with `TOFU_PADDLE_VENV`). When the venv is absent the backend degrades to `NullBackend` rather than raising — so a missing `.venv-paddle` shows up as *lost CJK recall*, not as a crash. Check `is_available()` first when CJK detection quality regresses.
 
 ## Architecture: pipeline layers
 
@@ -67,7 +90,9 @@ Two OCR engines are supported behind the same `OCRBackend` interface:
 - **EasyOCR** (default): CRAFT detector + CRNN recognizer. Mature for stylized and curved scene text; returns 4-point polygons mapped directly to `InstText`.
 - **PaddleOCR** (opt-in): DBNet detector + SVTR_LCNet recognizer. Generally stronger on rotated, curved, dense, and CJK street signs — measured at 4× recall and 4× transcription accuracy over EasyOCR on dense vertical CJK scenes. Runs out-of-process via `scripts/paddle_worker.py` under an isolated `.venv-paddle` interpreter (paddlepaddle force-replaces the app venv's numpy/opencv on install, so it can never be imported in-process).
 
-Switch the active engine per request with the `engine` query param (`/api/detect/stream?engine=paddleocr`) or via the `OCR_ENGINE` environment variable (`easyocr` or `paddleocr`). PaddleOCR is listed in `server/requirements.txt` and `src/tofu/requirements.txt` but is only imported when used, so EasyOCR-only installs keep working.
+Switch the active engine per request with the `engine` query param (`/api/detect/stream?engine=paddleocr`) or via the `OCR_ENGINE` environment variable (`easyocr` or `paddleocr`).
+
+See [OCR backends](#ocr-backends) for the `.venv-paddle` setup and why PaddleOCR is never installed into the app venv.
 
 Cicerone also handles CJK-specific challenges: vertical column merge (`merge_vertical_columns`) unifies x-aligned, width-matched, tightly-stacked character boxes into single column detections; language arbitration ranks candidate readers by corroborating-region count and confidence rather than confidence alone (preventing a confidently-wrong reader from hijacking the scene); and a two-phase scene filter lets a detection survive the confidence floor with its best recognition rather than its first. A `_split_tall_detections` pass re-segments over-tall vertical CJK signs into per-character bands and re-recognizes each, feeding results through the column reassembly.
 

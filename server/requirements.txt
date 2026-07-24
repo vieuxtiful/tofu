@@ -1,20 +1,63 @@
 ## 🍢 ToFU server — consolidated requirements (backend + pipeline)
+## vieuxtiful
+##
+## the APP venv only. ToFU keeps three interpreters on purpose — see the
+## "separate table settings" note at the bottom before adding anything here.
+##
 ## install into the project venv:
 ##   py -3.13 -m venv .venv
 ##   .venv\Scripts\python -m pip install -r server/requirements.txt
+##
+## versions are pinned EXACTLY (==), not floored (>=). measured numbers in
+## the technical paper have to be reproducible from this file: a floor lets
+## a fresh install resolve a different stack than the one that produced the
+## figures. `requirements.lock.txt` records the fully-resolved transitive
+## set for byte-identical rebuilds; this file stays the readable one.
 
 --extra-index-url https://download.pytorch.org/whl/cpu
-torch>=2.2                  # CPU build via extra index; easyocr backbone
-easyocr>=1.7.1              # cicerone OCR backend (CRAFT + CRNN); pulls opencv-headless, scikit-image, python-bidi, shapely
-paddleocr>=2.7.0            # cicerone optional OCR backend (DB + SVTR); higher accuracy on skew/curve/CJK
-fastapi>=0.110
-uvicorn[standard]>=0.29
-python-multipart>=0.0.9
-pydantic>=2.6
-pillow>=10.0                # scribe rendering + cicerone pre-resize
-numpy>=1.26                 # image array interchange
-opencv-python-headless>=4.8 # garnish layer (dilate/erode/threshold); also pulled by easyocr but pinned explicitly
-fonttools>=4.38             # tofu layer-0 glyph coverage
-arabic-reshaper>=3.0        # scribe RTL shaping (phase 7)
-xlrd>=2.0.1                 # glossary .xls parsing
-openpyxl>=3.1.0            # glossary .xlsx parsing
+torch==2.13.0+cpu           # CPU build via extra index; easyocr backbone
+torchvision==0.28.0+cpu     # pulled by easyocr; pinned so torch can't drift
+easyocr==1.7.2              # cicerone OCR backend (CRAFT + CRNN), Latin-strong
+fastapi==0.139.2
+uvicorn[standard]==0.51.0
+python-multipart==0.0.32
+pydantic==2.13.4
+pillow==12.3.0              # scribe rendering + cicerone pre-resize
+numpy==2.3.5                # image array interchange; cv2 5.x requires >=2
+fonttools==4.63.0           # tofu layer-0 glyph coverage
+arabic-reshaper==3.0.1      # scribe RTL shaping — declared, NOT YET WIRED
+python-bidi==0.6.11         # scribe bidi reordering — declared, NOT YET WIRED
+xlrd==2.0.2                 # glossary .xls parsing
+openpyxl==3.1.5             # glossary .xlsx parsing
+scikit-image==0.26.0        # arrives via easyocr; pinned explicitly, not left to drift
+scipy==1.18.0               # scikit-image backbone; pinned for the same reason
+
+## ── one cv2, and only one ──────────────────────────────────────────────
+## install EXACTLY ONE opencv distribution. two of them unpack into the
+## same site-packages/cv2/ directory, so the winner is whichever wrote
+## last — the manifest stops describing what actually imports.
+##
+## this bit us for real: opencv-contrib-python 4.10.0.84 was shadowing a
+## pinned headless 5.0.0.93, so cv2.__version__ reported 4.10 and
+## scene.ClassicalCVBackend's contour rescue silently missed the banner
+## on images/japan-street.jpeg — test_scene_regions.py::TestContourRescuePass
+## ::test_dense_scene_recovers_a_real_quad_for_the_banner failed on main.
+## removing the duplicate fixed the test with no code change.
+##
+## headless is correct here: the server never opens a GUI window, and the
+## contrib modules (ximgproc, aruco, xfeatures2d, ...) are used NOWHERE in
+## src/, server/, or scripts/ — verified by grep. do not "upgrade" to
+## opencv-contrib-python to get a module; add it deliberately or not at all.
+opencv-python-headless==5.0.0.93
+
+## ── separate table settings: the isolated interpreters ─────────────────
+## paddleocr is deliberately ABSENT from this file. paddlepaddle
+## force-replaces the app venv's numpy/opencv on install (measured, CP-1),
+## so PP-OCRv5 runs OUT-OF-PROCESS under .venv-paddle via
+## scripts/paddle_worker.py. EasyOCR (Latin) and PaddleOCR (CJK) are both
+## load-bearing — the isolation is what lets them coexist, not a downgrade.
+##   .venv-paddle   -> server/requirements-paddle.txt
+##   .venv-inpaint  -> server/requirements-inpaint.txt
+##
+## dev/test extras (not needed to run the server):
+##   pytest==9.1.1
