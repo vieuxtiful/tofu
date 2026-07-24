@@ -62,14 +62,27 @@ VERTICAL_ROW_FACTOR = 1.15  # row height as a multiple of font size
 # cursive joining forms, so Arabic passed straight to draw.text() comes out
 # as disconnected isolated letters in logical (i.e. visually reversed) order.
 #
-# The complete fix is Raqm (HarfBuzz + FriBiDi). Raqm IS compiled into
-# Pillow's Windows wheel -- the binary carries HAVE_RAQM and statically
-# linked hb_shape_* symbols -- but it stays inactive because libraqm
-# resolves FriBiDi dynamically at runtime and no fribidi-0.dll ships
-# alongside it. Confirm on any machine with PIL.features.check("raqm").
+# The complete fix is Raqm (HarfBuzz + FriBiDi), and it is NOT available to
+# us as a drop-in. Pillow's Windows wheel is compiled without it:
 #
-# Until that DLL is present, these two pure-Python passes cover the RTL
-# scripts ToFU actually targets today:
+#   >>> from PIL import _imagingft
+#   >>> _imagingft.HAVE_RAQM, _imagingft.HAVE_FRIBIDI, _imagingft.HAVE_HARFBUZZ
+#   (False, False, False)
+#
+# Those are compile-time constants baked into the wheel, not runtime
+# probes, so no amount of DLL placement flips them -- installing FriBiDi
+# (mingw-w64 libfribidi-0.dll, on PATH, beside python.exe, or via
+# os.add_dll_directory) leaves check("raqm") False, measured. Anyone
+# reading raqm/harfbuzz/fribidi symbol names out of _imagingft*.pyd should
+# not conclude otherwise: those strings are the attribute names Pillow
+# always exports plus compiled-out code paths.
+#
+# Enabling Raqm therefore means either building Pillow from source against
+# libraqm, or moving off Pillow's text API onto uharfbuzz + freetype-py and
+# drawing positioned glyph runs directly. Both are real projects.
+#
+# Until then, these two pure-Python passes cover the RTL scripts ToFU
+# actually targets today:
 #   arabic-reshaper -> contextual joining forms
 #   python-bidi     -> logical to visual reordering (UAX #9)
 # What they do NOT cover, and what still needs Raqm proper: Indic conjunct
