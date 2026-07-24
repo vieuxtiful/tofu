@@ -40,7 +40,7 @@ export default function HexColorInput({ value, onChange, placeholder = "#000000"
           setDraft(value ?? "");
         }
       }}
-      className="w-24 rounded border border-zinc-300 bg-white px-2 py-0.5 font-mono text-xs text-zinc-800 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+      className="w-24 rounded-sm border border-zinc-300 bg-white px-2 py-0.5 font-mono text-xs text-zinc-800 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
     />
   );
 }

@@ -135,7 +135,7 @@ export function TextShimmerLoader({ text = "Loading", className, size = "md" }: 
       className={cn(
         "bg-clip-text font-medium text-transparent",
         "bg-[linear-gradient(90deg,rgba(113,113,122,0.75)_40%,#e4e4e7_60%,rgba(113,113,122,0.75)_80%)]",
-        "bg-[length:200%_auto] animate-[shimmer-text_4s_infinite_linear]",
+        "bg-size-[200%_auto] animate-[shimmer-text_4s_infinite_linear]",
         font, className
       )}
     >

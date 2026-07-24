@@ -76,7 +76,7 @@ export default function LanguageSelector({
           placeholder="Search languages..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full rounded-lg border border-zinc-300 bg-white pl-10 pr-3 py-2 text-sm text-zinc-800 outline-none focus:border-cyan-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+          className="w-full rounded-lg border border-zinc-300 bg-white pl-10 pr-3 py-2 text-sm text-zinc-800 outline-hidden focus:border-cyan-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
         />
       </div>
 
@@ -139,7 +139,7 @@ export default function LanguageSelector({
                 </p>
               </div>
               {lang.rtl && (
-                <span className="ml-auto rounded bg-zinc-300 px-1 py-0.5 text-[10px] text-zinc-600 dark:bg-zinc-700 dark:text-zinc-400">RTL</span>
+                <span className="ml-auto rounded-sm bg-zinc-300 px-1 py-0.5 text-[10px] text-zinc-600 dark:bg-zinc-700 dark:text-zinc-400">RTL</span>
               )}
             </button>
           );

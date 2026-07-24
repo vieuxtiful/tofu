@@ -71,7 +71,7 @@ export default function RotationDial({ value, onChange, onReset, disabled = fals
         disabled={disabled}
         onChange={(event) => { if (!disabled) onChange(clamp(Number(event.target.value || 0))); }}
         onDoubleClick={disabled ? undefined : onReset}
-        className="w-12 rounded border border-zinc-300 bg-white px-1 py-0.5 text-right font-mono text-[10px] text-zinc-800 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+        className="w-12 rounded-sm border border-zinc-300 bg-white px-1 py-0.5 text-right font-mono text-[10px] text-zinc-800 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
       />
     </span>
   );

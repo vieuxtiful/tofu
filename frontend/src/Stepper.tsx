@@ -101,7 +101,7 @@ export default function Stepper({ current, onStep, canCapture, canTranslate, can
               )}
               {step.label}
               {flagStep === step.id && (
-                <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-white shadow-sm" title="target language changed — translations need review">
+                <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-white shadow-xs" title="target language changed — translations need review">
                   <Flag size={10} />
                 </span>
               )}

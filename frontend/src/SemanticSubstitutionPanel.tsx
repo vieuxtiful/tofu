@@ -51,7 +51,7 @@ export default function SemanticSubstitutionPanel({
         <TbLeafFilled size={15} className="text-emerald-600" />
         <span>Basil</span>
       </div>
-      <button type="button" onClick={() => setOpen((value) => !value)} className="absolute right-0 top-0 rounded p-1 text-zinc-500 transition hover:bg-zinc-200 dark:hover:bg-zinc-800" title={open ? "collapse Basil" : "expand Basil"} aria-label={open ? "collapse Basil" : "expand Basil"}>
+      <button type="button" onClick={() => setOpen((value) => !value)} className="absolute right-0 top-0 rounded-sm p-1 text-zinc-500 transition hover:bg-zinc-200 dark:hover:bg-zinc-800" title={open ? "collapse Basil" : "expand Basil"} aria-label={open ? "collapse Basil" : "expand Basil"}>
         <FcCollapse size={12} style={{ transform: open ? "none" : "rotate(180deg)", transition: "transform 0.2s" }} />
       </button>
       <p className="mb-1 flex items-start gap-1.5 text-xs text-cyan-900/75 dark:text-cyan-200/70">
@@ -69,7 +69,7 @@ export default function SemanticSubstitutionPanel({
           return (
             <div key={unit.id} className="rounded-lg border border-cyan-200 bg-white/80 p-3 dark:border-cyan-900 dark:bg-zinc-950/45">
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-                <span className="rounded bg-cyan-100 px-1.5 py-0.5 font-mono text-cyan-800 dark:bg-cyan-900/70 dark:text-cyan-100">
+                <span className="rounded-sm bg-cyan-100 px-1.5 py-0.5 font-mono text-cyan-800 dark:bg-cyan-900/70 dark:text-cyan-100">
                   {unit.region_ids.join(" → ")}
                 </span>
                 <span className="font-medium text-zinc-800 dark:text-zinc-100">{unit.source_text}</span>
@@ -87,7 +87,7 @@ export default function SemanticSubstitutionPanel({
                   value={value}
                   onChange={(event) => onDraftChange(unit.id, event.target.value)}
                   placeholder="Complete target phrase"
-                  className="min-w-0 flex-1 rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm text-zinc-900 outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+                  className="min-w-0 flex-1 rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm text-zinc-900 outline-hidden focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
                 />
                 <button
                   type="button"
@@ -105,7 +105,7 @@ export default function SemanticSubstitutionPanel({
                     <>
                       <div className="flex flex-wrap gap-1.5 text-zinc-800 dark:text-zinc-100">
                         {plan.assignments.map((assignment) => (
-                          <span key={assignment.region_id} className="rounded bg-white px-1.5 py-0.5 shadow-sm dark:bg-zinc-800">
+                          <span key={assignment.region_id} className="rounded-sm bg-white px-1.5 py-0.5 shadow-xs dark:bg-zinc-800">
                             <span className="font-mono text-cyan-700 dark:text-cyan-300">{assignment.region_id}{assignment.anchor_id && assignment.anchor_id !== assignment.region_id ? ` → ${assignment.anchor_id}` : ""}</span> {assignment.text}
                           </span>
                         ))}

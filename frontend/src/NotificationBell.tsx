@@ -69,7 +69,7 @@ export default function NotificationBell({ notifications, onClear, onDismiss }: 
         )}
       </button>
       <div
-        className={`dropdown-morph bezier-card absolute right-0 top-full z-[200] mt-2 overflow-hidden rounded-lg border border-zinc-300 bg-white p-1.5 dark:border-zinc-700 dark:bg-zinc-900${open ? " expanded" : ""} w-80`}
+        className={`dropdown-morph bezier-card absolute right-0 top-full z-200 mt-2 overflow-hidden rounded-lg border border-zinc-300 bg-white p-1.5 dark:border-zinc-700 dark:bg-zinc-900${open ? " expanded" : ""} w-80`}
         style={open ? { boxShadow: "4px 4px 0 var(--bc-shadow), 8px 8px 16px rgba(0,0,0,0.18)" } : undefined}
       >
         <div className="max-h-80 overflow-y-auto">
@@ -98,7 +98,7 @@ export default function NotificationBell({ notifications, onClear, onDismiss }: 
                 </div>
                 <button
                   onClick={() => onDismiss(n.id)}
-                  className="ml-auto shrink-0 rounded p-0.5 text-zinc-400 transition hover:bg-zinc-200 hover:text-zinc-600 dark:text-zinc-500 dark:hover:bg-zinc-700 dark:hover:text-zinc-300"
+                  className="ml-auto shrink-0 rounded-sm p-0.5 text-zinc-400 transition hover:bg-zinc-200 hover:text-zinc-600 dark:text-zinc-500 dark:hover:bg-zinc-700 dark:hover:text-zinc-300"
                   title="dismiss"
                 >
                   <X size={12} />

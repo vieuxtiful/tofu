@@ -103,7 +103,7 @@ export default function HistoryPanel({ project, currentAssetId, onRestored, onCl
             <History size={18} className="text-cyan-600 dark:text-cyan-400" /> Session History
             <span className="text-sm font-normal text-zinc-500">— {project.name}</span>
           </h3>
-          <button onClick={onClose} className="rounded p-1 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300">
+          <button onClick={onClose} className="rounded-sm p-1 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300">
             <X size={16} />
           </button>
         </div>
@@ -174,7 +174,7 @@ export default function HistoryPanel({ project, currentAssetId, onRestored, onCl
                     onClick={() => onDelete(s)}
                     disabled={workingOn !== null}
                     title="Delete snapshot"
-                    className="shrink-0 rounded p-1.5 text-zinc-400 hover:bg-zinc-200 hover:text-red-500 dark:text-zinc-600 dark:hover:bg-zinc-700 dark:hover:text-red-400 disabled:opacity-40"
+                    className="shrink-0 rounded-sm p-1.5 text-zinc-400 hover:bg-zinc-200 hover:text-red-500 dark:text-zinc-600 dark:hover:bg-zinc-700 dark:hover:text-red-400 disabled:opacity-40"
                   >
                     <Trash2 size={13} />
                   </button>
@@ -189,7 +189,7 @@ export default function HistoryPanel({ project, currentAssetId, onRestored, onCl
                 <p className="subtext py-6 text-center text-sm text-zinc-500">No activity recorded yet.</p>
               )}
               {history.events.map((e) => (
-                <div key={e.id} className="flex items-start gap-2 rounded px-2 py-1.5 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800/40">
+                <div key={e.id} className="flex items-start gap-2 rounded-sm px-2 py-1.5 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800/40">
                   <Clock size={12} className="mt-0.5 shrink-0 text-zinc-400 dark:text-zinc-600" />
                   <div className="min-w-0">
                     <span className="font-medium text-zinc-700 dark:text-zinc-300">{EVENT_LABEL[e.kind] ?? e.kind}</span>

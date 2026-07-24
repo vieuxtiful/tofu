@@ -159,7 +159,7 @@ export default function TitleScreen({ onEnter, onSelectProject, onCreateProject,
   };
 
   return (
-    <div className="fixed inset-0 z-[90] flex flex-col items-center justify-center gap-10 bg-zinc-100 dark:bg-black">
+    <div className="fixed inset-0 z-90 flex flex-col items-center justify-center gap-10 bg-zinc-100 dark:bg-black">
       <img src={theme === "light" ? "/tofu-blk-alt-main.png" : "/tofu-wht-alt.png"} alt="ToFU" className="h-36 w-auto" />
 
       {/* MAIN VIEW with morphing pantry container */}
@@ -192,7 +192,7 @@ export default function TitleScreen({ onEnter, onSelectProject, onCreateProject,
                 <p className="text-sm font-bold text-zinc-800 dark:text-zinc-200">pantry</p>
                 <button
                   onClick={(e) => { e.stopPropagation(); morphToMain(); }}
-                  className="flex items-center justify-center rounded p-1 text-zinc-500 transition hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+                  className="flex items-center justify-center rounded-sm p-1 text-zinc-500 transition hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
                 >
                   <X size={14} />
                 </button>
@@ -233,19 +233,19 @@ export default function TitleScreen({ onEnter, onSelectProject, onCreateProject,
                                 if (e.key === "Escape") cancelRename();
                               }}
                               onClick={(e) => e.stopPropagation()}
-                              className="flex-1 rounded border border-cyan-500 bg-white px-2 py-1 text-sm text-zinc-800 outline-none dark:bg-zinc-900 dark:text-zinc-200"
+                              className="flex-1 rounded-sm border border-cyan-500 bg-white px-2 py-1 text-sm text-zinc-800 outline-hidden dark:bg-zinc-900 dark:text-zinc-200"
                               placeholder="new name"
                             />
                             <button
                               onClick={(e) => { e.stopPropagation(); confirmRename(); }}
-                              className="rounded p-1 text-cyan-600 transition hover:bg-cyan-100 dark:text-cyan-400 dark:hover:bg-cyan-900/30"
+                              className="rounded-sm p-1 text-cyan-600 transition hover:bg-cyan-100 dark:text-cyan-400 dark:hover:bg-cyan-900/30"
                               title="confirm rename"
                             >
                               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
                             </button>
                             <button
                               onClick={(e) => { e.stopPropagation(); cancelRename(); }}
-                              className="rounded p-1 text-zinc-400 transition hover:bg-zinc-200 dark:hover:bg-zinc-700"
+                              className="rounded-sm p-1 text-zinc-400 transition hover:bg-zinc-200 dark:hover:bg-zinc-700"
                               title="cancel"
                             >
                               <X size={14} />
@@ -269,7 +269,7 @@ export default function TitleScreen({ onEnter, onSelectProject, onCreateProject,
                             </button>
                             <button
                               onClick={(e) => startRename(e, p)}
-                              className="shrink-0 rounded p-1 text-zinc-400 transition hover:bg-zinc-200 hover:text-cyan-600 dark:text-zinc-500 dark:hover:bg-zinc-700 dark:hover:text-cyan-400"
+                              className="shrink-0 rounded-sm p-1 text-zinc-400 transition hover:bg-zinc-200 hover:text-cyan-600 dark:text-zinc-500 dark:hover:bg-zinc-700 dark:hover:text-cyan-400"
                               title="rename project"
                             >
                               <CgRename size={14} />
@@ -320,7 +320,7 @@ export default function TitleScreen({ onEnter, onSelectProject, onCreateProject,
                 <p className="text-sm font-bold text-zinc-800 dark:text-zinc-200">settings</p>
                 <button
                   onClick={(e) => { e.stopPropagation(); morphSettingsToMain(); }}
-                  className="flex items-center justify-center rounded p-1 text-zinc-500 transition hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+                  className="flex items-center justify-center rounded-sm p-1 text-zinc-500 transition hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
                 >
                   <X size={14} />
                 </button>

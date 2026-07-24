@@ -50,16 +50,16 @@ export default function BBoxColorDropdown({ value, onChange }: Props) {
     <div ref={wrapperRef} className="relative">
       <button
         onClick={(e) => { e.stopPropagation(); open ? setOpen(false) : openPanel(); }}
-        className="flex w-full items-center gap-1.5 rounded border border-transparent px-1 py-0.5 text-left text-xs transition hover:border-zinc-300 hover:bg-zinc-200 dark:hover:border-zinc-700 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200"
+        className="flex w-full items-center gap-1.5 rounded-sm border border-transparent px-1 py-0.5 text-left text-xs transition hover:border-zinc-300 hover:bg-zinc-200 dark:hover:border-zinc-700 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200"
         title={`bbox color: ${current.label}`}
       >
-        <span className="h-3.5 w-3.5 shrink-0 rounded-sm border border-zinc-400/50" style={{ background: current.value }} />
+        <span className="h-3.5 w-3.5 shrink-0 rounded-xs border border-zinc-400/50" style={{ background: current.value }} />
         <span className="min-w-0 flex-1 truncate">{current.label}</span>
         <ChevronDown size={10} className="shrink-0 text-zinc-500" />
       </button>
       <div
         onClick={(e) => e.stopPropagation()}
-        className={`dropdown-morph bezier-card absolute left-0 top-full z-[100] mt-1 w-40 overflow-hidden rounded-lg border border-zinc-300 bg-white dark:border-zinc-700 dark:bg-zinc-900${open ? " expanded" : ""}`}
+        className={`dropdown-morph bezier-card absolute left-0 top-full z-100 mt-1 w-40 overflow-hidden rounded-lg border border-zinc-300 bg-white dark:border-zinc-700 dark:bg-zinc-900${open ? " expanded" : ""}`}
         style={open ? { boxShadow: "4px 4px 0 var(--bc-shadow), 8px 8px 16px rgba(0,0,0,0.18)" } : undefined}
       >
         <div className="subtext border-b border-zinc-200 px-2 py-1.5 text-[10px] uppercase tracking-wider text-zinc-500 dark:border-zinc-800">
@@ -77,7 +77,7 @@ export default function BBoxColorDropdown({ value, onChange }: Props) {
               }`}
               title={c.label}
             >
-              <span className="h-5 w-5 rounded-sm" style={{ background: c.value }} />
+              <span className="h-5 w-5 rounded-xs" style={{ background: c.value }} />
               {c.value === value && (
                 <Check size={10} className="absolute -right-0.5 -top-0.5 rounded-full bg-white text-zinc-800 dark:bg-zinc-900 dark:text-zinc-200" />
               )}

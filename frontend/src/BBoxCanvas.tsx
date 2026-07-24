@@ -666,10 +666,10 @@ export default function BBoxCanvas({
             const ne = containerRef.current;
             if (ne) { ne.scrollLeft = fracX * ne.scrollWidth; ne.scrollTop = fracY * ne.scrollHeight; }
           });
-        }} className="flex items-center rounded bg-white px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700">
+        }} className="flex items-center rounded-sm bg-white px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700">
           {showPreviewControls ? <FaMinus size={10} /> : <TbCircleDashedMinus size={12} />}
         </button>
-        <span className="rounded bg-white px-2 py-1 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">{(effectiveZoom * 100).toFixed(0)}%</span>
+        <span className="rounded-sm bg-white px-2 py-1 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">{(effectiveZoom * 100).toFixed(0)}%</span>
         <button onClick={() => {
           const el = containerRef.current;
           if (!el || !renderedW || !natural) { setZoomBoth(effectiveZoom + 0.25); return; }
@@ -680,14 +680,14 @@ export default function BBoxCanvas({
             const ne = containerRef.current;
             if (ne) { ne.scrollLeft = fracX * ne.scrollWidth; ne.scrollTop = fracY * ne.scrollHeight; }
           });
-        }} className="flex items-center rounded bg-white px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700">
+        }} className="flex items-center rounded-sm bg-white px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700">
           {showPreviewControls ? <FaPlus size={10} /> : <TbCircleDashedPlus size={12} />}
         </button>
-        <button onClick={() => setZoomBoth(1)} className="rounded bg-white px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700">fit</button>
+        <button onClick={() => setZoomBoth(1)} className="rounded-sm bg-white px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700">fit</button>
         {!showPreviewControls && (
           <button
             onClick={() => { setLoupeOn((v) => !v); setLoupe(null); }}
-            className={`flex items-center rounded px-2 py-1 text-xs ${loupeOn ? "bg-cyan-900/70 text-cyan-300" : "bg-white text-zinc-500 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"}`}
+            className={`flex items-center rounded-sm px-2 py-1 text-xs ${loupeOn ? "bg-cyan-900/70 text-cyan-300" : "bg-white text-zinc-500 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"}`}
             title="Magnifier: hover the image to inspect detail under the cursor"
           >
             <TbZoomInFilled size={12} />
@@ -696,7 +696,7 @@ export default function BBoxCanvas({
         {!showPreviewControls && (sceneRegions?.length ?? 0) > 0 && (
           <button
             onClick={() => setShowSurfaces((s) => !s)}
-            className={`rounded px-2 py-1 text-xs ${showSurfaces ? "bg-cyan-900/70 text-cyan-300" : "bg-white text-zinc-500 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-500 dark:hover:bg-zinc-700"}`}
+            className={`rounded-sm px-2 py-1 text-xs ${showSurfaces ? "bg-cyan-900/70 text-cyan-300" : "bg-white text-zinc-500 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-500 dark:hover:bg-zinc-700"}`}
             title="Toggle detected surface outlines"
           >
             surfaces

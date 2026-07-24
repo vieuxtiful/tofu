@@ -215,7 +215,7 @@ export default function ProjectGate({ languages, onSelectProject, onClose, theme
                 <button
                   onClick={() => onDelete(p)}
                   title="Delete project"
-                  className="relative rounded p-1.5 text-zinc-400 hover:bg-zinc-200 hover:text-red-500 dark:text-zinc-600 dark:hover:bg-zinc-700 dark:hover:text-red-400"
+                  className="relative rounded-sm p-1.5 text-zinc-400 hover:bg-zinc-200 hover:text-red-500 dark:text-zinc-600 dark:hover:bg-zinc-700 dark:hover:text-red-400"
                 >
                   <Trash2 size={14} />
                 </button>
@@ -244,7 +244,7 @@ export default function ProjectGate({ languages, onSelectProject, onClose, theme
                 onChange={(e) => setName(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter" && name.trim()) transitionTo("create-kind"); }}
                 placeholder="e.g. Q3 campaign — Storefront signage"
-                className="w-full rounded-lg border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm text-zinc-800 outline-none focus:border-cyan-600 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200"
+                className="w-full rounded-lg border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm text-zinc-800 outline-hidden focus:border-cyan-600 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200"
               />
             </div>
             <div className="flex items-center justify-between">
@@ -373,7 +373,7 @@ export default function ProjectGate({ languages, onSelectProject, onClose, theme
                 <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">delete project</h3>
                 <button
                   onClick={() => setPendingDelete(null)}
-                  className="rounded p-1 text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
+                  className="rounded-sm p-1 text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
                 >
                   <X size={14} />
                 </button>
