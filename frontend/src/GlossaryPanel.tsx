@@ -57,12 +57,12 @@ export default function GlossaryPanel({ theme, projectId, status, onUpload, onDe
             {(["auxiliary", "merge", "replace"] as const).map((value) => {
               const selected = mode === value;
               const ModeIcon = value === "auxiliary" ? (selected ? TbLeafFilled : TbLeaf) : value === "merge" ? VscReplaceAll : (selected ? TbReplaceFilled : TbReplace);
-              return <button key={value} type="button" onClick={() => setMode(value)} className={`inline-flex items-center gap-1 rounded px-2 py-1 ${selected ? "bg-emerald-700 text-white" : "bg-white text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300"}`}><ModeIcon size={13} /> {value}</button>;
+              return <button key={value} type="button" onClick={() => setMode(value)} className={`inline-flex items-center gap-1 rounded-sm px-2 py-1 ${selected ? "bg-emerald-700 text-white" : "bg-white text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300"}`}><ModeIcon size={13} /> {value}</button>;
             })}
           </div>
           <div className="space-y-1">
             <div className="flex min-w-0">
-              <label className="subtext inline-flex cursor-pointer items-center border border-emerald-700 bg-emerald-700 px-4 py-2 text-xs text-white transition hover:bg-emerald-600 active:bg-emerald-800 focus-within:outline-none focus-within:ring focus-within:ring-emerald-300 disabled:opacity-25">
+              <label className="subtext inline-flex cursor-pointer items-center border border-emerald-700 bg-emerald-700 px-4 py-2 text-xs text-white transition hover:bg-emerald-600 active:bg-emerald-800 focus-within:outline-hidden focus-within:ring-3 focus-within:ring-emerald-300 disabled:opacity-25">
                 click to browse
                 <input className="hidden" type="file" accept=".csv,.tsv,.tab,.tbx,.utx,.xls,.xlsx,.txt,.xliff,.xlf" disabled={uploading} onChange={(event) => { const file = event.target.files?.[0]; if (file) { setSelectedFileName(file.name); onUpload(file, scope, mode); } event.currentTarget.value = ""; }} />
               </label>
@@ -77,7 +77,7 @@ export default function GlossaryPanel({ theme, projectId, status, onUpload, onDe
           {uploading && <div className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-300"><Loader2 size={13} className="animate-spin" /> {stepLabel}</div>}
           {uploadStep === "done" && <div className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-300"><Check size={13} /> Glossary set</div>}
           {uploadError && <div className="text-rose-700 dark:text-rose-300">{uploadError}</div>}
-          {active && <div className="flex items-center justify-between rounded bg-white/70 px-2 py-1.5 dark:bg-zinc-900/50"><span className="flex items-center gap-1"><OpenBookIcon size={13} /> {active.entry_count} terms · {active.mode}</span><button type="button" title="Clear glossary" onClick={() => onDelete(scope)} className="rounded p-1 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800"><X size={13} /></button></div>}
+          {active && <div className="flex items-center justify-between rounded-sm bg-white/70 px-2 py-1.5 dark:bg-zinc-900/50"><span className="flex items-center gap-1"><OpenBookIcon size={13} /> {active.entry_count} terms · {active.mode}</span><button type="button" title="Clear glossary" onClick={() => onDelete(scope)} className="rounded-sm p-1 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800"><X size={13} /></button></div>}
         </div>
       </div>
     </div>

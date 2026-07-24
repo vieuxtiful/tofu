@@ -51,7 +51,7 @@ export default function MemoryPanel({ project, onClose, leaving }: MemoryPanelPr
             <BookmarkCheck size={18} className="text-cyan-600 dark:text-cyan-400" /> Translation Memory
             <span className="text-sm font-normal text-zinc-500">— {project.name}</span>
           </h3>
-          <button onClick={onClose} className="rounded p-1 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300">
+          <button onClick={onClose} className="rounded-sm p-1 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300">
             <X size={16} />
           </button>
         </div>
@@ -85,10 +85,10 @@ export default function MemoryPanel({ project, onClose, leaving }: MemoryPanelPr
                     <img
                       src={r.thumb_url}
                       alt=""
-                      className="h-10 w-14 shrink-0 rounded object-cover border border-zinc-300 dark:border-zinc-700"
+                      className="h-10 w-14 shrink-0 rounded-sm object-cover border border-zinc-300 dark:border-zinc-700"
                     />
                   ) : (
-                    <div className="h-10 w-14 shrink-0 rounded bg-zinc-200 dark:bg-zinc-800" />
+                    <div className="h-10 w-14 shrink-0 rounded-sm bg-zinc-200 dark:bg-zinc-800" />
                   )}
                   <div className="min-w-0 flex-1 text-xs">
                     <p className="truncate text-zinc-700 dark:text-zinc-300">
@@ -107,7 +107,7 @@ export default function MemoryPanel({ project, onClose, leaving }: MemoryPanelPr
                     onClick={() => onDelete(r)}
                     disabled={workingOn !== null}
                     title="Remove from memory"
-                    className="shrink-0 rounded p-1.5 text-zinc-400 hover:bg-zinc-200 hover:text-red-500 dark:text-zinc-600 dark:hover:bg-zinc-700 dark:hover:text-red-400 disabled:opacity-40"
+                    className="shrink-0 rounded-sm p-1.5 text-zinc-400 hover:bg-zinc-200 hover:text-red-500 dark:text-zinc-600 dark:hover:bg-zinc-700 dark:hover:text-red-400 disabled:opacity-40"
                   >
                     {workingOn === r.id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
                   </button>

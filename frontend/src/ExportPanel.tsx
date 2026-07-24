@@ -112,7 +112,7 @@ export default function ExportPanel({ assetId, targLang, disabled, embedded }: E
             <ChevronDown size={12} className={`transition ${variantOpen ? (dropUp ? "" : "rotate-180") : (dropUp ? "rotate-180" : "")}`} />
           </button>
           {/* Dropdown Morph — reusable expand/collapse animation (see .dropdown-morph in uikit.css) */}
-          <div className={`dropdown-morph bezier-card absolute left-0 ${dropUp ? "bottom-full mb-1" : "top-full mt-1"} z-[100] w-full overflow-hidden rounded-lg border border-zinc-300 bg-white dark:border-zinc-700 dark:bg-zinc-900${variantOpen ? " expanded" : ""}`}
+          <div className={`dropdown-morph bezier-card absolute left-0 ${dropUp ? "bottom-full mb-1" : "top-full mt-1"} z-100 w-full overflow-hidden rounded-lg border border-zinc-300 bg-white dark:border-zinc-700 dark:bg-zinc-900${variantOpen ? " expanded" : ""}`}
                style={variantOpen ? { boxShadow: "4px 4px 0 var(--bc-shadow), 8px 8px 16px rgba(0,0,0,0.18)" } : undefined}>
               {currentFormat.variants.map((v) => (
                 <button

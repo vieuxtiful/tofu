@@ -103,7 +103,7 @@ export default function GarnishSliderField({
           <span
             aria-hidden
             title={markerLabel}
-            className="pointer-events-none absolute top-1/2 h-2.5 w-0.5 -translate-y-1/2 rounded bg-violet-700 dark:bg-violet-200"
+            className="pointer-events-none absolute top-1/2 h-2.5 w-0.5 -translate-y-1/2 rounded-sm bg-violet-700 dark:bg-violet-200"
             style={{ left: `${marker}%` }}
           />
         )}

@@ -181,7 +181,7 @@ function NumberField({ label, value, onChange }: { label: string; value: number 
         value={value ?? ""}
         onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)}
         placeholder="—"
-        className="w-full rounded border border-zinc-300 bg-white px-2 py-1 text-xs text-zinc-800 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+        className="w-full rounded-sm border border-zinc-300 bg-white px-2 py-1 text-xs text-zinc-800 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
       />
     </div>
   );
@@ -2825,7 +2825,7 @@ export default function App() {
   return (
     <div className={`screen-fade${leaving ? " leaving" : ""}`}>
     <div className="mx-auto max-w-7xl space-y-6 p-8 pb-12">
-      <header className="relative z-[200] flex items-center gap-4">
+      <header className="relative z-200 flex items-center gap-4">
         <img
           src={logoSrc(theme)}
           alt="ToFU"
@@ -2865,7 +2865,7 @@ export default function App() {
             <ChevronDown size={14} className={`transition ${menuOpen ? "rotate-180" : ""}`} />
           </button>
           {/* Dropdown Morph — reusable expand/collapse animation (see .dropdown-morph in uikit.css) */}
-          <div className={`dropdown-morph bezier-card absolute right-0 top-full z-[200] mt-2 w-44 rounded-lg bg-white p-1.5 dark:bg-zinc-900${menuOpen ? " expanded" : ""}`}
+          <div className={`dropdown-morph bezier-card absolute right-0 top-full z-200 mt-2 w-44 rounded-lg bg-white p-1.5 dark:bg-zinc-900${menuOpen ? " expanded" : ""}`}
                style={menuOpen ? { boxShadow: "4px 4px 0 var(--bc-shadow), 8px 8px 16px rgba(0,0,0,0.18)" } : undefined}>
               <button
                 onClick={() => { setMenuOpen(false); goPantry("create"); }}
@@ -2931,9 +2931,9 @@ export default function App() {
       {step === 0 && (
         <div key="step-0" className="step-fade grid gap-6 md:grid-cols-[minmax(0,1fr)_360px]">
           <Section title="Asset" className={stackClass(0)}>
-            <label className="flex min-h-[16rem] cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-zinc-400 p-4 text-zinc-500 transition hover:border-zinc-600 hover:text-zinc-700 dark:border-zinc-700 dark:hover:border-zinc-500 dark:hover:text-zinc-300">
+            <label className="flex min-h-64 cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-zinc-400 p-4 text-zinc-500 transition hover:border-zinc-600 hover:text-zinc-700 dark:border-zinc-700 dark:hover:border-zinc-500 dark:hover:text-zinc-300">
               {previewUrl ? (
-                <img src={previewUrl} alt="preview" className="max-h-72 rounded object-contain" />
+                <img src={previewUrl} alt="preview" className="max-h-72 rounded-sm object-contain" />
               ) : (
                 <>
                   <ArrowUpFromLine size={28} />
@@ -3018,7 +3018,7 @@ export default function App() {
                     if (asset && project) onDeleteAsset(asset.asset_id, asset.filename);
                   }}
                   disabled={!asset}
-                  className="rounded px-2 py-1 text-xs text-zinc-500 transition hover:bg-zinc-200 dark:hover:bg-zinc-800 disabled:opacity-30"
+                  className="rounded-sm px-2 py-1 text-xs text-zinc-500 transition hover:bg-zinc-200 dark:hover:bg-zinc-800 disabled:opacity-30"
                   title="remove asset and start over"
                 >
                   clear
@@ -3104,7 +3104,7 @@ export default function App() {
                             <button
                               onClick={() => onDeleteAsset(a.asset_id, a.filename)}
                               title="Remove asset from project"
-                              className="shrink-0 rounded p-0.5 text-zinc-400 opacity-0 transition hover:text-red-500 group-hover:opacity-100 dark:text-zinc-600 dark:hover:text-red-400"
+                              className="shrink-0 rounded-sm p-0.5 text-zinc-400 opacity-0 transition hover:text-red-500 group-hover:opacity-100 dark:text-zinc-600 dark:hover:text-red-400"
                             >
                               <X size={12} />
                             </button>
@@ -3320,7 +3320,7 @@ export default function App() {
                   {Object.entries(report.expansion_fit).map(([region, fit]) => (
                     <div key={region} className="flex items-center gap-2 text-xs">
                       <span className="subtext w-16 text-zinc-500">{region}</span>
-                      <div className="h-2 w-40 overflow-hidden rounded bg-zinc-300 dark:bg-zinc-800">
+                      <div className="h-2 w-40 overflow-hidden rounded-sm bg-zinc-300 dark:bg-zinc-800">
                         <div
                           className={`h-full ${fit > 1.35 ? "bg-red-500" : fit > 1.05 ? "bg-amber-500" : "bg-emerald-500"}`}
                           style={{ width: `${Math.min(100, fit * 100)}%` }}
@@ -3370,7 +3370,7 @@ export default function App() {
                                   <button
                                     onClick={() => { onFontChange(insight.region_id!, insight.font_path!); setSelectedId(insight.region_id); addToast("success", `applied ${label} to ${insight.region_id}`); }}
                                     title="Apply this installed substitute as an undoable explicit choice."
-                                    className="rounded bg-cyan-700 px-1.5 py-0.5 text-[10px] text-white transition hover:bg-cyan-800"
+                                    className="rounded-sm bg-cyan-700 px-1.5 py-0.5 text-[10px] text-white transition hover:bg-cyan-800"
                                   >
                                     {isReview ? "Use substitute" : "Use match"}
                                   </button>
@@ -3378,7 +3378,7 @@ export default function App() {
                                 {insight.region_id && (
                                   <button
                                     onClick={() => { setSelectedId(insight.region_id); setStep(2); }}
-                                    className="rounded px-1.5 py-0.5 text-[10px] underline underline-offset-2 transition hover:bg-white/50 dark:hover:bg-black/20"
+                                    className="rounded-sm px-1.5 py-0.5 text-[10px] underline underline-offset-2 transition hover:bg-white/50 dark:hover:bg-black/20"
                                   >Review in Translate</button>
                                 )}
                                 {insight.url && (
@@ -3468,7 +3468,7 @@ export default function App() {
       {step === 2 && (
         <div key="step-2" className="step-fade space-y-4">
           {showLangChangePopup && formerTargLang && (
-            <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/30" onClick={onLangChangeProceed}>
+            <div className="fixed inset-0 z-300 flex items-center justify-center bg-black/30" onClick={onLangChangeProceed}>
               <div className="lang-change-popup bezier-card soft-shadow rounded-xl bg-white p-5 dark:bg-zinc-900" style={{ maxWidth: "400px" }} onClick={(e) => e.stopPropagation()}>
                 <h3 className="subtext mb-1 text-sm font-semibold text-zinc-800 dark:text-zinc-200">target language changed!</h3>
                 <p className="subtext mb-4 text-xs text-zinc-500 dark:text-zinc-400">
@@ -3609,7 +3609,7 @@ export default function App() {
               }}
             >
               {dragOverTranslate && (
-                <div className="absolute inset-0 z-[200] flex items-center justify-center rounded-lg border-2 border-dashed border-cyan-500 bg-cyan-50/90 dark:bg-cyan-950/80">
+                <div className="absolute inset-0 z-200 flex items-center justify-center rounded-lg border-2 border-dashed border-cyan-500 bg-cyan-50/90 dark:bg-cyan-950/80">
                   <div className="flex flex-col items-center gap-2 text-cyan-700 dark:text-cyan-300">
                     <FaFileImport size={28} />
                     <span className="text-sm font-medium">Import translation</span>
@@ -3766,7 +3766,7 @@ export default function App() {
                   </div>
                   <button
                     onClick={() => setStyleCollapsed((v) => !v)}
-                    className="rounded p-1 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800 transition"
+                    className="rounded-sm p-1 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800 transition"
                     title={styleCollapsed ? "expand" : "collapse"}
                   >
                     <FcCollapse style={{ transform: styleCollapsed ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
@@ -3856,7 +3856,7 @@ export default function App() {
                           <button
                             key={val}
                             onClick={() => updateStyle({ align_h: sp?.align_h === val ? null : val })}
-                            className={`rounded p-1.5 transition ${sp?.align_h === val ? "bg-cyan-600 text-white" : "bg-zinc-200 text-zinc-600 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"}`}
+                            className={`rounded-sm p-1.5 transition ${sp?.align_h === val ? "bg-cyan-600 text-white" : "bg-zinc-200 text-zinc-600 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"}`}
                             title={val}
                           >{icon}</button>
                         ))}
@@ -3871,7 +3871,7 @@ export default function App() {
                           <button
                             key={val}
                             onClick={() => updateStyle({ align_v: sp?.align_v === val ? null : val })}
-                            className={`rounded p-1.5 transition ${sp?.align_v === val ? "bg-cyan-600 text-white" : "bg-zinc-200 text-zinc-600 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"}`}
+                            className={`rounded-sm p-1.5 transition ${sp?.align_v === val ? "bg-cyan-600 text-white" : "bg-zinc-200 text-zinc-600 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"}`}
                             title={val}
                           >{icon}</button>
                         ))}
@@ -3898,7 +3898,7 @@ export default function App() {
                       </button>
                     </div>
 
-                    <div className="min-w-[17rem] self-start md:col-start-2 md:row-start-3">
+                    <div className="min-w-68 self-start md:col-start-2 md:row-start-3">
                       <label className="subtext mb-1 flex h-4 items-center text-xs text-zinc-500">shape (degrees / arc)</label>
                       <div className="flex">
                         {([['skew_x', 'X'], ['skew_y', 'Y'], ['arc', 'Arc']] as const).map(([key, label], index) => (
@@ -3908,7 +3908,7 @@ export default function App() {
                               onChange={(e) => { const value = Number(e.target.value || 0); if (!isTransformLocked(key)) { trackTransformChange(key, sp?.transform?.[key] ?? 0, value); updateCanvasTransform(key, value); } }}
                               onDoubleClick={() => { if (!isTransformLocked(key)) { trackTransformChange(key, sp?.transform?.[key] ?? 0, 0); updateCanvasTransform(key, 0); } }}
                               title="double-click to reset to 0"
-                              className="h-8 w-9 rounded border border-zinc-300 bg-white px-1 text-xs disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900" /><button type="button" onClick={() => toggleTransformLock(key)} className={`flex h-4 w-4 items-center justify-center rounded ${isTransformLocked(key) ? "text-cyan-600 dark:text-cyan-400" : "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"}`} title={isTransformLocked(key) ? "Unlock" : "Lock"}>{isTransformLocked(key) ? <HiLockClosed size={9} /> : <HiLockOpen size={9} />}</button>
+                              className="h-8 w-9 rounded-sm border border-zinc-300 bg-white px-1 text-xs disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900" /><button type="button" onClick={() => toggleTransformLock(key)} className={`flex h-4 w-4 items-center justify-center rounded-sm ${isTransformLocked(key) ? "text-cyan-600 dark:text-cyan-400" : "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"}`} title={isTransformLocked(key) ? "Unlock" : "Lock"}>{isTransformLocked(key) ? <HiLockClosed size={9} /> : <HiLockOpen size={9} />}</button>
                           </div>
                         ))}
                       </div>
@@ -3922,7 +3922,7 @@ export default function App() {
                           <button
                             key={val}
                             onClick={() => updateStyle({ justification: sp?.justification === val ? null : val })}
-                            className={`rounded p-1.5 transition ${sp?.justification === val ? "bg-cyan-600 text-white" : "bg-zinc-200 text-zinc-600 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"}`}
+                            className={`rounded-sm p-1.5 transition ${sp?.justification === val ? "bg-cyan-600 text-white" : "bg-zinc-200 text-zinc-600 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"}`}
                             title={val}
                           >{icon}</button>
                         ))}
@@ -3945,7 +3945,7 @@ export default function App() {
                               value={(sp?.[key] as number | null | undefined) ?? ""}
                               onChange={(e) => updateStyle({ [key]: e.target.value ? Number(e.target.value) : null } as Partial<NonNullable<InstText["style_profile"]>>)}
                               placeholder="—"
-                              className="w-12 rounded border border-zinc-300 bg-white px-1 py-0.5 text-xs text-zinc-800 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+                              className="w-12 rounded-sm border border-zinc-300 bg-white px-1 py-0.5 text-xs text-zinc-800 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
                             />
                           </div>
                         ))}
@@ -3958,7 +3958,7 @@ export default function App() {
                         {([["tracking", "track"], ["kerning", "kern"], ["leading", "lead"], ["tab_width", "tab"]] as const).map(([key, label]) => (
                           <div key={key} className="flex items-center gap-0.5">
                             <span className="subtext text-[10px] text-zinc-500">{label}</span>
-                            <input type="number" step={0.5} value={(sp?.[key] as number | null | undefined) ?? ""} onChange={(e) => updateStyle({ [key]: e.target.value ? Number(e.target.value) : null } as Partial<NonNullable<InstText["style_profile"]>>)} placeholder="-" className="w-12 rounded border border-zinc-300 bg-white px-1 py-0.5 text-xs text-zinc-800 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200" />
+                            <input type="number" step={0.5} value={(sp?.[key] as number | null | undefined) ?? ""} onChange={(e) => updateStyle({ [key]: e.target.value ? Number(e.target.value) : null } as Partial<NonNullable<InstText["style_profile"]>>)} placeholder="-" className="w-12 rounded-sm border border-zinc-300 bg-white px-1 py-0.5 text-xs text-zinc-800 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200" />
                           </div>
                         ))}
                       </div>
@@ -3976,7 +3976,7 @@ export default function App() {
                           value={sp?.tsume ?? ""}
                           onChange={(e) => updateStyle({ tsume: e.target.value ? Number(e.target.value) : null })}
                           placeholder="0"
-                          className="w-full rounded border border-zinc-300 bg-white px-2 py-1 text-xs text-zinc-800 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+                          className="w-full rounded-sm border border-zinc-300 bg-white px-2 py-1 text-xs text-zinc-800 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
                         />
                       </div>
                     )}
@@ -3995,14 +3995,14 @@ export default function App() {
                           type="color"
                           value={colorPickerValue}
                           onChange={(e) => updateStyle({ color: e.target.value })}
-                          className="h-7 w-10 rounded border border-zinc-300 dark:border-zinc-700"
+                          className="h-7 w-10 rounded-sm border border-zinc-300 dark:border-zinc-700"
                         />
                         <button
                           onClick={() => updateStyle({ color: null })}
-                          className="subtext rounded px-2 py-0.5 text-xs text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800"
+                          className="subtext rounded-sm px-2 py-0.5 text-xs text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800"
                         >auto</button>
                         <button onClick={() => setColorPickMode((mode) => mode ? null : "active")}
-                          className={`subtext flex items-center gap-1 rounded px-2 py-0.5 text-xs ${colorPickMode ? "bg-cyan-600 text-white" : "text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800"}`}
+                          className={`subtext flex items-center gap-1 rounded-sm px-2 py-0.5 text-xs ${colorPickMode ? "bg-cyan-600 text-white" : "text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800"}`}
                           title="pick color" aria-label="pick color"><FaEyeDropper size={11} /></button>
                         <HexColorInput value={currentColor} onChange={(color) => updateStyle({ color })} />
                       </div>
@@ -4016,12 +4016,12 @@ export default function App() {
                           type="color"
                           value={currentStrokeColor ?? "#000000"}
                           onChange={(e) => updateStyle({ stroke_color: e.target.value })}
-                          className="h-7 w-10 rounded border border-zinc-300 dark:border-zinc-700"
+                          className="h-7 w-10 rounded-sm border border-zinc-300 dark:border-zinc-700"
                         />
                         <PixelField label="weight" min={0} value={sp?.stroke_width} onChange={(value) => updateStyle({ stroke_width: value })} width="8rem" />
                         <button
                           onClick={() => updateStyle({ stroke_color: null, stroke_width: null })}
-                          className="subtext rounded px-2 py-0.5 text-xs text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800"
+                          className="subtext rounded-sm px-2 py-0.5 text-xs text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800"
                         >none</button>
                       </div>
                     </div>
@@ -4030,22 +4030,22 @@ export default function App() {
                     <div className="flex flex-wrap gap-1">
                       <button
                         onClick={() => updateStyle({ underline: !sp?.underline ? true : null })}
-                        className={`flex items-center gap-1 rounded px-2 py-1 text-xs transition ${sp?.underline ? "bg-cyan-600 text-white" : "bg-zinc-200 text-zinc-600 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"}`}
+                        className={`flex items-center gap-1 rounded-sm px-2 py-1 text-xs transition ${sp?.underline ? "bg-cyan-600 text-white" : "bg-zinc-200 text-zinc-600 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"}`}
                         title="underline"
                       aria-label="underline"><Underline size={14} /></button>
                       <button
                         onClick={() => updateStyle({ italic: !sp?.italic ? true : null })}
-                        className={`flex items-center gap-1 rounded px-2 py-1 text-xs transition ${sp?.italic ? "bg-cyan-600 text-white" : "bg-zinc-200 text-zinc-600 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"}`}
+                        className={`flex items-center gap-1 rounded-sm px-2 py-1 text-xs transition ${sp?.italic ? "bg-cyan-600 text-white" : "bg-zinc-200 text-zinc-600 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"}`}
                         title="italic"
                       aria-label="italic"><Italic size={14} /></button>
                       <button
                         onClick={() => updateStyle({ subscript: !sp?.subscript ? true : null })}
-                        className={`flex items-center gap-1 rounded px-2 py-1 text-xs transition ${sp?.subscript ? "bg-cyan-600 text-white" : "bg-zinc-200 text-zinc-600 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"}`}
+                        className={`flex items-center gap-1 rounded-sm px-2 py-1 text-xs transition ${sp?.subscript ? "bg-cyan-600 text-white" : "bg-zinc-200 text-zinc-600 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"}`}
                         title="subscript"
                       aria-label="subscript"><Subscript size={14} /></button>
                       <button
                         onClick={() => updateStyle({ superscript: !sp?.superscript ? true : null })}
-                        className={`flex items-center gap-1 rounded px-2 py-1 text-xs transition ${sp?.superscript ? "bg-cyan-600 text-white" : "bg-zinc-200 text-zinc-600 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"}`}
+                        className={`flex items-center gap-1 rounded-sm px-2 py-1 text-xs transition ${sp?.superscript ? "bg-cyan-600 text-white" : "bg-zinc-200 text-zinc-600 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"}`}
                         title="superscript"
                       aria-label="superscript"><Superscript size={14} /></button>
                     </div>
@@ -4062,7 +4062,7 @@ export default function App() {
                 </div>}
 
                 {/* Preview text */}
-                <div className="rounded bg-zinc-100 p-2 dark:bg-zinc-950">
+                <div className="rounded-sm bg-zinc-100 p-2 dark:bg-zinc-950">
                   <p className="subtext mb-0.5 text-[10px] uppercase tracking-wider text-zinc-500">preview</p>
                   <p className="text-sm text-zinc-800 dark:text-zinc-200" style={{
                     ...previewFontStyle,
@@ -4128,19 +4128,19 @@ export default function App() {
                     <div className="flex items-center gap-2">
                       <div className="relative shrink-0" ref={garnishScopeRef}>
                         <button type="button" onClick={() => setGarnishScopeOpen((value) => !value)} className="bezier-card flex w-24 items-center justify-between gap-1.5 rounded-md bg-white/60 px-2 py-1 text-[10px] text-violet-700 transition hover:bg-violet-100 dark:bg-zinc-900/60 dark:text-violet-300 dark:hover:bg-zinc-800">{perRegion ? "per region" : "all regions"}<ChevronDown size={10} className={`transition ${garnishScopeOpen ? "rotate-180" : ""}`} /></button>
-                        <div className={`dropdown-morph bezier-card absolute left-0 top-full z-[200] mt-1 w-24 rounded-lg bg-white p-1 dark:bg-zinc-900${garnishScopeOpen ? " expanded" : ""}`} style={garnishScopeOpen ? { boxShadow: "1px 1px 0 var(--bc-shadow), 2px 2px 6px rgba(0,0,0,0.06)" } : undefined}>
+                        <div className={`dropdown-morph bezier-card absolute left-0 top-full z-200 mt-1 w-24 rounded-lg bg-white p-1 dark:bg-zinc-900${garnishScopeOpen ? " expanded" : ""}`} style={garnishScopeOpen ? { boxShadow: "1px 1px 0 var(--bc-shadow), 2px 2px 6px rgba(0,0,0,0.06)" } : undefined}>
                           <button type="button" onClick={() => { setSelectedGarnishScope("whole_selection"); setGarnishScopeOpen(false); }} className={`flex w-full rounded-md px-2 py-1.5 text-[10px] transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${!perRegion ? "bg-zinc-100 font-medium text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100" : "text-zinc-600 dark:text-zinc-400"}`}>all regions</button>
                           <button type="button" onClick={() => { setSelectedGarnishScope("per_region"); setGarnishScopeOpen(false); }} className={`flex w-full rounded-md px-2 py-1.5 text-[10px] transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${perRegion ? "bg-zinc-100 font-medium text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100" : "text-zinc-600 dark:text-zinc-400"}`}>per region</button>
                         </div>
                       </div>
-                      <button type="button" onClick={() => setGarnishCardCollapsed((value) => !value)} className="shrink-0 rounded p-1 text-zinc-500 transition hover:bg-zinc-200 dark:hover:bg-zinc-800" title={garnishCardCollapsed ? "expand garnish controls" : "collapse garnish controls"}><FcCollapse size={12} style={{ transform: garnishCardCollapsed ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} /></button>
+                      <button type="button" onClick={() => setGarnishCardCollapsed((value) => !value)} className="shrink-0 rounded-sm p-1 text-zinc-500 transition hover:bg-zinc-200 dark:hover:bg-zinc-800" title={garnishCardCollapsed ? "expand garnish controls" : "collapse garnish controls"}><FcCollapse size={12} style={{ transform: garnishCardCollapsed ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} /></button>
                       <div className={`garnish-controls-morph${!garnishCardCollapsed ? " expanded ml-6" : ""}`}>
                         <fieldset disabled={!selectedGarnishEnabled} className="flex min-w-40 flex-1 flex-col gap-1 disabled:opacity-45">
                           {slider("edge blur", "edge_blur_px", 0, 10, 0.1, "px")}
                           {slider("feather", "edge_smoothing_strength", 0, 1, 0.05, "", 2)}
                           {slider("wear", "erosion_px", 0, 5, 0.1, "px")}{slider("thicken", "dilation_px", 0, 5, 0.1, "px")}{slider("grain", "grain_strength", 0, 1, 0.02, "", 2)}{slider("gamma", "gamma_shift", 0.5, 2, 0.05, "", 2)}{slider("smudge", "smudge_strength", 0, 1, 0.02, "", 2)}{slider("angle", "smudge_angle_deg", 0, 360, 1, "°", 0)}
                         </fieldset>
-                        {recommended && <button type="button" onClick={useSelectedSceneGarnish} className="mr-10 shrink-0 self-center rounded bg-violet-700 px-1.5 py-0.5 text-[10px] text-white">AI Preset</button>}
+                        {recommended && <button type="button" onClick={useSelectedSceneGarnish} className="mr-10 shrink-0 self-center rounded-sm bg-violet-700 px-1.5 py-0.5 text-[10px] text-white">AI Preset</button>}
                       </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -4191,7 +4191,7 @@ export default function App() {
             {/* Source reference + the single editable localized canvas. */}
             <div className={styleExpandedH || garnishCardExpandedH ? "grid grid-cols-2 gap-4" : "flex flex-col gap-4"}>
               {previewUrl && <Section title="Source Reference" icon={<TbPhoto size={14} />} className={`${stackClass(2)} ${sourceCanvasFirst ? "order-1" : "order-2"}`}
-                rightSideHandle={canSwapCanvasCards ? <div className="absolute right-5 top-4 flex items-center gap-1"><button type="button" onClick={() => setCanvasCardOrder((order) => order === "source-first" ? "localized-first" : "source-first")} title={sourceCanvasFirst ? "Move source reference below the localized canvas" : "Move source reference above the localized canvas"} aria-label={sourceCanvasFirst ? "move source reference down" : "move source reference up"} className="rounded p-1 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800">{theme === "dark" ? (sourceCanvasFirst ? <BsArrowDownSquareFill size={16} /> : <BsArrowUpSquareFill size={16} />) : (sourceCanvasFirst ? <LuSquareArrowDown size={16} /> : <LuSquareArrowUp size={16} />)}</button></div> : undefined}>
+                rightSideHandle={canSwapCanvasCards ? <div className="absolute right-5 top-4 flex items-center gap-1"><button type="button" onClick={() => setCanvasCardOrder((order) => order === "source-first" ? "localized-first" : "source-first")} title={sourceCanvasFirst ? "Move source reference below the localized canvas" : "Move source reference above the localized canvas"} aria-label={sourceCanvasFirst ? "move source reference down" : "move source reference up"} className="rounded-sm p-1 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800">{theme === "dark" ? (sourceCanvasFirst ? <BsArrowDownSquareFill size={16} /> : <BsArrowUpSquareFill size={16} />) : (sourceCanvasFirst ? <LuSquareArrowDown size={16} /> : <LuSquareArrowUp size={16} />)}</button></div> : undefined}>
                 <div className="relative inline-block max-w-full">
                   <img src={previewUrl} alt="source reference" className={`block max-w-full rounded-lg border border-zinc-300 dark:border-zinc-800 ${colorPickMode ? "cursor-crosshair" : ""}`}
                     onPointerDown={(event) => { sampleCanvasFill(event, "source"); }} />
@@ -4217,7 +4217,7 @@ export default function App() {
 
               {(preRenderUrl || previewUrl || previewPending || previewRenderError) && <Section title="Localized Asset Canvas" icon={<TbPhotoEdit size={14} />} className={`${stackClass(3)} ${sourceCanvasFirst ? "order-2" : "order-1"}`} localized
                 headerExtra={previewSyncing && <span className="ml-2 flex items-center gap-1 normal-case text-xs text-cyan-600 dark:text-cyan-400"><SquareLoader size="xs" /> trimming...</span>}
-                rightSideHandle={<div className="absolute right-5 top-4 flex items-center gap-1">{canSwapCanvasCards && <button type="button" onClick={() => setCanvasCardOrder((order) => order === "source-first" ? "localized-first" : "source-first")} title={sourceCanvasFirst ? "Move localized canvas above the source reference" : "Move localized canvas below the source reference"} aria-label={sourceCanvasFirst ? "move localized canvas up" : "move localized canvas down"} className="rounded p-1 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800">{theme === "dark" ? (sourceCanvasFirst ? <BsArrowUpSquareFill size={16} /> : <BsArrowDownSquareFill size={16} />) : (sourceCanvasFirst ? <LuSquareArrowUp size={16} /> : <LuSquareArrowDown size={16} />)}</button>}<button onClick={resetLocalizedCanvas} title="Reset all localized canvas edits to the Render-entry baseline" className="flex items-center gap-1 rounded px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800"><VscDebugRestart size={16} /> reset</button></div>}>
+                rightSideHandle={<div className="absolute right-5 top-4 flex items-center gap-1">{canSwapCanvasCards && <button type="button" onClick={() => setCanvasCardOrder((order) => order === "source-first" ? "localized-first" : "source-first")} title={sourceCanvasFirst ? "Move localized canvas above the source reference" : "Move localized canvas below the source reference"} aria-label={sourceCanvasFirst ? "move localized canvas up" : "move localized canvas down"} className="rounded-sm p-1 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800">{theme === "dark" ? (sourceCanvasFirst ? <BsArrowUpSquareFill size={16} /> : <BsArrowDownSquareFill size={16} />) : (sourceCanvasFirst ? <LuSquareArrowUp size={16} /> : <LuSquareArrowDown size={16} />)}</button>}<button onClick={resetLocalizedCanvas} title="Reset all localized canvas edits to the Render-entry baseline" className="flex items-center gap-1 rounded-sm px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800"><VscDebugRestart size={16} /> reset</button></div>}>
                 <div className="mb-2 flex items-center gap-2">
                   <p className="text-xs text-zinc-500">Modify, place, and warp text.</p>
                 </div>
@@ -4305,10 +4305,10 @@ export default function App() {
                     const fracY = el.scrollTop / Math.max(1, el.scrollHeight);
                     setLocalizedZoom((z) => Math.max(0.25, Number((z - 0.25).toFixed(2))));
                     requestAnimationFrame(() => { const ne = localizedScrollRef.current; if (ne) { ne.scrollLeft = fracX * ne.scrollWidth; ne.scrollTop = fracY * ne.scrollHeight; } });
-                  }} className="flex items-center rounded bg-white px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700">
+                  }} className="flex items-center rounded-sm bg-white px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700">
                     <TbCircleDashedMinus size={12} />
                   </button>
-                  <span className="rounded bg-white px-2 py-1 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">{(localizedZoom * 100).toFixed(0)}%</span>
+                  <span className="rounded-sm bg-white px-2 py-1 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">{(localizedZoom * 100).toFixed(0)}%</span>
                   <button onClick={() => {
                     const el = localizedScrollRef.current;
                     if (!el) { setLocalizedZoom((z) => Math.min(4, Number((z + 0.25).toFixed(2)))); return; }
@@ -4316,14 +4316,14 @@ export default function App() {
                     const fracY = el.scrollTop / Math.max(1, el.scrollHeight);
                     setLocalizedZoom((z) => Math.min(4, Number((z + 0.25).toFixed(2))));
                     requestAnimationFrame(() => { const ne = localizedScrollRef.current; if (ne) { ne.scrollLeft = fracX * ne.scrollWidth; ne.scrollTop = fracY * ne.scrollHeight; } });
-                  }} className="flex items-center rounded bg-white px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700">
+                  }} className="flex items-center rounded-sm bg-white px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700">
                     <TbCircleDashedPlus size={12} />
                   </button>
-                  <button onClick={() => setLocalizedZoom(1)} className="rounded bg-white px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700">fit</button>
+                  <button onClick={() => setLocalizedZoom(1)} className="rounded-sm bg-white px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700">fit</button>
                   <button
                     onClick={() => setLocalizedDragMode((v) => !v)}
                     disabled={localizedZoom <= 1}
-                    className={`flex items-center rounded px-2 py-1 text-xs ${localizedDragMode ? "bg-cyan-900/70 text-cyan-300" : localizedZoom <= 1 ? "bg-white text-zinc-300 dark:bg-zinc-800 dark:text-zinc-600" : "bg-white text-zinc-500 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"}`}
+                    className={`flex items-center rounded-sm px-2 py-1 text-xs ${localizedDragMode ? "bg-cyan-900/70 text-cyan-300" : localizedZoom <= 1 ? "bg-white text-zinc-300 dark:bg-zinc-800 dark:text-zinc-600" : "bg-white text-zinc-500 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"}`}
                     title={localizedZoom <= 1 ? "Zoom in first to enable canvas panning" : localizedDragMode ? "Drag mode active — click to deactivate" : "Activate drag mode to pan the canvas"}
                   >
                     {localizedDragMode ? <PiHandGrabbingFill size={12} /> : <PiHandGrabbingBold size={12} />}
@@ -4335,9 +4335,9 @@ export default function App() {
                   const allTransformLocksActive = LOCKABLE_TRANSFORM_KEYS.every((key) => isTransformLocked(key));
                   return textWarpHost ? createPortal(<div className="space-y-2 text-xs text-cyan-900 dark:text-cyan-100">
                     <div className="flex flex-wrap items-center gap-2">
-                      <div className="relative shrink-0" ref={warpRef}><button onClick={() => setWarpOpen((value) => !value)} className="bezier-card flex items-center gap-1.5 rounded-md bg-white/60 px-2 py-1 text-xs text-zinc-700 transition hover:bg-zinc-100 dark:bg-zinc-900/60 dark:text-zinc-300 dark:hover:bg-zinc-800">{WARP_PRESETS.find((preset) => preset.value === (transform.preset ?? "custom"))?.label ?? "Custom"}<ChevronDown size={12} className={`transition ${warpOpen ? "rotate-180" : ""}`} /></button><div className={`dropdown-morph bezier-card absolute left-0 top-full z-[200] mt-1 w-40 rounded-lg bg-white p-1 dark:bg-zinc-900${warpOpen ? " expanded" : ""}`} style={warpOpen ? { boxShadow: "1px 1px 0 var(--bc-shadow), 2px 2px 6px rgba(0,0,0,0.06)" } : undefined}>{WARP_PRESETS.map((preset) => <button key={preset.value} onClick={() => { applyCanvasWarpPreset(preset.value); setWarpOpen(false); }} className={`flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-xs transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${(transform.preset ?? "custom") === preset.value ? "bg-zinc-100 font-medium text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100" : "text-zinc-600 dark:text-zinc-400"}`}><span>{preset.label}</span>{preset.value !== "none" && preset.value !== "custom" && <WarpPreview preset={preset.value} />}</button>)}</div></div>
-                      <button type="button" onClick={toggleAllTransformLocks} className="rounded p-0.5 transition hover:scale-110" title={allTransformLocksActive ? "Unlock all transform values" : "Lock all transform values"}>{allTransformLocksActive ? <HiLockClosed size={12} className="text-cyan-600 dark:text-cyan-400" /> : <HiLockOpen size={12} className="text-zinc-400 dark:text-zinc-500" />}</button>
-                      <button onClick={() => setWarpCollapsed((value) => !value)} className="ml-auto shrink-0 rounded p-1 text-zinc-500 transition hover:bg-zinc-200 dark:hover:bg-zinc-800" title={warpCollapsed ? "expand" : "collapse"}><FcCollapse style={{ transform: warpCollapsed ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} /></button>
+                      <div className="relative shrink-0" ref={warpRef}><button onClick={() => setWarpOpen((value) => !value)} className="bezier-card flex items-center gap-1.5 rounded-md bg-white/60 px-2 py-1 text-xs text-zinc-700 transition hover:bg-zinc-100 dark:bg-zinc-900/60 dark:text-zinc-300 dark:hover:bg-zinc-800">{WARP_PRESETS.find((preset) => preset.value === (transform.preset ?? "custom"))?.label ?? "Custom"}<ChevronDown size={12} className={`transition ${warpOpen ? "rotate-180" : ""}`} /></button><div className={`dropdown-morph bezier-card absolute left-0 top-full z-200 mt-1 w-40 rounded-lg bg-white p-1 dark:bg-zinc-900${warpOpen ? " expanded" : ""}`} style={warpOpen ? { boxShadow: "1px 1px 0 var(--bc-shadow), 2px 2px 6px rgba(0,0,0,0.06)" } : undefined}>{WARP_PRESETS.map((preset) => <button key={preset.value} onClick={() => { applyCanvasWarpPreset(preset.value); setWarpOpen(false); }} className={`flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-xs transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${(transform.preset ?? "custom") === preset.value ? "bg-zinc-100 font-medium text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100" : "text-zinc-600 dark:text-zinc-400"}`}><span>{preset.label}</span>{preset.value !== "none" && preset.value !== "custom" && <WarpPreview preset={preset.value} />}</button>)}</div></div>
+                      <button type="button" onClick={toggleAllTransformLocks} className="rounded-sm p-0.5 transition hover:scale-110" title={allTransformLocksActive ? "Unlock all transform values" : "Lock all transform values"}>{allTransformLocksActive ? <HiLockClosed size={12} className="text-cyan-600 dark:text-cyan-400" /> : <HiLockOpen size={12} className="text-zinc-400 dark:text-zinc-500" />}</button>
+                      <button onClick={() => setWarpCollapsed((value) => !value)} className="ml-auto shrink-0 rounded-sm p-1 text-zinc-500 transition hover:bg-zinc-200 dark:hover:bg-zinc-800" title={warpCollapsed ? "expand" : "collapse"}><FcCollapse style={{ transform: warpCollapsed ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} /></button>
                       <div className={`style-panel-morph style-panel-overflow-visible flex-1 ${!warpCollapsed ? "expanded" : ""}`}>
                         <div className="flex flex-wrap items-center gap-2 pt-1">
                       {transform?.preset && transform.preset !== "none" && transform.preset !== "custom" && <label className="subtext flex items-center gap-1 text-xs text-zinc-500">amount<input aria-label="warp amount" type="range" min="-25" max="25" step="0.5" value={transform.amount ?? 12} onChange={(e) => updateSelectedStyle({ transform: { ...transform, amount: Number(e.target.value) } })} onDoubleClick={() => updateSelectedStyle({ transform: { ...transform, amount: 12 } })} title="double-click to return to the preset baseline" /><span className="min-w-9 text-right font-mono text-[10px]">{Number(transform.amount ?? 12).toFixed(1)}</span></label>}
@@ -4346,13 +4346,13 @@ export default function App() {
                         const locked = isTransformLocked(key);
                         const canUndoT = !!(hist && hist.undoStack.length > 0);
                         const canRedoT = !!(hist && hist.redoStack.length > 0);
-                        return <label key={key} className="subtext flex items-center gap-1 text-xs text-zinc-500">{label}<span className="text-[10px]">−45</span><input aria-label={`${label} warp`} type="range" min="-45" max="45" step="0.5" value={transform?.[key] ?? 0} disabled={locked} onChange={(e) => { const v = Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 0, v); updateCanvasTransform(key, v); }} onDoubleClick={() => { trackTransformChange(key, transform?.[key] ?? 0, 0); updateCanvasTransform(key, 0); }} title="double-click to reset to 0" /><input type="number" min="-45" max="45" step="0.5" value={transform?.[key] ?? 0} disabled={locked} onChange={(e) => { const v = e.target.value === "" ? 0 : Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 0, v); updateCanvasTransform(key, v); }} className="w-12 rounded border border-zinc-300 bg-white px-1 py-0.5 text-right font-mono text-[10px] disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900" /><span className="text-[10px]">°</span><button type="button" onClick={() => undoTransformKey(key, 0)} disabled={!canUndoT || locked} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="undo"><LuUndo2 size={10} /></button><button type="button" onClick={() => redoTransformKey(key)} disabled={!canRedoT || locked} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="redo"><LuRedo2 size={10} /></button><button type="button" onClick={() => toggleTransformLock(key)} className={`rounded p-0.5 transition ${locked ? "text-cyan-600 dark:text-cyan-400" : "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"}`} title={locked ? "Unlock" : "Lock"}>{locked ? <HiLockClosed size={10} /> : <HiLockOpen size={10} />}</button></label>;
+                        return <label key={key} className="subtext flex items-center gap-1 text-xs text-zinc-500">{label}<span className="text-[10px]">−45</span><input aria-label={`${label} warp`} type="range" min="-45" max="45" step="0.5" value={transform?.[key] ?? 0} disabled={locked} onChange={(e) => { const v = Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 0, v); updateCanvasTransform(key, v); }} onDoubleClick={() => { trackTransformChange(key, transform?.[key] ?? 0, 0); updateCanvasTransform(key, 0); }} title="double-click to reset to 0" /><input type="number" min="-45" max="45" step="0.5" value={transform?.[key] ?? 0} disabled={locked} onChange={(e) => { const v = e.target.value === "" ? 0 : Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 0, v); updateCanvasTransform(key, v); }} className="w-12 rounded-sm border border-zinc-300 bg-white px-1 py-0.5 text-right font-mono text-[10px] disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900" /><span className="text-[10px]">°</span><button type="button" onClick={() => undoTransformKey(key, 0)} disabled={!canUndoT || locked} className="rounded-sm p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="undo"><LuUndo2 size={10} /></button><button type="button" onClick={() => redoTransformKey(key)} disabled={!canRedoT || locked} className="rounded-sm p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="redo"><LuRedo2 size={10} /></button><button type="button" onClick={() => toggleTransformLock(key)} className={`rounded-sm p-0.5 transition ${locked ? "text-cyan-600 dark:text-cyan-400" : "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"}`} title={locked ? "Unlock" : "Lock"}>{locked ? <HiLockClosed size={10} /> : <HiLockOpen size={10} />}</button></label>;
                       })}
-                      {([['scale_x', 'width'], ['scale_y', 'height']] as const).map(([key, label]) => { const hist = transformHistoryRef.current[key]; const locked = isTransformLocked(key); const canUndoT = !!(hist && hist.undoStack.length > 0); const canRedoT = !!(hist && hist.redoStack.length > 0); return <label key={key} className="subtext flex items-center gap-1 text-xs text-zinc-500">{label}<span className="text-[10px]">0.5x</span><input aria-label={`${label} stretch`} type="range" min="0.5" max="1.5" step="0.01" value={transform?.[key] ?? 1} disabled={locked} onChange={(e) => { const v = Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 1, v); updateCanvasTransform(key, v); }} onDoubleClick={() => { trackTransformChange(key, transform?.[key] ?? 1, 1); updateCanvasTransform(key, 1); }} title="double-click to reset to 1.00x" /><input type="number" min="0.5" max="1.5" step="0.01" value={transform?.[key] ?? 1} disabled={locked} onChange={(e) => { const v = e.target.value === "" ? 1 : Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 1, v); updateCanvasTransform(key, v); }} className="w-12 rounded border border-zinc-300 bg-white px-1 py-0.5 text-right font-mono text-[10px] disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900" /><span className="text-[10px]">x</span><button type="button" onClick={() => undoTransformKey(key, 1)} disabled={!canUndoT || locked} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="undo"><LuUndo2 size={10} /></button><button type="button" onClick={() => redoTransformKey(key)} disabled={!canRedoT || locked} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="redo"><LuRedo2 size={10} /></button><button type="button" onClick={() => toggleTransformLock(key)} className={`rounded p-0.5 transition ${locked ? "text-cyan-600 dark:text-cyan-400" : "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"}`} title={locked ? "Unlock" : "Lock"}>{locked ? <HiLockClosed size={10} /> : <HiLockOpen size={10} />}</button></label>; })}
-                      {([['offset_x', 'pos X'], ['offset_y', 'pos Y']] as const).map(([key, label]) => { const hist = transformHistoryRef.current[key]; const locked = isTransformLocked(key); const canUndoT = !!(hist && hist.undoStack.length > 0); const canRedoT = !!(hist && hist.redoStack.length > 0); return <span key={key} className="subtext flex items-center gap-1 text-xs text-zinc-500"><label className="flex items-center gap-1">{label}<span className="text-[10px]">−50</span><input aria-label={`${label} position`} type="range" min="-50" max="50" step="1" value={transform?.[key] ?? 0} disabled={locked} onChange={(e) => { const v = Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 0, v); updateCanvasTransform(key, v); }} onDoubleClick={() => { trackTransformChange(key, transform?.[key] ?? 0, 0); updateCanvasTransform(key, 0); }} title="double-click to snap to original position" /><input type="number" min="-50" max="50" step="1" value={transform?.[key] ?? 0} disabled={locked} onChange={(e) => { const v = e.target.value === "" ? 0 : Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 0, v); updateCanvasTransform(key, v); }} className="w-12 rounded border border-zinc-300 bg-white px-1 py-0.5 text-right font-mono text-[10px] disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900" /><span className="text-[10px]">px</span></label><button type="button" onClick={() => undoTransformKey(key, 0)} disabled={!canUndoT || locked} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="undo"><LuUndo2 size={10} /></button><button type="button" onClick={() => redoTransformKey(key)} disabled={!canRedoT || locked} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="redo"><LuRedo2 size={10} /></button><button type="button" onClick={() => toggleTransformLock(key)} className={`rounded p-0.5 transition ${locked ? "text-cyan-600 dark:text-cyan-400" : "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"}`} title={locked ? "Unlock" : "Lock"}>{locked ? <HiLockClosed size={10} /> : <HiLockOpen size={10} />}</button></span>; })}
+                      {([['scale_x', 'width'], ['scale_y', 'height']] as const).map(([key, label]) => { const hist = transformHistoryRef.current[key]; const locked = isTransformLocked(key); const canUndoT = !!(hist && hist.undoStack.length > 0); const canRedoT = !!(hist && hist.redoStack.length > 0); return <label key={key} className="subtext flex items-center gap-1 text-xs text-zinc-500">{label}<span className="text-[10px]">0.5x</span><input aria-label={`${label} stretch`} type="range" min="0.5" max="1.5" step="0.01" value={transform?.[key] ?? 1} disabled={locked} onChange={(e) => { const v = Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 1, v); updateCanvasTransform(key, v); }} onDoubleClick={() => { trackTransformChange(key, transform?.[key] ?? 1, 1); updateCanvasTransform(key, 1); }} title="double-click to reset to 1.00x" /><input type="number" min="0.5" max="1.5" step="0.01" value={transform?.[key] ?? 1} disabled={locked} onChange={(e) => { const v = e.target.value === "" ? 1 : Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 1, v); updateCanvasTransform(key, v); }} className="w-12 rounded-sm border border-zinc-300 bg-white px-1 py-0.5 text-right font-mono text-[10px] disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900" /><span className="text-[10px]">x</span><button type="button" onClick={() => undoTransformKey(key, 1)} disabled={!canUndoT || locked} className="rounded-sm p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="undo"><LuUndo2 size={10} /></button><button type="button" onClick={() => redoTransformKey(key)} disabled={!canRedoT || locked} className="rounded-sm p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="redo"><LuRedo2 size={10} /></button><button type="button" onClick={() => toggleTransformLock(key)} className={`rounded-sm p-0.5 transition ${locked ? "text-cyan-600 dark:text-cyan-400" : "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"}`} title={locked ? "Unlock" : "Lock"}>{locked ? <HiLockClosed size={10} /> : <HiLockOpen size={10} />}</button></label>; })}
+                      {([['offset_x', 'pos X'], ['offset_y', 'pos Y']] as const).map(([key, label]) => { const hist = transformHistoryRef.current[key]; const locked = isTransformLocked(key); const canUndoT = !!(hist && hist.undoStack.length > 0); const canRedoT = !!(hist && hist.redoStack.length > 0); return <span key={key} className="subtext flex items-center gap-1 text-xs text-zinc-500"><label className="flex items-center gap-1">{label}<span className="text-[10px]">−50</span><input aria-label={`${label} position`} type="range" min="-50" max="50" step="1" value={transform?.[key] ?? 0} disabled={locked} onChange={(e) => { const v = Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 0, v); updateCanvasTransform(key, v); }} onDoubleClick={() => { trackTransformChange(key, transform?.[key] ?? 0, 0); updateCanvasTransform(key, 0); }} title="double-click to snap to original position" /><input type="number" min="-50" max="50" step="1" value={transform?.[key] ?? 0} disabled={locked} onChange={(e) => { const v = e.target.value === "" ? 0 : Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 0, v); updateCanvasTransform(key, v); }} className="w-12 rounded-sm border border-zinc-300 bg-white px-1 py-0.5 text-right font-mono text-[10px] disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900" /><span className="text-[10px]">px</span></label><button type="button" onClick={() => undoTransformKey(key, 0)} disabled={!canUndoT || locked} className="rounded-sm p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="undo"><LuUndo2 size={10} /></button><button type="button" onClick={() => redoTransformKey(key)} disabled={!canRedoT || locked} className="rounded-sm p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="redo"><LuRedo2 size={10} /></button><button type="button" onClick={() => toggleTransformLock(key)} className={`rounded-sm p-0.5 transition ${locked ? "text-cyan-600 dark:text-cyan-400" : "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"}`} title={locked ? "Unlock" : "Lock"}>{locked ? <HiLockClosed size={10} /> : <HiLockOpen size={10} />}</button></span>; })}
                       <label className="subtext flex items-center gap-0.5 text-[10px] text-zinc-400" title="When off, keep one glyph run even when it crosses the cube edge. When on, wrap only after the measured text exceeds the cube width."><input type="checkbox" checked={transform?.wrap_text ?? false} onChange={(e) => updateSelectedStyle({ transform: { ...transform, wrap_text: e.target.checked } })} /> wrap</label>
-                      {(() => { const key = "rotation" as const; const current = Number(transform?.rotation ?? 0); const hist = transformHistoryRef.current[key]; const locked = isTransformLocked(key); return <span className="subtext flex items-center gap-1 text-xs text-zinc-500" title="Drag, click, or type to rotate text. Double-click the dial or value to reset."><span>rotate</span><span className="flex items-center gap-0.5"><RotationDial value={current} disabled={locked} onChange={(value) => { trackTransformChange(key, current, value); updateCanvasTransform(key, value); }} onReset={() => { trackTransformChange(key, current, 0); updateCanvasTransform(key, 0); }} /><button type="button" onClick={() => toggleTransformLock(key)} className={`self-center rounded p-0.5 transition ${locked ? "text-cyan-600 dark:text-cyan-400" : "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"}`} title={locked ? "Unlock rotation" : "Lock rotation"}>{locked ? <HiLockClosed size={10} /> : <HiLockOpen size={10} />}</button></span><button type="button" onClick={() => undoTransformKey(key, 0)} disabled={!hist.undoStack.length || locked} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="undo"><LuUndo2 size={10} /></button><button type="button" onClick={() => redoTransformKey(key)} disabled={!hist.redoStack.length || locked} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="redo"><LuRedo2 size={10} /></button></span>; })()}
-                      <span className="subtext flex items-center gap-1 text-xs text-zinc-500" title="Choose the point that stays fixed while skewing or stretching."><span>anchor</span><span className="grid grid-cols-3 gap-px rounded border border-zinc-300 p-0.5 dark:border-zinc-700">{(["top_left", "top_center", "top_right", "middle_left", "center", "middle_right", "bottom_left", "bottom_center", "bottom_right"] as const).map((anchor) => <button key={anchor} type="button" aria-label={`transform anchor ${anchor.replace("_", " ")}`} onClick={() => updateSelectedStyle({ transform: { ...transform, skew_anchor: anchor } })} className={`h-2.5 w-2.5 rounded-sm ${((transform?.skew_anchor ?? "center") === anchor) ? "bg-cyan-600" : "bg-zinc-300 hover:bg-zinc-400 dark:bg-zinc-600 dark:hover:bg-zinc-500"}`} />)}</span></span>
+                      {(() => { const key = "rotation" as const; const current = Number(transform?.rotation ?? 0); const hist = transformHistoryRef.current[key]; const locked = isTransformLocked(key); return <span className="subtext flex items-center gap-1 text-xs text-zinc-500" title="Drag, click, or type to rotate text. Double-click the dial or value to reset."><span>rotate</span><span className="flex items-center gap-0.5"><RotationDial value={current} disabled={locked} onChange={(value) => { trackTransformChange(key, current, value); updateCanvasTransform(key, value); }} onReset={() => { trackTransformChange(key, current, 0); updateCanvasTransform(key, 0); }} /><button type="button" onClick={() => toggleTransformLock(key)} className={`self-center rounded-sm p-0.5 transition ${locked ? "text-cyan-600 dark:text-cyan-400" : "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"}`} title={locked ? "Unlock rotation" : "Lock rotation"}>{locked ? <HiLockClosed size={10} /> : <HiLockOpen size={10} />}</button></span><button type="button" onClick={() => undoTransformKey(key, 0)} disabled={!hist.undoStack.length || locked} className="rounded-sm p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="undo"><LuUndo2 size={10} /></button><button type="button" onClick={() => redoTransformKey(key)} disabled={!hist.redoStack.length || locked} className="rounded-sm p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="redo"><LuRedo2 size={10} /></button></span>; })()}
+                      <span className="subtext flex items-center gap-1 text-xs text-zinc-500" title="Choose the point that stays fixed while skewing or stretching."><span>anchor</span><span className="grid grid-cols-3 gap-px rounded-sm border border-zinc-300 p-0.5 dark:border-zinc-700">{(["top_left", "top_center", "top_right", "middle_left", "center", "middle_right", "bottom_left", "bottom_center", "bottom_right"] as const).map((anchor) => <button key={anchor} type="button" aria-label={`transform anchor ${anchor.replace("_", " ")}`} onClick={() => updateSelectedStyle({ transform: { ...transform, skew_anchor: anchor } })} className={`h-2.5 w-2.5 rounded-xs ${((transform?.skew_anchor ?? "center") === anchor) ? "bg-cyan-600" : "bg-zinc-300 hover:bg-zinc-400 dark:bg-zinc-600 dark:hover:bg-zinc-500"}`} />)}</span></span>
                         </div>
                       </div>
                     </div>
@@ -4396,7 +4396,7 @@ export default function App() {
                 </div>
               )}
               {renderResult.output_url ? (
-                <a href={renderResult.output_url} target="_blank" rel="noreferrer" className="inline-flex rounded bg-cyan-700 px-3 py-1.5 text-xs text-white">Open finalized localized image</a>
+                <a href={renderResult.output_url} target="_blank" rel="noreferrer" className="inline-flex rounded-sm bg-cyan-700 px-3 py-1.5 text-xs text-white">Open finalized localized image</a>
               ) : (
                 <p className="text-sm text-amber-600 dark:text-amber-400">Render did not produce an output image. Check logs below.</p>
               )}
@@ -4434,7 +4434,7 @@ export default function App() {
               {renderResult.logs.length > 0 && (
                 <div className="mt-3">
                   <div className="flex justify-end">
-                    <button type="button" onClick={() => setRenderLogsOpen((open) => !open)} className="flex items-center gap-1 rounded p-1 text-zinc-500 transition hover:bg-zinc-200 dark:hover:bg-zinc-800" title={renderLogsOpen ? "hide logs" : "show logs"} aria-expanded={renderLogsOpen}>
+                    <button type="button" onClick={() => setRenderLogsOpen((open) => !open)} className="flex items-center gap-1 rounded-sm p-1 text-zinc-500 transition hover:bg-zinc-200 dark:hover:bg-zinc-800" title={renderLogsOpen ? "hide logs" : "show logs"} aria-expanded={renderLogsOpen}>
                       <span className="subtext text-[10px]">show logs</span>
                       <FcCollapse style={{ transform: renderLogsOpen ? "none" : "rotate(180deg)", transition: "transform 0.2s" }} />
                     </button>
@@ -4530,7 +4530,7 @@ export default function App() {
                     title="Recommendations"
                     icon={<span className="relative inline-flex"><MdTipsAndUpdates size={14} />{!recommendationsSeen && <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-violet-500 ring-1 ring-white dark:ring-zinc-900" />}</span>}
                     headerExtra={!recommendationsSeen && <span className="normal-case text-[10px] font-medium tracking-normal text-violet-600 dark:text-violet-300">new</span>}
-                    rightSideHandle={<button type="button" onClick={() => setRecommendationsOpen((open) => { if (!open) setRecommendationsSeen(true); return !open; })} className="absolute right-5 top-4 rounded p-1 text-zinc-500 transition hover:bg-zinc-200 dark:hover:bg-zinc-800" title={recommendationsOpen ? "collapse recommendations" : "expand recommendations"} aria-label={recommendationsOpen ? "collapse recommendations" : "expand recommendations"}><FcCollapse size={12} style={{ transform: recommendationsOpen ? "none" : "rotate(180deg)", transition: "transform 0.2s" }} /></button>}
+                    rightSideHandle={<button type="button" onClick={() => setRecommendationsOpen((open) => { if (!open) setRecommendationsSeen(true); return !open; })} className="absolute right-5 top-4 rounded-sm p-1 text-zinc-500 transition hover:bg-zinc-200 dark:hover:bg-zinc-800" title={recommendationsOpen ? "collapse recommendations" : "expand recommendations"} aria-label={recommendationsOpen ? "collapse recommendations" : "expand recommendations"}><FcCollapse size={12} style={{ transform: recommendationsOpen ? "none" : "rotate(180deg)", transition: "transform 0.2s" }} /></button>}
                   >
                     <div className={`style-panel-morph${recommendationsOpen ? " expanded" : ""}`}>
                       <ul className="space-y-1.5 text-sm">
@@ -4553,7 +4553,7 @@ export default function App() {
                     icon={<MdOutlineCompare size={15} />}
                     className={verifyCardOrder === "compare-first" ? "order-1" : "order-2"}
                     headerExtra={<span className="ml-1 flex min-w-0 items-center gap-1 normal-case text-[10px] font-normal tracking-normal">{qa?.overall_score != null && <Badge ok={renderResult.qa_passed}>QA {(qa.overall_score * 100).toFixed(0)}%</Badge>}{cov && <><span className="subtext whitespace-nowrap rounded-full bg-zinc-200 px-2 py-0.5 text-xs text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">{cov.rendered}/{cov.regions_total} rendered</span>{cov.dnt > 0 && <span className="subtext whitespace-nowrap rounded-full bg-zinc-200 px-2 py-0.5 text-xs text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">{cov.dnt} DNT</span>}{cov.untranslated > 0 && <span className="subtext flex whitespace-nowrap items-center gap-1 rounded-full bg-red-500/15 px-2 py-0.5 text-xs text-red-600 dark:text-red-400"><AlertTriangle size={11} /> {cov.untranslated} untranslated</span>}{cov.fallback_font > 0 && <span className="subtext flex whitespace-nowrap items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs text-amber-600 dark:text-amber-400"><AlertTriangle size={11} /> {cov.fallback_font} font fallback</span>}</>}</span>}
-                    rightSideHandle={Object.keys(per).length > 0 ? <button type="button" onClick={() => setVerifyCardOrder((order) => order === "compare-first" ? "qa-first" : "compare-first")} title={verifyCardOrder === "compare-first" ? "Move Compare below Per-Region QA" : "Move Compare above Per-Region QA"} aria-label={verifyCardOrder === "compare-first" ? "move Compare down" : "move Compare up"} className="absolute right-5 top-4 rounded p-1 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800">{theme === "dark" ? (verifyCardOrder === "compare-first" ? <BsArrowDownSquareFill size={16} /> : <BsArrowUpSquareFill size={16} />) : (verifyCardOrder === "compare-first" ? <LuSquareArrowDown size={16} /> : <LuSquareArrowUp size={16} />)}</button> : undefined}
+                    rightSideHandle={Object.keys(per).length > 0 ? <button type="button" onClick={() => setVerifyCardOrder((order) => order === "compare-first" ? "qa-first" : "compare-first")} title={verifyCardOrder === "compare-first" ? "Move Compare below Per-Region QA" : "Move Compare above Per-Region QA"} aria-label={verifyCardOrder === "compare-first" ? "move Compare down" : "move Compare up"} className="absolute right-5 top-4 rounded-sm p-1 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800">{theme === "dark" ? (verifyCardOrder === "compare-first" ? <BsArrowDownSquareFill size={16} /> : <BsArrowUpSquareFill size={16} />) : (verifyCardOrder === "compare-first" ? <LuSquareArrowDown size={16} /> : <LuSquareArrowUp size={16} />)}</button> : undefined}
                   >
                     <div className="grid gap-4 md:grid-cols-2">
                       <div>
@@ -4570,7 +4570,7 @@ export default function App() {
 
                 {/* per-region scores + re-render */}
                 {Object.keys(per).length > 0 && (
-                  <Section title="Per-Region QA" icon={<TbScanCube size={14} />} className={`${stackClass(3)} ${verifyCardOrder === "compare-first" ? "order-2" : "order-1"}`} rightSideHandle={renderResult.output_url ? <button type="button" onClick={() => setVerifyCardOrder((order) => order === "compare-first" ? "qa-first" : "compare-first")} title={verifyCardOrder === "compare-first" ? "Move Per-Region QA above Compare" : "Move Per-Region QA below Compare"} aria-label={verifyCardOrder === "compare-first" ? "move Per-Region QA up" : "move Per-Region QA down"} className="absolute right-5 top-4 rounded p-1 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800">{theme === "dark" ? (verifyCardOrder === "compare-first" ? <BsArrowUpSquareFill size={16} /> : <BsArrowDownSquareFill size={16} />) : (verifyCardOrder === "compare-first" ? <LuSquareArrowUp size={16} /> : <LuSquareArrowDown size={16} />)}</button> : undefined}>
+                  <Section title="Per-Region QA" icon={<TbScanCube size={14} />} className={`${stackClass(3)} ${verifyCardOrder === "compare-first" ? "order-2" : "order-1"}`} rightSideHandle={renderResult.output_url ? <button type="button" onClick={() => setVerifyCardOrder((order) => order === "compare-first" ? "qa-first" : "compare-first")} title={verifyCardOrder === "compare-first" ? "Move Per-Region QA above Compare" : "Move Per-Region QA below Compare"} aria-label={verifyCardOrder === "compare-first" ? "move Per-Region QA up" : "move Per-Region QA down"} className="absolute right-5 top-4 rounded-sm p-1 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800">{theme === "dark" ? (verifyCardOrder === "compare-first" ? <BsArrowUpSquareFill size={16} /> : <BsArrowDownSquareFill size={16} />) : (verifyCardOrder === "compare-first" ? <LuSquareArrowUp size={16} /> : <LuSquareArrowDown size={16} />)}</button> : undefined}>
                     <div className="space-y-1.5">
                       {Object.entries(per).map(([rid, score]) => {
                         const isSel = verifySelId === rid;
@@ -4599,7 +4599,7 @@ export default function App() {
                                 onClick={(e) => { e.stopPropagation(); onReRenderRegion(rid); }}
                                 disabled={reRenderingId !== null || verifyBusy !== null}
                                 title="re-render just this region"
-                                className="flex items-center gap-1 rounded px-2 py-1 text-xs text-zinc-500 transition hover:bg-zinc-200 disabled:opacity-40 dark:hover:bg-zinc-800"
+                                className="flex items-center gap-1 rounded-sm px-2 py-1 text-xs text-zinc-500 transition hover:bg-zinc-200 disabled:opacity-40 dark:hover:bg-zinc-800"
                               >
                                 {reRenderingId === rid ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
                                 re-render

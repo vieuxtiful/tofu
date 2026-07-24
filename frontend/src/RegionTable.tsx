@@ -308,13 +308,13 @@ export default function RegionTable({
               onApplyTargetLang([...checked], applyLang);
               setChecked(new Set());
             }}
-            className="rounded bg-cyan-700 px-2 py-1 font-medium text-white hover:bg-cyan-600"
+            className="rounded-sm bg-cyan-700 px-2 py-1 font-medium text-white hover:bg-cyan-600"
           >
             Apply target language
           </button>
           <button
             onClick={() => setChecked(new Set())}
-            className="rounded px-2 py-1 text-zinc-500 hover:text-zinc-300"
+            className="rounded-sm px-2 py-1 text-zinc-500 hover:text-zinc-300"
           >
             Clear
           </button>
@@ -405,7 +405,7 @@ export default function RegionTable({
                           onClick={(e) => e.stopPropagation()}
                           onKeyDown={(e) => { if (e.key === "Escape") { setSearchOpen(false); setSearchQuery(""); } }}
                           placeholder="filter…"
-                          className="w-16 rounded border border-zinc-300 bg-white px-1 py-0.5 text-[10px] text-zinc-700 outline-none focus:border-cyan-600 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+                          className="w-16 rounded-sm border border-zinc-300 bg-white px-1 py-0.5 text-[10px] text-zinc-700 outline-hidden focus:border-cyan-600 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
                         />
                       )}
                     </span>
@@ -527,7 +527,7 @@ export default function RegionTable({
                           onFocus={onBatchBegin}
                           onBlur={onBatchEnd}
                           onClick={(e) => e.stopPropagation()}
-                          className="w-full rounded bg-transparent px-1 py-0.5 text-xs text-zinc-800 outline-none focus:bg-zinc-200 dark:text-zinc-200 dark:focus:bg-zinc-800"
+                          className="w-full rounded-sm bg-transparent px-1 py-0.5 text-xs text-zinc-800 outline-hidden focus:bg-zinc-200 dark:text-zinc-200 dark:focus:bg-zinc-800"
                           placeholder="—"
                         />
                       ) : (
@@ -556,7 +556,7 @@ export default function RegionTable({
                                 onTargetChange(inst.id, inst.tm_suggestion!.target_text);
                               }}
                               title={`from memory: "${inst.tm_suggestion.target_text}"`}
-                              className="mt-0.5 flex items-center gap-1 rounded bg-cyan-500/15 px-1.5 py-0.5 text-[10px] font-medium text-cyan-700 transition hover:bg-cyan-500/25 dark:text-cyan-300"
+                              className="mt-0.5 flex items-center gap-1 rounded-sm bg-cyan-500/15 px-1.5 py-0.5 text-[10px] font-medium text-cyan-700 transition hover:bg-cyan-500/25 dark:text-cyan-300"
                             >
                               <BookmarkCheck size={10} className="shrink-0" />
                               TM {(inst.tm_suggestion.score * 100).toFixed(0)}% — apply
@@ -572,7 +572,7 @@ export default function RegionTable({
                             <button
                               onClick={() => onToggleLangLock(inst.id)}
                               title={lockedLangs.has(inst.id) ? "unlock source language" : "lock source language"}
-                              className="rounded p-0.5 text-zinc-500 hover:text-cyan-600 dark:text-zinc-400 dark:hover:text-cyan-400"
+                              className="rounded-sm p-0.5 text-zinc-500 hover:text-cyan-600 dark:text-zinc-400 dark:hover:text-cyan-400"
                             >
                               {lockedLangs.has(inst.id)
                                 ? <HiLockClosed size={12} className="text-cyan-600 dark:text-cyan-400" />
@@ -666,7 +666,7 @@ export default function RegionTable({
                             onClick={() => onOcr(inst.id)}
                             disabled={ocrLoading === inst.id}
                             title="Recognize text"
-                            className="rounded p-1 text-zinc-500 hover:bg-zinc-300 hover:text-cyan-600 dark:hover:bg-zinc-700 dark:hover:text-cyan-400"
+                            className="rounded-sm p-1 text-zinc-500 hover:bg-zinc-300 hover:text-cyan-600 dark:hover:bg-zinc-700 dark:hover:text-cyan-400"
                           >
                             {ocrLoading === inst.id ? <Loader2 size={12} className="animate-spin" /> : <ScanText size={12} />}
                           </button>
@@ -674,7 +674,7 @@ export default function RegionTable({
                         <button
                           onClick={() => onToggleDnt(inst.id)}
                           title={inst.dnt ? "Unmark DNT" : "Mark DNT"}
-                          className={`rounded p-1 hover:bg-zinc-300 dark:hover:bg-zinc-700 ${inst.dnt ? "text-amber-500 dark:text-amber-400" : "text-zinc-500 hover:text-amber-500 dark:hover:text-amber-400"}`}
+                          className={`rounded-sm p-1 hover:bg-zinc-300 dark:hover:bg-zinc-700 ${inst.dnt ? "text-amber-500 dark:text-amber-400" : "text-zinc-500 hover:text-amber-500 dark:hover:text-amber-400"}`}
                         >
                           {inst.dnt ? <EyeOff size={12} /> : <Eye size={12} />}
                         </button>
@@ -682,7 +682,7 @@ export default function RegionTable({
                           <button
                             onClick={() => onDelete(inst.id)}
                             title="Delete region"
-                            className="rounded p-1 text-zinc-500 hover:bg-zinc-300 hover:text-red-500 dark:hover:bg-zinc-700 dark:hover:text-red-400"
+                            className="rounded-sm p-1 text-zinc-500 hover:bg-zinc-300 hover:text-red-500 dark:hover:bg-zinc-700 dark:hover:text-red-400"
                           >
                             <Trash2 size={12} />
                           </button>
@@ -698,7 +698,7 @@ export default function RegionTable({
                             <p className="subtext mb-1 text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-600">
                               source · {effectiveSrc ? langDisplayName(effectiveSrc) : "unknown"}
                             </p>
-                            <div className="rounded bg-white px-2 py-1.5 text-xs text-zinc-700 dark:bg-zinc-900 dark:text-zinc-300">
+                            <div className="rounded-sm bg-white px-2 py-1.5 text-xs text-zinc-700 dark:bg-zinc-900 dark:text-zinc-300">
                               {inst.text || <span className="text-zinc-600">no source text</span>}
                             </div>
                           </div>
@@ -759,7 +759,7 @@ export default function RegionTable({
                                 onClick={(e) => e.stopPropagation()}
                                 rows={1}
                                 placeholder="enter translation…"
-                                className={`w-full resize-y rounded border px-2 py-1.5 text-xs outline-none ${
+                                className={`w-full resize-y rounded border px-2 py-1.5 text-xs outline-hidden ${
                                   formerTargLang && inst.target_text && inst.target_language === formerTargLang
                                     ? "border-red-400 bg-red-50 dark:border-red-800/60 dark:bg-red-950/30"
                                     : "border-zinc-300 bg-white dark:border-zinc-800 dark:bg-zinc-900"
@@ -795,7 +795,7 @@ export default function RegionTable({
                           const substitute = match?.recommended_substitute;
                           const matching = fontMatchingId === inst.id;
                           return (
-                            <div className="mt-2 rounded border border-zinc-200 bg-white/70 px-2 py-1.5 dark:border-zinc-800 dark:bg-zinc-900/60">
+                            <div className="mt-2 rounded-sm border border-zinc-200 bg-white/70 px-2 py-1.5 dark:border-zinc-800 dark:bg-zinc-900/60">
                               <div className="flex flex-wrap items-center justify-between gap-2">
                                 <div className="flex min-w-0 items-center gap-1.5 text-[10px]">
                                   <ScanText size={12} className="shrink-0 text-cyan-600 dark:text-cyan-400" />
@@ -811,7 +811,7 @@ export default function RegionTable({
                                     onClick={(e) => { e.stopPropagation(); onFontMatch?.(inst.id, false); }}
                                     disabled={matching || !onFontMatch}
                                     title="Compare the detected glyph silhouettes with installed fonts; it never changes your selected font automatically."
-                                    className="rounded px-1.5 py-0.5 text-[10px] text-cyan-700 transition hover:bg-cyan-500/15 disabled:opacity-50 dark:text-cyan-300"
+                                    className="rounded-sm px-1.5 py-0.5 text-[10px] text-cyan-700 transition hover:bg-cyan-500/15 disabled:opacity-50 dark:text-cyan-300"
                                   >
                                     {matching ? <Loader2 size={11} className="animate-spin" /> : "Analyze"}
                                   </button>
@@ -819,7 +819,7 @@ export default function RegionTable({
                                     onClick={(e) => { e.stopPropagation(); onFontMatch?.(inst.id, true); }}
                                     disabled={matching || !onFontMatch}
                                     title="Optional: search a configured font catalog. ToFU will ask before sending this text crop outside the workspace."
-                                    className="rounded px-1.5 py-0.5 text-[10px] text-zinc-600 transition hover:bg-zinc-200 disabled:opacity-50 dark:text-zinc-400 dark:hover:bg-zinc-800"
+                                    className="rounded-sm px-1.5 py-0.5 text-[10px] text-zinc-600 transition hover:bg-zinc-200 disabled:opacity-50 dark:text-zinc-400 dark:hover:bg-zinc-800"
                                   >
                                     Catalog…
                                   </button>
@@ -831,7 +831,7 @@ export default function RegionTable({
                                   <button
                                     onClick={(e) => { e.stopPropagation(); onFontChange(inst.id, substitute.font_path); }}
                                     title="Use this installed recommendation. This is an undoable style change."
-                                    className="rounded bg-cyan-500/15 px-1.5 py-0.5 text-cyan-700 transition hover:bg-cyan-500/25 dark:text-cyan-300"
+                                    className="rounded-sm bg-cyan-500/15 px-1.5 py-0.5 text-cyan-700 transition hover:bg-cyan-500/25 dark:text-cyan-300"
                                   >Use recommendation</button>
                                 </div>
                               )}

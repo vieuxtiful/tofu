@@ -147,7 +147,7 @@ export default function FontCombobox({
     <div ref={wrapperRef} className="relative">
       <button
         onClick={(e) => { e.stopPropagation(); open ? setOpen(false) : openPanel(); }}
-        className="flex w-full items-center gap-1 rounded border border-transparent px-1 py-0.5 text-left text-xs transition hover:border-zinc-300 hover:bg-zinc-200 dark:hover:border-zinc-700 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200"
+        className="flex w-full items-center gap-1 rounded-sm border border-transparent px-1 py-0.5 text-left text-xs transition hover:border-zinc-300 hover:bg-zinc-200 dark:hover:border-zinc-700 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200"
         title={displayLabel}
       >
         <span
@@ -161,7 +161,7 @@ export default function FontCombobox({
       {/* Dropdown Morph — reusable expand/collapse animation (see .dropdown-morph in uikit.css) */}
       <div
         onClick={(e) => e.stopPropagation()}
-        className={`dropdown-morph bezier-card absolute left-0 top-full z-[100] mt-1 w-64 overflow-hidden rounded-lg border border-zinc-300 bg-white dark:border-zinc-700 dark:bg-zinc-900${open ? " expanded" : ""}`}
+        className={`dropdown-morph bezier-card absolute left-0 top-full z-100 mt-1 w-64 overflow-hidden rounded-lg border border-zinc-300 bg-white dark:border-zinc-700 dark:bg-zinc-900${open ? " expanded" : ""}`}
         style={open ? { boxShadow: "4px 4px 0 var(--bc-shadow), 8px 8px 16px rgba(0,0,0,0.18)" } : undefined}
       >
         <input
@@ -169,7 +169,7 @@ export default function FontCombobox({
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           placeholder="filter…"
-          className="w-full border-b border-zinc-200 bg-zinc-50 px-2 py-1.5 text-xs text-zinc-800 outline-none dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200"
+          className="w-full border-b border-zinc-200 bg-zinc-50 px-2 py-1.5 text-xs text-zinc-800 outline-hidden dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200"
         />
         <div className="max-h-56 overflow-y-auto py-1">
           {/* Auto option */}

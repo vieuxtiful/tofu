@@ -108,7 +108,7 @@ export default function SourceLangPicker({ selected, onSelect, availableCodes, s
           placeholder="search language…"
           value={searchQuery}
           onChange={(e) => { setSearchQuery(e.target.value); setScrollIndex(0); }}
-          className="w-full rounded-lg border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm text-zinc-800 outline-none focus:border-cyan-600 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200"
+          className="w-full rounded-lg border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm text-zinc-800 outline-hidden focus:border-cyan-600 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200"
         />
       </div>
 
@@ -136,7 +136,7 @@ export default function SourceLangPicker({ selected, onSelect, availableCodes, s
         {selectedRegions.size > 0 && (
           <button
             onClick={() => setSelectedRegions(new Set())}
-            className="subtext rounded px-1.5 py-0.5 text-[10px] font-medium text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+            className="subtext rounded-sm px-1.5 py-0.5 text-[10px] font-medium text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
           >
             clear
           </button>

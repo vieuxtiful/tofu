@@ -39,7 +39,7 @@ export default function SplashScreen({ onDone }: { onDone: () => void }) {
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex cursor-pointer flex-col items-center justify-center gap-4 bg-zinc-100 font-mono dark:bg-zinc-950"
+      className="fixed inset-0 z-100 flex cursor-pointer flex-col items-center justify-center gap-4 bg-zinc-100 font-mono dark:bg-zinc-950"
       onClick={skip}
       title="Click to skip"
     >
