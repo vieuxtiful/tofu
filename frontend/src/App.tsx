@@ -24,6 +24,7 @@ import { HiLockClosed, HiLockOpen } from "react-icons/hi";
 import { LuUndo2, LuRedo2 } from "react-icons/lu";
 import { VscDebugRestart } from "react-icons/vsc";
 import { GiCoolSpices } from "react-icons/gi";
+import { GrSelect } from "react-icons/gr";
 import { providerLabel } from "./repairLabels";
 import type { LocalizedCandidatePreview, RepairCandidate, RepairReview } from "./localizedCanvasTypes";
 import SmartFillReview from "./SmartFillReview";
@@ -3766,10 +3767,10 @@ export default function App() {
                   </button>
                 </div>
 
-                <div className={`style-panel-morph ${renderSelId && !styleCollapsed ? "expanded" : ""}`}>
+                <div className={`style-panel-morph ${!renderSelId || !styleCollapsed ? "expanded" : ""}`}>
                 {(() => {
                   const inst = prevSelId ? manifest.find((i) => i.id === prevSelId) : null;
-                  if (!inst) return null;
+                  if (!inst) return <p className="subtext flex items-center gap-1 text-xs text-zinc-500"><MdTipsAndUpdates size={14} className="shrink-0 text-[#2d8cf0]" />select a region to customize text.</p>;
                   const sp = inst.style_profile;
             const updateStyle = updateSelectedStyle;
             const langForInst = inst.target_language ?? targLang;
@@ -4102,7 +4103,7 @@ export default function App() {
             </div>
           )}
 
-          {selectedRenderInst && (
+          {manifest.length > 0 && (
             <div
               ref={garnishCardRef}
               className="bezier-card soft-shadow flex flex-col rounded-xl bg-white/60 dark:bg-zinc-900/60"
@@ -4120,6 +4121,7 @@ export default function App() {
                 }
               >
                 {(() => {
+                  if (!selectedRenderInst) return <p className="subtext flex items-center gap-1 text-xs text-zinc-500"><GrSelect size={14} className="text-[#2d8cf0]" />select a region to customize treatment.</p>;
                   const perRegion = selectedRenderInst.garnish_scope === "per_region";
                   const g = selectedGarnishProfile;
                   const recommended = selectedGarnishRecommended;
@@ -4159,12 +4161,6 @@ export default function App() {
             </div>
           )}
 
-              {!renderSelId && (
-                <p className="subtext flex items-center gap-1 text-xs text-zinc-500">
-                  <PiWarningCircleFill size={15} className="text-[#2d8cf0]" />
-                  select a region to customize.
-                </p>
-              )}
 
               {/* decisions summary: what this render will reflect */}
               <div data-render-decisions="true" className={`bezier-card soft-shadow subtext flex flex-wrap items-center gap-3 rounded-lg bg-white/60 px-4 py-2 text-xs text-zinc-600 dark:bg-zinc-900/60 dark:text-zinc-400 ${stackClass(1)}`}>
