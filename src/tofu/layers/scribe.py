@@ -55,6 +55,29 @@ CJK_VERTICAL_LANGS = {"ja", "zh-cn", "zh-tw", "zh-hk", "zh-mo", "zh-sg"}
 VERTICAL_ASPECT_MIN = 1.3
 VERTICAL_ROW_FACTOR = 1.15  # row height as a multiple of font size
 
+# ── right-to-left service ──────────────────────────────────────────────
+# Pillow's BASIC layout engine draws the codepoints it is handed, in the
+# order it is handed them, at the advances the font declares -- and nothing
+# else. It does not reorder bidirectional runs and it does not substitute
+# cursive joining forms, so Arabic passed straight to draw.text() comes out
+# as disconnected isolated letters in logical (i.e. visually reversed) order.
+#
+# The complete fix is Raqm (HarfBuzz + FriBiDi). Raqm IS compiled into
+# Pillow's Windows wheel -- the binary carries HAVE_RAQM and statically
+# linked hb_shape_* symbols -- but it stays inactive because libraqm
+# resolves FriBiDi dynamically at runtime and no fribidi-0.dll ships
+# alongside it. Confirm on any machine with PIL.features.check("raqm").
+#
+# Until that DLL is present, these two pure-Python passes cover the RTL
+# scripts ToFU actually targets today:
+#   arabic-reshaper -> contextual joining forms
+#   python-bidi     -> logical to visual reordering (UAX #9)
+# What they do NOT cover, and what still needs Raqm proper: Indic conjunct
+# formation and reordering, Thai/Khmer mark placement, and OpenType kerning
+# and ligatures for every script including Latin.
+RTL_SCRIPTS = {"Arab", "Hebr", "Syrc", "Thaa", "Nkoo", "Adlm", "Mand", "Samr"}
+CURSIVE_JOIN_SCRIPTS = {"Arab"}  # arabic-reshaper's remit
+
 
 def _pixel(value: float) -> int:
     """Snap a final paint coordinate to the image raster.
@@ -549,6 +572,76 @@ def _line_height(font) -> float:
         return float(getattr(font, "size", 12)) * 1.2
 
 
+def script_for_lang(lang: Optional[str]) -> Optional[str]:
+    """Unicode script code for a language tag, or None when unmapped."""
+    if not lang:
+        return None
+    from tofu.layers.tofu import lang_to_script
+    return lang_to_script.get(lang)
+
+
+def is_rtl_lang(lang: Optional[str]) -> bool:
+    """Whether a target language is written right-to-left."""
+    return script_for_lang(lang) in RTL_SCRIPTS
+
+
+def press_joins(text: str, lang: Optional[str]) -> str:
+    """Substitute Arabic letters with their contextual joining forms.
+
+    Separate curds press into one block; separate Arabic letters join into
+    one cursive word.  Under BASIC layout every letter is otherwise drawn in
+    its isolated form, so a word arrives as a row of unconnected stumps.
+
+    Called BEFORE the glyph-coverage guard on purpose.  Reshaping emits
+    presentation forms (U+FE70..FEFF), and it is those codepoints -- not the
+    base letters -- that the resolved face must actually contain.  Letting
+    the guard see the reshaped string means a font carrying the base Arabic
+    block but not the presentation block is caught and swapped like any
+    other coverage gap, instead of silently rendering tofu boxes.
+
+    Returns the text unchanged when arabic-reshaper is unavailable, matching
+    this layer's dependency-soft contract elsewhere.
+    """
+    if not text or script_for_lang(lang) not in CURSIVE_JOIN_SCRIPTS:
+        return text
+    try:
+        import arabic_reshaper  # deferred: optional dependency
+    except ImportError:
+        return text
+    try:
+        return arabic_reshaper.reshape(text)
+    except Exception:
+        return text
+
+
+def serving_order(line: str, lang: Optional[str]) -> str:
+    """Reorder one already-wrapped line from logical into visual order.
+
+    UAX #9 via python-bidi -- the order the reader is actually served.
+
+    Applied per LINE and only after wrapping, because the algorithm is
+    defined on a display line: reordering a whole paragraph first and
+    wrapping the result afterwards would split reordered runs across the
+    fold and scramble both halves.
+
+    base_dir is pinned to "R" rather than auto-detected.  Auto-detection
+    takes its cue from the first strong character, so an Arabic caption that
+    happens to open with a Latin brand name would be laid out LTR-base and
+    place that brand on the wrong edge.  The region's target language is the
+    more reliable signal for base direction than its first glyph.
+    """
+    if not line or not is_rtl_lang(lang):
+        return line
+    try:
+        from bidi.algorithm import get_display  # deferred: optional dependency
+    except ImportError:
+        return line
+    try:
+        return get_display(line, base_dir="R")
+    except Exception:
+        return line
+
+
 def _wrap_lines(draw, text: str, font, max_width: float,
                tracking: float = 0, kerning: float = 0) -> List[str]:
     """greedy wrap targeting max_width: word-wrap when the text has
@@ -1007,6 +1100,11 @@ def render(
         # while an obsolete adjusted_bbox is cleared on every render.
         inst.adjusted_bbox = None
         effective_lang = inst.target_language or targ_lang
+        # RTL pass 1 of 2: join the cursive forms before ANY measuring,
+        # coverage checking or fitting happens, so every downstream step
+        # sees the codepoints that will really be drawn. Pass 2 (visual
+        # reordering) waits until lines exist -- see serving_order().
+        text = press_joins(text, effective_lang)
         if font_registry is not None and (s.font_family or s.font_weight or s.italic):
             resolved_path, synthetic_italic = resolve_face(
                 font_registry, s.font_family, s.font_weight, bool(s.italic)
@@ -1101,6 +1199,14 @@ def render(
                 measure_draw, text, bbox, s.font_family, small_size, s.leading,
                 s.tracking or 0, s.kerning or 0, wrap_text,
             )
+
+        # RTL pass 2 of 2: lines are final, so each one can now be reordered
+        # from logical into visual order. Doing it here rather than earlier
+        # keeps wrapping working on logical text (where word boundaries mean
+        # what they say) while everything below -- line_metrics, alignment,
+        # the drawn glyph run -- operates on identical visual-order strings.
+        # A no-op for every LTR language.
+        lines = [serving_order(ln, effective_lang) for ln in lines]
 
         line_h = _line_height(font)
         _tracking = s.tracking or 0

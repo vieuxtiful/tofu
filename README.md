@@ -179,6 +179,19 @@ Font resolution anchors a sibling-face search on the fallback font that would ot
 
 Italic is rendered on a layer sized to the text's own extent and sheared around its own local origin before compositing — not the whole base-image-sized layer sheared by each pixel's absolute y-coordinate, which was a real bug that bled a region's ink far outside its detection bbox.
 
+#### Right-to-left scripts
+
+Pillow's `BASIC` layout engine draws the codepoints it is handed, in the order it is handed them, at the advances the font declares — and nothing else. It neither reorders bidirectional runs nor substitutes cursive joining forms, so Arabic passed straight to `draw.text()` renders as disconnected isolated letters in visually reversed order.
+
+Scribe therefore runs two passes for RTL target languages, keyed on the target's Unicode script (`Arab`, `Hebr`, `Syrc`, `Thaa`, …) rather than a hardcoded language list:
+
+1. **`press_joins`** — contextual joining forms via `arabic-reshaper`, for Arabic-script languages only (Hebrew doesn't join). This runs *before* measuring, fitting, and the glyph-coverage guard, because reshaping emits presentation forms (U+FE70–FEFF) and it is those codepoints — not the base letters — that the resolved face must contain. A font carrying the base Arabic block but not the presentation block is then caught and swapped like any other coverage gap.
+2. **`serving_order`** — logical→visual reordering via `python-bidi` (UAX #9), applied *per line and after wrapping*, since the algorithm is defined on a display line. Reordering the paragraph first and wrapping afterwards would split reordered runs across the fold. Base direction is pinned to RTL rather than auto-detected, so an Arabic caption opening with a Latin brand name still lays out RTL-base.
+
+Both degrade to a pass-through when their library is missing, and both are no-ops for every LTR language — verified by a test asserting Latin output is byte-identical with the RTL passes stubbed out.
+
+**Not yet covered**: Indic conjunct formation and reordering, Thai/Khmer mark placement, and OpenType kerning/ligatures for all scripts including Latin. Those need Raqm (HarfBuzz + FriBiDi). Raqm *is* compiled into Pillow's Windows wheel — the binary carries `HAVE_RAQM` and statically linked `hb_shape_*` symbols — but stays inactive because libraqm resolves FriBiDi dynamically at runtime and no `fribidi-0.dll` ships with it. Check on any machine with `PIL.features.check("raqm")`; supplying that one DLL enables full shaping for every script at once.
+
 ### Verify — quality verification (`src/tofu/layers/verify.py`)
 
 Verify scores the localized asset per instance and gates the pipeline on `overall_score >= qa_threshold`. Five metrics, all standard in the scene-text editing literature:
