@@ -17,7 +17,7 @@ const GarnishSlider = styled(Slider)(({ theme }) => ({
   height: 3,
   // The wide rectangular thumb needs a little extra room at its minimum
   // position so its left border is never clipped.
-  marginLeft: 4,
+  marginLeft: 10,
   padding: "13px 15px 13px 23px",
   "& .MuiSlider-thumb": {
     height: 16,

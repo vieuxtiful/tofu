@@ -84,7 +84,18 @@ def export_xliff(
     lines.append('    </header>')
     lines.append('    <body>')
 
-    for inst in manifest.instances:
+    # Bounding-box detection and translation order are deliberately separate:
+    # `reading_order` is the user-managed Text Manifest order.  Preserve the
+    # original list sequence as a stable fallback for older manifests.
+    ordered_instances = sorted(
+        enumerate(manifest.instances),
+        key=lambda pair: (
+            pair[1].reading_order is None,
+            pair[1].reading_order if pair[1].reading_order is not None else pair[0],
+            pair[0],
+        ),
+    )
+    for _, inst in ordered_instances:
         if getattr(inst, "dnt", False):
             continue
         source = inst.text or ""

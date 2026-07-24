@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import InputAdornment from "@mui/material/InputAdornment";
+import TextField from "@mui/material/TextField";
 import {
   AlertTriangle, AlignCenter, AlignEndHorizontal, AlignEndVertical, AlignJustify, AlignLeft, AlignRight, AlignStartHorizontal, AlignStartVertical, ArrowLeft, ArrowLeftRight, ArrowUpFromLine, Baseline, Bold, BookmarkCheck, Box, Check, ChevronDown, FileImage, FolderOpen, Hexagon, History, Home, Italic, Languages, Loader2,
   Play, Plus, RotateCcw, ScanText, ShieldAlert, Sparkles, SquareStack, Subscript, Superscript, Trash2, Type, Underline, X,
@@ -141,30 +143,6 @@ function WarpPreview({ preset }: { preset: string }) {
   );
 }
 
-function visualReadingOrder(instances: InstText[]): InstText[] {
-  // Older manifests were persisted with raw top-edge ordering.  Repair their
-  // presentation without changing durable region IDs: words whose boxes share
-  // a baseline form one line, then read left-to-right within that line.
-  const horizontal = instances.filter((inst) => inst.bounding_box.width >= inst.bounding_box.height * .55);
-  const vertical = instances.filter((inst) => !horizontal.includes(inst));
-  if (!horizontal.length) return [...instances].sort((a, b) => (a.reading_order ?? 0) - (b.reading_order ?? 0));
-  const heights = horizontal.map((inst) => inst.bounding_box.height).sort((a, b) => a - b);
-  const tolerance = Math.max(4, heights[Math.floor(heights.length / 2)] * .42);
-  const lines: Array<{ center: number; height: number; items: InstText[] }> = [];
-  [...horizontal].sort((a, b) => (a.bounding_box.y + a.bounding_box.height / 2) - (b.bounding_box.y + b.bounding_box.height / 2)).forEach((inst) => {
-    const center = inst.bounding_box.y + inst.bounding_box.height / 2;
-    const line = lines.find((candidate) => Math.abs(candidate.center - center) <= Math.max(tolerance, candidate.height * .42));
-    if (!line) { lines.push({ center, height: inst.bounding_box.height, items: [inst] }); return; }
-    const count = line.items.push(inst);
-    line.center += (center - line.center) / count;
-    line.height += (inst.bounding_box.height - line.height) / count;
-  });
-  return [
-    ...lines.sort((a, b) => a.center - b.center).flatMap((line) => line.items.sort((a, b) => a.bounding_box.x - b.bounding_box.x)),
-    ...vertical.sort((a, b) => (a.reading_order ?? 0) - (b.reading_order ?? 0)),
-  ];
-}
-
 function Badge({ ok, children }: { ok: boolean; children: React.ReactNode }) {
   return (
     <span
@@ -205,6 +183,10 @@ function NumberField({ label, value, onChange }: { label: string; value: number 
       />
     </div>
   );
+}
+
+function PixelField({ label, value, onChange, min, step = 0.5, placeholder, width = "7rem" }: { label: string; value: number | null | undefined; onChange: (value: number | null) => void; min?: number; step?: number; placeholder?: string; width?: string }) {
+  return <TextField label={label} type="number" size="small" variant="filled" value={value ?? ""} onChange={(event) => onChange(event.target.value === "" ? null : Number(event.target.value))} placeholder={placeholder} slotProps={{ input: { startAdornment: <InputAdornment position="start">px</InputAdornment> }, htmlInput: { min, step } }} sx={{ width, maxWidth: "100%", flexShrink: 0, "& .MuiInputBase-input": { minWidth: 0 } }} />;
 }
 
 function TitleConfirmOverlay({ onYes, onNo }: { onYes: () => void; onNo: () => void }) {
@@ -413,7 +395,7 @@ export default function App() {
   useEffect(() => { setSmartFillHoverId(null); }, [renderSelId]);
   const [styleCollapsed, setStyleCollapsed] = useState(false);
   const [canvasExpandedH, setCanvasExpandedH] = useState(false);
-  const [canvasCardOrder, setCanvasCardOrder] = useState<"source-first" | "localized-first">("source-first");
+  const [canvasCardOrder, setCanvasCardOrder] = useState<"source-first" | "localized-first">("localized-first");
   const sourceCanvasFirst = canvasCardOrder === "source-first";
   const canSwapCanvasCards = Boolean(previewUrl);
   const [styleExpandedH, setStyleExpandedH] = useState(false);
@@ -722,16 +704,19 @@ export default function App() {
   // rendered to the user reads from this filtered view instead of `manifest`
   // directly.
   const [manualOrder, setManualOrder] = useState<string[]>([]);
-  const orderedManifest = manualOrder.length > 0
-    ? [...manifest].sort((a, b) => {
-        const ai = manualOrder.indexOf(a.id);
-        const bi = manualOrder.indexOf(b.id);
-        if (ai === -1 && bi === -1) return (a.reading_order ?? 0) - (b.reading_order ?? 0);
-        if (ai === -1) return 1;
-        if (bi === -1) return -1;
-        return ai - bi;
-      })
-    : visualReadingOrder(manifest);
+  // `reading_order` is independent of the detected bounding boxes.  It is
+  // the durable order shown in the text manifest and exported to XLIFF.
+  const orderedManifest = [...manifest].sort((a, b) => {
+    const ai = manualOrder.indexOf(a.id);
+    const bi = manualOrder.indexOf(b.id);
+    if (ai !== -1 || bi !== -1) {
+      if (ai === -1) return 1;
+      if (bi === -1) return -1;
+      return ai - bi;
+    }
+    const order = (a.reading_order ?? Number.MAX_SAFE_INTEGER) - (b.reading_order ?? Number.MAX_SAFE_INTEGER);
+    return order || manifest.indexOf(a) - manifest.indexOf(b);
+  });
   const visibleManifest = orderedManifest.filter((i) => !i.excluded);
   const [imgDim, setImgDim] = useState<[number, number] | null>(null);
   const [sceneRegions, setSceneRegions] = useState<SceneRegion[]>([]);
@@ -2057,22 +2042,28 @@ export default function App() {
   }, [asset, selectedId, autoSave]);
 
   const onReorder = useCallback((fromId: string, toId: string) => {
-    setManualOrder((prevOrder) => {
-      const base = prevOrder.length > 0 ? prevOrder : visibleManifest.map((i) => i.id);
-      const fromIdx = base.indexOf(fromId);
-      const toIdx = base.indexOf(toId);
-      if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return prevOrder;
-      const next = [...base];
-      next.splice(fromIdx, 1);
-      next.splice(toIdx, 0, fromId);
-      const updated = next.map((id, idx) => {
-        const inst = manifest.find((i) => i.id === id);
-        return inst ? { ...inst, reading_order: idx } : null;
-      }).filter(Boolean) as InstText[];
+    const base = manualOrder.length > 0 ? manualOrder : visibleManifest.map((i) => i.id);
+    const fromIdx = base.indexOf(fromId);
+    const toIdx = base.indexOf(toId);
+    if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return;
+    const next = [...base];
+    next.splice(fromIdx, 1);
+    next.splice(toIdx, 0, fromId);
+    // Keep hidden/excluded regions in the saved manifest as well.  They are
+    // placed after the visible Text Manifest rows so every region retains a
+    // unique, stable order for round-trip exports.
+    const allIds = [...next, ...orderedManifest.filter((inst) => inst.excluded).map((inst) => inst.id)];
+    const rank = new Map(allIds.map((id, index) => [id, index]));
+    setManualOrder(next);
+    setManifest((prev) => {
+      const updated = prev.map((inst) => {
+        const reading_order = rank.get(inst.id);
+        return reading_order === undefined ? inst : { ...inst, reading_order };
+      });
       autoSave(updated);
-      return next;
+      return updated;
     });
-  }, [visibleManifest, manifest, autoSave]);
+  }, [manualOrder, visibleManifest, orderedManifest, autoSave, setManifest]);
 
   const onTextChange = useCallback((id: string, text: string) => {
     setManifest((prev) => {
@@ -3731,7 +3722,7 @@ export default function App() {
               title="Text & Appearance"
               icon={<Type size={14} />}
               flat
-              className={`${stackClass(0)} flex-1 overflow-auto p-5`}
+              className={`${stackClass(0)} flex-1 overflow-visible p-5`}
               rightSideHandle={
                 <div
                   className="title-drag-handle absolute right-0 top-1/2 -translate-y-1/2 shrink-0 z-20"
@@ -3754,10 +3745,10 @@ export default function App() {
                       <button
                         key={inst.id}
                         onClick={() => setRenderSelId(renderSelId === inst.id ? null : inst.id)}
-                        className={`rounded px-2 py-1 text-xs font-mono transition ${
+                        className={`rounded border border-dashed px-2 py-1 text-xs font-mono transition ${
                           renderSelId === inst.id
-                            ? "bg-cyan-600 text-white"
-                            : "bg-zinc-200 text-zinc-600 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"
+                            ? "border-cyan-600 bg-cyan-600 text-white"
+                            : "border-zinc-400 bg-zinc-200 text-zinc-600 hover:border-zinc-600 hover:bg-zinc-300 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:border-zinc-400 dark:hover:bg-zinc-700"
                         }`}
                       >
                         {inst.id}
@@ -3773,7 +3764,7 @@ export default function App() {
                   </button>
                 </div>
 
-                <div className={`style-panel-morph ${!renderSelId || !styleCollapsed ? "expanded" : ""}`}>
+                <div className={`style-panel-morph style-panel-overflow-visible ${!renderSelId || !styleCollapsed ? "expanded" : ""}`}>
                 {(() => {
                   const inst = prevSelId ? manifest.find((i) => i.id === prevSelId) : null;
                   if (!inst) return <p className="subtext flex items-center gap-1 text-xs text-zinc-500"><MdTipsAndUpdates size={14} className="shrink-0 text-[#2d8cf0]" />select a region to customize text.</p>;
@@ -3811,7 +3802,7 @@ export default function App() {
                   <div className="grid grid-cols-1 gap-3 md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-end md:gap-x-5 md:gap-y-3">
                     {/* Font family + weight */}
                     <div className="min-w-0 md:col-span-2 md:row-start-1">
-                      <label className="subtext mb-1 block text-xs text-zinc-500">font</label>
+                      <label className="subtext mb-1 flex items-center gap-1.5 text-xs text-zinc-500">font{inst.characteristics?.font_style && <span className="flex items-center gap-1 text-[10px]"><ScanText size={11} className="shrink-0 text-cyan-600 dark:text-cyan-400" />detected style: <span className="font-medium text-zinc-700 dark:text-zinc-300">{inst.characteristics.font_style}</span></span>}</label>
                       <FontCombobox
                         value={currentFont}
                         families={families}
@@ -3824,16 +3815,8 @@ export default function App() {
 
                     {/* Font size */}
                     <div className="md:col-span-2 md:row-start-2">
-                      <label className="subtext mb-1 block text-xs text-zinc-500">font size (px)</label>
                       <div className="flex items-center gap-2">
-                        <input
-                          type="number"
-                          min={6}
-                          value={sp?.font_size ?? ""}
-                          onChange={(e) => updateStyle({ font_size: e.target.value ? Number(e.target.value) : null })}
-                          placeholder={inst.characteristics?.size != null ? `Detected: ${inst.characteristics.size}` : "Auto-fit"}
-                          className={`w-24 rounded border border-zinc-300 bg-white px-1 py-0.5 text-xs dark:border-zinc-700 dark:bg-zinc-900 ${sp?.font_size == null && inst.characteristics?.size != null ? "placeholder:text-cyan-600 dark:placeholder:text-cyan-400" : "text-zinc-800 dark:text-zinc-200"}`}
-                        />
+                        <PixelField label="font size" min={6} value={sp?.font_size} onChange={(value) => updateStyle({ font_size: value })} placeholder={inst.characteristics?.size != null ? `Detected: ${inst.characteristics.size}` : "Auto-fit"} />
                         {inst.characteristics?.size != null && sp?.font_size == null && (
                           <span className="subtext text-[10px] text-cyan-600/70 dark:text-cyan-400/70">detected · auto-fit</span>
                         )}
@@ -3841,7 +3824,7 @@ export default function App() {
                     </div>
 
                     {/* Detected typography (from capture-time analysis) */}
-                    {inst.characteristics?.font_style && (
+                    {/* legacy detected-style block moved beside the Font label
                       <p className="subtext flex items-center gap-1.5 text-[10px] text-zinc-500 md:col-span-3 md:row-start-5">
                         <ScanText size={11} className="shrink-0 text-cyan-600 dark:text-cyan-400" />
                         detected style: <span className="font-medium text-zinc-700 dark:text-zinc-300">{inst.characteristics.font_style}</span>
@@ -3849,7 +3832,7 @@ export default function App() {
                           <span> · rotated {inst.characteristics.positioning.rotation_deg}°</span>
                         ) : null}
                       </p>
-                    )}
+                    */}
                     {inst.recognition_history?.length ? (
                       <p className="subtext text-[10px] text-zinc-500 md:col-span-3 md:row-start-6" title={inst.recognition_history.map((h) => `${h.engine}: ${h.reason}`).join("\n")}>
                         OCR audit: {inst.recognition_history[inst.recognition_history.length - 1]?.accepted ? "Paddle evidence accepted" : "candidate retained for review"}
@@ -3858,8 +3841,8 @@ export default function App() {
 
                     {/* Text alignment: horizontal */}
                     <div className="md:col-start-3 md:row-start-1 md:justify-self-end">
-                      <label className="subtext mb-1 block text-xs text-zinc-500">horizontal alignment</label>
-                      <div className="flex gap-1">
+                      <label className="subtext mb-1 block text-right text-xs text-zinc-500">horizontal alignment</label>
+                      <div className="flex justify-end gap-1">
                         {([["left", <AlignLeft size={14} key="l" />], ["center", <AlignCenter size={14} key="c" />], ["right", <AlignRight size={14} key="r" />]] as const).map(([val, icon]) => (
                           <button
                             key={val}
@@ -3873,8 +3856,8 @@ export default function App() {
 
                     {/* Text alignment: vertical */}
                     <div className="md:col-start-3 md:row-start-2 md:justify-self-end">
-                      <label className="subtext mb-1 block text-xs text-zinc-500">vertical alignment</label>
-                      <div className="flex gap-1">
+                      <label className="subtext mb-1 block text-right text-xs text-zinc-500">vertical alignment</label>
+                      <div className="flex justify-end gap-1">
                         {([["top", <AlignStartVertical size={14} key="t" />], ["middle", <AlignCenter size={14} key="m" />], ["bottom", <AlignEndVertical size={14} key="b" />]] as const).map(([val, icon]) => (
                           <button
                             key={val}
@@ -3910,14 +3893,13 @@ export default function App() {
                       <label className="subtext mb-1 block text-xs text-zinc-500">shape (degrees / arc)</label>
                       <div className="grid grid-cols-3 gap-1">
                         {([['skew_x', 'X'], ['skew_y', 'Y'], ['arc', 'Arc']] as const).map(([key, label]) => (
-                          <label key={key} className="text-[10px] text-zinc-500"><span className="flex items-center justify-between">{label}<button type="button" onClick={() => toggleTransformLock(key)} className={`rounded p-0.5 ${isTransformLocked(key) ? "text-cyan-600 dark:text-cyan-400" : "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"}`} title={isTransformLocked(key) ? "Unlock" : "Lock"}>{isTransformLocked(key) ? <HiLockClosed size={9} /> : <HiLockOpen size={9} />}</button></span>
-                            <input type="number" step="1" min="-25" max="25"
+                          <label key={key} className="flex min-w-0 items-center gap-0.5 text-[10px] text-zinc-500"><span>{label}</span><button type="button" onClick={() => toggleTransformLock(key)} className={`rounded p-0.5 ${isTransformLocked(key) ? "text-cyan-600 dark:text-cyan-400" : "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"}`} title={isTransformLocked(key) ? "Unlock" : "Lock"}>{isTransformLocked(key) ? <HiLockClosed size={9} /> : <HiLockOpen size={9} />}</button><input type="number" step="1" min="-25" max="25"
                               value={sp?.transform?.[key] ?? 0}
                               disabled={isTransformLocked(key)}
                               onChange={(e) => { const value = Number(e.target.value || 0); if (!isTransformLocked(key)) { trackTransformChange(key, sp?.transform?.[key] ?? 0, value); updateCanvasTransform(key, value); } }}
                               onDoubleClick={() => { if (!isTransformLocked(key)) { trackTransformChange(key, sp?.transform?.[key] ?? 0, 0); updateCanvasTransform(key, 0); } }}
                               title="double-click to reset to 0"
-                              className="mt-0.5 w-full rounded border border-zinc-300 bg-white px-1 py-0.5 text-xs disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900" />
+                              className="min-w-0 flex-1 rounded border border-zinc-300 bg-white px-1 py-0.5 text-xs disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900" />
                           </label>
                         ))}
                       </div>
@@ -3925,8 +3907,8 @@ export default function App() {
 
                     {/* Justification */}
                     <div className="md:col-start-3 md:row-start-3 md:justify-self-end">
-                      <label className="subtext mb-1 block text-xs text-zinc-500">justification</label>
-                      <div className="flex gap-1">
+                      <label className="subtext mb-1 block text-right text-xs text-zinc-500">justification</label>
+                      <div className="flex justify-end gap-1">
                         {([["last_left", <AlignJustify size={14} key="ll" />], ["last_right", <AlignJustify size={14} key="lr" style={{ transform: "scaleX(-1)" }} />], ["justify", <AlignJustify size={14} key="j" />], ["justify_center", <AlignCenter size={14} key="jc" />]] as const).map(([val, icon]) => (
                           <button
                             key={val}
@@ -3995,10 +3977,10 @@ export default function App() {
                 {/* === APPEARANCE SECTION === */}
                 <div className="border-t border-zinc-200 pt-3 dark:border-zinc-800">
                   <p className="subtext mb-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Appearance</p>
-                  <div className="space-y-2">
-                    {/* Fill (text color) */}
+                  <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                    {/* Fill */}
                     <div>
-                      <label className="subtext mb-1 block text-xs text-zinc-500">fill (text color)</label>
+                      <label className="subtext mb-1 block text-xs text-zinc-500">fill</label>
                       <div className="flex items-center gap-2">
                         <input
                           type="color"
@@ -4009,10 +3991,10 @@ export default function App() {
                         <button
                           onClick={() => updateStyle({ color: null })}
                           className="subtext rounded px-2 py-0.5 text-xs text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800"
-                        >auto (from scene)</button>
+                        >auto</button>
                         <button onClick={() => setColorPickMode((mode) => mode ? null : "active")}
                           className={`subtext flex items-center gap-1 rounded px-2 py-0.5 text-xs ${colorPickMode ? "bg-cyan-600 text-white" : "text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800"}`}
-                          title="pick color"><FaEyeDropper size={11} /> pick color</button>
+                          title="pick color" aria-label="pick color"><FaEyeDropper size={11} /></button>
                         <HexColorInput value={currentColor} onChange={(color) => updateStyle({ color })} />
                       </div>
                     </div>
@@ -4027,15 +4009,7 @@ export default function App() {
                           onChange={(e) => updateStyle({ stroke_color: e.target.value })}
                           className="h-7 w-10 rounded border border-zinc-300 dark:border-zinc-700"
                         />
-                        <input
-                          type="number"
-                          min={0}
-                          step={0.5}
-                          value={sp?.stroke_width ?? ""}
-                          onChange={(e) => updateStyle({ stroke_width: e.target.value ? Number(e.target.value) : null })}
-                          placeholder="width px"
-                          className="w-20 rounded border border-zinc-300 bg-white px-2 py-1 text-xs text-zinc-800 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
-                        />
+                        <PixelField label="weight" min={0} value={sp?.stroke_width} onChange={(value) => updateStyle({ stroke_width: value })} width="8rem" />
                         <button
                           onClick={() => updateStyle({ stroke_color: null, stroke_width: null })}
                           className="subtext rounded px-2 py-0.5 text-xs text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800"
@@ -4049,34 +4023,26 @@ export default function App() {
                         onClick={() => updateStyle({ underline: !sp?.underline ? true : null })}
                         className={`flex items-center gap-1 rounded px-2 py-1 text-xs transition ${sp?.underline ? "bg-cyan-600 text-white" : "bg-zinc-200 text-zinc-600 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"}`}
                         title="underline"
-                      ><Underline size={14} /> underline</button>
+                      aria-label="underline"><Underline size={14} /></button>
                       <button
                         onClick={() => updateStyle({ italic: !sp?.italic ? true : null })}
                         className={`flex items-center gap-1 rounded px-2 py-1 text-xs transition ${sp?.italic ? "bg-cyan-600 text-white" : "bg-zinc-200 text-zinc-600 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"}`}
                         title="italic"
-                      ><Italic size={14} /> italic</button>
+                      aria-label="italic"><Italic size={14} /></button>
                       <button
                         onClick={() => updateStyle({ subscript: !sp?.subscript ? true : null })}
                         className={`flex items-center gap-1 rounded px-2 py-1 text-xs transition ${sp?.subscript ? "bg-cyan-600 text-white" : "bg-zinc-200 text-zinc-600 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"}`}
                         title="subscript"
-                      ><Subscript size={14} /> sub</button>
+                      aria-label="subscript"><Subscript size={14} /></button>
                       <button
                         onClick={() => updateStyle({ superscript: !sp?.superscript ? true : null })}
                         className={`flex items-center gap-1 rounded px-2 py-1 text-xs transition ${sp?.superscript ? "bg-cyan-600 text-white" : "bg-zinc-200 text-zinc-600 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"}`}
                         title="superscript"
-                      ><Superscript size={14} /> super</button>
+                      aria-label="superscript"><Superscript size={14} /></button>
                     </div>
                     {sp?.underline && <div className="mt-2 flex flex-wrap items-center gap-2">
-                      <label className="subtext text-xs text-zinc-500">underline offset
-                        <input type="number" step={0.5} value={sp.underline_offset ?? ""}
-                          onChange={(e) => updateStyle({ underline_offset: e.target.value ? Number(e.target.value) : null })}
-                          placeholder="detected" className="ml-1 w-16 rounded border border-zinc-300 bg-white px-1 py-0.5 text-xs dark:border-zinc-700 dark:bg-zinc-900" /> px
-                      </label>
-                      <label className="subtext text-xs text-zinc-500">underline weight
-                        <input type="number" min={0.5} step={0.5} value={sp.underline_width ?? ""}
-                          onChange={(e) => updateStyle({ underline_width: e.target.value ? Number(e.target.value) : null })}
-                          placeholder="detected" className="ml-1 w-16 rounded border border-zinc-300 bg-white px-1 py-0.5 text-xs dark:border-zinc-700 dark:bg-zinc-900" /> px
-                      </label>
+                      <PixelField label="underline offset" value={sp.underline_offset} onChange={(value) => updateStyle({ underline_offset: value })} placeholder="detected" width="9rem" />
+                      <PixelField label="underline weight" min={0.5} value={sp.underline_width} onChange={(value) => updateStyle({ underline_width: value })} placeholder="detected" width="9rem" />
                     </div>}
                   </div>
                 </div>
@@ -4134,9 +4100,12 @@ export default function App() {
                 flat
                 className={`${stackClass(1)} flex-1 overflow-auto p-5`}
                 rightSideHandle={
-                  <div className="title-drag-handle absolute right-0 top-1/2 z-20 shrink-0 -translate-y-1/2" style={{ cursor: "pointer", padding: "2px 4px" }} onClick={onGarnishExpandClick} title={garnishCardExpandedH ? "double-click to return to standard" : "double-click to expand to full width"}>
-                    <svg width="14" height="42" viewBox="0 0 14 42" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="1" y="0.5" width="4.5" height="41" rx="2.25" fill="currentColor" /><rect x="8" y="11" width="4.5" height="20" rx="2.25" fill="currentColor" /></svg>
-                  </div>
+                  <>
+                    {selectedRenderInst && <button type="button" role="switch" aria-checked={selectedGarnishEnabled} aria-label="enable garnish" onClick={() => setSelectedGarnishEnabled(!selectedGarnishEnabled)} className={`absolute right-8 top-3 inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${selectedGarnishEnabled ? "bg-violet-600" : "bg-zinc-300 dark:bg-zinc-600"}`} title={selectedGarnishEnabled ? "disable garnish" : "enable garnish"}><span className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${selectedGarnishEnabled ? "translate-x-3" : "translate-x-0"}`} /></button>}
+                    <div className="title-drag-handle absolute right-0 top-1/2 z-20 shrink-0 -translate-y-1/2" style={{ cursor: "pointer", padding: "2px 4px" }} onClick={onGarnishExpandClick} title={garnishCardExpandedH ? "double-click to return to standard" : "double-click to expand to full width"}>
+                      <svg width="14" height="42" viewBox="0 0 14 42" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="1" y="0.5" width="4.5" height="41" rx="2.25" fill="currentColor" /><rect x="8" y="11" width="4.5" height="20" rx="2.25" fill="currentColor" /></svg>
+                    </div>
+                  </>
                 }
               >
                 {(() => {
@@ -4151,16 +4120,15 @@ export default function App() {
                   return <div className="space-y-3">
                     <div className="flex flex-wrap items-center gap-2">
                       <div className="relative shrink-0" ref={garnishScopeRef}>
-                        <button type="button" onClick={() => setGarnishScopeOpen((value) => !value)} className="bezier-card flex w-24 items-center gap-1.5 rounded-md bg-white/60 px-2 py-1 text-[10px] text-violet-700 transition hover:bg-violet-100 dark:bg-zinc-900/60 dark:text-violet-300 dark:hover:bg-zinc-800">{perRegion ? "per region" : "all regions"}<ChevronDown size={10} className={`transition ${garnishScopeOpen ? "rotate-180" : ""}`} /></button>
+                        <button type="button" onClick={() => setGarnishScopeOpen((value) => !value)} className="bezier-card flex w-24 items-center justify-between gap-1.5 rounded-md bg-white/60 px-2 py-1 text-[10px] text-violet-700 transition hover:bg-violet-100 dark:bg-zinc-900/60 dark:text-violet-300 dark:hover:bg-zinc-800">{perRegion ? "per region" : "all regions"}<ChevronDown size={10} className={`transition ${garnishScopeOpen ? "rotate-180" : ""}`} /></button>
                         <div className={`dropdown-morph bezier-card absolute left-0 top-full z-[200] mt-1 w-24 rounded-lg bg-white p-1 dark:bg-zinc-900${garnishScopeOpen ? " expanded" : ""}`} style={garnishScopeOpen ? { boxShadow: "1px 1px 0 var(--bc-shadow), 2px 2px 6px rgba(0,0,0,0.06)" } : undefined}>
                           <button type="button" onClick={() => { setSelectedGarnishScope("whole_selection"); setGarnishScopeOpen(false); }} className={`flex w-full rounded-md px-2 py-1.5 text-[10px] transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${!perRegion ? "bg-zinc-100 font-medium text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100" : "text-zinc-600 dark:text-zinc-400"}`}>all regions</button>
                           <button type="button" onClick={() => { setSelectedGarnishScope("per_region"); setGarnishScopeOpen(false); }} className={`flex w-full rounded-md px-2 py-1.5 text-[10px] transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${perRegion ? "bg-zinc-100 font-medium text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100" : "text-zinc-600 dark:text-zinc-400"}`}>per region</button>
                         </div>
                       </div>
+                      <button type="button" onClick={() => setGarnishCardCollapsed((value) => !value)} className="shrink-0 rounded p-1 text-zinc-500 transition hover:bg-zinc-200 dark:hover:bg-zinc-800" title={garnishCardCollapsed ? "expand garnish controls" : "collapse garnish controls"}><FcCollapse style={{ transform: garnishCardCollapsed ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} /></button>
                       {!recommended && <span className="text-[10px] text-violet-700/75 dark:text-violet-300/75">manual baseline</span>}
                       {garnishPreviewSyncing && <span className="text-[10px] text-violet-700 dark:text-violet-300">updating treatment…</span>}
-                      <button type="button" role="switch" aria-checked={selectedGarnishEnabled} aria-label="enable garnish" onClick={() => setSelectedGarnishEnabled(!selectedGarnishEnabled)} className={`relative ml-auto inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${selectedGarnishEnabled ? "bg-violet-600" : "bg-zinc-300 dark:bg-zinc-600"}`}><span className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${selectedGarnishEnabled ? "translate-x-3" : "translate-x-0"}`} /></button>
-                      <button type="button" onClick={() => setGarnishCardCollapsed((value) => !value)} className="rounded p-1 text-zinc-500 transition hover:bg-zinc-200 dark:hover:bg-zinc-800" title={garnishCardCollapsed ? "expand" : "collapse"}><FcCollapse style={{ transform: garnishCardCollapsed ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} /></button>
                     </div>
                     <div className={`style-panel-morph ${!garnishCardCollapsed ? "expanded" : ""}`}>
                       <fieldset disabled={!selectedGarnishEnabled} className="flex flex-wrap gap-x-2 gap-y-1 border-t border-violet-400/25 px-2 py-2 disabled:opacity-45">
@@ -4361,7 +4329,7 @@ export default function App() {
                       <div className="relative shrink-0" ref={warpRef}><button onClick={() => setWarpOpen((value) => !value)} className="bezier-card flex items-center gap-1.5 rounded-md bg-white/60 px-2 py-1 text-xs text-zinc-700 transition hover:bg-zinc-100 dark:bg-zinc-900/60 dark:text-zinc-300 dark:hover:bg-zinc-800">{WARP_PRESETS.find((preset) => preset.value === (transform.preset ?? "custom"))?.label ?? "Custom"}<ChevronDown size={12} className={`transition ${warpOpen ? "rotate-180" : ""}`} /></button><div className={`dropdown-morph bezier-card absolute left-0 top-full z-[200] mt-1 w-40 rounded-lg bg-white p-1 dark:bg-zinc-900${warpOpen ? " expanded" : ""}`} style={warpOpen ? { boxShadow: "1px 1px 0 var(--bc-shadow), 2px 2px 6px rgba(0,0,0,0.06)" } : undefined}>{WARP_PRESETS.map((preset) => <button key={preset.value} onClick={() => { applyCanvasWarpPreset(preset.value); setWarpOpen(false); }} className={`flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-xs transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${(transform.preset ?? "custom") === preset.value ? "bg-zinc-100 font-medium text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100" : "text-zinc-600 dark:text-zinc-400"}`}><span>{preset.label}</span>{preset.value !== "none" && preset.value !== "custom" && <WarpPreview preset={preset.value} />}</button>)}</div></div>
                       <button type="button" onClick={toggleAllTransformLocks} className="rounded p-0.5 transition hover:scale-110" title={allTransformLocksActive ? "Unlock all transform values" : "Lock all transform values"}>{allTransformLocksActive ? <HiLockClosed size={12} className="text-cyan-600 dark:text-cyan-400" /> : <HiLockOpen size={12} className="text-zinc-400 dark:text-zinc-500" />}</button>
                       <button onClick={() => setWarpCollapsed((value) => !value)} className="ml-auto shrink-0 rounded p-1 text-zinc-500 transition hover:bg-zinc-200 dark:hover:bg-zinc-800" title={warpCollapsed ? "expand" : "collapse"}><FcCollapse style={{ transform: warpCollapsed ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} /></button>
-                      <div className={`style-panel-morph flex-1 ${!warpCollapsed ? "expanded" : ""}`}>
+                      <div className={`style-panel-morph style-panel-overflow-visible flex-1 ${!warpCollapsed ? "expanded" : ""}`}>
                         <div className="flex flex-wrap items-center gap-2 pt-1">
                       {transform?.preset && transform.preset !== "none" && transform.preset !== "custom" && <label className="subtext flex items-center gap-1 text-xs text-zinc-500">amount<input aria-label="warp amount" type="range" min="-25" max="25" step="0.5" value={transform.amount ?? 12} onChange={(e) => updateSelectedStyle({ transform: { ...transform, amount: Number(e.target.value) } })} onDoubleClick={() => updateSelectedStyle({ transform: { ...transform, amount: 12 } })} title="double-click to return to the preset baseline" /><span className="min-w-9 text-right font-mono text-[10px]">{Number(transform.amount ?? 12).toFixed(1)}</span></label>}
                       {([['skew_x', 'X'], ['skew_y', 'Y']] as const).map(([key, label]) => {

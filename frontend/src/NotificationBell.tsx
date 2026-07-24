@@ -51,19 +51,21 @@ export default function NotificationBell({ notifications, onClear, onDismiss }: 
   void tick;
 
   return (
-    <div className="relative" ref={ref}>
+    <div className="indicator relative" ref={ref}>
+      {count > 0 && (
+        <span className="indicator-item badge badge-secondary absolute -right-1.5 -top-1.5 z-10 inline-flex min-w-4 items-center justify-center rounded-full bg-cyan-600 px-1 text-[10px] font-semibold leading-4 text-white">
+          {count > 99 ? "99+" : count}
+        </span>
+      )}
       <button
         onClick={() => setOpen((v) => !v)}
-        className="bezier-card relative flex items-center rounded-lg bg-white/60 px-3 py-2 text-sm text-zinc-700 transition hover:bg-zinc-100 dark:bg-zinc-900/60 dark:text-zinc-300 dark:hover:bg-zinc-800"
+        className="btn bezier-card relative flex items-center rounded-lg bg-white/60 px-3 py-2 text-sm text-zinc-700 transition hover:bg-zinc-100 dark:bg-zinc-900/60 dark:text-zinc-300 dark:hover:bg-zinc-800"
         title="notifications"
       >
         {count > 0 ? (
           <RiNotification3Fill size={16} className="text-cyan-600 dark:text-cyan-400" />
         ) : (
           <RiNotification3Line size={16} />
-        )}
-        {count > 0 && (
-          <span className="notif-badge">{count > 99 ? "99+" : count}</span>
         )}
       </button>
       <div
