@@ -29,8 +29,8 @@ arabic-reshaper==3.0.1      # scribe RTL shaping — declared, NOT YET WIRED
 python-bidi==0.6.11         # scribe bidi reordering — declared, NOT YET WIRED
 xlrd==2.0.2                 # glossary .xls parsing
 openpyxl==3.1.5             # glossary .xlsx parsing
-scikit-image==0.26.0        # arrives via easyocr; pinned explicitly, not left to drift
-scipy==1.18.0               # scikit-image backbone; pinned for the same reason
+scikit-image==0.26.0        # imaging.text_mask local thresholding (Sauvola)
+scipy==1.18.0               # scikit-image backbone; pinned to stop drift
 
 ## ── one cv2, and only one ──────────────────────────────────────────────
 ## install EXACTLY ONE opencv distribution. two of them unpack into the

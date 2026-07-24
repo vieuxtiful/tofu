@@ -105,11 +105,22 @@ Scene has two jobs. First, a pre-pass (`analyze_regions`) detects candidate text
 
 Surface deduplication is orientation-aware: a small horizontal English label sitting on a large vertical CJK sign is not discarded as a duplicate of the sign, even though it's >85% contained within it — the orientation bucket (wide/tall/square) must also match.
 
-Second, an enrichment pass (`analyze`) fills per-instance `StyleProfil` (estimated text color, font weight, italic, size) and `BgProfil` (background color, texture classification, containing surface label) used by Cleanse for faithful inpainting and by Scribe for style-matched re-rendering. GrabCut-refined color estimation separates text from background pixels more accurately than Otsu-only thresholding, especially on textured or gradient surfaces. Existing user-set values are never overwritten.
+Second, an enrichment pass (`analyze`) fills per-instance `StyleProfil` (estimated text color, font weight, italic, size) and `BgProfil` (background color, texture classification, containing surface label) used by Cleanse for faithful inpainting and by Scribe for style-matched re-rendering. Existing user-set values are never overwritten.
+
+#### Glyph binarization (`utils/imaging.text_mask`)
+
+Style estimation, typography analysis, Cleanse's erasure masks, Savor, and font matching all bottom out in one function, so its binarization quality propagates to four layers at once. The text/background split is thresholded either globally by **Otsu** (Otsu 1979) or locally by **Sauvola** (Sauvola & Pietikäinen 2000, *Adaptive document image binarization*, Pattern Recognition 33(2):225–236), chosen per crop rather than fixed:
+
+- Otsu assumes a bimodal histogram and one threshold for the entire crop. That is correct on flat signage and wrong under a lighting gradient, where no single cut exists and Otsu necessarily swallows the shaded end of the background as ink.
+- Sauvola derives a per-pixel threshold from the local mean and standard deviation, so it is immune to that gradient, but pays mild window noise on flat crops.
+
+A low-pass illumination estimate (`_uneven_soak`) picks between them: crops whose background trend spans more than 40/255 grey levels take Sauvola, the rest keep Otsu. On a controlled gradient crop this lifts mask IoU from **0.258 to 0.927**, while flat crops hold at **0.985** — a blanket switch to Sauvola would have regressed those flat crops to 0.906, which is why the choice is per-crop. Measured against the annotated street-scene ground truth, **27% of real regions** (9/33) exceed the floor and take the local path.
+
+Sauvola degrading — scikit-image absent, or a mask that comes back all ink or all ground — falls through to Otsu rather than failing, so the function can only match or beat its previous Otsu-only behaviour. Whichever wins, text is assumed the minority class and the result is refined with **GrabCut** (Rother et al. 2004) when the crop is large enough for its border ring, which is far more robust on textured backgrounds.
 
 ### Cleanse — text erasure & inpainting (`src/tofu/layers/cleanse.py`)
 
-Cleanse removes source text from the asset and reconstructs the background underneath. The erasure mask is the glyph's own stroke shape (Otsu + GrabCut, dilated a few pixels for anti-aliased edges) rather than the whole bounding box rectangle — the previous implementation also filled the full padded bbox unconditionally, which forced the inpainter to hallucinate the entire box interior and produced the leftover-artifact failure mode documented in the project workplan. The bbox rectangle is now a fallback used only when segmentation genuinely fails.
+Cleanse removes source text from the asset and reconstructs the background underneath. The erasure mask is the glyph's own stroke shape (Otsu/Sauvola + GrabCut, dilated a few pixels for anti-aliased edges — see [Glyph binarization](#glyph-binarization-utilsimagingtext_mask)) rather than the whole bounding box rectangle — the previous implementation also filled the full padded bbox unconditionally, which forced the inpainter to hallucinate the entire box interior and produced the leftover-artifact failure mode documented in the project workplan. The bbox rectangle is now a fallback used only when segmentation genuinely fails.
 
 The inpainting strategy is selected from Scene's `BgProfil.texture` classification, so Cleanse and Scene agree on what kind of surface they're looking at:
 
