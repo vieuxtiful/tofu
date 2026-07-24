@@ -1227,6 +1227,12 @@ html.light .penumbra-switch {
     opacity 0.25s ease-in 0.15s;
 }
 
+/* Text Warp's preset menu is an overlay, so its parent cannot clip the menu
+   at the bottom of the Text & Appearance card. */
+.style-panel-morph.style-panel-overflow-visible {
+  overflow: visible;
+}
+
 /* ── Dropdown Morph ── reusable expand/collapse animation for all dropdown menus.
    Apply `.dropdown-morph` to the dropdown container and toggle `.expanded` to
    open/close. Mirrors the style-panel-morph easing for visual continuity. */

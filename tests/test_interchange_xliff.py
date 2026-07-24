@@ -1,7 +1,7 @@
 """XLIFF/CAT import must map safely without relying on one vendor's IDs."""
 
 from tofu.core.types import BBox, InstText, TextManifest
-from tofu.utils.interchange import decode_translation_bytes, detect_format, import_xliff_for_manifest
+from tofu.utils.interchange import decode_translation_bytes, detect_format, export_xliff, import_xliff_for_manifest
 
 
 def _manifest() -> TextManifest:
@@ -24,6 +24,19 @@ def test_standard_xliff_12_keeps_immutable_region_identity():
 
     assert imported["translations"] == {"r3": "OLD", "r2": "WALLS"}
     assert imported["matched_by"] == {"id": 2, "bbox": 0, "source": 0}
+
+
+def test_xliff_uses_user_managed_reading_order_not_bounding_boxes():
+    manifest = _manifest()
+    # These boxes read r1, r2, r3 geometrically, while the user has placed
+    # r3 before r1 in the Text Manifest.
+    manifest.instances[0].reading_order = 1
+    manifest.instances[1].reading_order = 2
+    manifest.instances[2].reading_order = 0
+
+    document = export_xliff(manifest)
+
+    assert document.index('trans-unit id="r3"') < document.index('trans-unit id="r1"') < document.index('trans-unit id="r2"')
 
 
 def test_cat_xliff_resname_bbox_and_unique_source_are_supported():
