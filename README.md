@@ -190,7 +190,17 @@ Scribe therefore runs two passes for RTL target languages, keyed on the target's
 
 Both degrade to a pass-through when their library is missing, and both are no-ops for every LTR language — verified by a test asserting Latin output is byte-identical with the RTL passes stubbed out.
 
-**Not yet covered**: Indic conjunct formation and reordering, Thai/Khmer mark placement, and OpenType kerning/ligatures for all scripts including Latin. Those need Raqm (HarfBuzz + FriBiDi). Raqm *is* compiled into Pillow's Windows wheel — the binary carries `HAVE_RAQM` and statically linked `hb_shape_*` symbols — but stays inactive because libraqm resolves FriBiDi dynamically at runtime and no `fribidi-0.dll` ships with it. Check on any machine with `PIL.features.check("raqm")`; supplying that one DLL enables full shaping for every script at once.
+**Not yet covered**: Indic conjunct formation and reordering, Thai/Khmer mark placement, and OpenType kerning/ligatures for all scripts including Latin. Those need Raqm (HarfBuzz + FriBiDi), which is **not** reachable by configuration — Pillow's Windows wheel is compiled without it:
+
+```python
+>>> from PIL import _imagingft
+>>> _imagingft.HAVE_RAQM, _imagingft.HAVE_FRIBIDI, _imagingft.HAVE_HARFBUZZ
+(False, False, False)
+```
+
+These are compile-time constants baked into the wheel, not runtime probes, so no DLL placement changes them. Installing FriBiDi (mingw-w64 `libfribidi-0.dll`, whether on `PATH`, beside `python.exe`, or registered via `os.add_dll_directory`) leaves `PIL.features.check("raqm")` returning `False` — measured, not assumed. Reading `raqm`/`harfbuzz`/`fribidi` symbol names out of `_imagingft*.pyd` is misleading: those strings are the attribute names Pillow always exports, plus compiled-out code paths.
+
+Enabling full shaping means one of two real projects: building Pillow from source against libraqm, or moving Scribe off Pillow's text API onto `uharfbuzz` + `freetype-py` and drawing positioned glyph runs directly. The second is the more portable of the two, since both ship Windows wheels and neither needs a C toolchain on the target machine.
 
 ### Verify — quality verification (`src/tofu/layers/verify.py`)
 
