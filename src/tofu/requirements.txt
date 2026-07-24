@@ -1,6 +1,31 @@
-fonttools>=4.38.0
-matplotlib>=3.5.0   # optional, for system font discovery
-pillow>=10.0.0      # scribe rendering + cicerone pre-resize
-numpy>=1.24.0       # image array interchange
-easyocr>=1.7.0      # optional, cicerone default OCR backend (CRAFT + CRNN)
-paddleocr>=2.7.0    # optional, higher-accuracy OCR backend (DB + SVTR), CPU/GPU
+## 🍢 tofu (pipeline library) — dependency manifest
+## vieuxtiful
+##
+## this file DELEGATES. it used to carry its own floors, and they drifted:
+## it still listed matplotlib (never imported anywhere, never installed),
+## floored paddleocr into the app venv (which breaks the .venv-paddle
+## isolation — see server/requirements.txt), and omitted opencv entirely
+## even though half the layers import cv2. two manifests for one venv is
+## how a stack stops matching its own documentation.
+##
+## server/requirements.txt is the single source of truth for the app venv.
+
+-r ../../server/requirements.txt
+
+## what the LIBRARY itself imports, for reference (versions live upstream):
+##   pillow        scribe rendering, cicerone pre-resize
+##   numpy         image array interchange
+##   opencv        scene / cleanse / typography / savor / imaging.text_mask
+##   scikit-image  imaging.text_mask local thresholding (Sauvola)
+##   fonttools     tofu layer-0 glyph coverage
+##   easyocr       cicerone default OCR backend (CRAFT + CRNN), Latin-strong
+##
+## optional, resolved at runtime and degraded gracefully when absent:
+##   PP-OCRv5      cicerone CJK engine, OUT-OF-PROCESS under .venv-paddle
+##                 (server/requirements-paddle.txt) — load-bearing for CJK,
+##                 never installed into the app venv
+##   LaMa          cleanse neural repair, OUT-OF-PROCESS under .venv-inpaint
+##                 (server/requirements-inpaint.txt)
+##   stanza        basil linguistic enrichment; local models only, gated on
+##                 TOFU_BASIL_STANZA_DIR, never auto-downloads
+##   segment-anything  scene SAM backend; falls back to ClassicalCVBackend

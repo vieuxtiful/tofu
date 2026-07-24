@@ -1,0 +1,36 @@
+## 🍢 ToFU — isolated neural inpainting interpreter (.venv-inpaint)
+## vieuxtiful
+##
+## cleanse's neural repair providers (LaMa today; BrushNet/DiffSTR behind the
+## experimental flags) run under this interpreter via scripts/inpaint_lama_
+## runner.py and scripts/inpaint_brushnet_runner.py. see
+## src/tofu/layers/inpaint_providers.py — the app only exchanges temporary
+## image/mask/output files with it, and no request field can pick a command,
+## endpoint, model, or checkpoint.
+##
+## this venv carries a CUDA torch build while the app venv is CPU-only. that
+## is deliberate: inpainting is the one stage worth a GPU, and keeping the
+## CUDA wheels out of .venv keeps the app install small and portable.
+##
+## create:
+##   py -3.13 -m venv .venv-inpaint
+##   .venv-inpaint\Scripts\python -m pip install -r server/requirements-inpaint.txt
+##
+## ⚠ this venv is BEHIND on security patches and is pinned here as-built so
+## the current measurements stay reproducible — not as an endorsement:
+##   Pillow 9.5.0  — many fixed CVEs since; app venv is on 12.3.0
+##   torch 2.6.0   — app venv is on 2.13.0
+##   numpy 1.26.4 / opencv-python 4.11.0.86 (non-headless, pulls GUI libs)
+## it only ever sees local temp files written by cleanse, never user-supplied
+## bytes over the network, so the exposure is bounded — but bumping Pillow
+## and swapping opencv-python for opencv-python-headless here is a cheap,
+## low-risk win whenever the LaMa runner is next revisited.
+
+--extra-index-url https://download.pytorch.org/whl/cu124
+torch==2.6.0+cu124
+torchvision==0.21.0+cu124
+simple-lama-inpainting==0.1.2
+numpy==1.26.4
+opencv-python==4.11.0.86
+Pillow==9.5.0
+fire==0.5.0
