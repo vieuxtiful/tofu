@@ -1,8 +1,12 @@
-import { Check, Loader2, ShieldAlert } from "lucide-react";
-import { TbLeafFilled, TbRoad, TbTag, TbTagFilled, TbTextSize, TbAlignLeft, TbHelp, TbHelpFilled, TbReplace, TbReplaceFilled } from "react-icons/tb";
+import { useState } from "react";
+import { Check, Loader2, ScanText, ShieldAlert } from "lucide-react";
+import { FcCollapse } from "react-icons/fc";
+import { MdTipsAndUpdates } from "react-icons/md";
+import { TbLeafFilled, TbReplace, TbReplaceFilled } from "react-icons/tb";
 import type { GlossaryStatus, SemanticSubstitutionPlan, SemanticTextUnit } from "./api";
 import type { Theme } from "./theme";
 import GlossaryPanel from "./GlossaryPanel";
+import basilHeaderUrl from "../../images/basil-header.png";
 
 type Props = {
   units: SemanticTextUnit[];
@@ -31,29 +35,33 @@ export default function SemanticSubstitutionPanel({
   onGlossaryUpload, onGlossaryDelete, glossaryUploading, glossaryUploadStep, glossaryUploadError,
 }: Props) {
   const multiRegion = units.filter((unit) => unit.region_ids.length > 1);
-
-  const entityIcon = (entityType: string) => {
-    const dark = theme === "dark";
-    switch (entityType) {
-      case "street_name": return <TbRoad size={12} className="shrink-0 text-cyan-600 dark:text-cyan-400" />;
-      case "label":       return dark ? <TbTagFilled size={12} className="shrink-0 text-cyan-600 dark:text-cyan-400" /> : <TbTag size={12} className="shrink-0 text-cyan-600 dark:text-cyan-400" />;
-      case "sentence":    return dark ? <TbTextSize size={12} className="shrink-0 text-cyan-600 dark:text-cyan-400" /> : <TbAlignLeft size={12} className="shrink-0 text-cyan-600 dark:text-cyan-400" />;
-      default:             return dark ? <TbHelpFilled size={12} className="shrink-0 text-cyan-600 dark:text-cyan-400" /> : <TbHelp size={12} className="shrink-0 text-cyan-600 dark:text-cyan-400" />;
-    }
-  };
+  const [open, setOpen] = useState(false);
+  const backdropFade = theme === "dark" ? "rgba(8, 47, 73, 1)" : "rgba(236, 254, 255, 1)";
 
   if (multiRegion.length === 0) return null;
   return (
-    <section className="rounded-xl border border-cyan-200/80 bg-cyan-50/55 p-3 dark:border-cyan-900/80 dark:bg-cyan-950/20">
-      <div className="mb-1 flex items-center gap-2 text-sm font-semibold text-cyan-950 dark:text-cyan-100">
+    <section className="relative isolate rounded-xl border border-cyan-200/80 bg-cyan-50/55 p-3 dark:border-cyan-900/80 dark:bg-cyan-950/20">
+      <div
+        aria-hidden="true"
+        className={`pointer-events-none absolute inset-0 rounded-[inherit] bg-no-repeat transition-opacity duration-300 ${open ? "opacity-100" : "opacity-55"}`}
+        style={{ backgroundImage: `linear-gradient(to bottom, transparent 0%, transparent 80%, ${backdropFade} 100%), url(${basilHeaderUrl})`, backgroundPosition: "center, center -32px", backgroundSize: "100% 100%, 100% auto" }}
+      />
+      <div className="relative z-10">
+      <div className="flex items-center gap-2 pr-7 text-sm font-semibold text-cyan-950 dark:text-cyan-100">
         <TbLeafFilled size={15} className="text-emerald-600" />
         <span>Basil</span>
       </div>
-      <p className="mb-3 text-xs text-cyan-900/75 dark:text-cyan-200/70">
-        Set target arrangement and review before plating.
+      <button type="button" onClick={() => setOpen((value) => !value)} className="absolute right-0 top-0 rounded p-1 text-zinc-500 transition hover:bg-zinc-200 dark:hover:bg-zinc-800" title={open ? "collapse Basil" : "expand Basil"} aria-label={open ? "collapse Basil" : "expand Basil"}>
+        <FcCollapse size={12} style={{ transform: open ? "none" : "rotate(180deg)", transition: "transform 0.2s" }} />
+      </button>
+      <p className="mb-1 flex items-start gap-1.5 text-xs text-cyan-900/75 dark:text-cyan-200/70">
+        <MdTipsAndUpdates size={14} className="mt-0.5 shrink-0 text-[#2d8cf0]" />
+        <span>Set target arrangement and review before plating.</span>
       </p>
+      <div className={`style-panel-morph${open ? " expanded" : ""}`}>
+      <div>
       <GlossaryPanel theme={theme} projectId={projectId} status={glossaryStatus} onUpload={onGlossaryUpload} onDelete={onGlossaryDelete} uploading={glossaryUploading} uploadStep={glossaryUploadStep} uploadError={glossaryUploadError} />
-      <div className="space-y-3">
+      <div className="mt-3 space-y-3">
         {multiRegion.map((unit) => {
           const plan = plans[unit.id];
           const value = drafts[unit.id] ?? unit.substitution?.target_text ?? "";
@@ -66,7 +74,7 @@ export default function SemanticSubstitutionPanel({
                 </span>
                 <span className="font-medium text-zinc-800 dark:text-zinc-100">{unit.source_text}</span>
                 <span className="flex items-center gap-1.5 text-[10px] text-zinc-500 dark:text-zinc-400">
-                  {entityIcon(unit.entity_type)}
+                  <ScanText size={12} className="shrink-0 text-cyan-600 dark:text-cyan-400" />
                   <span className="font-medium text-zinc-700 dark:text-zinc-300">{unit.entity_type.replace("_", " ")}</span>
                   <span className={unit.confidence >= 0.8 ? "text-emerald-600 dark:text-emerald-300" : unit.confidence >= 0.6 ? "text-amber-600 dark:text-amber-300" : "text-red-500 dark:text-red-400"}>
                     {Math.round(unit.confidence * 100)}%
@@ -128,6 +136,9 @@ export default function SemanticSubstitutionPanel({
             </div>
           );
         })}
+      </div>
+      </div>
+      </div>
       </div>
     </section>
   );

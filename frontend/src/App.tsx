@@ -17,11 +17,13 @@ import {
 import { FcCollapse } from "react-icons/fc";
 import { LiaSpellCheckSolid } from "react-icons/lia";
 import { RiCheckboxFill } from "react-icons/ri";
-import { TbCubePlus, TbPhotoScan, TbCircleDashedPlus, TbCircleDashedMinus } from "react-icons/tb";
+import { TbCubePlus, TbPhoto, TbPhotoEdit, TbPhotoScan, TbScanCube, TbCircleDashedPlus, TbCircleDashedMinus } from "react-icons/tb";
 import { FaBoxOpen, FaLink, FaUnlink, FaEyeDropper } from "react-icons/fa";
 import { FaFileImport } from "react-icons/fa6";
 import { PiWarningCircleFill, PiHandGrabbingFill, PiHandGrabbingBold } from "react-icons/pi";
-import { MdTipsAndUpdates } from "react-icons/md";
+import { MdOutlineCompare, MdTipsAndUpdates } from "react-icons/md";
+import { BiAbacus, BiSolidErrorCircle } from "react-icons/bi";
+import { TiWarning } from "react-icons/ti";
 import { HiCubeTransparent } from "react-icons/hi2";
 import { HiLockClosed, HiLockOpen } from "react-icons/hi";
 import { LuRedo2, LuSquareArrowDown, LuSquareArrowUp, LuUndo2 } from "react-icons/lu";
@@ -609,6 +611,10 @@ export default function App() {
   const [verifyBusy, setVerifyBusy] = useState<string | null>(null); // stage label while streaming
   const [verifyStage, setVerifyStage] = useState<string | null>(null);
   const [verifySelId, setVerifySelId] = useState<string | null>(null);
+  const [renderLogsOpen, setRenderLogsOpen] = useState(false);
+  const [recommendationsOpen, setRecommendationsOpen] = useState(false);
+  const [recommendationsSeen, setRecommendationsSeen] = useState(false);
+  const [verifyCardOrder, setVerifyCardOrder] = useState<"compare-first" | "qa-first">("compare-first");
   const [reRenderingId, setReRenderingId] = useState<string | null>(null);
   const [approved, setApproved] = useState(false);
   const cancelVerifyRef = useRef<(() => void) | null>(null);
@@ -2042,7 +2048,10 @@ export default function App() {
   }, [asset, selectedId, autoSave]);
 
   const onReorder = useCallback((fromId: string, toId: string) => {
-    const base = manualOrder.length > 0 ? manualOrder : visibleManifest.map((i) => i.id);
+    // Always start from the list the user can currently see.  A cached manual
+    // list may predate detection, exclusion, or an imported manifest and omit
+    // an otherwise draggable rN row.
+    const base = visibleManifest.map((i) => i.id);
     const fromIdx = base.indexOf(fromId);
     const toIdx = base.indexOf(toId);
     if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return;
@@ -2063,7 +2072,7 @@ export default function App() {
       autoSave(updated);
       return updated;
     });
-  }, [manualOrder, visibleManifest, orderedManifest, autoSave, setManifest]);
+  }, [visibleManifest, orderedManifest, autoSave, setManifest]);
 
   const onTextChange = useCallback((id: string, text: string) => {
     setManifest((prev) => {
@@ -3802,7 +3811,7 @@ export default function App() {
                   <div className="grid grid-cols-1 gap-3 md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-end md:gap-x-5 md:gap-y-3">
                     {/* Font family + weight */}
                     <div className="min-w-0 md:col-span-2 md:row-start-1">
-                      <label className="subtext mb-1 flex items-center gap-1.5 text-xs text-zinc-500">font{inst.characteristics?.font_style && <span className="flex items-center gap-1 text-[10px]"><ScanText size={11} className="shrink-0 text-cyan-600 dark:text-cyan-400" />detected style: <span className="font-medium text-zinc-700 dark:text-zinc-300">{inst.characteristics.font_style}</span></span>}</label>
+                      <label className="subtext mb-1 flex items-center gap-1.5 text-xs text-zinc-500">font{inst.characteristics?.font_style && <span className="flex items-center gap-1 text-[10px]"><ScanText size={11} className="shrink-0 text-cyan-600 dark:text-cyan-400" />detected: <span className="font-medium text-zinc-700 dark:text-zinc-300">{inst.characteristics.font_style}</span></span>}</label>
                       <FontCombobox
                         value={currentFont}
                         families={families}
@@ -3870,12 +3879,12 @@ export default function App() {
                     </div>
 
                     {/* Word order reversal (vertical text only) */}
-                   <div className="md:col-start-1 md:row-start-3">
-                    <label className="subtext mb-1 block text-xs text-zinc-500">word order</label>
+                   <div className="self-start md:col-start-1 md:row-start-3">
+                    <label className="subtext mb-1 flex h-4 items-center text-xs text-zinc-500">word order</label>
                       <button
                         onClick={() => updateStyle({ word_order: sp?.word_order === "rtl" ? null : "rtl" })}
                         disabled={sp?.target_orientation !== "vertical"}
-                        className={`flex items-center gap-1.5 rounded px-2 py-1.5 text-xs transition ${
+                        className={`flex h-8 items-center gap-1.5 rounded px-2 text-xs transition ${
                           sp?.target_orientation !== "vertical"
                             ? "cursor-not-allowed bg-zinc-100 text-zinc-300 dark:bg-zinc-900 dark:text-zinc-700"
                             : sp?.word_order === "rtl"
@@ -3889,18 +3898,18 @@ export default function App() {
                       </button>
                     </div>
 
-                    <div className="min-w-[11rem] md:col-start-2 md:row-start-3">
-                      <label className="subtext mb-1 block text-xs text-zinc-500">shape (degrees / arc)</label>
-                      <div className="grid grid-cols-3 gap-1">
-                        {([['skew_x', 'X'], ['skew_y', 'Y'], ['arc', 'Arc']] as const).map(([key, label]) => (
-                          <label key={key} className="flex min-w-0 items-center gap-0.5 text-[10px] text-zinc-500"><span>{label}</span><button type="button" onClick={() => toggleTransformLock(key)} className={`rounded p-0.5 ${isTransformLocked(key) ? "text-cyan-600 dark:text-cyan-400" : "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"}`} title={isTransformLocked(key) ? "Unlock" : "Lock"}>{isTransformLocked(key) ? <HiLockClosed size={9} /> : <HiLockOpen size={9} />}</button><input type="number" step="1" min="-25" max="25"
+                    <div className="min-w-[17rem] self-start md:col-start-2 md:row-start-3">
+                      <label className="subtext mb-1 flex h-4 items-center text-xs text-zinc-500">shape (degrees / arc)</label>
+                      <div className="flex">
+                        {([['skew_x', 'X'], ['skew_y', 'Y'], ['arc', 'Arc']] as const).map(([key, label], index) => (
+                          <div key={key} className={`grid w-20 shrink-0 grid-cols-[1.25rem_2.25rem_1rem] items-center gap-1 text-[10px] text-zinc-500${index === 1 ? " ml-2" : index === 2 ? " ml-3" : ""}`}><span className="justify-self-end text-right">{label}</span><input aria-label={`${label} shape value`} type="number" step="1" min="-25" max="25"
                               value={sp?.transform?.[key] ?? 0}
                               disabled={isTransformLocked(key)}
                               onChange={(e) => { const value = Number(e.target.value || 0); if (!isTransformLocked(key)) { trackTransformChange(key, sp?.transform?.[key] ?? 0, value); updateCanvasTransform(key, value); } }}
                               onDoubleClick={() => { if (!isTransformLocked(key)) { trackTransformChange(key, sp?.transform?.[key] ?? 0, 0); updateCanvasTransform(key, 0); } }}
                               title="double-click to reset to 0"
-                              className="min-w-0 flex-1 rounded border border-zinc-300 bg-white px-1 py-0.5 text-xs disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900" />
-                          </label>
+                              className="h-8 w-9 rounded border border-zinc-300 bg-white px-1 text-xs disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900" /><button type="button" onClick={() => toggleTransformLock(key)} className={`flex h-4 w-4 items-center justify-center rounded ${isTransformLocked(key) ? "text-cyan-600 dark:text-cyan-400" : "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"}`} title={isTransformLocked(key) ? "Unlock" : "Lock"}>{isTransformLocked(key) ? <HiLockClosed size={9} /> : <HiLockOpen size={9} />}</button>
+                          </div>
                         ))}
                       </div>
                     </div>
@@ -4099,13 +4108,11 @@ export default function App() {
                 icon={<GiCoolSpices size={14} />}
                 flat
                 className={`${stackClass(1)} flex-1 overflow-auto p-5`}
+                headerExtra={selectedRenderInst && <input type="checkbox" checked={selectedGarnishEnabled} onChange={(event) => setSelectedGarnishEnabled(event.target.checked)} aria-label="enable garnish" title={selectedGarnishEnabled ? "disable garnish" : "enable garnish"} className="toggle garnish-activation-toggle h-4 w-7 shrink-0 border-violet-500 bg-violet-400 checked:border-violet-500 checked:bg-violet-800 checked:text-violet-900" />}
                 rightSideHandle={
-                  <>
-                    {selectedRenderInst && <button type="button" role="switch" aria-checked={selectedGarnishEnabled} aria-label="enable garnish" onClick={() => setSelectedGarnishEnabled(!selectedGarnishEnabled)} className={`absolute right-8 top-3 inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${selectedGarnishEnabled ? "bg-violet-600" : "bg-zinc-300 dark:bg-zinc-600"}`} title={selectedGarnishEnabled ? "disable garnish" : "enable garnish"}><span className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${selectedGarnishEnabled ? "translate-x-3" : "translate-x-0"}`} /></button>}
-                    <div className="title-drag-handle absolute right-0 top-1/2 z-20 shrink-0 -translate-y-1/2" style={{ cursor: "pointer", padding: "2px 4px" }} onClick={onGarnishExpandClick} title={garnishCardExpandedH ? "double-click to return to standard" : "double-click to expand to full width"}>
-                      <svg width="14" height="42" viewBox="0 0 14 42" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="1" y="0.5" width="4.5" height="41" rx="2.25" fill="currentColor" /><rect x="8" y="11" width="4.5" height="20" rx="2.25" fill="currentColor" /></svg>
-                    </div>
-                  </>
+                  <div className="title-drag-handle absolute right-0 top-1/2 z-20 shrink-0 -translate-y-1/2" style={{ cursor: "pointer", padding: "2px 4px" }} onClick={onGarnishExpandClick} title={garnishCardExpandedH ? "double-click to return to standard" : "double-click to expand to full width"}>
+                    <svg width="14" height="42" viewBox="0 0 14 42" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="1" y="0.5" width="4.5" height="41" rx="2.25" fill="currentColor" /><rect x="8" y="11" width="4.5" height="20" rx="2.25" fill="currentColor" /></svg>
+                  </div>
                 }
               >
                 {(() => {
@@ -4117,8 +4124,8 @@ export default function App() {
                     const marker = recommended ? Math.max(0, Math.min(100, (Number(recommended[field]) - min) * 100 / (max - min))) : null;
                     return <GarnishSliderField key={field} label={label} value={Number(g[field])} min={min} max={max} step={step} suffix={suffix} digits={digits} marker={marker} markerLabel={recommended ? `scene recommendation: ${Number(recommended[field]).toFixed(digits)}${suffix}` : undefined} sceneLabel={recommended ? `scene: ${Number(recommended[field]).toFixed(digits)}${suffix}` : undefined} disabled={!selectedGarnishEnabled} onChange={(value) => updateSelectedGarnish({ [field]: value })} />;
                   };
-                  return <div className="space-y-3">
-                    <div className="flex flex-wrap items-center gap-2">
+                  return <div className="space-y-2">
+                    <div className="flex items-center gap-2">
                       <div className="relative shrink-0" ref={garnishScopeRef}>
                         <button type="button" onClick={() => setGarnishScopeOpen((value) => !value)} className="bezier-card flex w-24 items-center justify-between gap-1.5 rounded-md bg-white/60 px-2 py-1 text-[10px] text-violet-700 transition hover:bg-violet-100 dark:bg-zinc-900/60 dark:text-violet-300 dark:hover:bg-zinc-800">{perRegion ? "per region" : "all regions"}<ChevronDown size={10} className={`transition ${garnishScopeOpen ? "rotate-180" : ""}`} /></button>
                         <div className={`dropdown-morph bezier-card absolute left-0 top-full z-[200] mt-1 w-24 rounded-lg bg-white p-1 dark:bg-zinc-900${garnishScopeOpen ? " expanded" : ""}`} style={garnishScopeOpen ? { boxShadow: "1px 1px 0 var(--bc-shadow), 2px 2px 6px rgba(0,0,0,0.06)" } : undefined}>
@@ -4126,19 +4133,21 @@ export default function App() {
                           <button type="button" onClick={() => { setSelectedGarnishScope("per_region"); setGarnishScopeOpen(false); }} className={`flex w-full rounded-md px-2 py-1.5 text-[10px] transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${perRegion ? "bg-zinc-100 font-medium text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100" : "text-zinc-600 dark:text-zinc-400"}`}>per region</button>
                         </div>
                       </div>
-                      <button type="button" onClick={() => setGarnishCardCollapsed((value) => !value)} className="shrink-0 rounded p-1 text-zinc-500 transition hover:bg-zinc-200 dark:hover:bg-zinc-800" title={garnishCardCollapsed ? "expand garnish controls" : "collapse garnish controls"}><FcCollapse style={{ transform: garnishCardCollapsed ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} /></button>
+                      <button type="button" onClick={() => setGarnishCardCollapsed((value) => !value)} className="shrink-0 rounded p-1 text-zinc-500 transition hover:bg-zinc-200 dark:hover:bg-zinc-800" title={garnishCardCollapsed ? "expand garnish controls" : "collapse garnish controls"}><FcCollapse size={12} style={{ transform: garnishCardCollapsed ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} /></button>
+                      <div className={`garnish-controls-morph${!garnishCardCollapsed ? " expanded ml-6" : ""}`}>
+                        <fieldset disabled={!selectedGarnishEnabled} className="flex min-w-40 flex-1 flex-col gap-1 disabled:opacity-45">
+                          {slider("edge blur", "edge_blur_px", 0, 10, 0.1, "px")}
+                          {slider("feather", "edge_smoothing_strength", 0, 1, 0.05, "", 2)}
+                          {slider("wear", "erosion_px", 0, 5, 0.1, "px")}{slider("thicken", "dilation_px", 0, 5, 0.1, "px")}{slider("grain", "grain_strength", 0, 1, 0.02, "", 2)}{slider("gamma", "gamma_shift", 0.5, 2, 0.05, "", 2)}{slider("smudge", "smudge_strength", 0, 1, 0.02, "", 2)}{slider("angle", "smudge_angle_deg", 0, 360, 1, "°", 0)}
+                        </fieldset>
+                        {recommended && <button type="button" onClick={useSelectedSceneGarnish} className="mr-10 shrink-0 self-center rounded bg-violet-700 px-1.5 py-0.5 text-[10px] text-white">AI Preset</button>}
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
                       {!recommended && <span className="text-[10px] text-violet-700/75 dark:text-violet-300/75">manual baseline</span>}
                       {garnishPreviewSyncing && <span className="text-[10px] text-violet-700 dark:text-violet-300">updating treatment…</span>}
                     </div>
-                    <div className={`style-panel-morph ${!garnishCardCollapsed ? "expanded" : ""}`}>
-                      <fieldset disabled={!selectedGarnishEnabled} className="flex flex-wrap gap-x-2 gap-y-1 border-t border-violet-400/25 px-2 py-2 disabled:opacity-45">
-                        {slider("edge blur", "edge_blur_px", 0, 10, 0.1, "px")}
-                        {slider("feather", "edge_smoothing_strength", 0, 1, 0.05, "", 2)}
-                        {slider("wear", "erosion_px", 0, 5, 0.1, "px")}{slider("thicken", "dilation_px", 0, 5, 0.1, "px")}{slider("grain", "grain_strength", 0, 1, 0.02, "", 2)}{slider("gamma", "gamma_shift", 0.5, 2, 0.05, "", 2)}{slider("smudge", "smudge_strength", 0, 1, 0.02, "", 2)}{slider("angle", "smudge_angle_deg", 0, 360, 1, "°", 0)}
-                        {recommended && <button type="button" onClick={useSelectedSceneGarnish} className="self-center rounded bg-violet-700 px-1.5 py-0.5 text-[10px] text-white">use AI preset</button>}
-                      </fieldset>
-                      <SmartFillReview reviews={repairReviews} fallbackIds={repairFallbackIds} previews={localizedCandidatePreviews} previewPending={previewPending} appliedIds={appliedCandidateIds} onRetryPreview={() => setCandidatePreviewRevision((value) => value + 1)} onApply={applyReviewCandidate} onApplyAll={applyAllReviewCandidates} onHoverRegion={setSmartFillHoverId} />
-                    </div>
+                    <SmartFillReview reviews={repairReviews} fallbackIds={repairFallbackIds} previews={localizedCandidatePreviews} previewPending={previewPending} appliedIds={appliedCandidateIds} onRetryPreview={() => setCandidatePreviewRevision((value) => value + 1)} onApply={applyReviewCandidate} onApplyAll={applyAllReviewCandidates} onHoverRegion={setSmartFillHoverId} />
                   </div>;
                 })()}
               </Section>
@@ -4181,7 +4190,7 @@ export default function App() {
 
             {/* Source reference + the single editable localized canvas. */}
             <div className={styleExpandedH || garnishCardExpandedH ? "grid grid-cols-2 gap-4" : "flex flex-col gap-4"}>
-              {previewUrl && <Section title="Source Reference" icon={<FileImage size={14} />} className={`${stackClass(2)} ${sourceCanvasFirst ? "order-1" : "order-2"}`}
+              {previewUrl && <Section title="Source Reference" icon={<TbPhoto size={14} />} className={`${stackClass(2)} ${sourceCanvasFirst ? "order-1" : "order-2"}`}
                 rightSideHandle={canSwapCanvasCards ? <div className="absolute right-5 top-4 flex items-center gap-1"><button type="button" onClick={() => setCanvasCardOrder((order) => order === "source-first" ? "localized-first" : "source-first")} title={sourceCanvasFirst ? "Move source reference below the localized canvas" : "Move source reference above the localized canvas"} aria-label={sourceCanvasFirst ? "move source reference down" : "move source reference up"} className="rounded p-1 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800">{theme === "dark" ? (sourceCanvasFirst ? <BsArrowDownSquareFill size={16} /> : <BsArrowUpSquareFill size={16} />) : (sourceCanvasFirst ? <LuSquareArrowDown size={16} /> : <LuSquareArrowUp size={16} />)}</button></div> : undefined}>
                 <div className="relative inline-block max-w-full">
                   <img src={previewUrl} alt="source reference" className={`block max-w-full rounded-lg border border-zinc-300 dark:border-zinc-800 ${colorPickMode ? "cursor-crosshair" : ""}`}
@@ -4206,7 +4215,7 @@ export default function App() {
                 </div>
               </Section>}
 
-              {(preRenderUrl || previewUrl || previewPending || previewRenderError) && <Section title="Localized Asset Canvas" icon={<Sparkles size={14} />} className={`${stackClass(3)} ${sourceCanvasFirst ? "order-2" : "order-1"}`} localized
+              {(preRenderUrl || previewUrl || previewPending || previewRenderError) && <Section title="Localized Asset Canvas" icon={<TbPhotoEdit size={14} />} className={`${stackClass(3)} ${sourceCanvasFirst ? "order-2" : "order-1"}`} localized
                 headerExtra={previewSyncing && <span className="ml-2 flex items-center gap-1 normal-case text-xs text-cyan-600 dark:text-cyan-400"><SquareLoader size="xs" /> trimming...</span>}
                 rightSideHandle={<div className="absolute right-5 top-4 flex items-center gap-1">{canSwapCanvasCards && <button type="button" onClick={() => setCanvasCardOrder((order) => order === "source-first" ? "localized-first" : "source-first")} title={sourceCanvasFirst ? "Move localized canvas above the source reference" : "Move localized canvas below the source reference"} aria-label={sourceCanvasFirst ? "move localized canvas up" : "move localized canvas down"} className="rounded p-1 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800">{theme === "dark" ? (sourceCanvasFirst ? <BsArrowUpSquareFill size={16} /> : <BsArrowDownSquareFill size={16} />) : (sourceCanvasFirst ? <LuSquareArrowUp size={16} /> : <LuSquareArrowDown size={16} />)}</button>}<button onClick={resetLocalizedCanvas} title="Reset all localized canvas edits to the Render-entry baseline" className="flex items-center gap-1 rounded px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800"><VscDebugRestart size={16} /> reset</button></div>}>
                 <div className="mb-2 flex items-center gap-2">
@@ -4354,19 +4363,31 @@ export default function App() {
               {/* Render result */}
               {renderResult && (
                 <Section title="Render Outcome" icon={<Play size={14} />} className={stackClass(4)}>
-              <div className="mb-3 flex flex-wrap items-center gap-2">
-                {renderResult.qa_report?.overall_score != null && (
-                  <Badge ok={renderResult.qa_passed}>
-                    QA: {(renderResult.qa_report.overall_score * 100).toFixed(0)}%
-                    {" "}(gate {(renderResult.qa_threshold * 100).toFixed(0)}%)
-                  </Badge>
-                )}
-                {renderResult.text_manifest && (
-                  <span className="subtext text-xs text-zinc-500">
-                    {renderResult.text_manifest.total_regions} region(s)
-                  </span>
-                )}
-              </div>
+              {(() => {
+                const hasOutput = Boolean(renderResult.output_url);
+                const hasWarning = hasOutput && !renderResult.qa_passed;
+                const score = renderResult.qa_report?.overall_score;
+                const icon = !hasOutput
+                  ? <BiSolidErrorCircle size={22} className="shrink-0 text-red-600 dark:text-red-300" />
+                  : hasWarning
+                    ? <TiWarning size={24} className="shrink-0 text-amber-600 dark:text-amber-300" />
+                    : <BiAbacus size={22} className="shrink-0 text-emerald-600 dark:text-emerald-300" />;
+                const bannerClass = !hasOutput
+                  ? "border-red-300 bg-red-50 dark:border-red-900/70 dark:bg-red-950/30"
+                  : hasWarning
+                    ? "border-amber-300 bg-amber-50 dark:border-amber-900/70 dark:bg-amber-950/30"
+                    : "border-emerald-300 bg-emerald-50 dark:border-emerald-900/70 dark:bg-emerald-950/30";
+                const status = !hasOutput ? "Render failed" : hasWarning ? "Render complete — QA below threshold" : "Render complete";
+                return <div className={`mb-3 flex flex-wrap items-center gap-3 rounded-lg border px-4 py-3 ${bannerClass}`}>
+                  {icon}
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">{status}</p>
+                    {renderResult.text_manifest && <p className="subtext text-xs text-zinc-600 dark:text-zinc-400">{renderResult.text_manifest.total_regions} region(s) assessed</p>}
+                  </div>
+                  <div className="flex-1" />
+                  {score != null && <Badge ok={renderResult.qa_passed}>QA {(score * 100).toFixed(0)}% <span className="font-normal">(gate {(renderResult.qa_threshold * 100).toFixed(0)}%)</span></Badge>}
+                </div>;
+              })()}
               {renderResult.errors.length > 0 && (
                 <div className="mb-3 rounded-lg border border-red-300 bg-red-100 px-4 py-2 dark:border-red-800 dark:bg-red-950/50">
                   {renderResult.errors.map((e, i) => (
@@ -4411,22 +4432,32 @@ export default function App() {
                 );
               })()}
               {renderResult.logs.length > 0 && (
-                <div className="mt-3 max-h-56 overflow-auto rounded-lg bg-zinc-100 p-3 font-mono text-xs leading-5 dark:bg-zinc-950">
-                  {renderResult.logs.map((l, i) => (
-                    <div
-                      key={i}
-                      className={
-                        l.level === "error" ? "text-red-600 dark:text-red-400"
-                        : l.level === "warning" ? "text-amber-600 dark:text-amber-400"
-                        : "text-zinc-500"
-                      }
-                    >
-                      [{l.ts}] {l.stage}: {l.message}
-                      {l.duration_ms != null && (
-                        <span className="text-zinc-400 dark:text-zinc-600"> · {l.duration_ms}ms</span>
-                      )}
+                <div className="mt-3">
+                  <div className="flex justify-end">
+                    <button type="button" onClick={() => setRenderLogsOpen((open) => !open)} className="flex items-center gap-1 rounded p-1 text-zinc-500 transition hover:bg-zinc-200 dark:hover:bg-zinc-800" title={renderLogsOpen ? "hide logs" : "show logs"} aria-expanded={renderLogsOpen}>
+                      <span className="subtext text-[10px]">show logs</span>
+                      <FcCollapse style={{ transform: renderLogsOpen ? "none" : "rotate(180deg)", transition: "transform 0.2s" }} />
+                    </button>
+                  </div>
+                  <div className={`style-panel-morph${renderLogsOpen ? " expanded" : ""}`}>
+                    <div className="mt-1 max-h-56 overflow-auto rounded-lg bg-zinc-100 p-3 font-mono text-xs leading-5 dark:bg-zinc-950">
+                      {renderResult.logs.map((l, i) => (
+                        <div
+                          key={i}
+                          className={
+                            l.level === "error" ? "text-red-600 dark:text-red-400"
+                            : l.level === "warning" ? "text-amber-600 dark:text-amber-400"
+                            : "text-zinc-500"
+                          }
+                        >
+                          [{l.ts}] {l.stage}: {l.message}
+                          {l.duration_ms != null && (
+                            <span className="text-zinc-400 dark:text-zinc-600"> · {l.duration_ms}ms</span>
+                          )}
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  </div>
                 </div>
               )}
             </Section>
@@ -4493,56 +4524,37 @@ export default function App() {
             const coverageComplete = cov ? cov.untranslated === 0 : false;
             return (
               <>
-                {/* overall + coverage banner */}
-                <Section title="Coverage" icon={<TbPhotoScan size={14} />}>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {qa?.overall_score != null && (
-                      <Badge ok={renderResult.qa_passed}>
-                        QA: {(qa.overall_score * 100).toFixed(0)}% (gate {(renderResult.qa_threshold * 100).toFixed(0)}%)
-                      </Badge>
-                    )}
-                    {cov && (
-                      <>
-                        <span className="subtext rounded-full bg-zinc-200 px-2 py-0.5 text-xs text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
-                          {cov.rendered}/{cov.regions_total} rendered
-                        </span>
-                        {cov.dnt > 0 && (
-                          <span className="subtext rounded-full bg-zinc-200 px-2 py-0.5 text-xs text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
-                            {cov.dnt} DNT
-                          </span>
-                        )}
-                        {cov.untranslated > 0 && (
-                          <span className="subtext flex items-center gap-1 rounded-full bg-red-500/15 px-2 py-0.5 text-xs text-red-600 dark:text-red-400">
-                            <AlertTriangle size={11} /> {cov.untranslated} untranslated
-                          </span>
-                        )}
-                        {cov.fallback_font > 0 && (
-                          <span className="subtext flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs text-amber-600 dark:text-amber-400">
-                            <AlertTriangle size={11} /> {cov.fallback_font} font fallback
-                          </span>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </Section>
-
                 {/* recommendations checklist */}
                 {qa?.recommendations && qa.recommendations.length > 0 && (
-                  <Section title="Recommendations" icon={<MdTipsAndUpdates size={14} />}>
-                    <ul className="space-y-1.5 text-sm">
-                      {qa.recommendations.map((r, i) => (
-                        <li key={i} className="flex items-start gap-1.5 text-zinc-700 dark:text-zinc-300">
-                          <MdTipsAndUpdates size={14} className="mt-0.5 shrink-0 text-[#2d8cf0]" />
-                          <span>{r}</span>
-                        </li>
-                      ))}
-                    </ul>
+                  <Section
+                    title="Recommendations"
+                    icon={<span className="relative inline-flex"><MdTipsAndUpdates size={14} />{!recommendationsSeen && <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-violet-500 ring-1 ring-white dark:ring-zinc-900" />}</span>}
+                    headerExtra={!recommendationsSeen && <span className="normal-case text-[10px] font-medium tracking-normal text-violet-600 dark:text-violet-300">new</span>}
+                    rightSideHandle={<button type="button" onClick={() => setRecommendationsOpen((open) => { if (!open) setRecommendationsSeen(true); return !open; })} className="absolute right-5 top-4 rounded p-1 text-zinc-500 transition hover:bg-zinc-200 dark:hover:bg-zinc-800" title={recommendationsOpen ? "collapse recommendations" : "expand recommendations"} aria-label={recommendationsOpen ? "collapse recommendations" : "expand recommendations"}><FcCollapse size={12} style={{ transform: recommendationsOpen ? "none" : "rotate(180deg)", transition: "transform 0.2s" }} /></button>}
+                  >
+                    <div className={`style-panel-morph${recommendationsOpen ? " expanded" : ""}`}>
+                      <ul className="space-y-1.5 text-sm">
+                        {qa.recommendations.map((r, i) => (
+                          <li key={i} className="flex items-start gap-1.5 text-zinc-700 dark:text-zinc-300">
+                            <MdTipsAndUpdates size={14} className="mt-0.5 shrink-0 text-[#2d8cf0]" />
+                            <span>{r}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   </Section>
                 )}
 
-                {/* source <-> localized compare */}
+                <div className="flex flex-col gap-4">
+                {/* source <-> localized compare, with the former Coverage indicators */}
                 {renderResult.output_url && (
-                  <Section title="Compare" icon={<FileImage size={14} />}>
+                  <Section
+                    title="Compare"
+                    icon={<MdOutlineCompare size={15} />}
+                    className={verifyCardOrder === "compare-first" ? "order-1" : "order-2"}
+                    headerExtra={<span className="ml-1 flex min-w-0 items-center gap-1 normal-case text-[10px] font-normal tracking-normal">{qa?.overall_score != null && <Badge ok={renderResult.qa_passed}>QA {(qa.overall_score * 100).toFixed(0)}%</Badge>}{cov && <><span className="subtext whitespace-nowrap rounded-full bg-zinc-200 px-2 py-0.5 text-xs text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">{cov.rendered}/{cov.regions_total} rendered</span>{cov.dnt > 0 && <span className="subtext whitespace-nowrap rounded-full bg-zinc-200 px-2 py-0.5 text-xs text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">{cov.dnt} DNT</span>}{cov.untranslated > 0 && <span className="subtext flex whitespace-nowrap items-center gap-1 rounded-full bg-red-500/15 px-2 py-0.5 text-xs text-red-600 dark:text-red-400"><AlertTriangle size={11} /> {cov.untranslated} untranslated</span>}{cov.fallback_font > 0 && <span className="subtext flex whitespace-nowrap items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs text-amber-600 dark:text-amber-400"><AlertTriangle size={11} /> {cov.fallback_font} font fallback</span>}</>}</span>}
+                    rightSideHandle={Object.keys(per).length > 0 ? <button type="button" onClick={() => setVerifyCardOrder((order) => order === "compare-first" ? "qa-first" : "compare-first")} title={verifyCardOrder === "compare-first" ? "Move Compare below Per-Region QA" : "Move Compare above Per-Region QA"} aria-label={verifyCardOrder === "compare-first" ? "move Compare down" : "move Compare up"} className="absolute right-5 top-4 rounded p-1 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800">{theme === "dark" ? (verifyCardOrder === "compare-first" ? <BsArrowDownSquareFill size={16} /> : <BsArrowUpSquareFill size={16} />) : (verifyCardOrder === "compare-first" ? <LuSquareArrowDown size={16} /> : <LuSquareArrowUp size={16} />)}</button> : undefined}
+                  >
                     <div className="grid gap-4 md:grid-cols-2">
                       <div>
                         <p className="subtext mb-1 text-xs text-zinc-500">source</p>
@@ -4558,7 +4570,7 @@ export default function App() {
 
                 {/* per-region scores + re-render */}
                 {Object.keys(per).length > 0 && (
-                  <Section title="Per-Region QA" icon={<ScanText size={14} />} className={stackClass(3)}>
+                  <Section title="Per-Region QA" icon={<TbScanCube size={14} />} className={`${stackClass(3)} ${verifyCardOrder === "compare-first" ? "order-2" : "order-1"}`} rightSideHandle={renderResult.output_url ? <button type="button" onClick={() => setVerifyCardOrder((order) => order === "compare-first" ? "qa-first" : "compare-first")} title={verifyCardOrder === "compare-first" ? "Move Per-Region QA above Compare" : "Move Per-Region QA below Compare"} aria-label={verifyCardOrder === "compare-first" ? "move Per-Region QA up" : "move Per-Region QA down"} className="absolute right-5 top-4 rounded p-1 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800">{theme === "dark" ? (verifyCardOrder === "compare-first" ? <BsArrowUpSquareFill size={16} /> : <BsArrowDownSquareFill size={16} />) : (verifyCardOrder === "compare-first" ? <LuSquareArrowUp size={16} /> : <LuSquareArrowDown size={16} />)}</button> : undefined}>
                     <div className="space-y-1.5">
                       {Object.entries(per).map(([rid, score]) => {
                         const isSel = verifySelId === rid;
@@ -4567,6 +4579,7 @@ export default function App() {
                             <div
                               role="button"
                               tabIndex={0}
+                              aria-expanded={isSel}
                               onClick={() => setVerifySelId(isSel ? null : rid)}
                               onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setVerifySelId(isSel ? null : rid); }}
                               className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left"
@@ -4592,22 +4605,25 @@ export default function App() {
                                 re-render
                               </button>
                             </div>
-                            {isSel && (
-                              <div className="subtext space-y-0.5 border-t border-zinc-200 px-3 py-2 text-xs text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
-                                {asDict("ocr_roundtrip")[rid] != null && <p>OCR round-trip: {(asDict("ocr_roundtrip")[rid] * 100).toFixed(0)}%</p>}
-                                {asDict("ring_ssim")[rid] != null && <p>ring SSIM: {(asDict("ring_ssim")[rid] * 100).toFixed(0)}%</p>}
-                                {asDict("residual_text")[rid] != null && <p>residual source text: {(asDict("residual_text")[rid] * 100).toFixed(0)}%</p>}
-                                {asDict("style_color")[rid] != null && <p>style color match: {(asDict("style_color")[rid] * 100).toFixed(0)}%</p>}
-                                {asDict("style_size")[rid] != null && <p>style size match: {(asDict("style_size")[rid] * 100).toFixed(0)}%</p>}
-                                {fallbackIds.has(rid) && <p className="text-amber-600 dark:text-amber-400">font swapped: the requested font lacked characters for this text.</p>}
+                            <div className={`smart-fill-content${isSel ? " expanded" : ""}`}>
+                              <div className="min-h-0">
+                                <div className="subtext space-y-0.5 border-t border-zinc-200 px-3 py-2 text-xs text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
+                                  {asDict("ocr_roundtrip")[rid] != null && <p>OCR round-trip: {(asDict("ocr_roundtrip")[rid] * 100).toFixed(0)}%</p>}
+                                  {asDict("ring_ssim")[rid] != null && <p>ring SSIM: {(asDict("ring_ssim")[rid] * 100).toFixed(0)}%</p>}
+                                  {asDict("residual_text")[rid] != null && <p>residual source text: {(asDict("residual_text")[rid] * 100).toFixed(0)}%</p>}
+                                  {asDict("style_color")[rid] != null && <p>style color match: {(asDict("style_color")[rid] * 100).toFixed(0)}%</p>}
+                                  {asDict("style_size")[rid] != null && <p>style size match: {(asDict("style_size")[rid] * 100).toFixed(0)}%</p>}
+                                  {fallbackIds.has(rid) && <p className="text-amber-600 dark:text-amber-400">font swapped: the requested font lacked characters for this text.</p>}
+                                </div>
                               </div>
-                            )}
+                            </div>
                           </div>
                         );
                       })}
                     </div>
                   </Section>
                 )}
+                </div>
 
                 {/* double-confirmation approve gate */}
                 <div className={`bezier-card soft-shadow flex flex-wrap items-center gap-3 rounded-lg bg-white/60 px-4 py-3 dark:bg-zinc-900/60 ${stackClass(4)}`}>
