@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   AlertTriangle, AlignCenter, AlignEndHorizontal, AlignEndVertical, AlignJustify, AlignLeft, AlignRight, AlignStartHorizontal, AlignStartVertical, ArrowLeft, ArrowLeftRight, ArrowUpFromLine, Baseline, Bold, BookmarkCheck, Box, Check, ChevronDown, FileImage, FolderOpen, Hexagon, History, Home, Italic, Languages, Loader2,
   Play, Plus, RotateCcw, ScanText, ShieldAlert, Sparkles, SquareStack, Subscript, Superscript, Trash2, Type, Underline, X,
@@ -21,7 +22,8 @@ import { PiWarningCircleFill, PiHandGrabbingFill, PiHandGrabbingBold } from "rea
 import { MdTipsAndUpdates } from "react-icons/md";
 import { HiCubeTransparent } from "react-icons/hi2";
 import { HiLockClosed, HiLockOpen } from "react-icons/hi";
-import { LuUndo2, LuRedo2 } from "react-icons/lu";
+import { LuRedo2, LuSquareArrowDown, LuSquareArrowUp, LuUndo2 } from "react-icons/lu";
+import { BsArrowDownSquareFill, BsArrowUpSquareFill } from "react-icons/bs";
 import { VscDebugRestart } from "react-icons/vsc";
 import { GiCoolSpices } from "react-icons/gi";
 import { GrSelect } from "react-icons/gr";
@@ -83,7 +85,7 @@ type LocalizedSnapshot = {
 };
 
 const DEFAULT_GARNISH_PROFILE = {
-  edge_blur_px: 0, edge_smoothing: false, edge_smoothing_strength: 0.5, erosion_px: 0, dilation_px: 0, grain_strength: 0,
+  edge_blur_px: 0, edge_smoothing: false, edge_smoothing_strength: 0, erosion_px: 0, dilation_px: 0, grain_strength: 0,
   gamma_shift: 1, smudge_strength: 0, smudge_angle_deg: 0, source_confidence: 1,
 };
 
@@ -411,6 +413,9 @@ export default function App() {
   useEffect(() => { setSmartFillHoverId(null); }, [renderSelId]);
   const [styleCollapsed, setStyleCollapsed] = useState(false);
   const [canvasExpandedH, setCanvasExpandedH] = useState(false);
+  const [canvasCardOrder, setCanvasCardOrder] = useState<"source-first" | "localized-first">("source-first");
+  const sourceCanvasFirst = canvasCardOrder === "source-first";
+  const canSwapCanvasCards = Boolean(previewUrl);
   const [styleExpandedH, setStyleExpandedH] = useState(false);
   // vertical expand for Text & Appearance card (half-width only)
   const [styleExpandedV, setStyleExpandedV] = useState(false);
@@ -824,6 +829,7 @@ export default function App() {
   const [warpOpen, setWarpOpen] = useState(false);
   const [warpCollapsed, setWarpCollapsed] = useState(false);
   const warpRef = useRef<HTMLDivElement>(null);
+  const [textWarpHost, setTextWarpHost] = useState<HTMLDivElement | null>(null);
   const [garnishScopeOpen, setGarnishScopeOpen] = useState(false);
   const garnishScopeRef = useRef<HTMLDivElement>(null);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
@@ -3802,9 +3808,9 @@ export default function App() {
                 {/* === TEXT SECTION === */}
                 <div>
                   <p className="subtext mb-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Text</p>
-                  <div className="space-y-2">
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-end md:gap-x-5 md:gap-y-3">
                     {/* Font family + weight */}
-                    <div>
+                    <div className="min-w-0 md:col-span-2 md:row-start-1">
                       <label className="subtext mb-1 block text-xs text-zinc-500">font</label>
                       <FontCombobox
                         value={currentFont}
@@ -3817,7 +3823,7 @@ export default function App() {
                     </div>
 
                     {/* Font size */}
-                    <div>
+                    <div className="md:col-span-2 md:row-start-2">
                       <label className="subtext mb-1 block text-xs text-zinc-500">font size (px)</label>
                       <div className="flex items-center gap-2">
                         <input
@@ -3836,7 +3842,7 @@ export default function App() {
 
                     {/* Detected typography (from capture-time analysis) */}
                     {inst.characteristics?.font_style && (
-                      <p className="subtext flex items-center gap-1.5 text-[10px] text-zinc-500">
+                      <p className="subtext flex items-center gap-1.5 text-[10px] text-zinc-500 md:col-span-3 md:row-start-5">
                         <ScanText size={11} className="shrink-0 text-cyan-600 dark:text-cyan-400" />
                         detected style: <span className="font-medium text-zinc-700 dark:text-zinc-300">{inst.characteristics.font_style}</span>
                         {inst.characteristics.positioning?.rotation_deg ? (
@@ -3845,13 +3851,13 @@ export default function App() {
                       </p>
                     )}
                     {inst.recognition_history?.length ? (
-                      <p className="subtext text-[10px] text-zinc-500" title={inst.recognition_history.map((h) => `${h.engine}: ${h.reason}`).join("\n")}>
+                      <p className="subtext text-[10px] text-zinc-500 md:col-span-3 md:row-start-6" title={inst.recognition_history.map((h) => `${h.engine}: ${h.reason}`).join("\n")}>
                         OCR audit: {inst.recognition_history[inst.recognition_history.length - 1]?.accepted ? "Paddle evidence accepted" : "candidate retained for review"}
                       </p>
                     ) : null}
 
                     {/* Text alignment: horizontal */}
-                    <div>
+                    <div className="md:col-start-3 md:row-start-1 md:justify-self-end">
                       <label className="subtext mb-1 block text-xs text-zinc-500">horizontal alignment</label>
                       <div className="flex gap-1">
                         {([["left", <AlignLeft size={14} key="l" />], ["center", <AlignCenter size={14} key="c" />], ["right", <AlignRight size={14} key="r" />]] as const).map(([val, icon]) => (
@@ -3866,7 +3872,7 @@ export default function App() {
                     </div>
 
                     {/* Text alignment: vertical */}
-                    <div>
+                    <div className="md:col-start-3 md:row-start-2 md:justify-self-end">
                       <label className="subtext mb-1 block text-xs text-zinc-500">vertical alignment</label>
                       <div className="flex gap-1">
                         {([["top", <AlignStartVertical size={14} key="t" />], ["middle", <AlignCenter size={14} key="m" />], ["bottom", <AlignEndVertical size={14} key="b" />]] as const).map(([val, icon]) => (
@@ -3881,7 +3887,7 @@ export default function App() {
                     </div>
 
                     {/* Word order reversal (vertical text only) */}
-                  <div>
+                   <div className="md:col-start-1 md:row-start-3">
                     <label className="subtext mb-1 block text-xs text-zinc-500">word order</label>
                       <button
                         onClick={() => updateStyle({ word_order: sp?.word_order === "rtl" ? null : "rtl" })}
@@ -3900,7 +3906,7 @@ export default function App() {
                       </button>
                     </div>
 
-                    <div>
+                    <div className="min-w-[11rem] md:col-start-2 md:row-start-3">
                       <label className="subtext mb-1 block text-xs text-zinc-500">shape (degrees / arc)</label>
                       <div className="grid grid-cols-3 gap-1">
                         {([['skew_x', 'X'], ['skew_y', 'Y'], ['arc', 'Arc']] as const).map(([key, label]) => (
@@ -3918,7 +3924,7 @@ export default function App() {
                     </div>
 
                     {/* Justification */}
-                    <div>
+                    <div className="md:col-start-3 md:row-start-3 md:justify-self-end">
                       <label className="subtext mb-1 block text-xs text-zinc-500">justification</label>
                       <div className="flex gap-1">
                         {([["last_left", <AlignJustify size={14} key="ll" />], ["last_right", <AlignJustify size={14} key="lr" style={{ transform: "scaleX(-1)" }} />], ["justify", <AlignJustify size={14} key="j" />], ["justify_center", <AlignCenter size={14} key="jc" />]] as const).map(([val, icon]) => (
@@ -3932,17 +3938,13 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Compact pixel fields: indent, tracking, kerning, leading, baseline shift, tab width */}
-                    <div>
-                      <label className="subtext mb-1 block text-xs text-zinc-500">spacing & position (px)</label>
+                    {/* Compact pixel fields */}
+                    <div className="md:col-span-2 md:row-start-4">
+                      <label className="subtext mb-1 block text-xs text-zinc-500">position (px)</label>
                       <div className="flex flex-wrap gap-1">
                         {([
                           ["indent", "indent"],
-                          ["tracking", "track"],
-                          ["kerning", "kern"],
-                          ["leading", "lead"],
                           ["baseline_shift", "base"],
-                          ["tab_width", "tab"],
                         ] as const).map(([key, label]) => (
                           <div key={key} className="flex items-center gap-0.5">
                             <span className="subtext text-[10px] text-zinc-500">{label}</span>
@@ -3954,6 +3956,18 @@ export default function App() {
                               placeholder="—"
                               className="w-12 rounded border border-zinc-300 bg-white px-1 py-0.5 text-xs text-zinc-800 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
                             />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="md:col-start-3 md:row-start-4 md:justify-self-end">
+                      <label className="subtext mb-1 block text-xs text-zinc-500">spacing (px)</label>
+                      <div className="flex flex-wrap gap-1">
+                        {([["tracking", "track"], ["kerning", "kern"], ["leading", "lead"], ["tab_width", "tab"]] as const).map(([key, label]) => (
+                          <div key={key} className="flex items-center gap-0.5">
+                            <span className="subtext text-[10px] text-zinc-500">{label}</span>
+                            <input type="number" step={0.5} value={(sp?.[key] as number | null | undefined) ?? ""} onChange={(e) => updateStyle({ [key]: e.target.value ? Number(e.target.value) : null } as Partial<NonNullable<InstText["style_profile"]>>)} placeholder="-" className="w-12 rounded border border-zinc-300 bg-white px-1 py-0.5 text-xs text-zinc-800 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200" />
                           </div>
                         ))}
                       </div>
@@ -4067,6 +4081,11 @@ export default function App() {
                   </div>
                 </div>
 
+                {!brushMode && selectedRenderInst && (preRenderUrl || previewUrl || previewPending || previewRenderError) && <div className="border-t border-zinc-200 pt-3 dark:border-zinc-800">
+                  <p className="subtext mb-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Text Warp</p>
+                  <div ref={setTextWarpHost} />
+                </div>}
+
                 {/* Preview text */}
                 <div className="rounded bg-zinc-100 p-2 dark:bg-zinc-950">
                   <p className="subtext mb-0.5 text-[10px] uppercase tracking-wider text-zinc-500">preview</p>
@@ -4131,10 +4150,9 @@ export default function App() {
                   };
                   return <div className="space-y-3">
                     <div className="flex flex-wrap items-center gap-2">
-                      <div className="flex items-center gap-1 font-semibold text-violet-900 dark:text-violet-100"><GiCoolSpices size={14} /><span>treatment</span></div>
                       <div className="relative shrink-0" ref={garnishScopeRef}>
-                        <button type="button" onClick={() => setGarnishScopeOpen((value) => !value)} className="bezier-card flex items-center gap-1.5 rounded-md bg-white/60 px-2 py-1 text-[10px] text-violet-700 transition hover:bg-violet-100 dark:bg-zinc-900/60 dark:text-violet-300 dark:hover:bg-zinc-800">{perRegion ? "per region" : "all regions"}<ChevronDown size={10} className={`transition ${garnishScopeOpen ? "rotate-180" : ""}`} /></button>
-                        <div className={`dropdown-morph bezier-card absolute left-0 top-full z-[200] mt-1 w-36 rounded-lg bg-white p-1 dark:bg-zinc-900${garnishScopeOpen ? " expanded" : ""}`} style={garnishScopeOpen ? { boxShadow: "1px 1px 0 var(--bc-shadow), 2px 2px 6px rgba(0,0,0,0.06)" } : undefined}>
+                        <button type="button" onClick={() => setGarnishScopeOpen((value) => !value)} className="bezier-card flex w-24 items-center gap-1.5 rounded-md bg-white/60 px-2 py-1 text-[10px] text-violet-700 transition hover:bg-violet-100 dark:bg-zinc-900/60 dark:text-violet-300 dark:hover:bg-zinc-800">{perRegion ? "per region" : "all regions"}<ChevronDown size={10} className={`transition ${garnishScopeOpen ? "rotate-180" : ""}`} /></button>
+                        <div className={`dropdown-morph bezier-card absolute left-0 top-full z-[200] mt-1 w-24 rounded-lg bg-white p-1 dark:bg-zinc-900${garnishScopeOpen ? " expanded" : ""}`} style={garnishScopeOpen ? { boxShadow: "1px 1px 0 var(--bc-shadow), 2px 2px 6px rgba(0,0,0,0.06)" } : undefined}>
                           <button type="button" onClick={() => { setSelectedGarnishScope("whole_selection"); setGarnishScopeOpen(false); }} className={`flex w-full rounded-md px-2 py-1.5 text-[10px] transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${!perRegion ? "bg-zinc-100 font-medium text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100" : "text-zinc-600 dark:text-zinc-400"}`}>all regions</button>
                           <button type="button" onClick={() => { setSelectedGarnishScope("per_region"); setGarnishScopeOpen(false); }} className={`flex w-full rounded-md px-2 py-1.5 text-[10px] transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${perRegion ? "bg-zinc-100 font-medium text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100" : "text-zinc-600 dark:text-zinc-400"}`}>per region</button>
                         </div>
@@ -4147,8 +4165,7 @@ export default function App() {
                     <div className={`style-panel-morph ${!garnishCardCollapsed ? "expanded" : ""}`}>
                       <fieldset disabled={!selectedGarnishEnabled} className="flex flex-wrap gap-x-2 gap-y-1 border-t border-violet-400/25 px-2 py-2 disabled:opacity-45">
                         {slider("edge blur", "edge_blur_px", 0, 10, 0.1, "px")}
-                        <label className="subtext flex min-w-36 flex-1 items-center gap-1.5 text-[10px]" title="Feather glyph edges outward into the surface for natural integration."><input aria-label="garnish edge smoothing" type="checkbox" checked={Boolean(g.edge_smoothing)} onChange={(event) => updateSelectedGarnish({ edge_smoothing: event.target.checked })} /><span className="font-medium">edge smoothing</span><span className="text-zinc-500">feather</span></label>
-                        {Boolean(g.edge_smoothing) && slider("feather", "edge_smoothing_strength", 0, 1, 0.05, "", 2)}
+                        {slider("feather", "edge_smoothing_strength", 0, 1, 0.05, "", 2)}
                         {slider("wear", "erosion_px", 0, 5, 0.1, "px")}{slider("thicken", "dilation_px", 0, 5, 0.1, "px")}{slider("grain", "grain_strength", 0, 1, 0.02, "", 2)}{slider("gamma", "gamma_shift", 0.5, 2, 0.05, "", 2)}{slider("smudge", "smudge_strength", 0, 1, 0.02, "", 2)}{slider("angle", "smudge_angle_deg", 0, 360, 1, "°", 0)}
                         {recommended && <button type="button" onClick={useSelectedSceneGarnish} className="self-center rounded bg-violet-700 px-1.5 py-0.5 text-[10px] text-white">use AI preset</button>}
                       </fieldset>
@@ -4195,8 +4212,9 @@ export default function App() {
             </div>
 
             {/* Source reference + the single editable localized canvas. */}
-            <div className={`space-y-4 ${styleExpandedH || garnishCardExpandedH ? "grid grid-cols-2 gap-4" : ""}`}>
-              {previewUrl && <Section title="Source Reference" icon={<FileImage size={14} />} className={stackClass(2)}>
+            <div className={styleExpandedH || garnishCardExpandedH ? "grid grid-cols-2 gap-4" : "flex flex-col gap-4"}>
+              {previewUrl && <Section title="Source Reference" icon={<FileImage size={14} />} className={`${stackClass(2)} ${sourceCanvasFirst ? "order-1" : "order-2"}`}
+                rightSideHandle={canSwapCanvasCards ? <div className="absolute right-5 top-4 flex items-center gap-1"><button type="button" onClick={() => setCanvasCardOrder((order) => order === "source-first" ? "localized-first" : "source-first")} title={sourceCanvasFirst ? "Move source reference below the localized canvas" : "Move source reference above the localized canvas"} aria-label={sourceCanvasFirst ? "move source reference down" : "move source reference up"} className="rounded p-1 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800">{theme === "dark" ? (sourceCanvasFirst ? <BsArrowDownSquareFill size={16} /> : <BsArrowUpSquareFill size={16} />) : (sourceCanvasFirst ? <LuSquareArrowDown size={16} /> : <LuSquareArrowUp size={16} />)}</button></div> : undefined}>
                 <div className="relative inline-block max-w-full">
                   <img src={previewUrl} alt="source reference" className={`block max-w-full rounded-lg border border-zinc-300 dark:border-zinc-800 ${colorPickMode ? "cursor-crosshair" : ""}`}
                     onPointerDown={(event) => { sampleCanvasFill(event, "source"); }} />
@@ -4220,9 +4238,9 @@ export default function App() {
                 </div>
               </Section>}
 
-              {(preRenderUrl || previewUrl || previewPending || previewRenderError) && <Section title="Localized Asset Canvas" icon={<Sparkles size={14} />} className={stackClass(3)} localized
+              {(preRenderUrl || previewUrl || previewPending || previewRenderError) && <Section title="Localized Asset Canvas" icon={<Sparkles size={14} />} className={`${stackClass(3)} ${sourceCanvasFirst ? "order-2" : "order-1"}`} localized
                 headerExtra={previewSyncing && <span className="ml-2 flex items-center gap-1 normal-case text-xs text-cyan-600 dark:text-cyan-400"><SquareLoader size="xs" /> trimming...</span>}
-                rightSideHandle={<button onClick={resetLocalizedCanvas} title="Reset all localized canvas edits to the Render-entry baseline" className="absolute right-5 top-4 flex items-center gap-1 rounded px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800"><VscDebugRestart size={16} /> reset</button>}>
+                rightSideHandle={<div className="absolute right-5 top-4 flex items-center gap-1">{canSwapCanvasCards && <button type="button" onClick={() => setCanvasCardOrder((order) => order === "source-first" ? "localized-first" : "source-first")} title={sourceCanvasFirst ? "Move localized canvas above the source reference" : "Move localized canvas below the source reference"} aria-label={sourceCanvasFirst ? "move localized canvas up" : "move localized canvas down"} className="rounded p-1 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800">{theme === "dark" ? (sourceCanvasFirst ? <BsArrowUpSquareFill size={16} /> : <BsArrowDownSquareFill size={16} />) : (sourceCanvasFirst ? <LuSquareArrowUp size={16} /> : <LuSquareArrowDown size={16} />)}</button>}<button onClick={resetLocalizedCanvas} title="Reset all localized canvas edits to the Render-entry baseline" className="flex items-center gap-1 rounded px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800"><VscDebugRestart size={16} /> reset</button></div>}>
                 <div className="mb-2 flex items-center gap-2">
                   <p className="text-xs text-zinc-500">Modify, place, and warp text.</p>
                 </div>
@@ -4338,9 +4356,8 @@ export default function App() {
                 {!brushMode && selectedRenderInst && (() => {
                   const transform = selectedRenderInst.style_profile?.transform ?? {};
                   const allTransformLocksActive = LOCKABLE_TRANSFORM_KEYS.every((key) => isTransformLocked(key));
-                  return <div className="mb-2 rounded border border-cyan-400/35 bg-cyan-50/60 px-2 py-1.5 text-xs text-cyan-900 dark:bg-cyan-950/20 dark:text-cyan-100">
+                  return textWarpHost ? createPortal(<div className="space-y-2 text-xs text-cyan-900 dark:text-cyan-100">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="subtext text-[10px] font-semibold uppercase tracking-wider text-zinc-400">text warp</span>
                       <div className="relative shrink-0" ref={warpRef}><button onClick={() => setWarpOpen((value) => !value)} className="bezier-card flex items-center gap-1.5 rounded-md bg-white/60 px-2 py-1 text-xs text-zinc-700 transition hover:bg-zinc-100 dark:bg-zinc-900/60 dark:text-zinc-300 dark:hover:bg-zinc-800">{WARP_PRESETS.find((preset) => preset.value === (transform.preset ?? "custom"))?.label ?? "Custom"}<ChevronDown size={12} className={`transition ${warpOpen ? "rotate-180" : ""}`} /></button><div className={`dropdown-morph bezier-card absolute left-0 top-full z-[200] mt-1 w-40 rounded-lg bg-white p-1 dark:bg-zinc-900${warpOpen ? " expanded" : ""}`} style={warpOpen ? { boxShadow: "1px 1px 0 var(--bc-shadow), 2px 2px 6px rgba(0,0,0,0.06)" } : undefined}>{WARP_PRESETS.map((preset) => <button key={preset.value} onClick={() => { applyCanvasWarpPreset(preset.value); setWarpOpen(false); }} className={`flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-xs transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${(transform.preset ?? "custom") === preset.value ? "bg-zinc-100 font-medium text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100" : "text-zinc-600 dark:text-zinc-400"}`}><span>{preset.label}</span>{preset.value !== "none" && preset.value !== "custom" && <WarpPreview preset={preset.value} />}</button>)}</div></div>
                       <button type="button" onClick={toggleAllTransformLocks} className="rounded p-0.5 transition hover:scale-110" title={allTransformLocksActive ? "Unlock all transform values" : "Lock all transform values"}>{allTransformLocksActive ? <HiLockClosed size={12} className="text-cyan-600 dark:text-cyan-400" /> : <HiLockOpen size={12} className="text-zinc-400 dark:text-zinc-500" />}</button>
                       <button onClick={() => setWarpCollapsed((value) => !value)} className="ml-auto shrink-0 rounded p-1 text-zinc-500 transition hover:bg-zinc-200 dark:hover:bg-zinc-800" title={warpCollapsed ? "expand" : "collapse"}><FcCollapse style={{ transform: warpCollapsed ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} /></button>
@@ -4362,7 +4379,7 @@ export default function App() {
                         </div>
                       </div>
                     </div>
-                  </div>;
+                  </div>, textWarpHost) : null;
                   })()}
               </Section>}
 

@@ -30,11 +30,12 @@ def _garnish_to_dict(profile: Optional[GarnishProfile]) -> Optional[dict]:
 
 def _garnish_from_dict(data: Optional[dict]) -> Optional[GarnishProfile]:
     if not isinstance(data, dict): return None
+    legacy_smoothing = bool(data.get("edge_smoothing", False))
     values = {key: float(data.get(key, default)) for key, default in {
-        "edge_blur_px": 0, "edge_smoothing_strength": .5, "erosion_px": 0, "dilation_px": 0, "grain_strength": 0,
+        "edge_blur_px": 0, "edge_smoothing_strength": (.5 if legacy_smoothing else 0), "erosion_px": 0, "dilation_px": 0, "grain_strength": 0,
         "gamma_shift": 1, "smudge_strength": 0, "smudge_angle_deg": 0, "source_confidence": 0,
     }.items()}
-    return GarnishProfile(edge_smoothing=bool(data.get("edge_smoothing", False)), **values)
+    return GarnishProfile(edge_smoothing=legacy_smoothing, **values)
 
 
 def _garnish_region_to_dict(region: GarnishRegion) -> dict:
