@@ -32,6 +32,7 @@ import LanguageCombobox from "./LanguageCombobox";
 import FontCombobox, { loadFontPreview, fontNameForPath, weightLabel } from "./FontCombobox";
 import HexColorInput from "./HexColorInput";
 import RotationDial from "./RotationDial";
+import GarnishSliderField from "./GarnishSlider";
 import BBoxCanvas from "./BBoxCanvas";
 import TargetPreviewCanvas from "./TargetPreviewCanvas";
 import RegionTable from "./RegionTable";
@@ -362,9 +363,6 @@ export default function App() {
   // debounced renderer obtains its manifest.
   const queuedPreviewManifest = useRef<TextManifest | null>(null);
   const candidatePreviewSeq = useRef(0);
-  const [garnishExpanded, setGarnishExpanded] = useState(true);
-  const [garnishRegionMode, setGarnishRegionMode] = useState(false);
-  const [selectedGarnishRegionId, setSelectedGarnishRegionId] = useState<string | null>(null);
   const previewSyncing = previewTransaction.phase === "rendering";
   const previewPending = previewTransaction.phase === "debouncing" || previewTransaction.phase === "rendering";
   const garnishPreviewSyncing = previewSyncing && previewTransaction.cause === "garnish";
@@ -488,9 +486,81 @@ export default function App() {
     }
   }, [styleExpandedV]);
 
+  // Garnish card expansion state (mirrors Text & Appearance card)
+  const [garnishCardCollapsed, setGarnishCardCollapsed] = useState(false);
+  const [garnishCardExpandedH, setGarnishCardExpandedH] = useState(false);
+  const [garnishCardExpandedV, setGarnishCardExpandedV] = useState(false);
+  const [garnishCardH, setGarnishCardH] = useState<number | null>(null);
+  const garnishCardRef = useRef<HTMLDivElement | null>(null);
+  const garnishDragStartY = useRef(0);
+  const garnishDragStartH = useRef(0);
+  const preExpandGarnishH = useRef<number | null>(null);
+  const garnishExpandTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onGarnishExpandClick = useCallback(() => {
+    if (garnishExpandTimer.current) {
+      clearTimeout(garnishExpandTimer.current);
+      garnishExpandTimer.current = null;
+      setGarnishCardExpandedH((v) => {
+        const nv = !v;
+        if (nv) { setGarnishCardH(null); setGarnishCardExpandedV(false); }
+        return nv;
+      });
+      return;
+    }
+    garnishExpandTimer.current = setTimeout(() => { garnishExpandTimer.current = null; }, 250);
+  }, []);
+  const onGarnishDragStart = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    garnishDragStartY.current = e.clientY;
+    garnishDragStartH.current = garnishCardRef.current?.offsetHeight ?? 400;
+    const garnishEl = garnishCardRef.current;
+    const localizedEl = document.querySelector('[data-render-localized]');
+    const decisionsEl = document.querySelector('[data-render-decisions]');
+    let maxH = 9999;
+    if (garnishEl && localizedEl) {
+      const garnishRect = garnishEl.getBoundingClientRect();
+      const localizedRect = localizedEl.getBoundingClientRect();
+      const decisionsH = decisionsEl ? (decisionsEl as HTMLElement).offsetHeight : 0;
+      maxH = localizedRect.bottom - garnishRect.top - decisionsH - 16;
+    }
+    const onMove = (ev: MouseEvent) => {
+      const delta = ev.clientY - garnishDragStartY.current;
+      const newH = Math.max(200, Math.min(maxH, garnishDragStartH.current + delta));
+      setGarnishCardExpandedV(false);
+      preExpandGarnishH.current = null;
+      setGarnishCardH(newH);
+    };
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }, []);
+  const onGarnishDoubleClick = useCallback(() => {
+    if (garnishCardExpandedV) {
+      setGarnishCardExpandedV(false);
+      setGarnishCardH(null);
+    } else {
+      const garnishEl = garnishCardRef.current;
+      if (!garnishEl) return;
+      const localizedEl = document.querySelector('[data-render-localized]');
+      if (!localizedEl) return;
+      const decisionsEl = document.querySelector('[data-render-decisions]');
+      const garnishRect = garnishEl.getBoundingClientRect();
+      const localizedRect = localizedEl.getBoundingClientRect();
+      const decisionsH = decisionsEl ? (decisionsEl as HTMLElement).offsetHeight : 0;
+      const maxH = localizedRect.bottom - garnishRect.top - decisionsH - 16;
+      preExpandGarnishH.current = garnishEl.offsetHeight;
+      setGarnishCardH(Math.max(200, maxH));
+      setGarnishCardExpandedV(true);
+    }
+  }, [garnishCardExpandedV]);
+
   // reset render-tab expansion state when leaving step 3
   useEffect(() => {
-    if (step !== 3) { setStyleCardH(null); setStyleExpandedV(false); setStyleExpandedH(false); }
+    if (step !== 3) { setStyleCardH(null); setStyleExpandedV(false); setStyleExpandedH(false); setGarnishCardH(null); setGarnishCardExpandedV(false); setGarnishCardExpandedH(false); }
   }, [step]);
 
   // stacking animation: reset reveal counter on step change, then increment
@@ -659,6 +729,17 @@ export default function App() {
   const visibleManifest = orderedManifest.filter((i) => !i.excluded);
   const [imgDim, setImgDim] = useState<[number, number] | null>(null);
   const [sceneRegions, setSceneRegions] = useState<SceneRegion[]>([]);
+  // Render treatment has one selected-instance model.  The Garnish card and
+  // localized canvas consume this same derivation so scope/profile changes
+  // cannot disagree between the two surfaces.
+  const selectedRenderInst = manifest.find((item) => item.id === renderSelId) ?? null;
+  const selectedGarnishSurface = selectedRenderInst ? (() => {
+    const b = selectedRenderInst.bounding_box;
+    return sceneRegions.find((region) => b.x + b.width / 2 >= region.bbox.x && b.x + b.width / 2 <= region.bbox.x + region.bbox.width && b.y + b.height / 2 >= region.bbox.y && b.y + b.height / 2 <= region.bbox.y + region.bbox.height) ?? null;
+  })() : null;
+  const selectedGarnishRecommended = selectedGarnishSurface?.garnish_profile;
+  const selectedGarnishProfile = selectedRenderInst?.garnish_override ?? selectedGarnishRecommended ?? DEFAULT_GARNISH_PROFILE;
+  const selectedGarnishEnabled = selectedRenderInst?.garnish_enabled !== false;
   // Basil owns semantic reading units separately from the immutable region
   // list.  This lets target-language order differ from visual box order
   // without making `rN` identity or geometry mutable in the editor.
@@ -741,12 +822,9 @@ export default function App() {
   const menuRef = useRef<HTMLDivElement>(null);
   const [warpOpen, setWarpOpen] = useState(false);
   const [warpCollapsed, setWarpCollapsed] = useState(false);
-  const [cleanseDismissed, setCleanseDismissed] = useState(false);
   const warpRef = useRef<HTMLDivElement>(null);
   const [garnishScopeOpen, setGarnishScopeOpen] = useState(false);
-  const [garnishRegionDropdownOpen, setGarnishRegionDropdownOpen] = useState(false);
   const garnishScopeRef = useRef<HTMLDivElement>(null);
-  const garnishRegionDropdownRef = useRef<HTMLDivElement>(null);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [pendingUploadFile, setPendingUploadFile] = useState<File | null>(null);
   const [pendingDuplicateFile, setPendingDuplicateFile] = useState<{ file: File; projectName: string } | null>(null);
@@ -1150,71 +1228,78 @@ export default function App() {
     if (!selected) return;
     const selectedInst = manifest.find((inst) => inst.id === selected);
     if (!selectedInst) return;
+    const allRegions = selectedInst.garnish_scope !== "per_region";
     const b = selectedInst.bounding_box;
     const surface = sceneRegions.find((region) => b.x + b.width / 2 >= region.bbox.x && b.x + b.width / 2 <= region.bbox.x + region.bbox.width && b.y + b.height / 2 >= region.bbox.y && b.y + b.height / 2 <= region.bbox.y + region.bbox.height);
-    const selectedRegion = (selectedInst.garnish_regions ?? []).find((region) => region.id === selectedGarnishRegionId);
-    const perRegion = selectedInst.garnish_scope === "per_region" && selectedRegion !== undefined;
     const baseProfile = selectedInst.garnish_override ?? surface?.garnish_profile ?? DEFAULT_GARNISH_PROFILE;
-    const profile = { ...baseProfile, ...(selectedRegion?.profile ?? {}), source_confidence: 1, ...patch };
+    const profile = { ...baseProfile, source_confidence: 1, ...patch };
     recordLocalizedChange();
     const next = manifest.map((inst) => {
+      if (allRegions) {
+        if (inst.excluded || !inst.target_text || inst.dnt) return inst;
+        return { ...inst, garnish_override: { ...profile, ...(inst.garnish_override ?? {}), ...patch } };
+      }
       if (inst.id !== selected) return inst;
-      if (perRegion) return { ...inst, garnish_regions: (inst.garnish_regions ?? []).map((region) => region.id === selectedGarnishRegionId ? {
-        ...region, profile,
-      } : region) };
       return { ...inst, garnish_override: profile };
     });
     setManifest(next);
     queueLocalizedPreview(next, "garnish");
     autoSave(next);
-  }, [renderSelId, prevSelId, selectedGarnishRegionId, recordLocalizedChange, manifest, sceneRegions, autoSave, setManifest, queueLocalizedPreview]);
+  }, [renderSelId, prevSelId, recordLocalizedChange, manifest, sceneRegions, autoSave, setManifest, queueLocalizedPreview]);
 
   const setSelectedGarnishEnabled = useCallback((enabled: boolean) => {
     const selected = renderSelId ?? prevSelId;
     if (!selected) return;
     const inst = manifest.find((item) => item.id === selected);
     if (!inst) return;
-    const selectedRegion = (inst.garnish_regions ?? []).find((region) => region.id === selectedGarnishRegionId);
-    const b = inst.bounding_box;
-    const surface = sceneRegions.find((region) => b.x + b.width / 2 >= region.bbox.x && b.x + b.width / 2 <= region.bbox.x + region.bbox.width && b.y + b.height / 2 >= region.bbox.y && b.y + b.height / 2 <= region.bbox.y + region.bbox.height);
+    const allRegions = inst.garnish_scope !== "per_region";
     recordLocalizedChange();
-    const next = manifest.map((inst) => {
-      if (inst.id !== selected) return inst;
-      return inst.garnish_scope === "per_region" && selectedGarnishRegionId ? { ...inst, garnish_regions: (inst.garnish_regions ?? []).map((region) => region.id === selectedGarnishRegionId ? { ...region, enabled } : region) } : { ...inst, garnish_enabled: enabled };
+    const next = manifest.map((item) => {
+      if (allRegions) {
+        if (item.excluded || !item.target_text || item.dnt) return item;
+        return { ...item, garnish_enabled: enabled };
+      }
+      if (item.id !== selected) return item;
+      return { ...item, garnish_enabled: enabled };
     });
     setManifest(next);
     queueLocalizedPreview(next, "garnish");
     autoSave(next);
-  }, [renderSelId, prevSelId, selectedGarnishRegionId, recordLocalizedChange, manifest, sceneRegions, autoSave, setManifest, queueLocalizedPreview]);
+  }, [renderSelId, prevSelId, recordLocalizedChange, manifest, autoSave, setManifest, queueLocalizedPreview]);
 
   const useSelectedSceneGarnish = useCallback(() => {
     const selected = renderSelId ?? prevSelId;
     if (!selected) return;
+    const inst = manifest.find((item) => item.id === selected);
+    if (!inst) return;
+    const allRegions = inst.garnish_scope !== "per_region";
     recordLocalizedChange();
-    const next = manifest.map((inst) => {
-      if (inst.id !== selected) return inst;
-      return inst.garnish_scope === "per_region" && selectedGarnishRegionId ? { ...inst, garnish_regions: (inst.garnish_regions ?? []).map((region) => region.id === selectedGarnishRegionId ? { ...region, profile: null, enabled: null } : region) } : { ...inst, garnish_override: null, garnish_enabled: null };
+    const next = manifest.map((item) => {
+      if (allRegions) {
+        if (item.excluded || !item.target_text || item.dnt) return item;
+        return { ...item, garnish_override: null, garnish_enabled: null };
+      }
+      if (item.id !== selected) return item;
+      return { ...item, garnish_override: null, garnish_enabled: null };
     });
     setManifest(next);
     queueLocalizedPreview(next, "garnish");
     autoSave(next);
-  }, [renderSelId, prevSelId, selectedGarnishRegionId, recordLocalizedChange, manifest, autoSave, setManifest, queueLocalizedPreview]);
+  }, [renderSelId, prevSelId, recordLocalizedChange, manifest, autoSave, setManifest, queueLocalizedPreview]);
 
   const setSelectedGarnishScope = useCallback((scope: "whole_selection" | "per_region") => {
     const selected = renderSelId ?? prevSelId;
     if (!selected) return;
     const inst = manifest.find((item) => item.id === selected);
-    if (!inst) return;
-    if (scope === "per_region" && !(inst.garnish_regions ?? []).length) {
-      addToast("warning", "Draw a Garnish region first, then switch to per region.");
+    if (!inst) {
+      addToast("error", "No text selected to apply garnish scope.");
       return;
     }
     recordLocalizedChange();
-    const next = manifest.map((item) => item.id === selected ? { ...item, garnish_scope: scope, garnish_enabled: scope === "per_region" ? null : item.garnish_enabled } : item);
+    const next = manifest.map((item) => item.id === selected ? { ...item, garnish_scope: scope } : item);
     setManifest(next);
     queueLocalizedPreview(next, "garnish");
     autoSave(next);
-    setSelectedGarnishRegionId(scope === "per_region" ? (inst.garnish_regions ?? [])[0]?.id ?? null : null);
   }, [renderSelId, prevSelId, manifest, recordLocalizedChange, autoSave, addToast, queueLocalizedPreview]);
 
   useEffect(() => {
@@ -1370,37 +1455,9 @@ export default function App() {
   }, [asset, syncTreatmentPatches]);
 
 
-  const addGarnishRegion = useCallback(() => {
-    const selected = renderSelId ?? prevSelId;
-    if (!selected || lassoPoints.length < 3) return;
-    const inst = manifest.find((item) => item.id === selected);
-    if (!inst) return;
-    const b = inst.bounding_box;
-    // Clamp editor points to the immutable instance box before persistence.
-    const polygon = lassoPoints.map(([x, y]) => [Math.max(b.x, Math.min(b.x + b.width, x)), Math.max(b.y, Math.min(b.y + b.height, y))]);
-    const id = `${inst.id}-g${Date.now().toString(36)}`;
-    recordLocalizedChange();
-    const next = manifest.map((item) => item.id === selected ? { ...item, garnish_scope: "per_region" as const, garnish_regions: [...(item.garnish_regions ?? []), { id, polygon, enabled: true, profile: null, source: "manual" }] } : item);
-    setManifest(next);
-    queueLocalizedPreview(next, "garnish");
-    autoSave(next);
-    setSelectedGarnishRegionId(id);
-    setGarnishRegionMode(false);
-    setLassoPoints([]);
-    addToast("success", "Garnish sub-region added");
-  }, [renderSelId, prevSelId, lassoPoints, manifest, recordLocalizedChange, autoSave, addToast, queueLocalizedPreview]);
 
-  const deleteSelectedGarnishRegion = useCallback(() => {
-    const selected = renderSelId ?? prevSelId;
-    if (!selected || !selectedGarnishRegionId) return;
-    recordLocalizedChange();
-    const next = manifest.map((item) => item.id === selected ? { ...item, garnish_regions: (item.garnish_regions ?? []).filter((region) => region.id !== selectedGarnishRegionId) } : item);
-    setManifest(next);
-    queueLocalizedPreview(next, "garnish");
-    autoSave(next);
-    setSelectedGarnishRegionId(null);
-    addToast("info", "Garnish sub-region removed");
-  }, [renderSelId, prevSelId, selectedGarnishRegionId, manifest, recordLocalizedChange, autoSave, addToast, queueLocalizedPreview]);
+
+
 
   const applyReviewCandidate = useCallback(async (candidate: RepairCandidate) => {
     if (!asset) return;
@@ -1416,6 +1473,29 @@ export default function App() {
       addToast("success", result.already_applied ? `${providerLabel(candidate.provider)} is already in the treatment layer` : `applied ${providerLabel(candidate.provider)} as an undoable treatment`);
     } catch (e) { setErrorWithNotif(String(e)); }
   }, [asset, addToast, previewPending, previewCacheKey, syncTreatmentPatches, recordLocalizedChange]);
+
+  const applyAllReviewCandidates = useCallback(async () => {
+    if (!asset || previewPending) return;
+    const candidates = Array.from(new Map(
+      repairReviews.flatMap((review) => review.candidates.map((candidate) => [candidate.id, candidate]))
+    ).values()).filter((candidate) => localizedCandidatePreviews[candidate.id]?.status === "ready" && !appliedCandidateIds.includes(candidate.id));
+    for (const candidate of candidates) {
+      if (previewCacheKey !== candidate.cacheKey) {
+        addToast("warning", `skipping ${providerLabel(candidate.provider)} — preview is no longer current`);
+        continue;
+      }
+      try {
+        recordLocalizedChange();
+        const result = await applyRepairCandidate(asset.asset_id, candidate.id, candidate.cacheKey);
+        syncTreatmentPatches(result.patches);
+        setPatchRevision((revision) => revision + 1);
+        addToast("success", result.already_applied ? `${providerLabel(candidate.provider)} is already in the treatment layer` : `applied ${providerLabel(candidate.provider)} as an undoable treatment`);
+      } catch (e) {
+        setErrorWithNotif(String(e));
+        break;
+      }
+    }
+  }, [asset, repairReviews, localizedCandidatePreviews, appliedCandidateIds, previewPending, previewCacheKey, addToast, syncTreatmentPatches, recordLocalizedChange]);
 
   const pointOnLocalizedCanvas = useCallback((event: React.PointerEvent<HTMLImageElement>): [number, number] | null => {
     if (!imgDim) return null;
@@ -2497,16 +2577,6 @@ export default function App() {
     return () => document.removeEventListener("mousedown", onDown);
   }, [garnishScopeOpen]);
 
-  useEffect(() => {
-    if (!garnishRegionDropdownOpen) return;
-    const onDown = (e: MouseEvent) => {
-      if (garnishRegionDropdownRef.current && !garnishRegionDropdownRef.current.contains(e.target as Node)) {
-        setGarnishRegionDropdownOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, [garnishRegionDropdownOpen]);
 
   useEffect(() => {
     if (hasEditsAfterImport) {
@@ -3636,7 +3706,7 @@ export default function App() {
           {/* Layout adapts to styleExpandedH:
               half-width (standard): text card on left, images on right
               full-width (expanded): stacked, images side by side below */}
-          <div className={`grid gap-4 transition-all duration-300 ${styleExpandedH ? "grid-cols-1" : "lg:grid-cols-2"}`}>
+          <div className={`grid gap-4 transition-all duration-300 ${styleExpandedH || garnishCardExpandedH ? "grid-cols-1" : "lg:grid-cols-2"}`}>
             {/* Left column: Text & Appearance + hint + decisions */}
             <div className="space-y-4">
 
@@ -4032,6 +4102,63 @@ export default function App() {
             </div>
           )}
 
+          {selectedRenderInst && (
+            <div
+              ref={garnishCardRef}
+              className="bezier-card soft-shadow flex flex-col rounded-xl bg-white/60 dark:bg-zinc-900/60"
+              style={garnishCardH !== null ? { height: garnishCardH, transition: "height 0.3s ease-in-out" } : { transition: "height 0.3s ease-in-out" }}
+            >
+              <Section
+                title="Garnish"
+                icon={<GiCoolSpices size={14} />}
+                flat
+                className={`${stackClass(1)} flex-1 overflow-auto p-5`}
+                rightSideHandle={
+                  <div className="title-drag-handle absolute right-0 top-1/2 z-20 shrink-0 -translate-y-1/2" style={{ cursor: "pointer", padding: "2px 4px" }} onClick={onGarnishExpandClick} title={garnishCardExpandedH ? "double-click to return to standard" : "double-click to expand to full width"}>
+                    <svg width="14" height="42" viewBox="0 0 14 42" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="1" y="0.5" width="4.5" height="41" rx="2.25" fill="currentColor" /><rect x="8" y="11" width="4.5" height="20" rx="2.25" fill="currentColor" /></svg>
+                  </div>
+                }
+              >
+                {(() => {
+                  const perRegion = selectedRenderInst.garnish_scope === "per_region";
+                  const g = selectedGarnishProfile;
+                  const recommended = selectedGarnishRecommended;
+                  const slider = (label: string, field: keyof NonNullable<InstText["garnish_override"]>, min: number, max: number, step: number, suffix = "", digits = 1) => {
+                    const marker = recommended ? Math.max(0, Math.min(100, (Number(recommended[field]) - min) * 100 / (max - min))) : null;
+                    return <GarnishSliderField key={field} label={label} value={Number(g[field])} min={min} max={max} step={step} suffix={suffix} digits={digits} marker={marker} markerLabel={recommended ? `scene recommendation: ${Number(recommended[field]).toFixed(digits)}${suffix}` : undefined} sceneLabel={recommended ? `scene: ${Number(recommended[field]).toFixed(digits)}${suffix}` : undefined} disabled={!selectedGarnishEnabled} onChange={(value) => updateSelectedGarnish({ [field]: value })} />;
+                  };
+                  return <div className="space-y-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex items-center gap-1 font-semibold text-violet-900 dark:text-violet-100"><GiCoolSpices size={14} /><span>treatment</span></div>
+                      <div className="relative shrink-0" ref={garnishScopeRef}>
+                        <button type="button" onClick={() => setGarnishScopeOpen((value) => !value)} className="bezier-card flex items-center gap-1.5 rounded-md bg-white/60 px-2 py-1 text-[10px] text-violet-700 transition hover:bg-violet-100 dark:bg-zinc-900/60 dark:text-violet-300 dark:hover:bg-zinc-800">{perRegion ? "per region" : "all regions"}<ChevronDown size={10} className={`transition ${garnishScopeOpen ? "rotate-180" : ""}`} /></button>
+                        <div className={`dropdown-morph bezier-card absolute left-0 top-full z-[200] mt-1 w-36 rounded-lg bg-white p-1 dark:bg-zinc-900${garnishScopeOpen ? " expanded" : ""}`} style={garnishScopeOpen ? { boxShadow: "1px 1px 0 var(--bc-shadow), 2px 2px 6px rgba(0,0,0,0.06)" } : undefined}>
+                          <button type="button" onClick={() => { setSelectedGarnishScope("whole_selection"); setGarnishScopeOpen(false); }} className={`flex w-full rounded-md px-2 py-1.5 text-[10px] transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${!perRegion ? "bg-zinc-100 font-medium text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100" : "text-zinc-600 dark:text-zinc-400"}`}>all regions</button>
+                          <button type="button" onClick={() => { setSelectedGarnishScope("per_region"); setGarnishScopeOpen(false); }} className={`flex w-full rounded-md px-2 py-1.5 text-[10px] transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${perRegion ? "bg-zinc-100 font-medium text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100" : "text-zinc-600 dark:text-zinc-400"}`}>per region</button>
+                        </div>
+                      </div>
+                      {!recommended && <span className="text-[10px] text-violet-700/75 dark:text-violet-300/75">manual baseline</span>}
+                      {garnishPreviewSyncing && <span className="text-[10px] text-violet-700 dark:text-violet-300">updating treatment…</span>}
+                      <button type="button" role="switch" aria-checked={selectedGarnishEnabled} aria-label="enable garnish" onClick={() => setSelectedGarnishEnabled(!selectedGarnishEnabled)} className={`relative ml-auto inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${selectedGarnishEnabled ? "bg-violet-600" : "bg-zinc-300 dark:bg-zinc-600"}`}><span className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${selectedGarnishEnabled ? "translate-x-3" : "translate-x-0"}`} /></button>
+                      <button type="button" onClick={() => setGarnishCardCollapsed((value) => !value)} className="rounded p-1 text-zinc-500 transition hover:bg-zinc-200 dark:hover:bg-zinc-800" title={garnishCardCollapsed ? "expand" : "collapse"}><FcCollapse style={{ transform: garnishCardCollapsed ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} /></button>
+                    </div>
+                    <div className={`style-panel-morph ${!garnishCardCollapsed ? "expanded" : ""}`}>
+                      <fieldset disabled={!selectedGarnishEnabled} className="flex flex-wrap gap-x-2 gap-y-1 border-t border-violet-400/25 px-2 py-2 disabled:opacity-45">
+                        {slider("edge blur", "edge_blur_px", 0, 10, 0.1, "px")}
+                        <label className="subtext flex min-w-36 flex-1 items-center gap-1.5 text-[10px]" title="Feather glyph edges outward into the surface for natural integration."><input aria-label="garnish edge smoothing" type="checkbox" checked={Boolean(g.edge_smoothing)} onChange={(event) => updateSelectedGarnish({ edge_smoothing: event.target.checked })} /><span className="font-medium">edge smoothing</span><span className="text-zinc-500">feather</span></label>
+                        {Boolean(g.edge_smoothing) && slider("feather", "edge_smoothing_strength", 0, 1, 0.05, "", 2)}
+                        {slider("wear", "erosion_px", 0, 5, 0.1, "px")}{slider("thicken", "dilation_px", 0, 5, 0.1, "px")}{slider("grain", "grain_strength", 0, 1, 0.02, "", 2)}{slider("gamma", "gamma_shift", 0.5, 2, 0.05, "", 2)}{slider("smudge", "smudge_strength", 0, 1, 0.02, "", 2)}{slider("angle", "smudge_angle_deg", 0, 360, 1, "°", 0)}
+                        {recommended && <button type="button" onClick={useSelectedSceneGarnish} className="self-center rounded bg-violet-700 px-1.5 py-0.5 text-[10px] text-white">use AI preset</button>}
+                      </fieldset>
+                      <SmartFillReview reviews={repairReviews} fallbackIds={repairFallbackIds} previews={localizedCandidatePreviews} previewPending={previewPending} appliedIds={appliedCandidateIds} onRetryPreview={() => setCandidatePreviewRevision((value) => value + 1)} onApply={applyReviewCandidate} onApplyAll={applyAllReviewCandidates} onHoverRegion={setSmartFillHoverId} />
+                    </div>
+                  </div>;
+                })()}
+              </Section>
+              {!garnishCardExpandedH && <div className="title-drag-handle flex shrink-0 items-center justify-center" onMouseDown={onGarnishDragStart} onDoubleClick={onGarnishDoubleClick} title="drag to resize · double-click to toggle height" style={{ position: "relative" }}><svg width="42" height="14" viewBox="0 0 42 14" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="0.5" y="1" width="41" height="4.5" rx="2.25" fill="currentColor" /><rect x="11" y="8" width="20" height="4.5" rx="2.25" fill="currentColor" /></svg></div>}
+            </div>
+          )}
+
               {!renderSelId && (
                 <p className="subtext flex items-center gap-1 text-xs text-zinc-500">
                   <PiWarningCircleFill size={15} className="text-[#2d8cf0]" />
@@ -4072,7 +4199,7 @@ export default function App() {
             </div>
 
             {/* Source reference + the single editable localized canvas. */}
-            <div className={`space-y-4 ${styleExpandedH ? "grid grid-cols-2 gap-4" : ""}`}>
+            <div className={`space-y-4 ${styleExpandedH || garnishCardExpandedH ? "grid grid-cols-2 gap-4" : ""}`}>
               {previewUrl && <Section title="Source Reference" icon={<FileImage size={14} />} className={stackClass(2)}>
                 <div className="relative inline-block max-w-full">
                   <img src={previewUrl} alt="source reference" className={`block max-w-full rounded-lg border border-zinc-300 dark:border-zinc-800 ${colorPickMode ? "cursor-crosshair" : ""}`}
@@ -4102,26 +4229,25 @@ export default function App() {
                 rightSideHandle={<button onClick={resetLocalizedCanvas} title="Reset all localized canvas edits to the Render-entry baseline" className="absolute right-5 top-4 flex items-center gap-1 rounded px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800"><VscDebugRestart size={16} /> reset</button>}>
                 <div className="mb-2 flex items-center gap-2">
                   <p className="text-xs text-zinc-500">Modify, place, and warp text.</p>
-                  {renderSelId && <button type="button" onClick={() => { setGarnishRegionMode((value) => !value); setLassoMode(false); setBrushMode(false); setLassoPoints([]); setBrushCursor(null); }} className={`bezier-card flex items-center justify-center rounded-lg px-2 py-1 text-sm transition ${garnishRegionMode ? "bg-violet-600 text-white hover:bg-violet-700" : "bg-white/60 text-violet-700 hover:bg-violet-100 dark:bg-zinc-900/60 dark:text-violet-300 dark:hover:bg-zinc-800"}`} title="Add Garnish region" aria-label="Add Garnish region"><GiCoolSpices size={16} /></button>}
                 </div>
                 <div className="relative">
                 <div ref={localizedScrollRef} className="max-h-[68vh] max-w-full overflow-auto rounded-lg" style={{ cursor: localizedDragMode ? (localizedPanRef.current ? "grabbing" : "grab") : undefined }} onMouseDown={(e) => { if (!localizedDragMode) return; const el = localizedScrollRef.current; if (!el) return; localizedPanRef.current = { startX: e.clientX, startY: e.clientY, scrollLeft: el.scrollLeft, scrollTop: el.scrollTop }; e.preventDefault(); }} onMouseMove={(e) => { if (!localizedPanRef.current) return; const el = localizedScrollRef.current; if (!el) return; el.scrollLeft = localizedPanRef.current.scrollLeft - (e.clientX - localizedPanRef.current.startX); el.scrollTop = localizedPanRef.current.scrollTop - (e.clientY - localizedPanRef.current.startY); }} onMouseUp={() => { localizedPanRef.current = null; }} onMouseLeave={() => { localizedPanRef.current = null; }}>
                 <div className="relative inline-block min-w-full touch-none select-none" style={{ width: `${localizedZoom * 100}%` }}>
-                  <img src={preRenderUrl || previewUrl || "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="} alt="localized treatment canvas" draggable={false} className={`block w-full max-w-none touch-none select-none rounded-lg border border-zinc-300 dark:border-zinc-800 ${localizedDragMode ? "pointer-events-none" : nearFirstPoint ? "cursor-pointer" : (brushMode || lassoMode || garnishRegionMode || colorPickMode) ? "cursor-crosshair" : ""}`}
+                  <img src={preRenderUrl || previewUrl || "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="} alt="localized treatment canvas" draggable={false} className={`block w-full max-w-none touch-none select-none rounded-lg border border-zinc-300 dark:border-zinc-800 ${localizedDragMode ? "pointer-events-none" : nearFirstPoint ? "cursor-pointer" : (brushMode || lassoMode || colorPickMode) ? "cursor-crosshair" : ""}`}
                     style={{ touchAction: "none", WebkitUserDrag: "none" } as React.CSSProperties}
                     onDragStart={(event) => event.preventDefault()}
                     onPointerDown={(event) => {
                       if (sampleCanvasFill(event, "localized")) return;
                       if (brushMode) beginBrushStroke(event);
-                      else if (lassoMode || garnishRegionMode) {
-                        if (nearFirstPoint && lassoPoints.length >= 3) { event.preventDefault(); if (garnishRegionMode) addGarnishRegion(); return; }
+                      else if (lassoMode) {
+                        if (nearFirstPoint && lassoPoints.length >= 3) { event.preventDefault(); return; }
                         const point = pointOnLocalizedCanvas(event);
                         if (point) { event.preventDefault(); setLassoPoints((points) => [...points, point]); }
                       }
                     }}
                     onPointerMove={(event) => {
                       if (brushMode) extendBrushStroke(event);
-                      else if (lassoMode || garnishRegionMode) {
+                      else if (lassoMode) {
                         const point = pointOnLocalizedCanvas(event);
                         if (point) {
                           setBrushCursor(point);
@@ -4140,8 +4266,8 @@ export default function App() {
                     onPointerCancel={(event) => finishBrushStroke(event, true)}
                     onLostPointerCapture={(event) => finishBrushStroke(event, true)}
                     onPointerLeave={() => { if (!brushDrawing.current) setBrushCursor(null); setNearFirstPoint(false); }} />
-                  {imgDim && <svg className={`absolute inset-0 h-full w-full ${brushMode || lassoMode || garnishRegionMode ? "pointer-events-none" : ""}`} viewBox={`0 0 ${imgDim[0]} ${imgDim[1]}`} preserveAspectRatio="none">
-                    {!brushMode && !lassoMode && !garnishRegionMode && <>
+                  {imgDim && <svg className={`absolute inset-0 h-full w-full ${brushMode || lassoMode ? "pointer-events-none" : ""}`} viewBox={`0 0 ${imgDim[0]} ${imgDim[1]}`} preserveAspectRatio="none">
+                    {!brushMode && !lassoMode && <>
                       {/* Hit-testing layer stays invisible so UI outlines never mask glyph pixels. */}
                       {visibleManifest.map((inst) => { const b = inst.bounding_box; return <rect key={inst.id} x={b.x} y={b.y} width={b.width} height={b.height} fill="transparent" stroke="none" onClick={() => setRenderSelId(inst.id)} className="cursor-pointer" />; })}
                       {renderSelId && (() => {
@@ -4169,14 +4295,13 @@ export default function App() {
                         </rect>;
                       })()}
                     </>}
-                    {!brushMode && !lassoMode && !garnishRegionMode && manifest.find((inst) => inst.id === renderSelId)?.garnish_regions?.map((region) => <polygon key={region.id} points={region.polygon.map((point) => point.join(",")).join(" ")} fill={region.id === selectedGarnishRegionId ? "rgba(139,92,246,.20)" : "rgba(139,92,246,.08)"} stroke={region.id === selectedGarnishRegionId ? "#7c3aed" : "rgba(124,58,237,.6)"} strokeWidth="1.5" />)}
                     {brushStrokes.map((stroke) => <polyline key={stroke.id} points={stroke.points.map((p) => p.join(",")).join(" ")} fill="none" stroke="#06b6d4" strokeWidth={brushRadius * 2} strokeLinecap="round" strokeLinejoin="round" opacity=".45" />)}
                     {activeBrushStroke && <polyline points={activeBrushStroke.points.map((p) => p.join(",")).join(" ")} fill="none" stroke="#06b6d4" strokeWidth={brushRadius * 2} strokeLinecap="round" strokeLinejoin="round" opacity=".70" />}
                     {brushMode && brushCursor && <circle cx={brushCursor[0]} cy={brushCursor[1]} r={brushRadius} fill="rgba(6,182,212,.10)" stroke="#06b6d4" strokeWidth="1.5" />}
                     {lassoPoints.length > 0 && <>
-                      <polyline points={[...lassoPoints, ...((lassoMode || garnishRegionMode) && brushCursor ? [brushCursor] : [])].map((p) => p.join(",")).join(" ")} fill={garnishRegionMode ? "rgba(139,92,246,.15)" : "rgba(6,182,212,.15)"} stroke={garnishRegionMode ? "#7c3aed" : "#06b6d4"} strokeWidth="2" strokeDasharray={(lassoMode || garnishRegionMode) && brushCursor ? "5 3" : undefined} />
-                      {lassoPoints.map((point, index) => <circle key={`${point[0]}-${point[1]}-${index}`} cx={point[0]} cy={point[1]} r="3" fill={garnishRegionMode ? "#7c3aed" : "#06b6d4"} stroke="white" strokeWidth="1" />)}
-                      {nearFirstPoint && lassoPoints.length >= 3 && <circle cx={lassoPoints[0][0]} cy={lassoPoints[0][1]} r="8" fill="none" stroke={garnishRegionMode ? "#7c3aed" : "#06b6d4"} strokeWidth="2" strokeDasharray="3 2"><animate attributeName="r" values="6;10;6" dur="1s" repeatCount="indefinite" /></circle>}
+                      <polyline points={[...lassoPoints, ...(lassoMode && brushCursor ? [brushCursor] : [])].map((p) => p.join(",")).join(" ")} fill="rgba(6,182,212,.15)" stroke="#06b6d4" strokeWidth="2" strokeDasharray={lassoMode && brushCursor ? "5 3" : undefined} />
+                      {lassoPoints.map((point, index) => <circle key={`${point[0]}-${point[1]}-${index}`} cx={point[0]} cy={point[1]} r="3" fill="#06b6d4" stroke="white" strokeWidth="1" />)}
+                      {nearFirstPoint && lassoPoints.length >= 3 && <circle cx={lassoPoints[0][0]} cy={lassoPoints[0][1]} r="8" fill="none" stroke="#06b6d4" strokeWidth="2" strokeDasharray="3 2"><animate attributeName="r" values="6;10;6" dur="1s" repeatCount="indefinite" /></circle>}
                     </>}
                   </svg>}
                 </div>
@@ -4214,135 +4339,16 @@ export default function App() {
                   </button>
                 </div>
                 </div>
-                {!brushMode && !garnishRegionMode && renderSelId && (() => {
-                  const inst = manifest.find((item) => item.id === renderSelId);
-                  const surface = sceneRegions.find((region) => {
-                    const b = inst?.bounding_box; return !!b && b.x + b.width / 2 >= region.bbox.x && b.x + b.width / 2 <= region.bbox.x + region.bbox.width && b.y + b.height / 2 >= region.bbox.y && b.y + b.height / 2 <= region.bbox.y + region.bbox.height;
-                  });
-                  const recommended = surface?.garnish_profile;
-                  const perRegion = inst?.garnish_scope === "per_region";
-                  const selectedRegion = perRegion ? ((inst?.garnish_regions ?? []).find((region) => region.id === selectedGarnishRegionId) ?? null) : null;
-                  const g = selectedRegion?.profile ?? inst?.garnish_override ?? recommended ?? DEFAULT_GARNISH_PROFILE;
-                  if (!inst) return null;
-                  const enabled = selectedRegion ? selectedRegion.enabled !== false : inst.garnish_enabled !== false;
-                  const slider = (label: string, field: keyof NonNullable<InstText["garnish_override"]>, min: number, max: number, step: number, suffix = "", digits = 1) => {
-                    const marker = recommended ? Math.max(0, Math.min(100, (Number(recommended[field]) - min) * 100 / (max - min))) : null;
-                    return <label className="flex min-w-36 flex-1 flex-col gap-0.5 text-[10px]" key={field}>
-                    <span className="flex items-baseline justify-between gap-1"><span className="font-medium">{label}</span><span className="font-mono">{Number(g[field]).toFixed(digits)}{suffix}</span></span>
-                    <span className="relative flex h-4 items-center"><input className="w-full" aria-label={`garnish ${label}`} type="range" min={min} max={max} step={step} value={Number(g[field])} onChange={(e) => updateSelectedGarnish({ [field]: Number(e.target.value) })} />
-                      {marker !== null && <span aria-hidden title={`scene recommendation: ${Number(recommended![field]).toFixed(digits)}${suffix}`} className="pointer-events-none absolute top-1/2 h-2.5 w-0.5 -translate-y-1/2 rounded bg-violet-700 dark:bg-violet-200" style={{ left: `${marker}%` }} />}
-                    </span>
-                    {recommended && <span className="text-[9px] text-violet-700/75 dark:text-violet-300/75">scene: {Number(recommended[field]).toFixed(digits)}{suffix}</span>}
-                    </label>;
-                  };
-                  return <div className="mb-2 rounded border border-violet-400/35 bg-violet-50/60 text-xs text-violet-900 dark:bg-violet-950/20 dark:text-violet-100">
-                    <div className="flex flex-wrap items-center gap-2 px-2 py-1.5">
-                      <button type="button" onClick={() => setGarnishExpanded((value) => !value)} className="flex items-center gap-1 font-semibold" aria-expanded={garnishExpanded}>
-                        <ChevronDown size={14} className={`transition-transform ${garnishExpanded ? "" : "-rotate-90"}`} /><GiCoolSpices size={14} /> Garnish
-                      </button>
-                      <div className="relative shrink-0" ref={garnishScopeRef}><button type="button" onClick={() => setGarnishScopeOpen((v) => !v)} className="bezier-card flex items-center gap-1.5 rounded-md bg-white/60 px-2 py-1 text-[10px] text-violet-700 transition hover:bg-violet-100 dark:bg-zinc-900/60 dark:text-violet-300 dark:hover:bg-zinc-800">{perRegion ? "per region" : "whole selection"}<ChevronDown size={10} className={`transition ${garnishScopeOpen ? "rotate-180" : ""}`} /></button><div className={`dropdown-morph bezier-card absolute left-0 top-full z-[200] mt-1 w-36 rounded-lg bg-white p-1 dark:bg-zinc-900${garnishScopeOpen ? " expanded" : ""}`} style={garnishScopeOpen ? { boxShadow: "1px 1px 0 var(--bc-shadow), 2px 2px 6px rgba(0,0,0,0.06)" } : undefined}><button type="button" onClick={() => { setSelectedGarnishScope("whole_selection"); setGarnishScopeOpen(false); }} className={`flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-[10px] transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${!perRegion ? "bg-zinc-100 font-medium text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100" : "text-zinc-600 dark:text-zinc-400"}`}>whole selection</button><button type="button" onClick={() => { setSelectedGarnishScope("per_region"); setGarnishScopeOpen(false); }} className={`flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-[10px] transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${perRegion ? "bg-zinc-100 font-medium text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100" : "text-zinc-600 dark:text-zinc-400"}`}>per region</button></div></div>
-                      {perRegion && <div className="relative shrink-0" ref={garnishRegionDropdownRef}><button type="button" onClick={() => setGarnishRegionDropdownOpen((v) => !v)} className="bezier-card flex items-center gap-1.5 rounded-md bg-white/60 px-2 py-1 text-[10px] text-violet-700 transition hover:bg-violet-100 dark:bg-zinc-900/60 dark:text-violet-300 dark:hover:bg-zinc-800">{selectedRegion ? `region ${(inst.garnish_regions ?? []).findIndex((r) => r.id === selectedRegion.id) + 1}` : "select region"}<ChevronDown size={10} className={`transition ${garnishRegionDropdownOpen ? "rotate-180" : ""}`} /></button><div className={`dropdown-morph bezier-card absolute left-0 top-full z-[200] mt-1 w-40 rounded-lg bg-white p-1 dark:bg-zinc-900${garnishRegionDropdownOpen ? " expanded" : ""}`} style={garnishRegionDropdownOpen ? { boxShadow: "1px 1px 0 var(--bc-shadow), 2px 2px 6px rgba(0,0,0,0.06)" } : undefined}>{(inst.garnish_regions ?? []).map((region, index) => (<div key={region.id} className="flex items-center gap-1"><button type="button" onClick={() => { setSelectedGarnishRegionId(region.id); setGarnishRegionDropdownOpen(false); }} className={`flex flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-[10px] transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${region.id === selectedGarnishRegionId ? "bg-zinc-100 font-medium text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100" : "text-zinc-600 dark:text-zinc-400"}`}>region {index + 1}</button><button type="button" onClick={() => { setSelectedGarnishRegionId(region.id); deleteSelectedGarnishRegion(); setGarnishRegionDropdownOpen(false); }} className="shrink-0 rounded-md p-1 text-zinc-400 transition hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-900/30 dark:hover:text-red-400" title="Delete region" aria-label={`Delete region ${index + 1}`}><Trash2 size={12} /></button></div>))}</div></div>}
-                      {!recommended && <span className="text-[10px] text-violet-700/75 dark:text-violet-300/75">manual baseline</span>}
-                      {garnishPreviewSyncing && <span className="text-[10px] text-violet-700 dark:text-violet-300">updating treatment…</span>}
-                      <button type="button" role="switch" aria-checked={enabled} aria-label="enable garnish" onClick={() => setSelectedGarnishEnabled(!enabled)} className={`relative ml-auto inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${enabled ? "bg-violet-600" : "bg-zinc-300 dark:bg-zinc-600"}`}>
-                        <span className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${enabled ? "translate-x-3" : "translate-x-0"}`} />
-                      </button>
-                    </div>
-                    <div className={`dropdown-morph${garnishExpanded ? " expanded" : ""}`}>
-                      <fieldset disabled={!enabled} className="flex flex-wrap gap-x-2 gap-y-1 border-t border-violet-400/25 px-2 py-2 disabled:opacity-45">
-                        {slider("edge blur", "edge_blur_px", 0, 10, 0.1, "px")}
-                        <label className="flex min-w-36 flex-1 items-center gap-1.5 text-[10px]" title="Feather glyph edges outward into the surface for natural integration.">
-                          <input aria-label="garnish edge smoothing" type="checkbox" checked={Boolean(g.edge_smoothing)} onChange={(event) => updateSelectedGarnish({ edge_smoothing: event.target.checked })} />
-                          <span className="font-medium">edge smoothing</span><span className="text-zinc-500">feather</span>
-                        </label>
-                        {Boolean(g.edge_smoothing) && slider("feather", "edge_smoothing_strength", 0, 1, 0.05, "", 2)}
-                        {slider("wear", "erosion_px", 0, 5, 0.1, "px")}
-                        {slider("thicken", "dilation_px", 0, 5, 0.1, "px")}
-                        {slider("grain", "grain_strength", 0, 1, 0.02, "", 2)}
-                        {slider("gamma", "gamma_shift", 0.5, 2, 0.05, "", 2)}
-                        {slider("smudge", "smudge_strength", 0, 1, 0.02, "", 2)}
-                        {slider("angle", "smudge_angle_deg", 0, 360, 1, "°", 0)}
-                        {recommended && <button type="button" onClick={useSelectedSceneGarnish} className="self-center rounded bg-violet-700 px-1.5 py-0.5 text-[10px] text-white">use AI preset</button>}
-                      </fieldset>
-                    </div>
-                    {false && repairReviews.length > 0 && <div className="mt-2 rounded border border-amber-500/40 bg-amber-50/70 px-2 py-2 text-xs text-amber-900 dark:bg-amber-950/20 dark:text-amber-100">
-                      {repairReviews.length > 0 && !cleanseDismissed && <p className="bezier-impression subtext mb-1 flex items-start gap-1 text-[10px] text-amber-700/80 dark:text-amber-200/70">
-                        <MdTipsAndUpdates size={12} className="mt-0.5 shrink-0 text-amber-600" /><span>Smart fill options are available below.</span>
-                        <button onClick={() => setCleanseDismissed(true)} className="ml-auto shrink-0 rounded px-1.5 py-0.5 text-[9px] text-amber-400 hover:text-amber-600 dark:hover:text-amber-300 transition">dismiss</button>
-                      </p>}
-                      {repairFallbackIds.length > 0 && <div className="mb-1 rounded border border-sky-500/30 bg-sky-50/50 px-2 py-1 text-[10px] text-sky-900 dark:bg-sky-950/20 dark:text-sky-100"><span className="font-medium">Texture treatment is ready for review.</span><span className="ml-1">{repairFallbackIds.length} region{repairFallbackIds.length === 1 ? " uses" : "s use"} the editable reconstruction base.</span></div>}
-                      <span className="font-medium">Smart fill:</span><span className="ml-1">Compare a proposed fill with the localized canvas, then apply it only if it improves the surface.</span>
-                      {(() => {
-                        const candidates = Array.from(new Map(repairReviews.flatMap((review) => review.candidates.map((candidate) => [candidate.id, { review, candidate }]))).values());
-                        return candidates.length > 0 && <div className="mt-1.5 flex flex-wrap gap-2">
-                          {candidates.map(({ review, candidate }) => {
-                            const preview = localizedCandidatePreviews[candidate.id];
-                            const ready = preview?.status === "ready";
-                            const loading = preview?.status === "loading";
-                            const failed = preview?.status === "error";
-                            return <div key={candidate.id} className="flex w-20 flex-col items-center gap-1 rounded border border-amber-500/40 bg-white/80 p-1 dark:bg-zinc-900/70">
-                              {ready && <img src={preview.url} alt={`localized suggested texture repair for ${review.id}`} className="h-12 w-16 rounded object-contain" />}
-                              {loading && <div className="flex h-12 w-16 items-center justify-center rounded bg-amber-100/70 text-amber-700 dark:bg-amber-950/40"><SquareLoader size="xs" /></div>}
-                              {failed && <img src={candidate.url} alt={`repair-only background suggestion for ${review.id}`} className="h-12 w-16 rounded object-contain opacity-75" />}
-                              {!preview && <div className="h-12 w-16 rounded bg-zinc-100 dark:bg-zinc-800" />}
-                              <span className="text-center text-[8px] leading-3 text-amber-800/75 dark:text-amber-200/75">{ready ? "localized preview" : loading ? "building preview" : failed ? "repair-only background" : "preview pending"}</span>
-                              {failed ? <button onClick={() => setCandidatePreviewRevision((value) => value + 1)} className="rounded bg-amber-700 px-1.5 py-0.5 text-[10px] text-white">retry</button> :
-                                <button disabled={!ready || previewPending || appliedCandidateIds.includes(candidate.id)} onClick={() => applyReviewCandidate(candidate)} className="rounded bg-amber-700 px-1.5 py-0.5 text-[10px] text-white disabled:cursor-not-allowed disabled:opacity-50">{appliedCandidateIds.includes(candidate.id) ? "Applied" : previewPending ? "Updating…" : ready ? "apply" : "waiting…"}</button>}
-                            </div>;
-                          })}
-                        </div>;
-                      })()}
-                    </div>}
-                    <SmartFillReview reviews={repairReviews} fallbackIds={repairFallbackIds} dismissed={cleanseDismissed} previews={localizedCandidatePreviews} previewPending={previewPending} appliedIds={appliedCandidateIds} onDismiss={() => setCleanseDismissed(true)} onRetryPreview={() => setCandidatePreviewRevision((value) => value + 1)} onApply={applyReviewCandidate} onHoverRegion={setSmartFillHoverId} />
-                  </div>;
-                })()}
-                {previewRenderError && <div className="mb-2 flex items-center justify-between gap-2 rounded border border-amber-500/50 bg-amber-50 px-2 py-1 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-200"><span>Preview update failed; showing the last valid composition. {previewRenderError}</span><button type="button" onClick={() => { previewCauseRef.current = "style"; setPreviewRetryRevision((value) => value + 1); }} className="shrink-0 rounded bg-amber-700 px-1.5 py-0.5 text-[10px] text-white">retry</button></div>}
-                <div className="mb-2 flex flex-wrap items-center gap-2">
-                  <button onClick={() => { setBrushMode((v) => !v); setLassoMode(false); setBrushCursor(null); }} className={`rounded px-2 py-1 text-xs ${brushMode ? "bg-cyan-600 text-white" : "bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"}`}>{brushMode ? "Stop blur" : "Blur brush"}</button>
-                  {brushMode && <label className="text-xs text-zinc-500">size <input type="range" min="4" max="64" value={brushRadius} onChange={(e) => setBrushRadius(Number(e.target.value))} /><span className="ml-1 font-mono">{brushRadius}px</span></label>}
-                  {brushMode && <label className="text-xs text-zinc-500">intensity <input type="range" min="0" max="100" value={brushIntensity} onChange={(e) => setBrushIntensity(Number(e.target.value))} /><span className="ml-1 font-mono">{brushIntensity}</span></label>}
-                  {brushMode && brushStrokes.length > 0 && <button disabled={brushApplying} onClick={applyBrush} className="rounded bg-cyan-700 px-2 py-1 text-xs text-white disabled:opacity-40">{brushApplying ? "Applying…" : `Apply ${brushStrokes.length} stroke${brushStrokes.length === 1 ? "" : "s"}`}</button>}
-                  {brushMode && brushStrokes.length > 0 && <button disabled={brushApplying} onClick={() => setBrushStrokes([])} className="rounded bg-zinc-200 px-2 py-1 text-xs text-zinc-700 disabled:opacity-40 dark:bg-zinc-800 dark:text-zinc-200">Discard pending</button>}
-                  {garnishRegionMode && <span className="text-xs text-zinc-500">click to place points ({lassoPoints.length}/3)</span>}
-                  {garnishRegionMode && <button disabled={lassoPoints.length < 3} onClick={addGarnishRegion} className="rounded bg-violet-700 px-2 py-1 text-xs text-white disabled:opacity-40">Save Garnish region</button>}
-                  {garnishRegionMode && <button onClick={() => { setGarnishRegionMode(false); setLassoPoints([]); setNearFirstPoint(false); }} className="rounded bg-zinc-200 px-2 py-1 text-xs text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">Cancel</button>}
-                  {!brushMode && !garnishRegionMode && renderSelId && (() => {
-                    const transform = manifest.find((inst) => inst.id === renderSelId)?.style_profile?.transform;
-                    const allTransformLocksActive = LOCKABLE_TRANSFORM_KEYS.every((key) => isTransformLocked(key));
-                    return <div className="flex items-center gap-2">
+                {!brushMode && selectedRenderInst && (() => {
+                  const transform = selectedRenderInst.style_profile?.transform ?? {};
+                  const allTransformLocksActive = LOCKABLE_TRANSFORM_KEYS.every((key) => isTransformLocked(key));
+                  return <div className="mb-2 rounded border border-cyan-400/35 bg-cyan-50/60 px-2 py-1.5 text-xs text-cyan-900 dark:bg-cyan-950/20 dark:text-cyan-100">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span className="subtext text-[10px] font-semibold uppercase tracking-wider text-zinc-400">text warp</span>
-                      <button
-                        type="button"
-                        onClick={toggleAllTransformLocks}
-                        className="rounded p-0.5 transition hover:scale-110"
-                        title={allTransformLocksActive ? "Unlock all transform values" : "Lock all transform values"}
-                      >
-                        {allTransformLocksActive
-                          ? <HiLockClosed size={12} className="text-cyan-600 dark:text-cyan-400" />
-                          : <HiLockOpen size={12} className="text-zinc-400 dark:text-zinc-500" />}
-                      </button>
-                      <div className="relative shrink-0" ref={warpRef}>
-                        <button onClick={() => setWarpOpen((v) => !v)} className="bezier-card flex items-center gap-1.5 rounded-md bg-white/60 px-2 py-1 text-xs text-zinc-700 transition hover:bg-zinc-100 dark:bg-zinc-900/60 dark:text-zinc-300 dark:hover:bg-zinc-800">
-                          {WARP_PRESETS.find((p) => p.value === (transform?.preset ?? "custom"))?.label ?? "Custom"}
-                          <ChevronDown size={12} className={`transition ${warpOpen ? "rotate-180" : ""}`} />
-                        </button>
-                        <div className={`dropdown-morph bezier-card absolute left-0 top-full z-[200] mt-1 w-40 rounded-lg bg-white p-1 dark:bg-zinc-900${warpOpen ? " expanded" : ""}`} style={warpOpen ? { boxShadow: "1px 1px 0 var(--bc-shadow), 2px 2px 6px rgba(0,0,0,0.06)" } : undefined}>
-                          {WARP_PRESETS.map((preset) => (
-                            <button key={preset.value} onClick={() => { applyCanvasWarpPreset(preset.value); setWarpOpen(false); }} className={`flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-xs transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${(transform?.preset ?? "custom") === preset.value ? "bg-zinc-100 font-medium text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100" : "text-zinc-600 dark:text-zinc-400"}`}>
-                              <span>{preset.label}</span>
-                              {preset.value !== "none" && preset.value !== "custom" && <WarpPreview preset={preset.value} />}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => setWarpCollapsed((v) => !v)}
-                        className="ml-auto shrink-0 self-start rounded p-1 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800 transition"
-                        title={warpCollapsed ? "expand" : "collapse"}
-                      >
-                        <FcCollapse style={{ transform: warpCollapsed ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
-                      </button>
-                      <div className={`style-panel-morph ml-2 flex-1 ${!warpCollapsed ? "expanded" : ""}`}>
+                      <div className="relative shrink-0" ref={warpRef}><button onClick={() => setWarpOpen((value) => !value)} className="bezier-card flex items-center gap-1.5 rounded-md bg-white/60 px-2 py-1 text-xs text-zinc-700 transition hover:bg-zinc-100 dark:bg-zinc-900/60 dark:text-zinc-300 dark:hover:bg-zinc-800">{WARP_PRESETS.find((preset) => preset.value === (transform.preset ?? "custom"))?.label ?? "Custom"}<ChevronDown size={12} className={`transition ${warpOpen ? "rotate-180" : ""}`} /></button><div className={`dropdown-morph bezier-card absolute left-0 top-full z-[200] mt-1 w-40 rounded-lg bg-white p-1 dark:bg-zinc-900${warpOpen ? " expanded" : ""}`} style={warpOpen ? { boxShadow: "1px 1px 0 var(--bc-shadow), 2px 2px 6px rgba(0,0,0,0.06)" } : undefined}>{WARP_PRESETS.map((preset) => <button key={preset.value} onClick={() => { applyCanvasWarpPreset(preset.value); setWarpOpen(false); }} className={`flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-xs transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${(transform.preset ?? "custom") === preset.value ? "bg-zinc-100 font-medium text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100" : "text-zinc-600 dark:text-zinc-400"}`}><span>{preset.label}</span>{preset.value !== "none" && preset.value !== "custom" && <WarpPreview preset={preset.value} />}</button>)}</div></div>
+                      <button type="button" onClick={toggleAllTransformLocks} className="rounded p-0.5 transition hover:scale-110" title={allTransformLocksActive ? "Unlock all transform values" : "Lock all transform values"}>{allTransformLocksActive ? <HiLockClosed size={12} className="text-cyan-600 dark:text-cyan-400" /> : <HiLockOpen size={12} className="text-zinc-400 dark:text-zinc-500" />}</button>
+                      <button onClick={() => setWarpCollapsed((value) => !value)} className="ml-auto shrink-0 rounded p-1 text-zinc-500 transition hover:bg-zinc-200 dark:hover:bg-zinc-800" title={warpCollapsed ? "expand" : "collapse"}><FcCollapse style={{ transform: warpCollapsed ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} /></button>
+                      <div className={`style-panel-morph flex-1 ${!warpCollapsed ? "expanded" : ""}`}>
                         <div className="flex flex-wrap items-center gap-2 pt-1">
                       {transform?.preset && transform.preset !== "none" && transform.preset !== "custom" && <label className="subtext flex items-center gap-1 text-xs text-zinc-500">amount<input aria-label="warp amount" type="range" min="-25" max="25" step="0.5" value={transform.amount ?? 12} onChange={(e) => updateSelectedStyle({ transform: { ...transform, amount: Number(e.target.value) } })} onDoubleClick={() => updateSelectedStyle({ transform: { ...transform, amount: 12 } })} title="double-click to return to the preset baseline" /><span className="min-w-9 text-right font-mono text-[10px]">{Number(transform.amount ?? 12).toFixed(1)}</span></label>}
                       {([['skew_x', 'X'], ['skew_y', 'Y']] as const).map(([key, label]) => {
@@ -4352,16 +4358,16 @@ export default function App() {
                         const canRedoT = !!(hist && hist.redoStack.length > 0);
                         return <label key={key} className="subtext flex items-center gap-1 text-xs text-zinc-500">{label}<span className="text-[10px]">−45</span><input aria-label={`${label} warp`} type="range" min="-45" max="45" step="0.5" value={transform?.[key] ?? 0} disabled={locked} onChange={(e) => { const v = Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 0, v); updateCanvasTransform(key, v); }} onDoubleClick={() => { trackTransformChange(key, transform?.[key] ?? 0, 0); updateCanvasTransform(key, 0); }} title="double-click to reset to 0" /><input type="number" min="-45" max="45" step="0.5" value={transform?.[key] ?? 0} disabled={locked} onChange={(e) => { const v = e.target.value === "" ? 0 : Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 0, v); updateCanvasTransform(key, v); }} className="w-12 rounded border border-zinc-300 bg-white px-1 py-0.5 text-right font-mono text-[10px] disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900" /><span className="text-[10px]">°</span><button type="button" onClick={() => undoTransformKey(key, 0)} disabled={!canUndoT || locked} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="undo"><LuUndo2 size={10} /></button><button type="button" onClick={() => redoTransformKey(key)} disabled={!canRedoT || locked} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="redo"><LuRedo2 size={10} /></button><button type="button" onClick={() => toggleTransformLock(key)} className={`rounded p-0.5 transition ${locked ? "text-cyan-600 dark:text-cyan-400" : "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"}`} title={locked ? "Unlock" : "Lock"}>{locked ? <HiLockClosed size={10} /> : <HiLockOpen size={10} />}</button></label>;
                       })}
-                      {(() => { const key = "rotation" as const; const current = Number(transform?.rotation ?? 0); const hist = transformHistoryRef.current[key]; const locked = isTransformLocked(key); return <span className="subtext flex items-center gap-1 text-xs text-zinc-500" title="Drag, click, or type to rotate text. Double-click the dial or value to reset."><span>rotate</span><RotationDial value={current} disabled={locked} onChange={(value) => { trackTransformChange(key, current, value); updateCanvasTransform(key, value); }} onReset={() => { trackTransformChange(key, current, 0); updateCanvasTransform(key, 0); }} /><button type="button" onClick={() => undoTransformKey(key, 0)} disabled={!hist.undoStack.length || locked} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="undo"><LuUndo2 size={10} /></button><button type="button" onClick={() => redoTransformKey(key)} disabled={!hist.redoStack.length || locked} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="redo"><LuRedo2 size={10} /></button><button type="button" onClick={() => toggleTransformLock(key)} className={`rounded p-0.5 transition ${locked ? "text-cyan-600 dark:text-cyan-400" : "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"}`} title={locked ? "Unlock" : "Lock"}>{locked ? <HiLockClosed size={10} /> : <HiLockOpen size={10} />}</button></span>; })()}
-                      <span className="subtext flex items-center gap-1 text-xs text-zinc-500" title="Choose the point that stays fixed while skewing or stretching."><span>anchor</span><span className="grid grid-cols-3 gap-px rounded border border-zinc-300 p-0.5 dark:border-zinc-700">{(["top_left", "top_center", "top_right", "middle_left", "center", "middle_right", "bottom_left", "bottom_center", "bottom_right"] as const).map((anchor) => <button key={anchor} type="button" aria-label={`transform anchor ${anchor.replace("_", " ")}`} onClick={() => updateSelectedStyle({ transform: { ...transform, skew_anchor: anchor } })} className={`h-2.5 w-2.5 rounded-sm ${((transform?.skew_anchor ?? "center") === anchor) ? "bg-cyan-600" : "bg-zinc-300 hover:bg-zinc-400 dark:bg-zinc-600 dark:hover:bg-zinc-500"}`} />)}</span></span>
                       {([['scale_x', 'width'], ['scale_y', 'height']] as const).map(([key, label]) => { const hist = transformHistoryRef.current[key]; const locked = isTransformLocked(key); const canUndoT = !!(hist && hist.undoStack.length > 0); const canRedoT = !!(hist && hist.redoStack.length > 0); return <label key={key} className="subtext flex items-center gap-1 text-xs text-zinc-500">{label}<span className="text-[10px]">0.5x</span><input aria-label={`${label} stretch`} type="range" min="0.5" max="1.5" step="0.01" value={transform?.[key] ?? 1} disabled={locked} onChange={(e) => { const v = Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 1, v); updateCanvasTransform(key, v); }} onDoubleClick={() => { trackTransformChange(key, transform?.[key] ?? 1, 1); updateCanvasTransform(key, 1); }} title="double-click to reset to 1.00x" /><input type="number" min="0.5" max="1.5" step="0.01" value={transform?.[key] ?? 1} disabled={locked} onChange={(e) => { const v = e.target.value === "" ? 1 : Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 1, v); updateCanvasTransform(key, v); }} className="w-12 rounded border border-zinc-300 bg-white px-1 py-0.5 text-right font-mono text-[10px] disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900" /><span className="text-[10px]">x</span><button type="button" onClick={() => undoTransformKey(key, 1)} disabled={!canUndoT || locked} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="undo"><LuUndo2 size={10} /></button><button type="button" onClick={() => redoTransformKey(key)} disabled={!canRedoT || locked} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="redo"><LuRedo2 size={10} /></button><button type="button" onClick={() => toggleTransformLock(key)} className={`rounded p-0.5 transition ${locked ? "text-cyan-600 dark:text-cyan-400" : "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"}`} title={locked ? "Unlock" : "Lock"}>{locked ? <HiLockClosed size={10} /> : <HiLockOpen size={10} />}</button></label>; })}
                       {([['offset_x', 'pos X'], ['offset_y', 'pos Y']] as const).map(([key, label]) => { const hist = transformHistoryRef.current[key]; const locked = isTransformLocked(key); const canUndoT = !!(hist && hist.undoStack.length > 0); const canRedoT = !!(hist && hist.redoStack.length > 0); return <span key={key} className="subtext flex items-center gap-1 text-xs text-zinc-500"><label className="flex items-center gap-1">{label}<span className="text-[10px]">−50</span><input aria-label={`${label} position`} type="range" min="-50" max="50" step="1" value={transform?.[key] ?? 0} disabled={locked} onChange={(e) => { const v = Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 0, v); updateCanvasTransform(key, v); }} onDoubleClick={() => { trackTransformChange(key, transform?.[key] ?? 0, 0); updateCanvasTransform(key, 0); }} title="double-click to snap to original position" /><input type="number" min="-50" max="50" step="1" value={transform?.[key] ?? 0} disabled={locked} onChange={(e) => { const v = e.target.value === "" ? 0 : Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 0, v); updateCanvasTransform(key, v); }} className="w-12 rounded border border-zinc-300 bg-white px-1 py-0.5 text-right font-mono text-[10px] disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900" /><span className="text-[10px]">px</span></label><button type="button" onClick={() => undoTransformKey(key, 0)} disabled={!canUndoT || locked} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="undo"><LuUndo2 size={10} /></button><button type="button" onClick={() => redoTransformKey(key)} disabled={!canRedoT || locked} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="redo"><LuRedo2 size={10} /></button><button type="button" onClick={() => toggleTransformLock(key)} className={`rounded p-0.5 transition ${locked ? "text-cyan-600 dark:text-cyan-400" : "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"}`} title={locked ? "Unlock" : "Lock"}>{locked ? <HiLockClosed size={10} /> : <HiLockOpen size={10} />}</button></span>; })}
                       <label className="subtext flex items-center gap-0.5 text-[10px] text-zinc-400" title="When off, keep one glyph run even when it crosses the cube edge. When on, wrap only after the measured text exceeds the cube width."><input type="checkbox" checked={transform?.wrap_text ?? false} onChange={(e) => updateSelectedStyle({ transform: { ...transform, wrap_text: e.target.checked } })} /> wrap</label>
+                      {(() => { const key = "rotation" as const; const current = Number(transform?.rotation ?? 0); const hist = transformHistoryRef.current[key]; const locked = isTransformLocked(key); return <span className="subtext flex items-center gap-1 text-xs text-zinc-500" title="Drag, click, or type to rotate text. Double-click the dial or value to reset."><span>rotate</span><span className="flex items-center gap-0.5"><RotationDial value={current} disabled={locked} onChange={(value) => { trackTransformChange(key, current, value); updateCanvasTransform(key, value); }} onReset={() => { trackTransformChange(key, current, 0); updateCanvasTransform(key, 0); }} /><button type="button" onClick={() => toggleTransformLock(key)} className={`self-center rounded p-0.5 transition ${locked ? "text-cyan-600 dark:text-cyan-400" : "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"}`} title={locked ? "Unlock rotation" : "Lock rotation"}>{locked ? <HiLockClosed size={10} /> : <HiLockOpen size={10} />}</button></span><button type="button" onClick={() => undoTransformKey(key, 0)} disabled={!hist.undoStack.length || locked} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="undo"><LuUndo2 size={10} /></button><button type="button" onClick={() => redoTransformKey(key)} disabled={!hist.redoStack.length || locked} className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="redo"><LuRedo2 size={10} /></button></span>; })()}
+                      <span className="subtext flex items-center gap-1 text-xs text-zinc-500" title="Choose the point that stays fixed while skewing or stretching."><span>anchor</span><span className="grid grid-cols-3 gap-px rounded border border-zinc-300 p-0.5 dark:border-zinc-700">{(["top_left", "top_center", "top_right", "middle_left", "center", "middle_right", "bottom_left", "bottom_center", "bottom_right"] as const).map((anchor) => <button key={anchor} type="button" aria-label={`transform anchor ${anchor.replace("_", " ")}`} onClick={() => updateSelectedStyle({ transform: { ...transform, skew_anchor: anchor } })} className={`h-2.5 w-2.5 rounded-sm ${((transform?.skew_anchor ?? "center") === anchor) ? "bg-cyan-600" : "bg-zinc-300 hover:bg-zinc-400 dark:bg-zinc-600 dark:hover:bg-zinc-500"}`} />)}</span></span>
                         </div>
                       </div>
-                    </div>;
+                    </div>
+                  </div>;
                   })()}
-                </div>
               </Section>}
 
               {/* Render result */}
