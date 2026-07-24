@@ -92,11 +92,10 @@ class Mask:
 class GarnishProfile:
     """Source-derived treatment applied only to newly rendered text pixels."""
     edge_blur_px: float = 0.0
-    # Smooth existing anti-aliased coverage without expanding it into the
-    # surrounding surface.  This is intentionally distinct from edge_blur,
-    # which creates a visible soft-focus/engrained edge.
+    # Retained for backwards-compatible manifests. Feather strength is now
+    # the direct control; a value of zero disables feathering.
     edge_smoothing: bool = False
-    edge_smoothing_strength: float = 0.5
+    edge_smoothing_strength: float = 0.0
     erosion_px: float = 0.0
     dilation_px: float = 0.0
     grain_strength: float = 0.0

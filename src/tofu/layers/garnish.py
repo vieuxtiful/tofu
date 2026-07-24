@@ -30,7 +30,7 @@ def _profile(manifest: TextManifest, inst) -> Optional[GarnishProfile]:
 
 
 def _active(profile: Optional[GarnishProfile]) -> bool:
-    return bool(profile and (profile.edge_blur_px or profile.edge_smoothing or profile.erosion_px or profile.dilation_px
+    return bool(profile and (profile.edge_blur_px or profile.edge_smoothing_strength or profile.erosion_px or profile.dilation_px
                              or profile.grain_strength or profile.smudge_strength
                              or abs(profile.gamma_shift - 1.0) > 1e-3))
 
@@ -190,8 +190,9 @@ def apply(scribed_asset: Any, text_manifest: TextManifest, base_asset: Any = Non
                     k = max(1, int(round(profile.erosion_px)) * 2 + 1); mask = cv2.erode(mask, np.ones((k, k), np.uint8))
                 if profile.dilation_px > 0:
                     k = max(1, int(round(profile.dilation_px)) * 2 + 1); mask = cv2.dilate(mask, np.ones((k, k), np.uint8))
-                if profile.edge_smoothing:
-                    strength = getattr(profile, "edge_smoothing_strength", 0.5)
+                feather_strength = max(0.0, min(1.0, float(getattr(profile, "edge_smoothing_strength", 0.0))))
+                if feather_strength > 0:
+                    strength = feather_strength
                     mask = _smooth_coverage(cv2, np, mask, strength)
                 alpha = Image.fromarray(mask, "L")
                 if edge_blur > 0: alpha = alpha.filter(ImageFilter.GaussianBlur(radius=min(10, edge_blur)))
@@ -201,8 +202,7 @@ def apply(scribed_asset: Any, text_manifest: TextManifest, base_asset: Any = Non
                 if allowed is not None:
                     # Permit a small natural feather but never let a selected
                     # word's treatment leak across the rest of the instance.
-                    feather_px = (max(0.0, min(1.0, float(getattr(profile, "edge_smoothing_strength", 0.5))) * 5.0)
-                                  if profile.edge_smoothing else 0.0)
+                    feather_px = feather_strength * 5.0
                     margin = max(1, int(math.ceil(edge_blur + feather_px + smudge_strength * 4)))
                     alpha_np = cv2.bitwise_and(alpha_np, cv2.dilate(allowed, np.ones((margin * 2 + 1, margin * 2 + 1), np.uint8)))
                 rgb = source[y0:y1, x0:x1].astype(np.float32)
@@ -216,8 +216,7 @@ def apply(scribed_asset: Any, text_manifest: TextManifest, base_asset: Any = Non
                     outer = cv2.dilate(mask, np.ones((5, 5), np.uint8)); inner = cv2.erode(mask, np.ones((3, 3), np.uint8))
                     edge_weight = np.clip(cv2.subtract(outer, inner).astype(np.float32) / 255.0, 0, 1) * 0.7 + 0.3
                     rgb += noise * edge_weight[:, :, np.newaxis]
-                feather_px = (max(0.0, min(1.0, float(getattr(profile, "edge_smoothing_strength", 0.5))) * 5.0)
-                              if profile.edge_smoothing else 0.0)
+                feather_px = feather_strength * 5.0
                 if edge_blur > 0 or feather_px > 0:
                     # Engrain: in the soft edge band (partial alpha after blur),
                     # blend text RGB toward the underlying surface so edges look

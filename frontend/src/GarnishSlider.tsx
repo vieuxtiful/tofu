@@ -15,10 +15,13 @@ function ValueLabelComponent(props: SliderValueLabelProps) {
 const GarnishSlider = styled(Slider)(({ theme }) => ({
   color: "#7c3aed",
   height: 3,
-  padding: "13px 14px",
+  // The wide rectangular thumb needs a little extra room at its minimum
+  // position so its left border is never clipped.
+  marginLeft: 4,
+  padding: "13px 15px 13px 23px",
   "& .MuiSlider-thumb": {
     height: 16,
-    width: 29,
+    width: 39,
     borderRadius: 2,
     backgroundColor: "#fff",
     border: "2px solid currentColor",
@@ -82,7 +85,7 @@ export default function GarnishSliderField({
         <span className="font-medium">{label}</span>
         <span className="font-mono">{Number(value).toFixed(digits)}{suffix}</span>
       </span>
-      <span className="relative flex h-4 items-center">
+      <span className="relative flex h-5 items-center">
         <GarnishSlider
           aria-label={`garnish ${label}`}
           min={min}
@@ -94,7 +97,7 @@ export default function GarnishSliderField({
           slots={{ valueLabel: ValueLabelComponent }}
           valueLabelDisplay="auto"
           valueLabelFormat={`${Number(value).toFixed(digits)}${suffix}`}
-          sx={{ width: "70%", "& .MuiSlider-thumb": { "& .garnish-bar": { display: "none" } } }}
+          sx={{ width: "45%", "& .MuiSlider-thumb": { "& .garnish-bar": { display: "none" } } }}
         />
         {marker !== null && (
           <span

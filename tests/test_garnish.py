@@ -145,10 +145,27 @@ def test_edge_smoothing_strength_controls_feather_width():
     assert np.count_nonzero(wide[alpha == 0]) > np.count_nonzero(narrow[alpha == 0])
 
 
+def test_feather_strength_applies_without_legacy_edge_smoothing_flag(monkeypatch):
+    base = Image.new("RGB", (80, 50), "#64748b")
+    scribed = base.copy(); ImageDraw.Draw(scribed).rectangle((25, 16, 45, 25), fill="#f8fafc")
+    manifest = _manifest(GarnishProfile(edge_smoothing=False, edge_smoothing_strength=.5))
+    calls = []
+    original = garnish._smooth_coverage
+
+    def record_smoothing(*args):
+        calls.append(args[-1])
+        return original(*args)
+
+    monkeypatch.setattr(garnish, "_smooth_coverage", record_smoothing)
+    garnish.apply(scribed, manifest, base)
+    assert calls == [.5]
+
+
 def test_flat_scene_has_no_automatic_garnish_profile():
     flat = np.full((40, 60, 3), 127, dtype=np.uint8)
     profile = scene._analyze_garnish_profile(flat)
     assert profile.edge_blur_px == 0
+    assert profile.edge_smoothing_strength == 0
     assert profile.grain_strength == 0
     assert profile.smudge_strength == 0
 
