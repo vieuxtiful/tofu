@@ -43,9 +43,12 @@ class TestPublishedArtifacts:
         assert (SPEC_DIR / "vtm-1.0.schema.json").is_file()
 
     def test_schema_is_valid_json_and_declares_draft(self):
+        """Assert the contract, not the prose. The title is documentation and
+        may be reworded; the draft declaration is what tooling depends on."""
         schema = json.loads((SPEC_DIR / "vtm-1.0.schema.json").read_text(encoding="utf-8"))
         assert schema["$schema"].startswith("https://json-schema.org/draft/")
-        assert schema["title"].startswith("Open Visual Translation Memory")
+        assert "visual translation memory" in schema["title"].lower()
+        assert schema["type"] == "object"
 
     def test_schema_and_implementation_agree_on_required_keys(self):
         """The spec and the code must not drift. Both state what is REQUIRED;
