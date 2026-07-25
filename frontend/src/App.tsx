@@ -3214,6 +3214,10 @@ export default function App() {
 
           <div className="flex items-center justify-between">
             <p className="subtext flex items-center gap-1.5 text-[8.4px] text-zinc-500 dark:text-zinc-400">
+              {imgSize && (
+                <span className="text-zinc-700 dark:text-zinc-300">{imgSize.width}×{imgSize.height}</span>
+              )}
+              {imgSize && <span className="text-zinc-400 dark:text-zinc-600">・</span>}
               <kbd className="kbd kbd-xs">A</kbd> draw · <kbd className="kbd kbd-xs">Del</kbd> remove · <kbd className="kbd kbd-xs">Esc</kbd> deselect
             </p>
             {srcLang && (
