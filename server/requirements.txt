@@ -25,8 +25,18 @@ pydantic==2.13.4
 pillow==12.3.0              # scribe rendering + cicerone pre-resize
 numpy==2.3.5                # image array interchange; cv2 5.x requires >=2
 fonttools==4.63.0           # tofu layer-0 glyph coverage
-arabic-reshaper==3.0.1      # scribe RTL: contextual joining forms (Arabic script)
-python-bidi==0.6.11         # scribe RTL: logical→visual reordering, UAX #9
+arabic-reshaper==3.0.1      # scribe RTL fallback: contextual joining forms
+python-bidi==0.6.11         # scribe RTL fallback: logical→visual reorder, UAX #9
+
+## ── real text shaping (knead layer) ────────────────────────────────────
+## Pillow's BASIC layout engine applies no GPOS (no kerning, no mark
+## attachment), no GSUB (no ligatures, no Indic conjuncts) and no
+## reordering. Raqm is the in-Pillow fix but the Windows wheel is compiled
+## WITHOUT it -- _imagingft.HAVE_RAQM is False, a compile-time constant no
+## DLL can flip -- so ToFU shapes text itself. Both ship Windows wheels and
+## need no C toolchain on the target machine.
+uharfbuzz==0.55.0           # HarfBuzz: codepoints → positioned glyph IDs
+freetype-py==2.5.1          # FreeType: glyph ID → coverage bitmap
 xlrd==2.0.2                 # glossary .xls parsing
 openpyxl==3.1.5             # glossary .xlsx parsing
 scikit-image==0.26.0        # imaging.text_mask local thresholding (Sauvola)
