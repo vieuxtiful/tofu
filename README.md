@@ -190,7 +190,24 @@ Scribe therefore runs two passes for RTL target languages, keyed on the target's
 
 Both degrade to a pass-through when their library is missing, and both are no-ops for every LTR language — verified by a test asserting Latin output is byte-identical with the RTL passes stubbed out.
 
-**Not yet covered**: Indic conjunct formation and reordering, Thai/Khmer mark placement, and OpenType kerning/ligatures for all scripts including Latin. Those need Raqm (HarfBuzz + FriBiDi), which is **not** reachable by configuration — Pillow's Windows wheel is compiled without it:
+#### Complex-script shaping (`layers/knead.py`)
+
+Brahmic scripts reorder vowel signs around their consonant and fuse consonant clusters into conjuncts, and BASIC layout does neither — `हिन्दी` draws as six glyphs in logical order with the i-matra stranded on the wrong side of its consonant, where correct shaping is four glyphs with it moved left; `क्ष` is one conjunct and draws as three. These are rendered *wrong*, with no working fallback.
+
+Scribe therefore routes a fixed set of scripts through **HarfBuzz** (`uharfbuzz`) for shaping and **FreeType** (`freetype-py`) for rasterization, replacing Pillow's text API for those regions only. `SHAPED_SCRIPTS` covers Indic and South-East Asian: `Deva Beng Guru Gujr Orya Taml Telu Knda Mlym Sinh Thai Laoo Khmr Mymr Tibt`.
+
+Everything else deliberately stays on Pillow:
+
+- **Latin, Cyrillic, Greek, CJK, Hangul.** Shaping would only add kerning — cosmetic, not a correctness fix — and it re-flows every existing render. Measured at −1.75% aggregate width but −7.84% on a string like `AVATAR`; since `_fit_wrapped` binary-searches font size to fill the box, a narrower line can cross a size boundary and come back a whole step *larger*. That migration is a deliberate future step, not a side effect of this one.
+- **RTL.** `press_joins`/`serving_order` already render Arabic and Hebrew correctly, and HarfBuzz shapes one direction per run with no bidi itemization — routing mixed Arabic+Latin (brand names on signage) through it would regress what works today.
+
+Two invariants hold this together. **Measurement and drawing switch together**: the fitter binary-searches font size against measured extent, so measuring with shaping and drawing without would overflow the box — eligibility is a pure function of (script, font, availability), and both sides derive from the same `ShapedRun`. **Coordinate frames convert once**: Pillow anchors at the ascender, FreeType at the baseline, so `baseline_y = y + ascent` is applied in one place and every downstream consumer — alignment, underline, italic shear, shadow — works unchanged.
+
+Letter spacing (`tracking`/`kerning`) is applied at **cluster** boundaries, not between glyphs: a conjunct or a base-plus-marks is several glyphs belonging to one cluster, and spacing those apart would undo the shaping.
+
+`TOFU_SHAPING=0` disables the whole path at runtime. Verified pixel-identical output on a full street render with shaping on versus off, since no street fixture is Indic.
+
+**Still not covered**: OpenType kerning/ligatures for Latin and the other unshaped scripts. That needs either the migration above or Raqm (HarfBuzz + FriBiDi), which is **not** reachable by configuration — Pillow's Windows wheel is compiled without it:
 
 ```python
 >>> from PIL import _imagingft
@@ -200,7 +217,7 @@ Both degrade to a pass-through when their library is missing, and both are no-op
 
 These are compile-time constants baked into the wheel, not runtime probes, so no DLL placement changes them. Installing FriBiDi (mingw-w64 `libfribidi-0.dll`, whether on `PATH`, beside `python.exe`, or registered via `os.add_dll_directory`) leaves `PIL.features.check("raqm")` returning `False` — measured, not assumed. Reading `raqm`/`harfbuzz`/`fribidi` symbol names out of `_imagingft*.pyd` is misleading: those strings are the attribute names Pillow always exports, plus compiled-out code paths.
 
-Enabling full shaping means one of two real projects: building Pillow from source against libraqm, or moving Scribe off Pillow's text API onto `uharfbuzz` + `freetype-py` and drawing positioned glyph runs directly. The second is the more portable of the two, since both ship Windows wheels and neither needs a C toolchain on the target machine.
+The second route — `uharfbuzz` + `freetype-py` — is the one ToFU took, and is described above. Extending it from complex scripts to *all* scripts is the remaining step; the engine already supports it, only the `SHAPED_SCRIPTS` gate stands in the way.
 
 ### Verify — quality verification (`src/tofu/layers/verify.py`)
 

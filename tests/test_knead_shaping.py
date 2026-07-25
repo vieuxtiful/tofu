@@ -188,6 +188,57 @@ class TestInkBox:
         assert knead.run_ink_box(run, font) is None
 
 
+@needs_shaping
+@needs_arial
+class TestProofRun:
+    def test_tracking_widens_the_advance(self):
+        font = arial()
+        run = knead.knead_run("HELLO", font)
+        spaced = knead.proof_run(run, 4.0)
+        # 5 clusters -> 4 boundaries
+        assert spaced.advance == pytest.approx(run.advance + 4 * 4.0)
+
+    def test_zero_tracking_is_a_noop(self):
+        font = arial()
+        run = knead.knead_run("HELLO", font)
+        assert knead.proof_run(run, 0).advance == pytest.approx(run.advance)
+
+    def test_none_run_passes_through(self):
+        assert knead.proof_run(None, 5.0) is None
+
+    def test_glyph_count_and_ids_unchanged(self):
+        font = arial()
+        run = knead.knead_run("HELLO", font)
+        spaced = knead.proof_run(run, 3.0)
+        assert [g.gid for g in spaced.glyphs] == [g.gid for g in run.glyphs]
+
+    def test_negative_tracking_tightens(self):
+        font = arial()
+        run = knead.knead_run("HELLO", font)
+        assert knead.proof_run(run, -2.0).advance < run.advance
+
+
+@needs_shaping
+@needs_deva
+class TestProofRunClusters:
+    def test_spacing_lands_between_clusters_not_inside_them(self):
+        """The reason this is cluster-aware. क्ष is ONE cluster of glyphs;
+        spacing inside it would prise the conjunct apart."""
+        font = nirmala()
+        run = knead.knead_run(KSHA, font)
+        spaced = knead.proof_run(run, 10.0)
+        # single cluster -> no interior boundary -> advance unchanged
+        assert spaced.advance == pytest.approx(run.advance)
+
+    def test_multi_cluster_devanagari_gains_only_boundary_spacing(self):
+        font = nirmala()
+        run = knead.knead_run(HINDI, font)
+        clusters = len({g.cluster for g in run.glyphs})
+        spaced = knead.proof_run(run, 5.0)
+        assert spaced.advance == pytest.approx(run.advance + (clusters - 1) * 5.0)
+        assert len(spaced) == len(run)  # no glyphs added or dropped
+
+
 class TestDegradation:
     def test_missing_libraries_disable_shaping(self, monkeypatch):
         """Every entry point must return None, never raise, so scribe can

@@ -91,6 +91,35 @@ VERTICAL_ROW_FACTOR = 1.15  # row height as a multiple of font size
 RTL_SCRIPTS = {"Arab", "Hebr", "Syrc", "Thaa", "Nkoo", "Adlm", "Mand", "Samr"}
 CURSIVE_JOIN_SCRIPTS = {"Arab"}  # arabic-reshaper's remit
 
+# ── scripts routed through real shaping (the knead layer) ──────────────
+# Deliberately NOT "every script". Only the ones Pillow renders WRONG with
+# no working fallback: Brahmic scripts reorder vowel signs around their
+# consonant and fuse consonant clusters into conjuncts, and BASIC layout
+# does neither. "हिन्दी" draws as six glyphs in logical order with the
+# i-matra stranded on the wrong side; correct shaping is four glyphs with
+# it moved left. "क्ष" is one conjunct and draws as three.
+#
+# Latin/Cyrillic/Greek/CJK/Hangul stay on Pillow ON PURPOSE. Shaping would
+# only add kerning there -- a cosmetic gain, not a correctness fix -- and
+# it re-flows every render that already exists: -1.75% aggregate width but
+# -7.84% on a string like "AVATAR", and because _fit_wrapped binary-searches
+# the font size to fill its box, a narrower line can cross a size boundary
+# and come back a whole step LARGER. That is a deliberate migration, not a
+# side effect of this one.
+#
+# RTL also stays put. press_joins/serving_order already render Arabic and
+# Hebrew correctly, and HarfBuzz shapes one direction per run with no bidi
+# itemization -- routing mixed Arabic+Latin (brand names on signage) through
+# it would regress what works today.
+SHAPED_SCRIPTS = {
+    "Deva", "Beng", "Guru", "Gujr", "Orya", "Taml", "Telu",
+    "Knda", "Mlym", "Sinh", "Thai", "Laoo", "Khmr", "Mymr", "Tibt",
+}
+
+# shaped runs are keyed per (text, face, size, script, letter spacing); the
+# fitter's binary search asks for the same line at ~50 sizes per region
+_shaped_cache: Dict[Any, Any] = {}
+
 
 def _pixel(value: float) -> int:
     """Snap a final paint coordinate to the image raster.
@@ -655,8 +684,81 @@ def serving_order(line: str, lang: Optional[str]) -> str:
         return line
 
 
+def shaping_script(lang: Optional[str]) -> Optional[str]:
+    """Script code when this language needs real shaping, else None.
+
+    None is the "stay on Pillow" signal every shaped branch below keys on,
+    so a language that is not in SHAPED_SCRIPTS can never take a new code
+    path. Reuses script_for_lang() rather than introducing a second
+    language table that could drift against tofu.lang_to_script.
+    """
+    import os
+
+    if os.environ.get("TOFU_SHAPING") == "0":
+        return None  # kill switch: restores the Pillow path with no redeploy
+    script = script_for_lang(lang)
+    return script if script in SHAPED_SCRIPTS else None
+
+
+def _shaped_run(text: str, font, script: Optional[str],
+                tracking: float = 0, kerning: float = 0):
+    """Shape one line, with letter spacing already folded in, or None.
+
+    None means "no shaped path available" for any reason -- script not
+    eligible, libraries absent, a bitmap font with no file behind it -- and
+    every caller treats it as "use Pillow". Because measurement and drawing
+    both come through here, they cannot disagree about whether a given line
+    was shaped, which is the property that stops the fitter from measuring
+    one thing and rendering another.
+    """
+    if not script or not text:
+        return None
+    from tofu.layers import knead
+
+    identity = knead.face_identity(font)
+    if identity is None:
+        return None
+    extra = (tracking or 0) + (kerning or 0)
+    key = (text, identity, script, extra)
+    cached = _shaped_cache.get(key)
+    if cached is not None:
+        return cached
+    run = knead.knead_run(text, font, script=script)
+    if run is None:
+        return None
+    run = knead.proof_run(run, extra)
+    if len(_shaped_cache) < _FONT_CACHE_MAX:
+        _shaped_cache[key] = run
+    return run
+
+
+def _shaped_line_box(run, font, stroke_w: int = 0):
+    """(width, left, top, bottom) for a shaped line in PILLOW's frame.
+
+    knead reports ink relative to the baseline pen; Pillow's textbbox is
+    relative to the ascender line, because draw.text()'s default anchor is
+    "la". Adding the ascent once here is what lets every downstream
+    consumer -- line_metrics, alignment, `ly = y_cursor - t_off`, the
+    underline at `ly + b_off`, italic shear, shadow -- keep working on
+    shaped text without changing a line of their arithmetic.
+    """
+    from tofu.layers import knead
+
+    try:
+        ascent, _ = font.getmetrics()
+    except Exception:
+        ascent = int(getattr(font, "size", 12))
+    box = knead.run_ink_box(run, font, stroke_w)
+    if box is None:
+        # whitespace-only line: no ink, but it still occupies its advance
+        return run.advance, 0.0, 0.0, 0.0
+    left, top, right, bottom = box
+    return (right - left), left, top + ascent, bottom + ascent
+
+
 def _wrap_lines(draw, text: str, font, max_width: float,
-               tracking: float = 0, kerning: float = 0) -> List[str]:
+               tracking: float = 0, kerning: float = 0,
+               script: Optional[str] = None) -> List[str]:
     """greedy wrap targeting max_width: word-wrap when the text has
     space-delimited words, character-wrap otherwise (CJK and other
     scripts that don't use spaces between words).  tracking and kerning
@@ -671,10 +773,17 @@ def _wrap_lines(draw, text: str, font, max_width: float,
     cur = ""
     for unit in units:
         candidate = f"{cur}{sep}{unit}" if cur else unit
-        width = draw.textlength(candidate, font=font)
-        # account for inter-character spacing adjustments
-        n = len(candidate)
-        width += (tracking + kerning) * max(0, n - 1)
+        run = _shaped_run(candidate, font, script, tracking, kerning)
+        if run is not None:
+            # the shaped advance already carries letter spacing, applied at
+            # cluster boundaries -- adding the per-character estimate below
+            # would count it twice, and count it in the wrong places
+            width = run.advance
+        else:
+            width = draw.textlength(candidate, font=font)
+            # account for inter-character spacing adjustments
+            n = len(candidate)
+            width += (tracking + kerning) * max(0, n - 1)
         if width <= max_width or not cur:
             cur = candidate
         else:
@@ -685,10 +794,43 @@ def _wrap_lines(draw, text: str, font, max_width: float,
     return lines
 
 
+def _block_extent(draw, lines: List[str], font, spacing: float,
+                  script: Optional[str], tracking: float = 0,
+                  kerning: float = 0, stroke_w: int = 0):
+    """(width, height) of a laid-out block, shaped or via Pillow.
+
+    The shaped branch mirrors the draw loop's own stepping
+    (`y_cursor += line_h + spacing`) rather than approximating height from
+    Pillow: Brahmic conjuncts stack taller than their base consonants and
+    marks overshoot the nominal ascent, so borrowing Pillow's height would
+    under-measure exactly the scripts this path exists for.
+    """
+    runs = [_shaped_run(ln, font, script, tracking, kerning) for ln in lines]
+    if script and lines and all(r is not None for r in runs):
+        line_h = _line_height(font)
+        width = 0.0
+        top = float("inf")
+        bottom = float("-inf")
+        for i, run in enumerate(runs):
+            w, _l, t, b = _shaped_line_box(run, font, stroke_w)
+            width = max(width, w)
+            offset = i * (line_h + spacing)
+            top = min(top, offset + t)
+            bottom = max(bottom, offset + b)
+        if top == float("inf"):
+            return width, 0.0
+        return width, bottom - top
+    l, t, r, b = draw.multiline_textbbox(
+        (0, 0), "\n".join(lines), font=font, spacing=spacing, stroke_width=stroke_w
+    )
+    return r - l, b - t
+
+
 def _fit_wrapped(
     draw, text: str, bbox: BBox, font_family: Optional[str],
     explicit_size: Optional[int] = None, leading: Optional[float] = None,
     tracking: float = 0, kerning: float = 0, wrap_text: bool = False,
+    script: Optional[str] = None,
 ) -> Tuple[Any, List[str], float]:
     """Fit text with opt-in wrapping.
 
@@ -699,7 +841,10 @@ def _fit_wrapped(
     extent crosses the cube width.
     """
     def layout(font):
-        return _wrap_lines(draw, text, font, bbox.width, tracking, kerning) if wrap_text else [text or ""]
+        return (
+            _wrap_lines(draw, text, font, bbox.width, tracking, kerning, script)
+            if wrap_text else [text or ""]
+        )
 
     if explicit_size and explicit_size > 0:
         font = _get_font(font_family, explicit_size)
@@ -723,11 +868,11 @@ def _fit_wrapped(
         # for all-caps/no-descender text and picks an unnecessarily
         # smaller font (measured: "SALE" fit at size 53 instead of the
         # correct 69, visibly shrinking a region that fit fine as-is)
-        l, t, r, b = draw.multiline_textbbox((0, 0), "\n".join(lines), font=font, spacing=spacing)
         # font size is determined by raw ink extent only — tracking and
         # kerning widen the line but must not shrink the chosen size,
         # otherwise increasing spacing silently shrinks the glyphs
-        if (r - l) <= bbox.width and (b - t) <= bbox.height:
+        fit_w, fit_h = _block_extent(draw, lines, font, spacing, script)
+        if fit_w <= bbox.width and fit_h <= bbox.height:
             best_font, best_lines, best_spacing, lo = font, lines, spacing, mid + 1
         else:
             hi = mid - 1
@@ -894,13 +1039,41 @@ def _resolve_text_ink(
 
 
 def _draw_line(draw, text: str, pos, font, fill, stroke_fill=None, stroke_w=0,
-               style: Optional[StyleProfil] = None):
+               style: Optional[StyleProfil] = None, image=None,
+               script: Optional[str] = None):
     """draw one line of text with optional tracking (letter spacing),
-    kerning (pairwise inter-character adjustment), and tsume (CJK compression)."""
+    kerning (pairwise inter-character adjustment), and tsume (CJK compression).
+
+    When `script` marks a shaped language and `image` is supplied, the line
+    is drawn from a HarfBuzz glyph run instead of Pillow's text API. `image`
+    is needed because compositing a rasterized run needs the target surface,
+    not just its ImageDraw handle; every caller already has it to hand.
+    """
     s = style or StyleProfil()
     tracking = s.tracking or 0
     kerning = s.kerning or 0
     tsume = s.tsume or 0
+
+    # tsume is a CJK compression control and no CJK script is in
+    # SHAPED_SCRIPTS, so this guard is effectively unreachable -- it exists
+    # so the shaped path can never silently discard a style the user set.
+    if image is not None and script and not tsume:
+        run = _shaped_run(text, font, script, tracking, kerning)
+        if run is not None:
+            from tofu.layers import knead
+
+            try:
+                ascent, _ = font.getmetrics()
+            except Exception:
+                ascent = int(getattr(font, "size", 12))
+            baked = knead.bake_run(
+                image.size, run, (pos[0], pos[1] + ascent), font, fill,
+                stroke_width=stroke_w,
+                stroke_fill=stroke_fill if stroke_w > 0 else None,
+            )
+            if baked is not None:
+                image.alpha_composite(baked)
+                return
 
     if tracking or kerning or tsume:
         x, y = pos
@@ -927,7 +1100,7 @@ def _draw_line(draw, text: str, pos, font, fill, stroke_fill=None, stroke_w=0,
 def _render_line_layer(
     base_size, text: str, font, fill, stroke_fill, stroke_w,
     style: Optional[StyleProfil], line_w: float, line_h: float,
-    origin: Tuple[float, float],
+    origin: Tuple[float, float], script: Optional[str] = None,
 ):
     """render one line onto a layer sized to base_size, applying italic
     shear LOCAL to the line's own bounding box before compositing.
@@ -948,7 +1121,8 @@ def _render_line_layer(
     if not s.italic:
         layer = Image.new("RGBA", base_size, (0, 0, 0, 0))
         draw = ImageDraw.Draw(layer)
-        _draw_line(draw, text, (ox, oy), font, fill, stroke_fill, stroke_w, s)
+        _draw_line(draw, text, (ox, oy), font, fill, stroke_fill, stroke_w, s,
+                   image=layer, script=script)
         return layer
 
     # local layer: sized to the line's own box plus shear headroom, margin
@@ -959,7 +1133,8 @@ def _render_line_layer(
     local_h = max(1, int(line_h) + 2 * pad)
     local = Image.new("RGBA", (local_w, local_h), (0, 0, 0, 0))
     local_draw = ImageDraw.Draw(local)
-    _draw_line(local_draw, text, (pad, pad), font, fill, stroke_fill, stroke_w, s)
+    _draw_line(local_draw, text, (pad, pad), font, fill, stroke_fill, stroke_w, s,
+               image=local, script=script)
     # shear around this layer's own origin (y=0 at its own top) — bounded
     # to [0, shear*local_h] regardless of the line's position in the image
     m = [1, ITALIC_SHEAR, 0, 0, 1, 0]
@@ -977,6 +1152,7 @@ DEFAULT_SHADOW = {"offset_x": 2, "offset_y": 2, "blur": 2, "color": "#00000080"}
 def _shadow_layer(
     base_size, text: str, font, style: Optional[StyleProfil], stroke_w: int,
     line_w: float, line_h: float, origin: Tuple[float, float],
+    script: Optional[str] = None,
 ):
     """blurred, offset, colored copy of a line — composited BENEATH the
     main text draw. StyleProfil.shadow: {offset_x, offset_y, blur, color}
@@ -994,7 +1170,8 @@ def _shadow_layer(
     local_h = max(1, int(line_h) + 2 * pad)
     local = Image.new("RGBA", (local_w, local_h), (0, 0, 0, 0))
     local_draw = ImageDraw.Draw(local)
-    _draw_line(local_draw, text, (pad, pad), font, color, None, 0, s)
+    _draw_line(local_draw, text, (pad, pad), font, color, None, 0, s,
+               image=local, script=script)
     if blur > 0:
         local = local.filter(ImageFilter.GaussianBlur(radius=blur))
 
@@ -1198,10 +1375,16 @@ def render(
             base = Image.alpha_composite(base, layer)
             continue
 
+        # scripts BASIC layout cannot render correctly (Brahmic reordering
+        # and conjuncts) go through HarfBuzz; None keeps everything else --
+        # Latin, Cyrillic, CJK, and RTL -- on the Pillow path unchanged.
+        # Measurement and drawing both key on this one value, so a region
+        # can never be fitted one way and drawn the other.
+        shape_script = shaping_script(effective_lang)
         wrap_text = bool((s.transform or {}).get("wrap_text", False))
         font, lines, spacing = _fit_wrapped(
             measure_draw, text, bbox, s.font_family, s.font_size, s.leading,
-            s.tracking or 0, s.kerning or 0, wrap_text,
+            s.tracking or 0, s.kerning or 0, wrap_text, shape_script,
         )
         # super/subscript: re-fit at a reduced size (also re-wraps, since a
         # smaller font can fit differently) rather than the fitted size —
@@ -1210,7 +1393,7 @@ def render(
             small_size = max(MIN_FONT_PX, round(font.size * 0.65))
             font, lines, spacing = _fit_wrapped(
                 measure_draw, text, bbox, s.font_family, small_size, s.leading,
-                s.tracking or 0, s.kerning or 0, wrap_text,
+                s.tracking or 0, s.kerning or 0, wrap_text, shape_script,
             )
 
         # RTL pass 2 of 2: lines are final, so each one can now be reordered
@@ -1226,6 +1409,13 @@ def render(
         _kerning = s.kerning or 0
         line_metrics = []  # (line, width, left_bearing, top_bearing, bottom_bearing)
         for ln in lines:
+            run = _shaped_run(ln, font, shape_script, _tracking, _kerning)
+            if run is not None:
+                # already in Pillow's ascender-relative frame, and its width
+                # already carries letter spacing at cluster boundaries
+                w, l, t, b = _shaped_line_box(run, font, stroke_w)
+                line_metrics.append((ln, w, l, t, b))
+                continue
             l, t, r, b = measure_draw.textbbox((0, 0), ln, font=font, stroke_width=stroke_w)
             # tracking and kerning widen the line beyond the raw ink bbox;
             # account for them so centering/alignment matches the drawn result
@@ -1237,10 +1427,10 @@ def render(
         # for the actual row-to-row step below still uses line_h — rows
         # should be evenly spaced by the font's natural metric regardless
         # of which specific glyphs a given row happens to contain.
-        _, block_t, _, block_b = measure_draw.multiline_textbbox(
-            (0, 0), "\n".join(lines), font=font, spacing=spacing, stroke_width=stroke_w
+        _, block_h = _block_extent(
+            measure_draw, lines, font, spacing, shape_script,
+            _tracking, _kerning, stroke_w,
         )
-        block_h = block_b - block_t
 
         # vertical alignment of the whole block within bbox
         av = s.align_v or "middle"
@@ -1271,12 +1461,13 @@ def render(
             ly = y_cursor - t_off
             if s.shadow:
                 shadow_layer = _shadow_layer(
-                    base.size, ln, font, s, stroke_w, w, line_h, (_pixel(lx), _pixel(ly))
+                    base.size, ln, font, s, stroke_w, w, line_h,
+                    (_pixel(lx), _pixel(ly)), shape_script,
                 )
                 layer = Image.alpha_composite(layer, shadow_layer)
             line_layer = _render_line_layer(
                 base.size, ln, font, fill, stroke_fill, stroke_w, s,
-                w, line_h, (_pixel(lx), _pixel(ly)),
+                w, line_h, (_pixel(lx), _pixel(ly)), shape_script,
             )
             layer = Image.alpha_composite(layer, line_layer)
 

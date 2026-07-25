@@ -202,6 +202,47 @@ def knead_run(
     )
 
 
+def proof_run(run: Optional[ShapedRun], extra_px: float) -> Optional[ShapedRun]:
+    """Add letter spacing to a shaped run, at CLUSTER boundaries only.
+
+    Proofing lets dough expand without tearing what has already been built.
+    The same restraint applies here: spacing is inserted between clusters,
+    never inside one.
+
+    A cluster is the unit that survived shaping — a Devanagari conjunct, a
+    base plus its attached marks, a ligature — and it can be several glyphs
+    that belong to one another. Adding tracking between every GLYPH would
+    prise those apart and undo the exact shaping this module exists to
+    produce, so the offset lands only where the next glyph opens a new
+    cluster.
+
+    Returns a new run rather than taking a `tracking=` argument on the
+    measure and draw entry points: a caller that shapes once and passes the
+    same object to both cannot drift between what it measured and what it
+    drew.
+    """
+    if run is None or not run.glyphs or not extra_px:
+        return run
+    glyphs = run.glyphs
+    spaced = []
+    for i, glyph in enumerate(glyphs):
+        following = glyphs[i + 1] if i + 1 < len(glyphs) else None
+        opens_new_cluster = following is not None and following.cluster != glyph.cluster
+        if opens_new_cluster:
+            glyph = ShapedGlyph(
+                gid=glyph.gid, cluster=glyph.cluster,
+                x_advance=glyph.x_advance + extra_px, y_advance=glyph.y_advance,
+                x_offset=glyph.x_offset, y_offset=glyph.y_offset,
+            )
+        spaced.append(glyph)
+    return ShapedRun(
+        glyphs=tuple(spaced),
+        advance=sum(g.x_advance for g in spaced),
+        direction=run.direction,
+        script=run.script,
+    )
+
+
 def run_width(text: str, pil_font: Any, **kwargs) -> Optional[float]:
     """Shaped advance width in pixels, or None to fall back to Pillow.
 
