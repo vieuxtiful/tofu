@@ -43,6 +43,7 @@ et_xmlfile==2.0.0
 fastapi==0.139.2
 filelock==3.30.3
 fonttools==4.63.0
+freetype-py==2.5.1
 frozenlist==1.8.0
 fsspec==2026.6.0
 future==1.0.0
@@ -110,6 +111,7 @@ truststore==0.10.4
 typing-inspection==0.4.2
 typing_extensions==4.16.0
 tzdata==2026.3
+uharfbuzz==0.55.0
 ujson==5.13.0
 urllib3==2.7.0
 uvicorn==0.51.0
