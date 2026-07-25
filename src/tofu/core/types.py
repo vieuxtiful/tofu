@@ -233,6 +233,9 @@ class SemanticTextUnit:
     semantic_roles: Dict[str, str] = field(default_factory=dict)
     review_required: bool = True
     substitution: Optional[Dict[str, Any]] = None
+    pairing: Optional[Dict[str, Any]] = None  ## Basil's src/targ typology verdict: {verdict: unnecessary|possible|unknown, reasons, features} -- whether cross-region rearrangement is linguistically possible at all
+    suggestion: Optional[Dict[str, Any]] = None  ## target phrase ordered by the target's own syntax from the members' existing target_text: {target_text, region_order, basis, coverage}
+    ocr_repair: Optional[Dict[str, Any]] = None  ## proposed (never auto-applied) source correction when a gazetteer entity spans fragmented regions: {read, proposed, spans, similarity, evidence, accepted}
 
 @dataclass
 class TextManifest: ## loc task manifest via cicerone

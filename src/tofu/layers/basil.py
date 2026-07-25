@@ -5,8 +5,15 @@ Cleanse and Scribe.  Translation, on the other hand, is a sentence or named
 entity problem.  Basil bridges those layers without ever renumbering or
 moving Cicerone regions:
 
-* register nearby source regions as a reading unit after OCR correction;
+* decide from the language PAIR whether plating can be needed at all, so a
+  pairing that cannot reorder is never asked to make an arrangement;
+* register source regions as a reading unit on evidence -- a lexicon entity
+  spelled across them, or agreeing language, type and surface -- rather than
+  on box adjacency alone;
+* propose, never apply, a source correction when a known entity is spelled
+  across regions one of which the recognizer misread;
 * retain both visual/source order and a later target-language semantic order;
+* order the regions' existing translations by the target's own syntax;
 * align a user-supplied target phrase back to the original region anchors;
 * fail open when evidence is insufficient rather than assigning words by
   incidental box order.
@@ -20,6 +27,7 @@ from __future__ import annotations
 
 import os
 import re
+import unicodedata
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
@@ -28,6 +36,38 @@ from tofu.core.types import BBox, InstText, SemanticTextUnit, TextManifest
 
 
 _TOKEN_RE = re.compile(r"[^\W_]+(?:[’'-][^\W_]+)?", re.UNICODE)
+
+# Scripts written without inter-word spaces.  This layer used to join every
+# unit's regions with an unconditional " ", which spaced Japanese signage
+# like English ("東京 都") and corrupted both source_text and every assigned
+# target string for ja/zh/ko/th/km/lo/my.
+_UNSPACED_RANGES = (
+    (0x2E80, 0x2FDF),   # CJK radicals / Kangxi
+    (0x3040, 0x30FF),   # hiragana, katakana
+    (0x3400, 0x4DBF),   # CJK unified ideographs extension A
+    (0x4E00, 0x9FFF),   # CJK unified ideographs
+    (0xF900, 0xFAFF),   # CJK compatibility ideographs
+    (0xFF66, 0xFF9F),   # halfwidth katakana
+    (0x1100, 0x11FF),   # hangul jamo
+    (0xAC00, 0xD7AF),   # hangul syllables
+    (0x0E00, 0x0E7F),   # thai
+    (0x0E80, 0x0EFF),   # lao
+    (0x1000, 0x109F),   # myanmar
+    (0x1780, 0x17FF),   # khmer
+)
+# Ideographic/kana/hangul only: these have near-square glyph boxes, which
+# the proximity thresholds below have to account for separately from the
+# no-spaces question (Thai is unspaced but not square).
+_SQUARE_RANGES = _UNSPACED_RANGES[:8]
+_RTL_RANGES = (
+    (0x0590, 0x05FF),   # hebrew
+    (0x0600, 0x06FF),   # arabic
+    (0x0700, 0x074F),   # syriac
+    (0x0750, 0x077F),   # arabic supplement
+    (0x08A0, 0x08FF),   # arabic extended-A
+    (0xFB1D, 0xFDFF),   # hebrew/arabic presentation forms A
+    (0xFE70, 0xFEFF),   # arabic presentation forms B
+)
 
 # This compact glossary is deliberately evidence, not a general MT system.
 # A deployment can register a benchmarked NLLB/translation-memory adapter
@@ -42,20 +82,94 @@ _GLOSSARY: Dict[Tuple[str, str], Dict[str, str]] = {
 }
 _ACTIVE_GLOSSARY: Optional[Dict[str, Any]] = None
 
-_STREET_DESIGNATORS = {
-    "rue", "avenue", "boulevard", "chemin", "place", "quai", "route",
-    "via", "viale", "piazza", "corso", "strada", "street", "road",
-    "lane", "drive", "highway", "calle", "avenida", "plaza", "carrer",
-    "straße", "strasse", "weg", "platz",
+# Cross-region rearrangement is a typological question about the language
+# PAIR, not about any one phrase, so the verdict is read off declared
+# features rather than inferred per sign.  Three features actually move
+# words across region boundaries in signage:
+#
+#   adj        order of adjective and noun (WALS 87A)
+#   gen        order of genitive/possessor and noun (WALS 86A)
+#   designator whether the generic type word precedes the proper name
+#              ("Via dei Muri", "Улица Ленина") or follows/suffixes it
+#              ("Main Street", "Bahnhofstraße", "小坂通り", "小坂路")
+#
+# ``prenominal_class`` is the fourth, and it is the one this project
+# actually meets: French keeps a CLOSED CLASS of adjectives before the
+# noun despite a postnominal default (beau, bon, grand, jeune, joli,
+# mauvais, nouveau, petit, vieux ...).  fr and it agree on all three
+# feature values, so nothing but this flag explains why "VIEUX MURS"
+# has to become "MURI VECCHI".
+#
+# English is listed with gen="post": the of-genitive, not the Saxon
+# genitive, is what place-name signage uses ("Osaka in Gifu").  Recording
+# it as "both" would make ja->en come out unnecessary, which is wrong.
+_TYPOLOGY: Dict[str, Dict[str, Any]] = {
+    # Romance: postnominal adjectives, preposed designator
+    "fr": {"adj": "post", "gen": "post", "designator": "pre", "prenominal_class": True},
+    "it": {"adj": "post", "gen": "post", "designator": "pre", "prenominal_class": False},
+    "es": {"adj": "post", "gen": "post", "designator": "pre", "prenominal_class": False},
+    "pt": {"adj": "post", "gen": "post", "designator": "pre", "prenominal_class": False},
+    "ca": {"adj": "post", "gen": "post", "designator": "pre", "prenominal_class": False},
+    "ro": {"adj": "post", "gen": "post", "designator": "pre", "prenominal_class": False},
+    # Germanic: prenominal adjectives, designator after or bound
+    "en": {"adj": "pre", "gen": "post", "designator": "post", "prenominal_class": False},
+    "de": {"adj": "pre", "gen": "post", "designator": "suffix", "prenominal_class": False},
+    "nl": {"adj": "pre", "gen": "post", "designator": "suffix", "prenominal_class": False},
+    "sv": {"adj": "pre", "gen": "post", "designator": "suffix", "prenominal_class": False},
+    "da": {"adj": "pre", "gen": "post", "designator": "suffix", "prenominal_class": False},
+    "no": {"adj": "pre", "gen": "post", "designator": "suffix", "prenominal_class": False},
+    # Slavic
+    "ru": {"adj": "pre", "gen": "post", "designator": "pre", "prenominal_class": False},
+    "pl": {"adj": "pre", "gen": "post", "designator": "pre", "prenominal_class": False},
+    "cs": {"adj": "pre", "gen": "post", "designator": "pre", "prenominal_class": False},
+    # East Asian: uniformly head-final, modifier-first, designator suffixed
+    "ja": {"adj": "pre", "gen": "pre", "designator": "suffix", "prenominal_class": False},
+    "zh": {"adj": "pre", "gen": "pre", "designator": "suffix", "prenominal_class": False},
+    "ko": {"adj": "pre", "gen": "pre", "designator": "suffix", "prenominal_class": False},
+    "tr": {"adj": "pre", "gen": "pre", "designator": "suffix", "prenominal_class": False},
+    # Semitic and SE Asian
+    "ar": {"adj": "post", "gen": "post", "designator": "pre", "prenominal_class": False},
+    "he": {"adj": "post", "gen": "post", "designator": "pre", "prenominal_class": False},
+    "vi": {"adj": "post", "gen": "post", "designator": "pre", "prenominal_class": False},
+    "th": {"adj": "post", "gen": "post", "designator": "pre", "prenominal_class": False},
 }
-_MODIFIERS = {
-    "vieux", "vieil", "vieille", "vieux", "vecchio", "vecchi", "vecchia",
-    "old", "new", "nouveau", "nouvelle", "grand", "grande", "petit",
-    "petite", "alto", "alta", "alto", "basso", "bassa",
+
+# Role vocabulary, partitioned by language.  The previous single flat bag
+# matched a Japanese sign against a French/Italian/English word list; a
+# manifest with no src_lang still gets the union, preserving the old
+# permissiveness for callers that never set one.
+_STREET_DESIGNATORS: Dict[str, set] = {
+    "fr": {"rue", "avenue", "boulevard", "chemin", "place", "quai", "route", "impasse", "allée", "cours"},
+    "it": {"via", "viale", "piazza", "corso", "strada", "vicolo", "largo", "lungomare"},
+    "es": {"calle", "avenida", "plaza", "paseo", "camino", "carretera", "ronda"},
+    "pt": {"rua", "avenida", "praça", "travessa", "estrada", "largo"},
+    "ca": {"carrer", "avinguda", "plaça", "passeig", "camí"},
+    "ro": {"strada", "bulevardul", "calea", "piața"},
+    "en": {"street", "road", "lane", "drive", "avenue", "highway", "boulevard", "square", "way", "court"},
+    "de": {"straße", "strasse", "weg", "platz", "gasse", "allee", "ring", "damm"},
+    "nl": {"straat", "laan", "plein", "weg", "gracht"},
+    "ru": {"улица", "проспект", "переулок", "площадь", "шоссе"},
+    # CJK designators are SUFFIXES of a token, not tokens of their own --
+    # _designator_position() below tests endswith for these languages.
+    "ja": {"通り", "街道", "駅", "橋", "公園", "温泉", "神社", "寺", "港", "町"},
+    "zh": {"路", "街", "站", "桥", "公园", "大道", "广场", "巷", "镇"},
+    "ko": {"로", "길", "역", "광장", "공원"},
 }
-_HEAD_WORDS = {
-    "mur", "murs", "muro", "muri", "porte", "pont", "bridge", "wall",
-    "walls", "ville", "city", "saint", "sainte", "mont", "mount",
+_MODIFIERS: Dict[str, set] = {
+    "fr": {"vieux", "vieil", "vieille", "vieilles", "nouveau", "nouvelle", "grand", "grande", "petit", "petite", "haut", "haute", "bas", "basse"},
+    "it": {"vecchio", "vecchi", "vecchia", "vecchie", "nuovo", "nuova", "grande", "piccolo", "piccola", "alto", "alta", "basso", "bassa"},
+    "es": {"viejo", "vieja", "viejos", "nuevo", "nueva", "grande", "pequeño", "pequeña", "alto", "alta", "bajo", "baja"},
+    "pt": {"velho", "velha", "novo", "nova", "grande", "pequeno", "pequena", "alto", "alta"},
+    "en": {"old", "new", "great", "little", "upper", "lower", "north", "south", "east", "west"},
+    "de": {"alt", "alte", "alten", "neu", "neue", "neuen", "groß", "große", "klein", "kleine", "ober", "unter"},
+}
+_HEAD_WORDS: Dict[str, set] = {
+    "fr": {"mur", "murs", "porte", "portes", "pont", "ville", "mont", "saint", "sainte", "église", "château"},
+    "it": {"muro", "muri", "porta", "porte", "ponte", "città", "monte", "santo", "santa", "chiesa", "castello"},
+    "es": {"muro", "muros", "puerta", "puente", "ciudad", "monte", "san", "santa", "iglesia", "castillo"},
+    "pt": {"muro", "muros", "porta", "ponte", "cidade", "monte", "são", "santa", "igreja"},
+    "en": {"wall", "walls", "gate", "bridge", "city", "mount", "saint", "church", "castle", "hill"},
+    "de": {"mauer", "tor", "brücke", "stadt", "berg", "kirche", "schloss", "burg"},
 }
 
 
@@ -74,6 +188,126 @@ def _tokens(text: Optional[str]) -> List[str]:
 
 def _normal(token: str) -> str:
     return token.casefold().replace("’", "'")
+
+
+def _in_ranges(char: str, ranges: Sequence[Tuple[int, int]]) -> bool:
+    code = ord(char)
+    return any(low <= code <= high for low, high in ranges)
+
+
+def _script_class(text: Optional[str]) -> str:
+    """``unspaced`` / ``rtl`` / ``spaced`` / ``neutral`` by character majority.
+
+    Punctuation, digits and separators are excluded from the vote so that
+    "(岐阜県下呂市)" is classified by its kanji rather than its brackets.
+    """
+    chars = [
+        char for char in (text or "")
+        if char.strip() and not unicodedata.category(char).startswith(("P", "N", "Z", "C"))
+    ]
+    if not chars:
+        return "neutral"
+    unspaced = sum(1 for char in chars if _in_ranges(char, _UNSPACED_RANGES))
+    if unspaced * 2 > len(chars):
+        return "unspaced"
+    rtl = sum(1 for char in chars if _in_ranges(char, _RTL_RANGES))
+    if rtl * 2 > len(chars):
+        return "rtl"
+    return "spaced"
+
+
+def _is_square_script(text: Optional[str]) -> bool:
+    """CJK/kana/hangul: near-square glyph boxes, unlike Latin cap-height."""
+    chars = [char for char in (text or "") if char.strip()]
+    if not chars:
+        return False
+    return sum(1 for char in chars if _in_ranges(char, _SQUARE_RANGES)) * 2 > len(chars)
+
+
+def _join(parts: Sequence[str]) -> str:
+    """Concatenate region texts with a script-appropriate separator.
+
+    A space goes between two space-delimited runs and nowhere else, so a
+    Japanese unit reads 東京都 rather than "東京 都" while "Rue des" +
+    "VIEUX" still reads "Rue des VIEUX".
+    """
+    pieces = [(part or "").strip() for part in parts]
+    pieces = [piece for piece in pieces if piece]
+    if not pieces:
+        return ""
+    joined = pieces[0]
+    for piece in pieces[1:]:
+        unspaced_seam = (
+            _in_ranges(joined[-1], _UNSPACED_RANGES)
+            and _in_ranges(piece[0], _UNSPACED_RANGES)
+        )
+        joined += ("" if unspaced_seam else " ") + piece
+    return joined
+
+
+def _designator_side(features: Dict[str, Any]) -> str:
+    """``before`` or ``after`` -- a bound suffix and a following word both
+    put the generic type word after the proper name, and for the purpose
+    of asking whether words move, that is the same fact."""
+    return "before" if features.get("designator") == "pre" else "after"
+
+
+def pairing(src_lang: Optional[str], targ_lang: Optional[str]) -> Dict[str, Any]:
+    """Does this language pairing call for plating at all?
+
+    Basil's whole cross-region rearrangement only earns its keep when the
+    target orders the same meaning differently from the source.  Asking
+    that up front stops the layer from soliciting a plating decision for a
+    pair that cannot need one: ja->zh preserves modifier-head order,
+    genitive order and designator position alike, so no arrangement of a
+    Japanese sign's regions is ever grammatically forced in Chinese.
+
+    Three-valued and fails open.  ``unknown`` (a language absent from the
+    declared table) is never treated as ``unnecessary`` -- ignorance must
+    not suppress a unit.
+    """
+    src, targ = _lang(src_lang), _lang(targ_lang)
+    src_features, targ_features = _TYPOLOGY.get(src), _TYPOLOGY.get(targ)
+    verdict = {
+        "schema": 1,
+        "src": src, "targ": targ,
+        "features": {"src": src_features, "targ": targ_features},
+    }
+    if not src or not targ:
+        return {**verdict, "verdict": "unknown",
+                "reasons": ["source or target language is not set yet"]}
+    if src == targ:
+        return {**verdict, "verdict": "unnecessary",
+                "reasons": ["source and target are the same language"]}
+    missing = [code for code, features in ((src, src_features), (targ, targ_features)) if features is None]
+    if missing:
+        return {**verdict, "verdict": "unknown",
+                "reasons": [f"no declared typology for {'/'.join(missing)}; failing open to review"]}
+
+    reasons: List[str] = []
+    if src_features["adj"] != targ_features["adj"]:
+        reasons.append(
+            f"adjective order differs ({src}: {src_features['adj']}nominal, {targ}: {targ_features['adj']}nominal)"
+        )
+    if src_features["gen"] != targ_features["gen"]:
+        reasons.append(
+            f"genitive order differs ({src}: {src_features['gen']}nominal, {targ}: {targ_features['gen']}nominal)"
+        )
+    if _designator_side(src_features) != _designator_side(targ_features):
+        reasons.append(
+            f"designator position differs ({src}: {_designator_side(src_features)} the name, "
+            f"{targ}: {_designator_side(targ_features)} the name)"
+        )
+    if src_features["prenominal_class"] and not targ_features["prenominal_class"]:
+        reasons.append(
+            f"{src} has a closed class of prenominal adjectives that {targ} lacks; "
+            "a source modifier may have to move after its head"
+        )
+    if reasons:
+        return {**verdict, "verdict": "possible", "reasons": reasons}
+    return {**verdict, "verdict": "unnecessary", "reasons": [
+        f"{src}->{targ} preserves modifier-head order, genitive order and designator position"
+    ]}
 
 
 def _visual_order(instances: Iterable[InstText]) -> List[InstText]:
@@ -103,9 +337,62 @@ def _visual_order(instances: Iterable[InstText]) -> List[InstText]:
         line["center"] += (center - line["center"]) / count
         line["height"] += (box.height - line["height"]) / count
     ordered: List[InstText] = []
+    rtl = sum(1 for inst in records if _script_class(inst.text) == "rtl") * 2 > len(records)
     for line in sorted(lines, key=lambda candidate: candidate["center"]):
-        ordered.extend(sorted(line["items"], key=lambda item: item.bounding_box.x))
+        # Arabic/Hebrew signage reads right-to-left within a line; sorting
+        # every script by ascending x silently reversed those units, and
+        # therefore reversed their region_ids and source_text with them.
+        ordered.extend(sorted(line["items"], key=lambda item: item.bounding_box.x, reverse=rtl))
     return ordered
+
+
+def _column_order(instances: Sequence[InstText]) -> List[InstText]:
+    """Vertical (tategaki) reading order: columns right-to-left, top-down.
+
+    Load-bearing for fragmented CJK signage.  In japan-subs the two halves
+    of 歓迎 sit at x=280,y=70 and x=249,y=83 -- the first glyph is to the
+    RIGHT of the second, so reading them as a row gives 迎欲 and no lexicon
+    can recognise it.  Read as one column the same two boxes give 欲迎, a
+    single glyph away from the real sign.
+    """
+    records = [inst for inst in instances if not inst.excluded and (inst.text or "").strip()]
+    if len(records) < 2:
+        return records
+    widths = sorted(max(1, inst.bounding_box.width) for inst in records)
+    tolerance = max(4.0, widths[len(widths) // 2] * 0.6)
+    columns: List[Dict[str, Any]] = []
+    for inst in sorted(records, key=lambda item: (-(item.bounding_box.x + item.bounding_box.width / 2), item.bounding_box.y)):
+        box = inst.bounding_box
+        center = box.x + box.width / 2
+        column = next((candidate for candidate in columns
+                       if abs(center - candidate["center"]) <= tolerance), None)
+        if column is None:
+            columns.append({"center": center, "items": [inst]})
+            continue
+        column["items"].append(inst)
+        count = len(column["items"])
+        column["center"] += (center - column["center"]) / count
+    ordered: List[InstText] = []
+    for column in sorted(columns, key=lambda candidate: -candidate["center"]):
+        ordered.extend(sorted(column["items"], key=lambda item: item.bounding_box.y))
+    return ordered
+
+
+def _reading_hypotheses(instances: Sequence[InstText]) -> List[List[InstText]]:
+    """Candidate orderings for a component, one per plausible text flow.
+
+    Latin/Cyrillic components have exactly one: the horizontal baseline
+    order.  CJK components get the vertical column reading as well, because
+    the same boxes spell different strings depending on which is true and
+    only a lexicon can arbitrate.
+    """
+    row = _visual_order(instances)
+    if len(row) < 2 or not any(_is_square_script(inst.text) for inst in row):
+        return [row]
+    column = _column_order(instances)
+    if [inst.id for inst in column] == [inst.id for inst in row]:
+        return [row]
+    return [row, column]
 
 
 def _contains(region_box: BBox, box: BBox) -> bool:
@@ -123,21 +410,48 @@ def _union_box(instances: Sequence[InstText]) -> BBox:
 
 
 def _nearby(left: InstText, right: InstText) -> bool:
-    """A conservative edge for text on a common sign or label."""
+    """A conservative edge for text on a common sign or label.
+
+    The gap allowances are script-relative.  A Latin word box is roughly
+    twice as wide as it is tall, so ``2.5 x height`` is about one word of
+    whitespace; a CJK glyph box is square, so the same multiplier is two
+    and a half glyphs of empty space and merrily merged neighbouring
+    columns of unrelated signage.
+    """
     a, b = left.bounding_box, right.bounding_box
     ah, bh = max(1, a.height), max(1, b.height)
     aw, bw = max(1, a.width), max(1, b.width)
+    square = _is_square_script(left.text) or _is_square_script(right.text)
+    x_allowance = 1.2 if square else 2.5
+    y_allowance = 0.9 if square else 1.6
     acy, bcy = a.y + a.height / 2, b.y + b.height / 2
     same_line = abs(acy - bcy) <= max(ah, bh) * 0.46
     x_gap = max(0, max(a.x, b.x) - min(a.x + a.width, b.x + b.width))
-    if same_line and x_gap <= max(ah, bh) * 2.5:
+    if same_line and x_gap <= max(ah, bh) * x_allowance:
         return True
     y_gap = max(0, max(a.y, b.y) - min(a.y + a.height, b.y + b.height))
     x_overlap = max(0, min(a.x + a.width, b.x + b.width) - max(a.x, b.x))
-    return y_gap <= max(ah, bh) * 1.6 and x_overlap / min(aw, bw) >= 0.18
+    if y_gap <= max(ah, bh) * y_allowance and x_overlap / min(aw, bw) >= 0.18:
+        return True
+    if not square:
+        return False
+    # A vertical CJK column stacks square glyphs whose boxes barely overlap
+    # horizontally when the stroke widths differ; allow a column seam that
+    # a horizontal-first test would miss.
+    y_column_gap = max(0, max(a.y, b.y) - min(a.y + a.height, b.y + b.height))
+    centers_aligned = abs((a.x + aw / 2) - (b.x + bw / 2)) <= max(aw, bw) * 0.6
+    return centers_aligned and y_column_gap <= max(ah, bh) * 0.8
 
 
-def _components(instances: Sequence[InstText]) -> List[List[InstText]]:
+def _components(instances: Sequence[InstText], edge=None) -> List[List[InstText]]:
+    """Connected components under ``edge`` (defaults to spatial adjacency).
+
+    The predicate is injectable so the panel path can group on language and
+    typography alone -- inside a bordered sign, architectural evidence has
+    already answered the proximity question.
+    """
+    if edge is None:
+        edge = _nearby
     parents = list(range(len(instances)))
 
     def find(index: int) -> int:
@@ -153,7 +467,7 @@ def _components(instances: Sequence[InstText]) -> List[List[InstText]]:
 
     for left in range(len(instances)):
         for right in range(left + 1, len(instances)):
-            if _nearby(instances[left], instances[right]):
+            if edge(instances[left], instances[right]):
                 join(left, right)
     groups: Dict[int, List[InstText]] = {}
     for index, inst in enumerate(instances):
@@ -161,29 +475,108 @@ def _components(instances: Sequence[InstText]) -> List[List[InstText]]:
     return list(groups.values())
 
 
-def _role_for(inst: InstText, unit_is_street: bool, first: bool) -> str:
-    words = [_normal(word) for word in _tokens(inst.text)]
-    if unit_is_street and first and words and words[0] in _STREET_DESIGNATORS:
+def _vocabulary(table: Dict[str, set], lang: str) -> set:
+    """The language's own word set, or the union when the language is
+    unknown -- which preserves the old flat-bag behaviour for manifests
+    that never recorded a source language."""
+    if lang in table:
+        return table[lang]
+    return set().union(*table.values()) if table else set()
+
+
+def _designator_position(instances: Sequence[InstText], lang: str) -> Optional[int]:
+    """Index of the member carrying the generic type word, or None.
+
+    Position matters and is language-specific: Romance signage puts the
+    designator first ("Rue des ..."), English and CJK put it last ("Main
+    Street", "小坂通り").  The previous rule only ever looked at the first
+    token of the whole unit, so every postposed designator was invisible.
+    """
+    designators = _vocabulary(_STREET_DESIGNATORS, lang)
+    if not designators:
+        return None
+    features = _TYPOLOGY.get(lang)
+    suffixed = features is not None and features.get("designator") == "suffix"
+    candidates = []
+    for index, inst in enumerate(instances):
+        text = (inst.text or "").strip()
+        if suffixed:
+            if any(text.endswith(word) for word in designators):
+                candidates.append(index)
+            continue
+        words = [_normal(word) for word in _tokens(text)]
+        if words and (words[0] in designators or words[-1] in designators):
+            candidates.append(index)
+    if not candidates:
+        return None
+    if features is not None and _designator_side(features) == "after":
+        return candidates[-1]
+    return candidates[0]
+
+
+def _role_for(inst: InstText, lang: str, is_designator: bool) -> str:
+    if is_designator:
         return "street_designator"
-    if any(word in _MODIFIERS for word in words):
+    words = [_normal(word) for word in _tokens(inst.text)]
+    if any(word in _vocabulary(_MODIFIERS, lang) for word in words):
         return "modifier"
-    if any(word in _HEAD_WORDS for word in words):
+    if any(word in _vocabulary(_HEAD_WORDS, lang) for word in words):
         return "head"
     return "content"
 
 
-def _local_semantics(instances: Sequence[InstText]) -> Tuple[str, float, Dict[str, str]]:
-    phrase_words = [_normal(word) for inst in instances for word in _tokens(inst.text)]
-    is_street = bool(phrase_words and phrase_words[0] in _STREET_DESIGNATORS)
+def _local_semantics(
+    instances: Sequence[InstText],
+    lang: str,
+    entity: Optional[Dict[str, Any]] = None,
+) -> Tuple[str, float, Dict[str, str]]:
+    """Classify a registered unit from evidence, never from token count.
+
+    The previous rule split ``label`` from ``sentence`` on ``len(words)
+    <= 8``.  Because the tokenizer matches a whole CJK run as one token,
+    that threshold was meaningless for exactly the scripts that most need
+    the distinction, and nothing downstream ever branched on the answer.
+    """
+    designator_index = _designator_position(instances, lang)
     roles = {
-        inst.id: _role_for(inst, is_street, index == 0)
+        inst.id: _role_for(inst, lang, index == designator_index)
         for index, inst in enumerate(instances)
     }
-    if is_street:
+    if entity is not None:
+        # A name recovered from the gazetteer is the strongest evidence
+        # available here; its confidence is the alignment's own similarity.
+        return "gazetteer_entity", round(0.80 + 0.18 * float(entity.get("similarity", 0.0)), 4), roles
+    if designator_index is not None:
         return "street_name", 0.88, roles
-    # Short display labels are usually noun phrases; do not claim a named
-    # entity without model evidence.
-    return ("label" if len(phrase_words) <= 8 else "sentence"), 0.52, roles
+    if "modifier" in roles.values() and "head" in roles.values():
+        return "noun_phrase", 0.60, roles
+    return "label", 0.50, roles
+
+
+_STANZA_PIPELINES: Dict[Tuple[str, str], Any] = {}
+
+
+def _stanza_pipeline(language: str, model_dir: str) -> Optional[Any]:
+    """One pipeline per (language, model dir), built at most once.
+
+    This used to construct a fresh ``stanza.Pipeline`` inside the
+    ``unify_manifest`` loop -- once per unit, per call, on a route that runs
+    on every manifest read.  Loading a dependency-parsing model is seconds
+    of work, so the seam was unusable in practice even when provisioned.
+    """
+    key = (language, model_dir)
+    if key in _STANZA_PIPELINES:
+        return _STANZA_PIPELINES[key]
+    try:
+        import stanza  # type: ignore
+        pipeline = stanza.Pipeline(
+            lang=language, processors="tokenize,pos,lemma,depparse,ner",
+            model_dir=model_dir, download_method=None, verbose=False,
+        )
+    except Exception:
+        pipeline = None
+    _STANZA_PIPELINES[key] = pipeline
+    return pipeline
 
 
 def _stanza_observation(source_text: str, src_lang: Optional[str]) -> Optional[Dict[str, Any]]:
@@ -194,12 +587,10 @@ def _stanza_observation(source_text: str, src_lang: Optional[str]) -> Optional[D
     language = _lang(src_lang)
     if not language:
         return None
+    pipeline = _stanza_pipeline(language, model_dir)
+    if pipeline is None:
+        return None
     try:
-        import stanza  # type: ignore
-        pipeline = stanza.Pipeline(
-            lang=language, processors="tokenize,pos,lemma,depparse,ner",
-            model_dir=model_dir, download_method=None, verbose=False,
-        )
         document = pipeline(source_text)
     except Exception:
         return None
@@ -214,8 +605,274 @@ def _stanza_observation(source_text: str, src_lang: Optional[str]) -> Optional[D
     return {"entities": entities, "dependencies": dependencies}
 
 
-def _unit_key(instances: Sequence[InstText]) -> Tuple[str, ...]:
-    return tuple(inst.id for inst in instances)
+def infuse(instances: Sequence[InstText], lang: Optional[str]) -> Optional[Dict[str, Any]]:
+    """Spell a known entity out of fragmented regions -- internal plating.
+
+    Cicerone routinely splits one two-glyph sign into one region per glyph,
+    and may misrecognise one of them: japan-subs reads 歓迎 as r4 "欲"
+    (confidence 0.63) and r6 "迎" (0.97).  Neither region alone resembles
+    anything; concatenated in column order they are one glyph away from a
+    real signage word.  Recovering that is what lets Basil register the two
+    regions as ONE entity instead of propagating the fragmentation, and
+    lets it report the misread without ever rewriting ``InstText.text``.
+
+    Returns the winning span's evidence, or None.  Three gates stand
+    between a fuzzy window and a claim:
+
+    * the span must CROSS a region boundary -- a name inside one region is
+      menu.browse()'s job and is already handled there;
+    * every differing character must fall inside a region the recognizer
+      itself was unsure about, so a correction can never contradict a
+      confident read;
+    * the alignment reuses menu.py's positional window/diff method rather
+      than a second, differently-tuned copy of it.
+    """
+    from tofu.layers import menu  # layer-local import, mirrors scribe's use of basil
+
+    members = [inst for inst in instances if (inst.text or "").strip()]
+    if len(members) < 2:
+        return None
+    composite = _join([inst.text or "" for inst in members])
+    spans: List[Tuple[int, int, InstText]] = []
+    cursor = 0
+    for inst in members:
+        text = (inst.text or "").strip()
+        spans.append((cursor, cursor + len(text), inst))
+        cursor += len(text)
+    if cursor != len(composite):
+        # A separator was inserted, so character offsets no longer address
+        # glyphs one-for-one.  Space-delimited scripts are served by the
+        # token machinery in plan_substitution, not by this path.
+        return None
+
+    pool = list(menu.KNOWN_SIGNAGE) + list(menu.KNOWN_PLACES)
+    candidates = (
+        menu.exact_spans(composite, lang, pool)
+        + menu.align_spans(composite, lang, pool, allow_equal_length=True)
+    )
+    best: Optional[Dict[str, Any]] = None
+    for span in candidates:
+        covered = [inst for start, end, inst in spans if start < span.end and span.start < end]
+        if len(covered) < 2:
+            continue
+        unsure = True
+        for index, _read, _proposed in span.diffs:
+            owner = next((inst for start, end, inst in spans if start <= index < end), None)
+            if owner is None or (owner.confidence is not None
+                                 and owner.confidence >= menu.CONFIDENCE_FLOOR + 0.1):
+                unsure = False
+                break
+        if not unsure:
+            continue
+        evidence = {
+            "members": [inst.id for inst in covered],
+            "candidate": span.candidate,
+            "similarity": span.similarity,
+            "diffs": [
+                {"index": index, "read": read, "proposed": proposed}
+                for index, read, proposed in span.diffs
+            ],
+            "read": composite[span.start:span.end],
+        }
+        if best is None or (span.similarity, span.end - span.start) > (best["similarity"], len(best["candidate"])):
+            best = evidence
+    return best
+
+
+_COHESION_HEIGHT_RATIO = 1.6
+# Ink distance in plain RGB, matching the tolerance cicerone already uses
+# to decide whether stacked CJK fragments share one painted column
+# (COLUMN_COLOR_MAX_DIST).  Sampled sign colours are never byte-identical
+# -- rue-vieux's three regions read #daf0ed / #d4eaf7 / #d1f1ec off one
+# painted plate -- so string equality would reject every real cluster.
+_COHESION_COLOR_MAX_DIST = 90.0
+
+
+def _rgb(value: Any) -> Optional[Tuple[int, int, int]]:
+    if not isinstance(value, str):
+        return None
+    text = value.strip().lstrip("#")
+    if len(text) == 3:
+        text = "".join(char * 2 for char in text)
+    if len(text) != 6:
+        return None
+    try:
+        return int(text[0:2], 16), int(text[2:4], 16), int(text[4:6], 16)
+    except ValueError:
+        return None
+
+
+def _cohesive(left: InstText, right: InstText) -> bool:
+    """Typographic agreement: same-ish glyph size, same ink where known.
+
+    ``style_profile`` and ``characteristics`` have been on every instance
+    all along and this layer read neither, so two regions set in completely
+    different type could share a unit purely by being adjacent.  Absent
+    evidence fails open -- an unstyled manifest behaves exactly as before.
+    """
+    lh, rh = max(1, left.bounding_box.height), max(1, right.bounding_box.height)
+    if max(lh, rh) / min(lh, rh) > _COHESION_HEIGHT_RATIO:
+        return False
+    left_rgb = _rgb(getattr(getattr(left, "style_profile", None), "color", None))
+    right_rgb = _rgb(getattr(getattr(right, "style_profile", None), "color", None))
+    if left_rgb is None or right_rgb is None:
+        return True
+    distance = sum((a - b) ** 2 for a, b in zip(left_rgb, right_rgb)) ** 0.5
+    return distance <= _COHESION_COLOR_MAX_DIST
+
+
+def _same_language(left: InstText, right: InstText) -> bool:
+    """A romanisation line is parallel text, not part of the entity.
+
+    japan-subs stacks ``ひだおさか`` over ``Hida-osaka``; grouping them
+    produced a unit that mixed a language with its own transliteration.
+    A missing detection is permissive so nothing regresses on manifests
+    that never ran language identification.
+    """
+    left_lang, right_lang = _lang(left.detected_language), _lang(right.detected_language)
+    return not left_lang or not right_lang or left_lang == right_lang
+
+
+def bunch(manifest: TextManifest, verdict: str) -> List[Dict[str, Any]]:
+    """Group instances into candidate sprigs, gated on actual evidence.
+
+    The previous behaviour was to take every geometric component and force
+    a semantic unit onto it.  On japan-subs that produced a ten-region
+    "sentence" spanning three physically separate signs plus their own
+    romanisation.  A component now becomes a unit only when either the
+    gazetteer confirms an entity spelled across its members, or the pair
+    can actually reorder AND a confident scene panel says the members
+    share one physical surface.  Otherwise nothing is emitted and the
+    regions stay independent -- which is what this module's docstring has
+    always promised and what the code never did.
+    """
+    src_lang = _lang(manifest.src_lang)
+    visual = _visual_order(manifest.instances)
+    order = {inst.id: index for index, inst in enumerate(visual)}
+    claimed: set[str] = set()
+    candidates: List[Tuple[List[InstText], bool]] = []  # (members, from_panel)
+
+    for region in manifest.scene_regions or []:
+        if region.semantic_label not in {"panel", "bordered_region"} or region.confidence < 0.35:
+            continue
+        members = [inst for inst in visual
+                   if inst.id not in claimed and _contains(region.bbox, inst.bounding_box)]
+        # Inside a bordered sign the architecture has already answered the
+        # proximity question, so only language and typography still gate.
+        for cluster in _components(members, _alike):
+            if len(cluster) >= 2:
+                candidates.append((_visual_order(cluster), True))
+                claimed.update(inst.id for inst in cluster)
+
+    remaining = [inst for inst in visual if inst.id not in claimed]
+    for component in _components(remaining, _adjacent_and_alike):
+        if len(component) >= 2:
+            candidates.append((_visual_order(component), False))
+
+    sprigs: List[Dict[str, Any]] = []
+    used: set[str] = set()
+    for members, from_panel in candidates:
+        entity = None
+        ordering = members
+        for hypothesis in _reading_hypotheses(members):
+            found = infuse(hypothesis, manifest.src_lang or src_lang)
+            if found is not None:
+                entity, ordering = found, hypothesis
+                break
+        if entity is not None:
+            covered = [inst for inst in ordering if inst.id in set(entity["members"])]
+            if len(covered) >= 2 and not any(inst.id in used for inst in covered):
+                sprigs.append({"members": covered, "entity": entity, "evidence": "gazetteer_entity"})
+                used.update(inst.id for inst in covered)
+                continue
+        if verdict == "unnecessary" or not (from_panel or _single_line(members)):
+            continue
+        ordered = _visual_order(members)
+        if any(inst.id in used for inst in ordered):
+            continue
+        sprigs.append({"members": ordered, "entity": None, "evidence": "panel_cohesion"})
+        used.update(inst.id for inst in ordered)
+
+    # Stable unit numbering follows the actual source reading order, never
+    # raw rN allocation order.
+    sprigs.sort(key=lambda sprig: min(order.get(inst.id, 10 ** 9) for inst in sprig["members"]))
+    return sprigs
+
+
+def _alike(left: InstText, right: InstText) -> bool:
+    """Language and typographic agreement, without a proximity claim."""
+    return _same_language(left, right) and _cohesive(left, right)
+
+
+def _adjacent_and_alike(left: InstText, right: InstText) -> bool:
+    """The full grouping edge outside a panel: near, same language, same type."""
+    return _nearby(left, right) and _alike(left, right)
+
+
+def _single_line(members: Sequence[InstText]) -> bool:
+    """Every member shares one baseline.
+
+    A confident panel is the strongest evidence that separated lines belong
+    to one sign, but requiring it would make Basil depend on Scene having
+    run at all.  Words sitting on a single baseline, already filtered to one
+    language and one typeface and one tight gap, are their own evidence of a
+    phrase -- which is what a sign's top line usually is.
+    """
+    if len(members) < 2:
+        return False
+    centers = [inst.bounding_box.y + inst.bounding_box.height / 2 for inst in members]
+    heights = sorted(max(1, inst.bounding_box.height) for inst in members)
+    tolerance = max(4.0, heights[len(heights) // 2] * 0.46)
+    return max(centers) - min(centers) <= tolerance
+
+
+def suggest_plating(
+    manifest: TextManifest,
+    unit: SemanticTextUnit,
+    targ_lang: Optional[str],
+) -> Dict[str, Any]:
+    """Order the regions' existing target strings by the target's syntax.
+
+    When the translation already exists -- entered in the Translate table,
+    or round-tripped through a CAT tool or TMS -- Basil should hand back an
+    arranged phrase instead of an empty box.  With fr->it the members carry
+    "Via dei" (designator), "VECCHI" (modifier) and "MURI" (head); Italian
+    puts the adjective after its noun, so the proposal is "Via dei MURI
+    VECCHI" and the plating the user has to confirm is already written out.
+    """
+    by_id = {inst.id: inst for inst in manifest.instances}
+    parts: List[Tuple[str, str, str]] = []
+    covered = 0
+    for region_id in unit.region_ids:
+        inst = by_id.get(region_id)
+        text = (inst.target_text or "").strip() if inst is not None else ""
+        if text:
+            covered += 1
+        parts.append((unit.semantic_roles.get(region_id, "content"), region_id, text))
+    coverage = round(covered / len(unit.region_ids), 4) if unit.region_ids else 0.0
+    base = {"schema": 1, "target_text": "", "region_order": [], "coverage": coverage}
+    if coverage < 1.0:
+        return {**base, "basis": "waiting for every region to be translated"}
+    features = _TYPOLOGY.get(_lang(targ_lang))
+    if features is None:
+        return {**base, "basis": f"no declared typology for '{_lang(targ_lang) or '?'}'"}
+
+    if features["adj"] == "post":
+        ranks = {"street_designator": 0, "head": 1, "content": 2, "modifier": 3}
+        basis = f"{_lang(targ_lang)}: postnominal adjectives — the head precedes its modifier"
+    else:
+        ranks = {"street_designator": 0, "modifier": 1, "content": 2, "head": 3}
+        basis = f"{_lang(targ_lang)}: prenominal adjectives — the modifier precedes its head"
+    if _designator_side(features) == "after":
+        ranks["street_designator"] = 9
+        basis += "; the designator follows the name"
+    ordered = sorted(parts, key=lambda part: (ranks.get(part[0], 5), unit.region_ids.index(part[1])))
+    return {
+        **base,
+        "target_text": _join([text for _role, _region_id, text in ordered]),
+        "region_order": [region_id for _role, region_id, _text in ordered],
+        "basis": basis,
+    }
 
 
 def unify_manifest(manifest: TextManifest) -> List[SemanticTextUnit]:
@@ -225,45 +882,52 @@ def unify_manifest(manifest: TextManifest) -> List[SemanticTextUnit]:
     source text and immutable member IDs still match.  If OCR/source editing
     changes either, the plan becomes stale and is deliberately discarded.
     """
-    visual = _visual_order(manifest.instances)
     previous = {
         (tuple(unit.region_ids), unit.source_text): unit.substitution
         for unit in (manifest.semantic_units or [])
     }
-    grouped: List[List[InstText]] = []
-    claimed: set[str] = set()
-    # A confident panel/bordered surface is the strongest architectural
-    # evidence that separated lines belong to one physical sign.
-    for region in manifest.scene_regions or []:
-        if region.semantic_label not in {"panel", "bordered_region"} or region.confidence < 0.35:
-            continue
-        members = [inst for inst in visual if inst.id not in claimed and _contains(region.bbox, inst.bounding_box)]
-        if len(members) >= 2:
-            grouped.append(members)
-            claimed.update(inst.id for inst in members)
-    remaining = [inst for inst in visual if inst.id not in claimed]
-    for component in _components(remaining):
-        ordered = _visual_order(component)
-        grouped.append(ordered)
+    accepted_repairs = {
+        tuple(unit.region_ids)
+        for unit in (manifest.semantic_units or [])
+        if isinstance(unit.ocr_repair, dict) and unit.ocr_repair.get("accepted")
+    }
+    verdict = pairing(manifest.src_lang, manifest.targ_lang)
+    src_lang = _lang(manifest.src_lang)
 
-    # Stable unit numbering follows the actual source reading order, never
-    # raw rN allocation order.
-    grouped.sort(key=lambda members: min(visual.index(member) for member in members))
     units: List[SemanticTextUnit] = []
-    for number, members in enumerate(grouped, 1):
+    for number, sprig in enumerate(bunch(manifest, verdict["verdict"]), 1):
+        members = sprig["members"]
+        entity = sprig["entity"]
         member_ids = [inst.id for inst in members]
-        source = " ".join((inst.text or "").strip() for inst in members).strip()
-        if not source:
+        read = _join([inst.text or "" for inst in members])
+        if not read:
             continue
-        entity_type, confidence, roles = _local_semantics(members)
-        observation = _stanza_observation(source, manifest.src_lang)
+        repair = None
+        source = read
+        if entity is not None and entity["diffs"]:
+            # The corrected spelling is what the unit MEANS; the raw read is
+            # kept beside it so the user can see exactly what is proposed.
+            # InstText.text is never touched -- accepting is an explicit act.
+            repair = {
+                "schema": 1,
+                "read": entity["read"],
+                "proposed": entity["candidate"],
+                "similarity": entity["similarity"],
+                "diffs": entity["diffs"],
+                "evidence": "cross_region_gazetteer_alignment",
+                "accepted": tuple(member_ids) in accepted_repairs,
+            }
+            if repair["accepted"]:
+                source = read.replace(entity["read"], entity["candidate"], 1)
+        entity_type, confidence, roles = _local_semantics(members, src_lang, entity)
         provider = "deterministic_layout"
-        if observation is not None:
+        if entity is not None:
+            provider = "gazetteer+deterministic_layout"
+        elif _stanza_observation(source, manifest.src_lang) is not None:
+            # NER evidence is intentionally advisory: record that the seam
+            # answered, but do not turn arbitrary names into a decision.
             provider = "stanza+deterministic_layout"
-            # NER evidence is intentionally advisory: store it with the unit
-            # but do not turn arbitrary names into a translation decision.
-            roles = {**roles, "_stanza": "available"}
-        units.append(SemanticTextUnit(
+        unit = SemanticTextUnit(
             id=f"u{number}",
             region_ids=member_ids,
             source_text=source,
@@ -272,11 +936,37 @@ def unify_manifest(manifest: TextManifest) -> List[SemanticTextUnit]:
             confidence=confidence,
             analysis_provider=provider,
             semantic_roles=roles,
-            review_required=entity_type != "street_name",
+            review_required=(repair is not None and not repair["accepted"]) or entity_type not in {"street_name", "gazetteer_entity"},
             substitution=previous.get((tuple(member_ids), source)),
-        ))
+            pairing=verdict,
+            ocr_repair=repair,
+        )
+        unit.suggestion = suggest_plating(manifest, unit, manifest.targ_lang)
+        units.append(unit)
     manifest.semantic_units = units
     return units
+
+
+def accept_repair(manifest: TextManifest, unit_id: str, accepted: bool) -> SemanticTextUnit:
+    """Record the user's verdict on a proposed cross-region source repair.
+
+    Accepting changes only the unit's own ``source_text``; the regions'
+    boxes, ids and OCR text all stay exactly as Cicerone left them, so a
+    later re-detection or a rejected repair loses nothing.
+    """
+    unit = next((item for item in (manifest.semantic_units or []) if item.id == unit_id), None)
+    if unit is None:
+        raise KeyError(f"semantic unit '{unit_id}' not found")
+    if not isinstance(unit.ocr_repair, dict):
+        raise ValueError(f"semantic unit '{unit_id}' has no proposed repair")
+    unit.ocr_repair = {**unit.ocr_repair, "accepted": bool(accepted)}
+    read, proposed = unit.ocr_repair.get("read", ""), unit.ocr_repair.get("proposed", "")
+    if accepted and read and proposed and read in unit.source_text:
+        unit.source_text = unit.source_text.replace(read, proposed, 1)
+    elif not accepted and read and proposed and proposed in unit.source_text:
+        unit.source_text = unit.source_text.replace(proposed, read, 1)
+    unit.review_required = not accepted
+    return unit
 
 
 def provider_statuses() -> List[Dict[str, Any]]:
@@ -313,7 +1003,12 @@ def provider_statuses() -> List[Dict[str, Any]]:
 
 
 def set_active_glossary(info: Optional[Dict[str, Any]]) -> None:
-    """Expose current glossary metadata to deployment/provider diagnostics."""
+    """Expose current glossary metadata to deployment/provider diagnostics.
+
+    Diagnostics only.  ``plan_substitution`` never reads this; it takes the
+    lexicon as an explicit argument, precisely so one project's uploaded
+    termbase can never leak into another's alignment through module state.
+    """
     global _ACTIVE_GLOSSARY
     _ACTIVE_GLOSSARY = info
 
@@ -346,6 +1041,10 @@ def plan_substitution(
         "confidence": 0.0,
         "review_required": True,
         "warnings": [],
+        # Carried so a caller can see WHY plating was or was not worth
+        # asking about, without re-deriving the typology itself.
+        "pairing": unit.pairing or pairing(manifest.src_lang, targ_lang),
+        "suggestion": unit.suggestion,
     }
     if not phrase:
         base["warnings"].append("Enter the complete target phrase before planning placement.")
@@ -406,7 +1105,7 @@ def plan_substitution(
     semantic_assignments: List[Dict[str, Any]] = []
     for region_id in unit.region_ids:
         target_positions = sorted(mapped_positions[index] for index in region_word_indices[region_id])
-        assigned = " ".join(target_words[index] for index in target_positions)
+        assigned = _join([target_words[index] for index in target_positions])
         semantic_assignments.append({
             "region_id": region_id,
             "text": assigned,

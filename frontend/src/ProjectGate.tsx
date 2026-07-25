@@ -127,7 +127,7 @@ export default function ProjectGate({ languages, onSelectProject, onClose, theme
   );
 
   return (
-    <div className={`fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6 pantry-overlay${leaving ? " leaving" : ""}`}>
+    <div className={`fixed inset-0 z-400 flex items-center justify-center bg-black/70 p-6 pantry-overlay${leaving ? " leaving" : ""}`}>
       <div className={`bezier-card pantry-card${leaving ? " leaving" : ""} max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white p-6 dark:bg-zinc-900`}>
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -179,7 +179,7 @@ export default function ProjectGate({ languages, onSelectProject, onClose, theme
               return (
               <div
                 key={p.id}
-                className={`${isCurrent ? "pantry-row-current " : ""}relative flex items-center gap-3 rounded-lg border border-zinc-300 bg-zinc-100 p-3 transition hover:border-cyan-700 dark:border-zinc-700 dark:bg-zinc-800/50`}
+                className={`${isCurrent ? "pantry-row-current " : ""}pantry-project-row relative flex items-center gap-3 rounded-lg border border-zinc-300 bg-zinc-100 p-3 transition hover:border-cyan-700 dark:border-zinc-700 dark:bg-zinc-800/50`}
               >
                 {isCurrent && (
                   <span className="pantry-halo" aria-hidden="true">

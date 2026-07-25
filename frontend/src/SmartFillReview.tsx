@@ -45,7 +45,12 @@ export default function SmartFillReview({ reviews, fallbackIds, previews, previe
 
     <div className={`smart-fill-content${open ? " expanded" : ""}`}>
       <div className="min-h-0">
-      <div className="mt-1.5 flex justify-end"><button type="button" onClick={onApplyAll} disabled={readyCandidates.length === 0} className="rounded-sm bg-amber-700 px-1.5 py-0.5 text-[10px] text-white disabled:cursor-not-allowed disabled:opacity-50">Apply All</button></div>
+      <div className="mt-1.5 flex items-center justify-between gap-2">
+        <p className="bezier-impression subtext flex items-start gap-1 text-[10px] text-amber-700/80 dark:text-amber-200/70">
+          <MdTipsAndUpdates size={12} className="mt-0.5 shrink-0 text-amber-600" /><span>Smart fill inpaints the region shown. Hover to preview.</span> {/* "to improve its surface" was removed after "shown" */}
+        </p>
+        <button type="button" onClick={onApplyAll} disabled={readyCandidates.length === 0} className="shrink-0 rounded-sm bg-amber-700 px-1.5 py-0.5 text-[10px] text-white disabled:cursor-not-allowed disabled:opacity-50">Apply All</button>
+      </div>
       {fallbackIds.length > 0 && <div className="mb-1 mt-1.5 rounded-sm border border-sky-500/30 bg-sky-50/50 px-2 py-1 text-[10px] text-sky-900 dark:bg-sky-950/20 dark:text-sky-100"><span className="font-medium">Texture treatment is ready for review.</span><span className="ml-1">{fallbackIds.length} region{fallbackIds.length === 1 ? " uses" : "s use"} the editable reconstruction base.</span></div>}
       {candidates.length > 0 && <div className="mt-1.5 flex flex-wrap justify-center gap-2">
         {candidates.map(({ review, candidate }) => {
@@ -66,9 +71,6 @@ export default function SmartFillReview({ reviews, fallbackIds, previews, previe
           </div>;
         })}
       </div>}
-      <p className="bezier-impression subtext mt-1.5 flex items-start gap-1 text-[10px] text-amber-700/80 dark:text-amber-200/70">
-        <MdTipsAndUpdates size={12} className="mt-0.5 shrink-0 text-amber-600" /><span>Smart fill inpaints the region shown to improve its surface. Hover to preview.</span>
-      </p>
       </div>
     </div>
   </div>;
