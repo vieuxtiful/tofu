@@ -1,0 +1,12 @@
+{
+  "vtm_version": "1.0",
+  "source_language": "ja-JP",
+  "target_language": "en-US",
+  "asset": { "id": "dupe-01", "width": 800, "height": 600 },
+  "entries": [
+    { "id": "r1", "source": "入口", "target": "Entrance",
+      "geometry": { "bbox": { "x": 10, "y": 10, "width": 100, "height": 30 } } },
+    { "id": "r1", "source": "出口", "target": "Exit",
+      "geometry": { "bbox": { "x": 10, "y": 60, "width": 100, "height": 30 } } }
+  ]
+}

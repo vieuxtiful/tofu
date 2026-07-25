@@ -1,0 +1,17 @@
+{
+  "vtm_version": "1.1",
+  "source_language": "ko-KR",
+  "target_language": "en-US",
+  "asset": { "id": "future-01", "width": 1024, "height": 768 },
+  "some_future_top_level_key": { "added": "in 1.1" },
+  "entries": [
+    {
+      "id": "r1",
+      "source": "커피",
+      "target": "Coffee",
+      "geometry": { "bbox": { "x": 10, "y": 10, "width": 90, "height": 30 } },
+      "some_future_entry_key": true,
+      "x-somevendor": { "internal": "ignored by conforming readers" }
+    }
+  ]
+}
