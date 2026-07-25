@@ -4,6 +4,7 @@ import { FaBoxOpen } from "react-icons/fa";
 import { CgRename } from "react-icons/cg";
 import { PiBoundingBoxDuotone, PiBoundingBoxFill } from "react-icons/pi";
 import { ThemeSwitch } from "./Buttons";
+import Grainient from "./Grainient";
 import { SquareLoader } from "./Loaders";
 import { Theme } from "./theme";
 import { Project, listProjects, updateProject } from "./api";
@@ -160,11 +161,67 @@ export default function TitleScreen({ onEnter, onSelectProject, onCreateProject,
 
   return (
     <div className="fixed inset-0 z-90 flex flex-col items-center justify-center gap-10 bg-zinc-100 dark:bg-black">
-      <img src={theme === "light" ? "/tofu-blk-alt-main.png" : "/tofu-wht-alt.png"} alt="ToFU" className="h-36 w-auto" />
+      {theme === "light" && (
+        <div className="absolute inset-0 z-0 overflow-hidden">
+          <Grainient
+            color1="#ffffff"
+            color2="#bdbdbd"
+            color3="#bfbfbf"
+            timeSpeed={1.25}
+            colorBalance={0}
+            warpStrength={2.2}
+            warpFrequency={2.2}
+            warpSpeed={2}
+            warpAmplitude={50}
+            blendAngle={0}
+            blendSoftness={0.05}
+            rotationAmount={500}
+            noiseScale={1.75}
+            grainAmount={0.06}
+            grainScale={1.2}
+            grainAnimated={false}
+            contrast={1.5}
+            gamma={1.85}
+            saturation={1}
+            centerX={-0.04}
+            centerY={0}
+            zoom={0.9}
+          />
+        </div>
+      )}
+      {theme === "dark" && (
+        <div className="absolute inset-0 z-0 overflow-hidden">
+          <Grainient
+            color1="#212121"
+            color2="#121212"
+            color3="#262626"
+            timeSpeed={1.25}
+            colorBalance={-0.14}
+            warpStrength={1.7}
+            warpFrequency={2.4}
+            warpSpeed={2}
+            warpAmplitude={45}
+            blendAngle={0}
+            blendSoftness={0.05}
+            rotationAmount={500}
+            noiseScale={1.75}
+            grainAmount={0.05}
+            grainScale={5.9}
+            grainAnimated={false}
+            contrast={1.5}
+            gamma={1.85}
+            saturation={1}
+            centerX={-0.04}
+            centerY={0}
+            zoom={0.9}
+          />
+        </div>
+      )}
+      <img src={theme === "light" ? "/tofu-blk-alt-main.png" : "/tofu-wht-alt.png"} alt="ToFU" className="relative z-10 h-36 w-auto" />
 
       {/* MAIN VIEW with morphing pantry container */}
       {view === "main" && (
-        <div className="flex flex-col items-center gap-3">
+        <div className="relative z-10 flex flex-col items-center gap-3">
           {/* Workspace: fades out + moves up */}
           <button
             onClick={onEnter}
@@ -373,7 +430,7 @@ export default function TitleScreen({ onEnter, onSelectProject, onCreateProject,
         </div>
       )}
 
-      <div className="title-typewriter text-zinc-500 dark:text-zinc-400">
+      <div className="title-typewriter relative z-10 text-zinc-500 dark:text-zinc-400">
         <span style={{ position: "relative", display: "inline-block" }}>
           <span style={{ visibility: "hidden" }}>{FOOTER_TEXT}</span>
           <span style={{ position: "absolute", left: 0, top: 0, whiteSpace: "pre" }}>
@@ -392,11 +449,11 @@ export default function TitleScreen({ onEnter, onSelectProject, onCreateProject,
         href="https://www.github.com/vieuxtiful/ToFU/"
         target="_blank"
         rel="noopener noreferrer"
-        className="text-zinc-500 transition hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+        className="relative z-10 text-zinc-500 transition hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
       >
         <Github size={18} />
       </a>
-      <span style={{ transform: "scale(0.75)", transformOrigin: "center", display: "inline-block" }}>
+      <span style={{ transform: "scale(0.75)", transformOrigin: "center", display: "inline-block", position: "relative", zIndex: 10 }}>
         <ThemeSwitch
           checked={theme === "dark"}
           onChange={onToggleTheme}
