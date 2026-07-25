@@ -53,7 +53,11 @@ export function detectScript(text: string): Script {
   return best;
 }
 
-const LANG_SCRIPT_MAP: Record<string, Script[]> = {
+/** Scripts a language's text may legitimately contain. Note several
+ * non-Latin entries also allow Latin: that is correct for SOURCE signage
+ * (Japanese signs carry romaji), but a target-language guard needs the
+ * stricter reading — see targetGuard.ts. */
+export const LANG_SCRIPT_MAP: Record<string, Script[]> = {
   "en": ["Latin"], "es": ["Latin"], "fr": ["Latin"], "de": ["Latin"],
   "it": ["Latin"], "pt": ["Latin"], "nl": ["Latin"], "sv": ["Latin"],
   "no": ["Latin"], "da": ["Latin"], "fi": ["Latin"], "is": ["Latin"],
@@ -101,7 +105,7 @@ export function textMatchesTargetLang(text: string, langCode: string): boolean {
   return scriptMatchesLang(script, langCode);
 }
 
-const LATIN_LANG_HINTS: Record<string, RegExp[]> = {
+export const LATIN_LANG_HINTS: Record<string, RegExp[]> = {
   "es": [/ñ/i, /¿/, /¡/],
   "de": [/ä/i, /ö/i, /ü/i, /ß/i],
   "fr": [/ç/i, /œ/i, /æ/i],

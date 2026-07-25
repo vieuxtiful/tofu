@@ -495,15 +495,68 @@ html.dark .splash-cursor {
   51%, 100% { opacity: 0; }
 }
 
-/* ============ title monogram buttons ============ */
+/* ============ tofu block rack (title screen) ============ */
 
-/* workspace button: fades out + moves up */
-.title-btn-workspace {
+/* the title screen's three entry points are slabs of tofu laid out on a tray:
+   tilted 3D blocks with two extruded walls, a curd-grain surface, and a hover
+   state where the block levitates off the tray. the angles live in registered
+   custom properties so that flattening a block into a card interpolates
+   function-by-function rather than falling back on matrix decomposition,
+   which mangles a 25deg skew on its way to 0. */
+@property --tb-rot {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: -30deg;
+}
+
+@property --tb-skew {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 25deg;
+}
+
+/* the tray. the tilted slabs overshoot their layout box by roughly 60px on
+   every side, so the tray carries that clearance itself: the right padding
+   offsets the last slab's overhang and keeps the cascade optically centred. */
+.tofu-block-tray {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  list-style: none;
+  margin: 60px 0;
+  padding: 0 60px 0 0;
+}
+
+/* one slot per block. the slot is deliberately narrower than the slab it
+   holds, so consecutive blocks overhang one another and the row reads as a
+   stack of slabs rather than a toolbar. the slot also owns the entrance and
+   departure animations, which keeps the block's own transform free for the
+   tilt, the levitation and the flattening morph. */
+.tofu-block-slot {
+  position: relative;
+  width: 150px;
+  height: 80px;
+  list-style: none;
   animation: title-btn-in 0.3s ease-out forwards;
 }
 
-.title-btn-workspace.leaving {
+.tofu-block-slot:nth-child(1) { z-index: 1; }
+.tofu-block-slot:nth-child(2) { z-index: 2; }
+.tofu-block-slot:nth-child(3) { z-index: 3; }
+
+/* a levitating block has to clear whichever slab is stacked in front of it */
+.tofu-block-slot:hover { z-index: 50; }
+
+/* an opened card outranks every slab still on the tray */
+.tofu-block-slot.open { z-index: 60; }
+
+/* departures: workspace and pantry rise out of frame, settings sinks */
+.tofu-block-slot.leaving {
   animation: title-workspace-out 0.4s ease-in forwards;
+}
+
+.tofu-block-slot.settings-leaving {
+  animation: title-settings-out 0.4s ease-in forwards;
 }
 
 @keyframes title-workspace-out {
@@ -511,65 +564,215 @@ html.dark .splash-cursor {
   to { opacity: 0; transform: translateY(-24px); }
 }
 
-/* settings button: fades out + moves down */
-.title-btn-settings-wrapper {
-  animation: title-btn-in 0.3s ease-out forwards;
-}
-
-.title-btn-settings-wrapper.leaving {
-  animation: title-settings-out 0.4s ease-in forwards;
-}
-
-.title-morph.leaving {
-  animation: title-workspace-out 0.4s ease-in forwards;
-}
-
-.title-morph.title-settings-leaving {
-  animation: title-settings-out 0.4s ease-in forwards;
-}
-
 @keyframes title-settings-out {
   from { opacity: 1; transform: translateY(0); }
   to { opacity: 0; transform: translateY(24px); }
 }
 
-/* projects morphing container: button → card in one smooth motion */
-.title-morph {
+/* the slab. light mode is the base recipe; dark mode inverts it below. */
+.tofu-block {
+  --tb-face: #f7f7f5;
+  --tb-wall-left: #d8d8d4;
+  --tb-wall-bottom: #e6e6e2;
+  --tb-ink: #262626;
+  --tb-wall-alpha: 1;
+  --tb-lift-x: 0px;
+  --tb-lift-y: 0px;
+  --tb-dx: 0px;
+  --tb-dy: 0px;
+
+  position: absolute;
+  top: 0;
+  left: 0;
   display: flex;
   justify-content: flex-start;
   align-items: center;
-  width: 224px;
-  min-height: 44px;
-  padding: 12px 18px 12px 50px;
-  gap: 15px;
-  background-color: #181717;
-  outline: 3px #323232 solid;
-  outline-offset: -3px;
-  border-radius: 8px;
+  gap: 14px;
+  width: 210px;
+  height: 80px;
+  min-height: 80px;
+  padding: 0 20px;
   border: none;
+  border-radius: 2px;
+  outline: 3px solid transparent;
+  outline-offset: -3px;
+  background-color: var(--tb-face);
+  color: var(--tb-ink);
+  /* <button> would otherwise take the UA font instead of the app stack */
+  font: inherit;
+  text-align: left;
   cursor: pointer;
-  color: #fff;
-  overflow: hidden;
-  position: relative;
+  /* the walls hang outside the border box — never clip them. the card body
+     does its own clipping via .title-morph-card-content. */
+  overflow: visible;
+  box-shadow: -20px 20px 10px rgba(0, 0, 0, 0.5);
+  transform:
+    translate(var(--tb-dx), var(--tb-dy))
+    rotate(var(--tb-rot))
+    skew(var(--tb-skew))
+    translate(var(--tb-lift-x), var(--tb-lift-y));
   transition:
+    transform 0.4s ease-in-out,
     width 0.4s ease-in-out,
-    min-height 0.4s ease-in-out,
     height 0.4s ease-in-out,
+    min-height 0.4s ease-in-out,
     border-radius 0.4s ease-in-out,
     padding 0.4s ease-in-out,
+    box-shadow 0.4s ease-in-out,
     background-color 400ms,
     outline-color 400ms,
     color 400ms;
-  animation: title-btn-in 0.3s ease-out forwards;
 }
 
-html.dark .title-morph {
-  background-color: #f4f4f5;
-  outline-color: #f4f4f5;
-  color: #181717;
+/* ::before is the left wall, ::after the bottom wall; together they give the
+   slab real thickness. both dissolve when the block is pressed flat. */
+.tofu-block::before,
+.tofu-block::after {
+  content: "";
+  position: absolute;
+  opacity: var(--tb-wall-alpha);
+  transition: opacity 0.3s ease-in-out, background-color 400ms;
 }
 
-.title-morph.morphing {
+.tofu-block::before {
+  top: 10px;
+  left: -20px;
+  width: 20px;
+  height: 100%;
+  background: var(--tb-wall-left);
+  transform: skewY(-45deg);
+}
+
+.tofu-block::after {
+  bottom: -20px;
+  left: -10px;
+  width: 100%;
+  height: 20px;
+  background: var(--tb-wall-bottom);
+  transform: skewX(-45deg);
+}
+
+/* the curd: a faint sheen plus a cross-hatch mimicking the pressed-bean
+   surface of a real block. background-image cannot be transitioned, so the
+   texture gets its own layer and only its opacity moves. */
+.tofu-block-grain {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  opacity: 0.55;
+  transition: opacity 0.4s ease-in-out;
+  background-image:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0) 45%),
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.022) 0 2px, rgba(0, 0, 0, 0) 2px 4px),
+    repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.018) 0 3px, rgba(0, 0, 0, 0) 3px 6px);
+}
+
+/* label and icon ride above the grain layer */
+.tofu-block > svg,
+.tofu-block .title-mono-text,
+.title-morph-btn-content {
+  position: relative;
+  z-index: 1;
+}
+
+/* levitation: the block drifts up and to the right along its own tilted axes
+   (the lift translate sits after the skew), and the cast shadow stretches to
+   match. no colour change — only texture and elevation. */
+.tofu-block:hover {
+  --tb-lift-x: 20px;
+  --tb-lift-y: -15px;
+  box-shadow: -50px 50px 50px rgba(0, 0, 0, 0.5);
+}
+
+.tofu-block:hover .tofu-block-grain {
+  opacity: 1;
+}
+
+/* dark mode inverts face, walls and ink. the shadow becomes a pale rim and
+   halo — the slab looks lit from within — layered over a real black cast
+   shadow so it still sits above the grainient instead of floating in a void. */
+html.dark .tofu-block {
+  --tb-face: #262626;
+  --tb-wall-left: #1a1a1a;
+  --tb-wall-bottom: #333333;
+  --tb-ink: #f4f4f5;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.1),
+    -14px 14px 28px rgba(255, 255, 255, 0.1),
+    -20px 20px 18px rgba(0, 0, 0, 0.65);
+}
+
+html.dark .tofu-block:hover {
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.14),
+    -40px 40px 60px rgba(255, 255, 255, 0.14),
+    -50px 50px 50px rgba(0, 0, 0, 0.7);
+}
+
+html.dark .tofu-block-grain {
+  background-image:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.07) 0%, rgba(255, 255, 255, 0) 45%),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.032) 0 2px, rgba(255, 255, 255, 0) 2px 4px),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.026) 0 3px, rgba(255, 255, 255, 0) 3px 6px);
+}
+
+/* the brine: the blurred bath a flattened block floats in. same recipe as the
+   app's pop-up scrim (.title-confirm-backdrop) so the two read identically. */
+.tofu-block-brine {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  backdrop-filter: blur(8px) saturate(0.8);
+  -webkit-backdrop-filter: blur(8px) saturate(0.8);
+  background: rgba(244, 244, 245, 0.55);
+  animation: tco-fade-in 0.3s ease-out forwards;
+}
+
+html.dark .tofu-block-brine {
+  background: rgba(9, 9, 11, 0.55);
+}
+
+.tofu-block-brine.leaving {
+  animation: tco-fade-out 0.3s ease-in forwards;
+}
+
+/* the tray has to out-rank the brine while a card is open: a child can never
+   paint above a layer that sits above its own parent's stacking context. */
+.tofu-rack-raised {
+  z-index: 160;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* keep the tilt — that is geometry, not motion — but drop the levitation
+     and collapse the flattening to a near-instant state change. */
+  .tofu-block:hover {
+    --tb-lift-x: 0px;
+    --tb-lift-y: 0px;
+  }
+
+  .tofu-block,
+  .tofu-block::before,
+  .tofu-block::after,
+  .tofu-block-grain {
+    transition-duration: 0.12s;
+  }
+
+  .tofu-block-slot {
+    animation-duration: 0.12s;
+  }
+}
+
+/* pressing the block flat: pantry and settings are slabs that unwind their
+   tilt and skew to zero while inflating into a card and gliding to screen
+   centre. --tb-dx/--tb-dy are measured in TitleScreen.tsx so the finished card
+   lands dead centre; the walls dissolve as the depth goes away. */
+.tofu-block.title-morph.morphing {
+  --tb-rot: 0deg;
+  --tb-skew: 0deg;
+  --tb-lift-x: 0px;
+  --tb-lift-y: 0px;
+  --tb-wall-alpha: 0;
   width: 448px;
   min-height: 200px;
   height: 200px;
@@ -578,28 +781,38 @@ html.dark .title-morph {
   cursor: default;
   background-color: #fff;
   outline-color: #323232;
-  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
 }
 
-html.dark .title-morph.morphing {
+html.dark .tofu-block.title-morph.morphing {
   background-color: #18181b;
   outline-color: #e4e4e7;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
 }
 
-.title-morph.morphing.morphing-back {
-  width: 224px;
-  min-height: 44px;
-  height: 44px;
-  border-radius: 8px;
-  padding: 12px 18px 12px 50px;
+/* re-forming: every value returns to the slab recipe, and the offsets are
+   cleared from React so the block glides back into its slot on the tray */
+.tofu-block.title-morph.morphing.morphing-back {
+  --tb-rot: -30deg;
+  --tb-skew: 25deg;
+  --tb-wall-alpha: 1;
+  width: 210px;
+  min-height: 80px;
+  height: 80px;
+  border-radius: 2px;
+  padding: 0 20px;
   cursor: pointer;
-  background-color: #181717;
-  outline-color: #323232;
+  background-color: var(--tb-face);
+  outline-color: transparent;
+  box-shadow: -20px 20px 10px rgba(0, 0, 0, 0.5);
 }
 
-html.dark .title-morph.morphing.morphing-back {
-  background-color: #f4f4f5;
-  outline-color: #f4f4f5;
+html.dark .tofu-block.title-morph.morphing.morphing-back {
+  background-color: var(--tb-face);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.1),
+    -14px 14px 28px rgba(255, 255, 255, 0.1),
+    -20px 20px 18px rgba(0, 0, 0, 0.65);
 }
 
 /* button content — visible by default, fades out when morphing */
@@ -622,10 +835,14 @@ html.dark .title-morph.morphing.morphing-back {
   transition: opacity 0.2s ease-in 0.2s;
 }
 
-/* card content — hidden by default, fades in when morphing */
+/* card content — hidden by default, fades in when morphing. this layer is
+   what clips the card body, since the slab itself has to stay overflow-visible
+   for its walls. */
 .title-morph-card-content {
   position: absolute;
   inset: 0;
+  z-index: 2;
+  border-radius: inherit;
   padding: 1.25rem;
   opacity: 0;
   pointer-events: none;
@@ -656,20 +873,6 @@ html.dark .title-morph.morphing.morphing-back {
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* used for projects view fade in/out */
-.title-view-fade {
-  animation: title-btn-in 0.3s ease-out forwards;
-}
-
-.title-view-fade.leaving {
-  animation: title-view-out 0.3s ease-in forwards;
-}
-
-@keyframes title-view-out {
-  from { opacity: 1; transform: translateY(0); }
-  to { opacity: 0; transform: translateY(-8px); }
-}
-
 .project-name-row {
   opacity: 0;
   animation: project-row-appear 0.3s ease-out forwards;
@@ -678,6 +881,31 @@ html.dark .title-morph.morphing.morphing-back {
 @keyframes project-row-appear {
   from { opacity: 0; transform: translateX(-10px); }
   to { opacity: 1; transform: translateX(0); }
+}
+
+/* pantry project row hover-pulse — ProjectGate.tsx (App.tsx pantry screen) */
+@keyframes pantry-hover-pulse {
+  from { transform: scale(1); }
+  to { transform: scale(1.02); }
+}
+
+.pantry-project-row {
+  transition:
+    box-shadow 0.3s ease,
+    border-color 0.2s ease,
+    background-color 0.2s ease;
+}
+
+.pantry-project-row:hover,
+.pantry-project-row:focus-visible {
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.15);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .pantry-project-row:hover,
+  .pantry-project-row:focus-visible {
+    animation: pantry-hover-pulse 1.2s ease infinite alternate;
+  }
 }
 
 .project-name-text {
@@ -729,6 +957,28 @@ html.dark .tms-icon-crowdin {
 
 /* confirm overlay reuses existing title-confirm-backdrop/card CSS */
 
+/* the label on a slab's face, and on the mono pill buttons below. it inherits
+   its container's ink so the light/dark inversion is handled in one place. */
+.title-mono-text {
+  color: inherit;
+  font-weight: 400;
+  font-size: 0.95em;
+  transition: color 400ms;
+  margin: 0;
+}
+
+/* extra tracking on the tray only: it keeps the word legible once the 25deg
+   skew has stretched it across the block's face */
+.tofu-block .title-mono-text {
+  letter-spacing: 2px;
+}
+
+.title-morph-btn-content svg {
+  transition: color 400ms;
+}
+
+/* ============ mono pill button (workspace dialogs) ============ */
+
 .title-mono-btn {
   display: flex;
   justify-content: flex-start;
@@ -746,60 +996,26 @@ html.dark .tms-icon-crowdin {
   color: #fff;
 }
 
-.title-mono-text {
-  color: #fff;
-  font-weight: 400;
-  font-size: 0.95em;
-  transition: 400ms;
-  margin: 0;
-}
-
-.title-mono-btn svg,
-.title-morph-btn-content svg {
-  transition: 400ms;
-}
-
-.title-mono-btn:hover,
-.title-morph:not(.morphing):hover {
-  background-color: transparent;
-  outline-color: transparent;
-}
-
-.title-mono-btn:hover .title-mono-text,
-.title-morph:not(.morphing):hover .title-mono-text {
-  color: #181717;
-}
-
-.title-mono-btn:hover svg,
-.title-morph:not(.morphing):hover svg {
-  color: #181717;
-}
-
-html.dark .title-mono-btn,
-html.dark .title-morph {
+html.dark .title-mono-btn {
   background-color: #f4f4f5;
   outline-color: #f4f4f5;
   color: #181717;
 }
 
-html.dark .title-mono-text {
+/* hover hollows the pill out: the fill drops away and the ink takes on the
+   colour the fill used to be. label and icon both ride on `color`. */
+.title-mono-btn:hover {
+  background-color: transparent;
+  outline-color: transparent;
   color: #181717;
 }
 
-html.dark .title-mono-btn:hover,
-html.dark .title-morph:not(.morphing):hover {
-  background-color: transparent;
-  outline-color: transparent;
-}
-
-html.dark .title-mono-btn:hover .title-mono-text,
-html.dark .title-morph:not(.morphing):hover .title-mono-text {
+html.dark .title-mono-btn:hover {
   color: #f4f4f5;
 }
 
-html.dark .title-mono-btn:hover svg,
-html.dark .title-morph:not(.morphing):hover svg {
-  color: #f4f4f5;
+.title-mono-btn svg {
+  transition: color 400ms;
 }
 
 /* ============ universal screen fade transition ============ */
@@ -1512,4 +1728,312 @@ html:not(.dark) .pantry-halo-particles {
 @keyframes lang-change-in {
   from { opacity: 0; transform: scale(0.95) translateY(10px); }
   to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* ============ basil halo (semantic plating) ============ */
+
+/* Each member of a semantic unit gets its own colour so the source strip,
+   the typed target tokens and the plan rows all agree on which colour
+   means which region. --bh-ink is set per element from regionPalette.ts. */
+
+.basil-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin-top: 0.5rem;
+}
+
+/* the halo proper: a tinted rectangle overlaid on each source region's
+   text, keyed to the colour that region's meaning will carry downstream */
+.basil-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.375rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 0.25rem;
+  border: 1px solid var(--bh-ink, #22d3ee);
+  background: color-mix(in srgb, var(--bh-ink, #22d3ee) 14%, transparent);
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: #27272a;
+}
+
+html.dark .basil-chip {
+  color: #e4e4e7;
+  background: color-mix(in srgb, var(--bh-ink, #22d3ee) 22%, transparent);
+}
+
+.basil-chip-id {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, "Courier New", monospace;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--bh-ink, #22d3ee);
+  filter: brightness(0.72);
+}
+
+html.dark .basil-chip-id {
+  filter: brightness(1.15);
+}
+
+.basil-chip-text {
+  font-weight: 500;
+}
+
+/* proposed source correction: shown, never applied, until the user says so */
+.basil-repair {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+  margin-top: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 0.375rem;
+  border: 1px solid #fcd34d;
+  background: rgba(254, 243, 199, 0.55);
+  font-size: 0.7rem;
+  color: #78350f;
+}
+
+html.dark .basil-repair {
+  border-color: #78350f;
+  background: rgba(69, 26, 3, 0.4);
+  color: #fde68a;
+}
+
+.basil-repair-read {
+  text-decoration: line-through;
+  opacity: 0.75;
+}
+
+.basil-repair-proposed {
+  font-weight: 600;
+}
+
+.basil-repair-meta {
+  opacity: 0.7;
+}
+
+.basil-repair-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 0.25rem;
+  border: 1px solid currentColor;
+  font-size: 0.65rem;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.basil-repair-btn:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+html.dark .basil-repair-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.basil-repair-btn.accept {
+  color: #047857;
+  border-color: #047857;
+}
+
+html.dark .basil-repair-btn.accept {
+  color: #6ee7b7;
+  border-color: #6ee7b7;
+}
+
+.basil-repair-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* why a pairing does or does not call for plating */
+.basil-verdict {
+  margin-top: 0.5rem;
+  font-size: 0.68rem;
+  line-height: 1.45;
+  color: #52525b;
+}
+
+html.dark .basil-verdict {
+  color: #a1a1aa;
+}
+
+.basil-suggestion {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.5rem;
+  font-size: 0.68rem;
+  color: #0e7490;
+}
+
+html.dark .basil-suggestion {
+  color: #67e8f9;
+}
+
+.basil-guard-reason {
+  font-size: 0.68rem;
+  color: #b91c1c;
+}
+
+html.dark .basil-guard-reason {
+  color: #fca5a5;
+}
+
+/* The plating field is a transparent-text input over a mirror that draws
+   the same string as coloured spans.  contentEditable would colour more
+   easily and would break IME composition, selection and undo -- fatal for
+   CJK entry -- so the native input keeps all three and only its ink moves.
+   Every metric below MUST match between the two layers or the colour
+   drifts out of register with the glyphs. */
+.basil-plate {
+  --bh-pad-x: 0.5rem;
+  --bh-pad-y: 0.375rem;
+  position: relative;
+  margin-top: 0.5rem;
+}
+
+.basil-plate-input,
+.basil-plate-mirror {
+  box-sizing: border-box;
+  width: 100%;
+  padding: var(--bh-pad-y) var(--bh-pad-x);
+  border: 1px solid transparent;
+  border-radius: 0.375rem;
+  font-family: inherit;
+  font-size: 0.875rem;
+  line-height: 1.5rem;
+  letter-spacing: normal;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.basil-plate-mirror {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  color: #18181b;
+}
+
+html.dark .basil-plate-mirror {
+  color: #f4f4f5;
+}
+
+.basil-plate-input {
+  position: relative;
+  background: #fff;
+  border-color: #d4d4d8;
+  /* the mirror draws the glyphs; the input keeps the caret and selection */
+  color: transparent;
+  caret-color: #18181b;
+  outline: none;
+}
+
+html.dark .basil-plate-input {
+  background: #18181b;
+  border-color: #3f3f46;
+  caret-color: #f4f4f5;
+}
+
+.basil-plate-input::selection {
+  background: rgba(34, 211, 238, 0.35);
+  color: transparent;
+}
+
+.basil-plate-input:focus {
+  border-color: #06b6d4;
+  box-shadow: 0 0 0 1px #06b6d4;
+}
+
+.basil-plate-input::placeholder {
+  color: #a1a1aa;
+}
+
+.basil-token.mapped {
+  color: var(--bh-ink, inherit);
+  font-weight: 600;
+  border-radius: 0.15rem;
+  background: color-mix(in srgb, var(--bh-ink, #22d3ee) 16%, transparent);
+  filter: brightness(0.75);
+}
+
+html.dark .basil-token.mapped {
+  filter: brightness(1.2);
+}
+
+.basil-token.reject {
+  color: #dc2626;
+  text-decoration: underline wavy #dc2626;
+  text-underline-offset: 2px;
+}
+
+html.dark .basil-token.reject {
+  color: #fca5a5;
+  text-decoration-color: #fca5a5;
+}
+
+/* planned assignment rows, coloured to match their source region */
+.basil-assign {
+  border-radius: 0.15rem;
+  padding: 0.05rem 0.35rem;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  border-left: 3px solid var(--bh-ink, #22d3ee);
+}
+
+html.dark .basil-assign {
+  background: #27272a;
+}
+
+.basil-assign-id {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, "Courier New", monospace;
+  color: var(--bh-ink, #22d3ee);
+  filter: brightness(0.72);
+}
+
+html.dark .basil-assign-id {
+  filter: brightness(1.15);
+}
+
+/* Targets written without spaces (zh/ja/ko/th) have no delimiter to
+   colour tokens against, so their arrangement is made by moving the
+   regions themselves rather than by typing a phrase. */
+.basil-slots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin-top: 0.5rem;
+}
+
+.basil-slot {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.375rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  border: 1px solid var(--bh-ink, #22d3ee);
+  background: color-mix(in srgb, var(--bh-ink, #22d3ee) 10%, transparent);
+  font-size: 0.78rem;
+  cursor: grab;
+  user-select: none;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.basil-slot.dragging {
+  opacity: 0.45;
+  transform: scale(0.97);
+  cursor: grabbing;
+}
+
+.basil-slot-text {
+  font-weight: 500;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .basil-slot {
+    transition-duration: 0.01ms;
+  }
 }

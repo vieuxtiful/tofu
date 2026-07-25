@@ -93,6 +93,28 @@ KNOWN_PLACES: List[tuple] = [
     ("濁河温泉", "ja"),
 ]
 
+# common signage words -- not places, so they are deliberately NOT in
+# KNOWN_PLACES (browse() must not rewrite a storefront read into a
+# generic word). Basil consults this pool separately when deciding
+# whether several fragmented regions spell one entity: cicerone
+# routinely splits a two-glyph sign like 歓迎 into one region per glyph,
+# and reassembling it is an entity question, not a place-name question.
+KNOWN_SIGNAGE: List[tuple] = [
+    ("歓迎", "ja"),
+    ("入口", "ja"),
+    ("出口", "ja"),
+    ("案内", "ja"),
+    ("注意", "ja"),
+    ("営業中", "ja"),
+    ("準備中", "ja"),
+    ("駐車場", "ja"),
+    ("観光案内所", "ja"),
+    ("欢迎", "zh-cn"),
+    ("入口", "zh-cn"),
+    ("出口", "zh-cn"),
+    ("停车场", "zh-cn"),
+]
+
 
 class MenuMatch(NamedTuple):
     text: str
@@ -153,17 +175,37 @@ def consult_menu_substring(text: str, lang: Optional[str]) -> List[MenuSpan]:
     overlap in the result; equal-length window replacement means
     corrections are length-preserving and can all be applied at once.
     """
+    return align_spans(text, lang, KNOWN_PLACES)
+
+
+def align_spans(text: str, lang: Optional[str], pool: List[tuple],
+                allow_equal_length: bool = False) -> List[MenuSpan]:
+    """The window/diff core of the substring path, over any candidate pool.
+
+    Factored out so Basil can reuse the same alignment on a composite it
+    builds by concatenating SEVERAL regions, rather than on one region's
+    text.  ``allow_equal_length`` is the difference that case needs: when
+    cicerone splits 歓迎 into one region per glyph, the reassembled
+    composite is exactly as long as the candidate, which the within-region
+    path deliberately refuses (an equal-length read there belongs to the
+    whole-string and dakuten paths, which are confidence-gated).  Across
+    regions there is no such sibling path, and the crossing of a region
+    boundary is itself the structural evidence that gate was standing in
+    for -- so Basil opts in explicitly and adds its own gates on top.
+    """
     if not text or " " in text:
         # composite signage instances are never space-tokenized; a space
         # would also break the char-index-to-glyph-cluster alignment the
         # pixel tier depends on
         return []
     proposals: List[MenuSpan] = []
-    for candidate, cand_lang in KNOWN_PLACES:
+    for candidate, cand_lang in pool:
         if lang and cand_lang != lang:
             continue
         n = len(candidate)
-        if n < 2 or len(text) <= n:
+        if n < 2:
+            continue
+        if len(text) < n or (len(text) == n and not allow_equal_length):
             continue
         for start in range(0, len(text) - n + 1):
             window = text[start:start + n]
@@ -190,6 +232,37 @@ def consult_menu_substring(text: str, lang: Optional[str]) -> List[MenuSpan]:
     ))
     kept: List[MenuSpan] = []
     for span in proposals:
+        if any(span.start < k.end and k.start < span.end for k in kept):
+            continue
+        kept.append(span)
+    kept.sort(key=lambda s: s.start)
+    return kept
+
+
+def exact_spans(text: str, lang: Optional[str], pool: List[tuple]) -> List[MenuSpan]:
+    """Verbatim (zero-diff) pool hits inside ``text``, non-overlapping.
+
+    ``align_spans`` deliberately skips a window that already equals its
+    candidate -- there is nothing to correct.  Basil still needs to know
+    that a correctly-read entity spans a region boundary, so this is the
+    zero-diff sibling: same greedy non-overlap resolution, similarity 1.0.
+    """
+    if not text or " " in text:
+        return []
+    found: List[MenuSpan] = []
+    for candidate, cand_lang in pool:
+        if lang and cand_lang != lang:
+            continue
+        n = len(candidate)
+        if n < 2 or len(text) < n:
+            continue
+        start = text.find(candidate)
+        while start != -1:
+            found.append(MenuSpan(start, start + n, candidate, 1.0, []))
+            start = text.find(candidate, start + 1)
+    found.sort(key=lambda s: (-(s.end - s.start), s.start))
+    kept: List[MenuSpan] = []
+    for span in found:
         if any(span.start < k.end and k.start < span.end for k in kept):
             continue
         kept.append(span)

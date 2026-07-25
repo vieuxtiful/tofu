@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import InputAdornment from "@mui/material/InputAdornment";
 import TextField from "@mui/material/TextField";
@@ -12,7 +12,7 @@ import {
   addRegion, approveRender, checkDuplicateAsset, deleteProjectAsset, deleteRegion, detectAssetStream,
   fetchFonts, fetchLanguages, getManifest, getProject, importFile, matchFonts, ocrRegion, putManifest,
   applyRepairCandidate, captureLocalizedBaseline, createInpaintPatch, getLocalizedBaseline, getTreatment, previewCandidateLocalized, refineRegion, renderAsset, renderAssetStream, renderPreview, restoreTreatment, scanAssetLanguage, sha256File, snapshotAsset, undoInpaint,
-  semanticSubstitution, updateProject, uploadAsset, validateAsset, fetchGlossaryStatus, uploadGlossary, deleteGlossary,
+  semanticSubstitution, semanticRepair, updateProject, uploadAsset, validateAsset, fetchGlossaryStatus, uploadGlossary, deleteGlossary,
 } from "./api";
 import { FcCollapse } from "react-icons/fc";
 import { LiaSpellCheckSolid } from "react-icons/lia";
@@ -44,6 +44,7 @@ import BBoxCanvas from "./BBoxCanvas";
 import TargetPreviewCanvas from "./TargetPreviewCanvas";
 import RegionTable from "./RegionTable";
 import SemanticSubstitutionPanel from "./SemanticSubstitutionPanel";
+import { attestedFromManifest } from "./targetGuard";
 import ExportPanel from "./ExportPanel";
 import ProjectGate from "./ProjectGate";
 import HistoryPanel from "./HistoryPanel";
@@ -2103,11 +2104,34 @@ export default function App() {
     });
   }, []);
 
+  // Basil colours its plating field per source region and checks the entry
+  // against the source manifest, so it needs both the regions themselves and
+  // the Latin strings Cicerone actually attested in this asset.
+  const regionsById = useMemo(
+    () => Object.fromEntries(manifest.map((inst) => [inst.id, inst])),
+    [manifest],
+  );
+  const attestedLatin = useMemo(() => attestedFromManifest(manifest), [manifest]);
+
+  const onSemanticRepair = useCallback(async (unitId: string, accepted: boolean) => {
+    if (!asset) return;
+    setSemanticBusyId(unitId);
+    try {
+      const result = await semanticRepair(asset.asset_id, unitId, accepted);
+      setSemanticUnits(result.manifest.semantic_units ?? []);
+      addToast("info", accepted ? "source reading corrected; regions untouched" : "proposal rejected; the original reading stands");
+    } catch (error) {
+      addToast("error", `could not record that decision: ${error}`);
+    } finally {
+      setSemanticBusyId(null);
+    }
+  }, [asset, addToast]);
+
   const onSemanticPlan = useCallback(async (unitId: string, apply: boolean) => {
     if (!asset) return;
     const unit = semanticUnits.find((item) => item.id === unitId);
     if (!unit) return;
-    const target = (semanticDrafts[unitId] ?? unit.substitution?.target_text ?? "").trim();
+    const target = (semanticDrafts[unitId] ?? unit.substitution?.target_text ?? unit.suggestion?.target_text ?? "").trim();
     if (!target) {
       addToast("warning", "enter a complete target phrase before planning placement");
       return;
@@ -2953,7 +2977,7 @@ export default function App() {
             </label>
             {asset && (
               <p className="subtext mt-2 text-[8px] text-zinc-500">
-                {asset.filename} · {asset.asset_info.asset_type} · frames={asset.asset_info.frame_count}
+                {asset.filename} · {asset.asset_info.asset_type}{asset.asset_info.asset_type === "video" && ` · frames=${asset.asset_info.frame_count}`}
               </p>
             )}
             {busy === "uploading" && (
@@ -3215,7 +3239,7 @@ export default function App() {
           <div className="flex items-center justify-between">
             <p className="subtext flex items-center gap-1.5 text-[8.4px] text-zinc-500 dark:text-zinc-400">
               {imgSize && (
-                <span className="text-zinc-700 dark:text-zinc-300">{imgSize.width}×{imgSize.height}</span>
+                <span className="text-zinc-700 dark:text-zinc-300">{imgSize.width}×{imgSize.height}</span> /* asset/image size indicator */
               )}
               {imgSize && <span className="text-zinc-400 dark:text-zinc-600">・</span>}
               <kbd className="kbd kbd-xs">A</kbd> draw · <kbd className="kbd kbd-xs">Del</kbd> remove · <kbd className="kbd kbd-xs">Esc</kbd> deselect
@@ -3627,8 +3651,12 @@ export default function App() {
                 busyId={semanticBusyId}
                 onDraftChange={onSemanticDraftChange}
                 onPlan={onSemanticPlan}
+                onRepair={onSemanticRepair}
                 theme={theme}
                 projectId={project?.id ?? null}
+                targLang={targLang}
+                regionsById={regionsById}
+                attested={attestedLatin}
                 glossaryStatus={glossaryStatus}
                 onGlossaryUpload={onGlossaryUpload}
                 onGlossaryDelete={onGlossaryDelete}
@@ -4219,7 +4247,7 @@ export default function App() {
                 </div>
               </Section>}
 
-              {(preRenderUrl || previewUrl || previewPending || previewRenderError) && <Section title="Localized Asset Canvas" icon={<TbPhotoEdit size={14} />} className={`${stackClass(3)} ${sourceCanvasFirst ? "order-2" : "order-1"}`} localized
+              {(preRenderUrl || previewUrl || previewPending || previewRenderError) && <Section title="Localized Asset" icon={<TbPhotoEdit size={14} />} className={`${stackClass(3)} ${sourceCanvasFirst ? "order-2" : "order-1"}`} localized
                 headerExtra={previewSyncing && <span className="ml-2 flex items-center gap-1 normal-case text-xs text-cyan-600 dark:text-cyan-400"><SquareLoader size="xs" /> trimming...</span>}
                 rightSideHandle={<div className="absolute right-5 top-4 flex items-center gap-1">{canSwapCanvasCards && <button type="button" onClick={() => setCanvasCardOrder((order) => order === "source-first" ? "localized-first" : "source-first")} title={sourceCanvasFirst ? "Move localized canvas above the source reference" : "Move localized canvas below the source reference"} aria-label={sourceCanvasFirst ? "move localized canvas up" : "move localized canvas down"} className="rounded-sm p-1 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800">{theme === "dark" ? (sourceCanvasFirst ? <BsArrowUpSquareFill size={16} /> : <BsArrowDownSquareFill size={16} />) : (sourceCanvasFirst ? <LuSquareArrowUp size={16} /> : <LuSquareArrowDown size={16} />)}</button>}<button onClick={resetLocalizedCanvas} title="Reset all localized canvas edits to the Render-entry baseline" className="flex items-center gap-1 rounded-sm px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800"><VscDebugRestart size={16} /> reset</button></div>}>
                 <div className="mb-2 flex items-center gap-2">

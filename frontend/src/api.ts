@@ -288,6 +288,40 @@ export interface SemanticTextUnit {
     method?: string;
     confidence?: number;
   } | null;
+  pairing?: SemanticPairing | null;
+  suggestion?: SemanticSuggestion | null;
+  ocr_repair?: SemanticRepair | null;
+}
+
+/** Whether the source→target pair can reorder words across regions at all. */
+export interface SemanticPairing {
+  schema: number;
+  verdict: "unnecessary" | "possible" | "unknown";
+  src: string;
+  targ: string;
+  reasons: string[];
+  features: { src: Record<string, unknown> | null; targ: Record<string, unknown> | null };
+}
+
+/** Basil's proposed phrase, ordered by the target's own syntax. */
+export interface SemanticSuggestion {
+  schema: number;
+  target_text: string;
+  region_order: string[];
+  basis: string;
+  coverage: number;
+}
+
+/** A proposed source correction for an entity spelled across fragmented
+ * regions. Never applied to InstText.text — accepting is an explicit act. */
+export interface SemanticRepair {
+  schema: number;
+  read: string;
+  proposed: string;
+  similarity: number;
+  diffs: { index: number; read: string; proposed: string }[];
+  evidence: string;
+  accepted: boolean;
 }
 
 export interface SemanticAssignment {
@@ -312,6 +346,8 @@ export interface SemanticSubstitutionPlan {
   confidence: number;
   review_required: boolean;
   warnings: string[];
+  pairing?: SemanticPairing | null;
+  suggestion?: SemanticSuggestion | null;
 }
 
 export interface GlossaryMeta {
@@ -743,6 +779,23 @@ export async function semanticSubstitution(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ target_text: targetText, targ_lang: targLang, apply }),
+    })
+  );
+}
+
+/** Accept or reject Basil's proposed cross-region source correction.
+ * Only the semantic unit's source text changes; region ids, boxes and OCR
+ * text are untouched either way. */
+export async function semanticRepair(
+  assetId: string,
+  unitId: string,
+  accepted: boolean,
+): Promise<{ manifest: TextManifest; accepted: boolean }> {
+  return json(
+    await fetch(`/api/semantic-units/${encodeURIComponent(assetId)}/${encodeURIComponent(unitId)}/repair`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ accepted }),
     })
   );
 }

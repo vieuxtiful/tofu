@@ -105,6 +105,9 @@ def _semantic_unit_to_dict(unit: SemanticTextUnit) -> dict:
         "semantic_roles": unit.semantic_roles,
         "review_required": unit.review_required,
         "substitution": unit.substitution,
+        "pairing": unit.pairing,
+        "suggestion": unit.suggestion,
+        "ocr_repair": unit.ocr_repair,
     }
 
 
@@ -124,6 +127,9 @@ def _dict_to_semantic_unit(data: dict) -> SemanticTextUnit:
         semantic_roles=dict(data.get("semantic_roles") or {}),
         review_required=bool(data.get("review_required", True)),
         substitution=data.get("substitution"),
+        pairing=data.get("pairing"),
+        suggestion=data.get("suggestion"),
+        ocr_repair=data.get("ocr_repair"),
     )
 
 

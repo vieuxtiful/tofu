@@ -16,7 +16,7 @@ export default function RotationDial({ value, onChange, onReset, disabled = fals
 
   const pointerAngle = (event: ReactPointerEvent<SVGSVGElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
-    return Math.atan2(event.clientY - (rect.top + rect.height / 2), event.clientX - (rect.left + rect.width / 2)) * 180 / Math.PI;
+    return Math.atan2(-(event.clientY - (rect.top + rect.height / 2)), event.clientX - (rect.left + rect.width / 2)) * 180 / Math.PI;
   };
 
   const begin = (event: ReactPointerEvent<SVGSVGElement>) => {
@@ -50,7 +50,7 @@ export default function RotationDial({ value, onChange, onReset, disabled = fals
   const cy = 25;
   const radius = 16;
   const x = cx + Math.cos(radians) * radius;
-  const y = cy + Math.sin(radians) * radius;
+  const y = cy - Math.sin(radians) * radius;
 
   return (
     <span className="flex flex-col items-center gap-0.5">

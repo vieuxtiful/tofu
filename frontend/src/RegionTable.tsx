@@ -748,12 +748,15 @@ export default function RegionTable({
                                 onBlur={onBatchEnd}
                                 onChange={(e) => {
                                   const val = e.target.value;
+                                  // Flag a wrong-language entry, never delete it.
+                                  // This used to clear the field on mismatch,
+                                  // which threw away real typing on a heuristic.
+                                  onTargetChange(inst.id, val);
                                   if (val.trim() && targLang && !textLangMatchesTarget(val, targLang)) {
-                                    onTargetChange(inst.id, "");
                                     setRejectTooltipId(inst.id);
                                     setTimeout(() => setRejectTooltipId((cur) => cur === inst.id ? null : cur), 2500);
-                                  } else {
-                                    onTargetChange(inst.id, val);
+                                  } else if (rejectTooltipId === inst.id) {
+                                    setRejectTooltipId(null);
                                   }
                                 }}
                                 onClick={(e) => e.stopPropagation()}

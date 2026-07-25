@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { Check, ChevronDown, Loader2, X } from "lucide-react";
 import { RiBook2Fill, RiBook2Line, RiBookOpenFill, RiBookOpenLine } from "react-icons/ri";
-import { TbLeaf, TbLeafFilled, TbReplace, TbReplaceFilled } from "react-icons/tb";
+import { TbReplace, TbReplaceFilled } from "react-icons/tb";
 import { VscReplaceAll } from "react-icons/vsc";
+import { PiPuzzlePieceBold } from "react-icons/pi";
 import type { GlossaryStatus } from "./api";
 import type { Theme } from "./theme";
 
@@ -50,13 +51,13 @@ export default function GlossaryPanel({ theme, projectId, status, onUpload, onDe
         <div className="mt-2 space-y-2 text-xs">
           <div className="flex gap-1 px-1">
             {(["global", "project"] as const).map((value) => (
-              <button key={value} type="button" aria-pressed={scope === value} disabled={value === "project" && !projectId} onClick={() => setScope(value)} className={`subtext inline-flex items-center rounded-md border-2 border-white/50 bg-white/10 px-[3px] py-0.5 text-xs text-zinc-500 backdrop-blur-md transition-all ${scope === value ? "shadow-[inset_0_1px_3px_rgba(255,255,255,0.45),0_0_0_2px_rgb(167,243,208)]" : "shadow-inner hover:bg-white/20"} disabled:cursor-not-allowed disabled:opacity-40`}>{value}</button>
+              <button key={value} type="button" aria-pressed={scope === value} disabled={value === "project" && !projectId} onClick={() => setScope(value)} className={`subtext inline-flex items-center rounded-md border-2 border-white/50 bg-white/10 px-[3px] py-0.5 text-[9px] text-zinc-500 backdrop-blur-md transition-all ${scope === value ? "shadow-[inset_0_1px_3px_rgba(255,255,255,0.45),0_0_0_2px_rgb(167,243,208)]" : "shadow-inner hover:bg-white/20"} disabled:cursor-not-allowed disabled:opacity-40`}>{value}</button>
             ))}
           </div>
           <div className="flex flex-wrap gap-1">
             {(["auxiliary", "merge", "replace"] as const).map((value) => {
               const selected = mode === value;
-              const ModeIcon = value === "auxiliary" ? (selected ? TbLeafFilled : TbLeaf) : value === "merge" ? VscReplaceAll : (selected ? TbReplaceFilled : TbReplace);
+              const ModeIcon = value === "auxiliary" ? PiPuzzlePieceBold : value === "merge" ? VscReplaceAll : (selected ? TbReplaceFilled : TbReplace);
               return <button key={value} type="button" onClick={() => setMode(value)} className={`inline-flex items-center gap-1 rounded-sm px-2 py-1 ${selected ? "bg-emerald-700 text-white" : "bg-white text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300"}`}><ModeIcon size={13} /> {value}</button>;
             })}
           </div>

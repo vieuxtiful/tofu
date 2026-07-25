@@ -17,18 +17,34 @@ interface TitleScreenProps {
   onToggleTheme: () => void;
 }
 
-type View = "main" | "pantry";
-
 const FOOTER_TEXT = "ToFU v0.1.0.";
 
-/** all-black title page: the entry hub after the splash. icon buttons
- * route to Workspace (four-pane main screen), Pantry (inline list),
- * and Settings (morphing card with dark-mode switch). */
+/** the flattened card's resting size — the same numbers the .morphing rule in
+ * uikit.css inflates to. kept here because the centring maths needs them. */
+const CARD_W = 448;
+const CARD_H = 200;
+
+/** work out how far a slab has to glide for the card it becomes to land dead
+ * centre. the slot is never transformed, so its rect is the block's own
+ * untransformed origin, and the card grows from that top-left anchor — which
+ * makes this offset exact at the end of the transition and continuous through
+ * it. handed to CSS as --tb-dx / --tb-dy. */
+function brineOffsets(slot: HTMLElement | null): React.CSSProperties {
+  if (!slot) return {};
+  const r = slot.getBoundingClientRect();
+  return {
+    "--tb-dx": `${window.innerWidth / 2 - (r.left + CARD_W / 2)}px`,
+    "--tb-dy": `${window.innerHeight / 2 - (r.top + CARD_H / 2)}px`,
+  } as React.CSSProperties;
+}
+
+/** title page: the entry hub after the splash. three tofu blocks sit on a
+ * tray and levitate on hover; Workspace opens the four-pane main screen,
+ * while Pantry (project list) and Settings (dark-mode switch) press flat into
+ * a card floating in the blurred brine. */
 export default function TitleScreen({ onEnter, onSelectProject, onCreateProject, theme, onToggleTheme }: TitleScreenProps) {
-  const [view, setView] = useState<View>("main");
   const [viewLeaving, setViewLeaving] = useState(false);
   const [footerTyped, setFooterTyped] = useState(0);
-  const [footerDone, setFooterDone] = useState(false);
   const [projects, setProjects] = useState<Project[] | null>(null);
   const [confirmProject, setConfirmProject] = useState<Project | null>(null);
   const [renamingProject, setRenamingProject] = useState<Project | null>(null);
@@ -39,24 +55,32 @@ export default function TitleScreen({ onEnter, onSelectProject, onCreateProject,
     for (let i = 1; i <= FOOTER_TEXT.length; i++) {
       timers.push(setTimeout(() => setFooterTyped(i), 800 + i * 180));
     }
-    timers.push(setTimeout(() => setFooterDone(true), 800 + FOOTER_TEXT.length * 180 + 200));
     return () => timers.forEach(clearTimeout);
   }, []);
 
   const [morphing, setMorphing] = useState(false);
   const [morphingBack, setMorphingBack] = useState(false);
   const [cardHeight, setCardHeight] = useState<number | null>(null);
+  const [pantryOffset, setPantryOffset] = useState<React.CSSProperties>({});
   const dragStartY = useRef(0);
   const dragStartHeight = useRef(0);
   const morphRef = useRef<HTMLDivElement>(null);
+  const pantrySlotRef = useRef<HTMLLIElement>(null);
 
   // settings morph — mirrors the pantry morph pattern
   const [settingsMorphing, setSettingsMorphing] = useState(false);
   const [settingsMorphingBack, setSettingsMorphingBack] = useState(false);
   const [settingsCardHeight, setSettingsCardHeight] = useState<number | null>(null);
+  const [settingsOffset, setSettingsOffset] = useState<React.CSSProperties>({});
   const settingsMorphRef = useRef<HTMLDivElement>(null);
+  const settingsSlotRef = useRef<HTMLLIElement>(null);
+
+  // a card is open (or on its way back into the tray) — the brine is showing
+  const cardOpen = morphing || settingsMorphing;
+  const idle = !morphing && !settingsMorphing;
 
   const morphToPantry = () => {
+    setPantryOffset(brineOffsets(pantrySlotRef.current));
     setViewLeaving(true);
     setMorphing(true);
     if (projects === null) {
@@ -68,6 +92,7 @@ export default function TitleScreen({ onEnter, onSelectProject, onCreateProject,
     setMorphingBack(true);
     setViewLeaving(false);
     setCardHeight(null);
+    setPantryOffset({});
     setTimeout(() => {
       setMorphing(false);
       setMorphingBack(false);
@@ -75,6 +100,7 @@ export default function TitleScreen({ onEnter, onSelectProject, onCreateProject,
   };
 
   const morphToSettings = () => {
+    setSettingsOffset(brineOffsets(settingsSlotRef.current));
     setViewLeaving(true);
     setSettingsMorphing(true);
   };
@@ -83,10 +109,17 @@ export default function TitleScreen({ onEnter, onSelectProject, onCreateProject,
     setSettingsMorphingBack(true);
     setViewLeaving(false);
     setSettingsCardHeight(null);
+    setSettingsOffset({});
     setTimeout(() => {
       setSettingsMorphing(false);
       setSettingsMorphingBack(false);
     }, 400);
+  };
+
+  /** clicking the brine closes whichever card is currently open */
+  const closeOpenCard = () => {
+    if (morphing && !morphingBack) morphToMain();
+    if (settingsMorphing && !settingsMorphingBack) morphSettingsToMain();
   };
 
   const onSettingsDragStart = useCallback((e: React.MouseEvent) => {
@@ -219,25 +252,42 @@ export default function TitleScreen({ onEnter, onSelectProject, onCreateProject,
       )}
       <img src={theme === "light" ? "/tofu-blk-alt-main.png" : "/tofu-wht-alt.png"} alt="ToFU" className="relative z-10 h-36 w-auto" />
 
-      {/* MAIN VIEW with morphing pantry container */}
-      {view === "main" && (
-        <div className="relative z-10 flex flex-col items-center gap-3">
-          {/* Workspace: fades out + moves up */}
-          <button
-            onClick={onEnter}
-            className={`title-mono-btn title-btn-workspace${viewLeaving ? " leaving" : ""}`}
-          >
-            {theme === "dark" ? <PiBoundingBoxFill size={22} /> : <PiBoundingBoxDuotone size={22} />}
-            <p className="title-mono-text">Workspace</p>
-          </button>
+      {/* the brine: blurs everything behind an opened card */}
+      {cardOpen && (
+        <div
+          className={`tofu-block-brine${morphingBack || settingsMorphingBack ? " leaving" : ""}`}
+          onClick={closeOpenCard}
+        />
+      )}
 
-          {/* Pantry: morphs from button into card */}
+      {/* the tray of tofu blocks */}
+      <div className={`relative flex items-center justify-center ${cardOpen ? "tofu-rack-raised" : "z-10"}`}>
+        <ul className="tofu-block-tray">
+          {/* Workspace: no card — straight into the four-pane screen */}
+          <li className={`tofu-block-slot${viewLeaving ? " leaving" : ""}`}>
+            <button onClick={onEnter} className="tofu-block">
+              <span className="tofu-block-grain" aria-hidden />
+              {theme === "dark" ? <PiBoundingBoxFill size={22} /> : <PiBoundingBoxDuotone size={22} />}
+              <p className="title-mono-text">Workspace</p>
+            </button>
+          </li>
+
+          {/* Pantry: presses flat into a card */}
+          <li
+            ref={pantrySlotRef}
+            className={`tofu-block-slot${morphing ? " open" : ""}${viewLeaving && !morphing ? " leaving" : ""}`}
+          >
           <div
             ref={morphRef}
-            className={`title-morph${morphing ? " morphing" : ""}${morphingBack ? " morphing-back" : ""}${viewLeaving && !morphing ? " leaving" : ""}`}
-            style={morphing && cardHeight !== null ? { minHeight: cardHeight, height: cardHeight } : undefined}
-            onClick={!morphing && !settingsMorphing ? morphToPantry : undefined}
+            className={`tofu-block title-morph${morphing ? " morphing" : ""}${morphingBack ? " morphing-back" : ""}`}
+            style={
+              morphing && cardHeight !== null
+                ? { ...pantryOffset, minHeight: cardHeight, height: cardHeight }
+                : pantryOffset
+            }
+            onClick={idle ? morphToPantry : undefined}
           >
+            <span className="tofu-block-grain" aria-hidden />
             {/* Button content — fades out during morph */}
             <div className="title-morph-btn-content">
               <FaBoxOpen size={22} />
@@ -358,14 +408,24 @@ export default function TitleScreen({ onEnter, onSelectProject, onCreateProject,
               )}
             </div>
           </div>
+          </li>
 
-          {/* Settings: morphs from button into card */}
+          {/* Settings: presses flat into a card */}
+          <li
+            ref={settingsSlotRef}
+            className={`tofu-block-slot${settingsMorphing ? " open" : ""}${viewLeaving && !settingsMorphing ? " settings-leaving" : ""}`}
+          >
           <div
             ref={settingsMorphRef}
-            className={`title-morph${settingsMorphing ? " morphing" : ""}${settingsMorphingBack ? " morphing-back" : ""}${viewLeaving && !settingsMorphing ? " title-settings-leaving" : ""}`}
-            style={settingsMorphing && settingsCardHeight !== null ? { minHeight: settingsCardHeight, height: settingsCardHeight } : undefined}
-            onClick={!settingsMorphing ? morphToSettings : undefined}
+            className={`tofu-block title-morph${settingsMorphing ? " morphing" : ""}${settingsMorphingBack ? " morphing-back" : ""}`}
+            style={
+              settingsMorphing && settingsCardHeight !== null
+                ? { ...settingsOffset, minHeight: settingsCardHeight, height: settingsCardHeight }
+                : settingsOffset
+            }
+            onClick={idle ? morphToSettings : undefined}
           >
+            <span className="tofu-block-grain" aria-hidden />
             {/* Button content — fades out during morph */}
             <div className="title-morph-btn-content">
               <Hexagon size={22} />
@@ -414,8 +474,9 @@ export default function TitleScreen({ onEnter, onSelectProject, onCreateProject,
               )}
             </div>
           </div>
-        </div>
-      )}
+          </li>
+        </ul>
+      </div>
 
       {/* CONFIRM: open project? */}
       {confirmProject && (

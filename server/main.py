@@ -418,6 +418,16 @@ class SemanticSubstitutionRequest(BaseModel):
     apply: bool = False
 
 
+class SemanticRepairRequest(BaseModel):
+    """The user's verdict on a proposed cross-region source correction.
+
+    Basil only ever proposes: when a gazetteer entity is spelled across
+    fragmented regions and one of them was misrecognised, the corrected
+    reading waits here until someone says so explicitly.
+    """
+    accepted: bool
+
+
 # --- upload + languages + fonts ---
 
 @app.post("/api/assets")
@@ -1211,7 +1221,13 @@ def get_manifest(asset_id: str):
     # Older manifests predate semantic reading-unit registration.  Upgrade
     # that metadata on read without re-running OCR and without touching
     # target_text: users keep every existing translation exactly as entered.
-    if not manifest.semantic_units:
+    #
+    # Units registered before the pairing verdict existed are also stale:
+    # they were grouped by box adjacency alone, so a manifest can be holding
+    # a unit that spans several unrelated signs.  Re-registering is cheap and
+    # is the same deterministic pass, so upgrade those too rather than
+    # leaving a project permanently on the old grouping.
+    if not manifest.semantic_units or any(unit.pairing is None for unit in manifest.semantic_units):
         try:
             from tofu.layers.basil import unify_manifest
             unify_manifest(manifest)
@@ -1273,6 +1289,28 @@ def semantic_substitution(asset_id: str, unit_id: str, req: SemanticSubstitution
     # cannot alter what Render will produce.
     save_manifest(UPLOAD_DIR, asset_id, manifest)
     return {"manifest": jsonable(manifest), "plan": plan, "applied": bool(req.apply)}
+
+
+@app.post("/api/semantic-units/{asset_id}/{unit_id}/repair")
+def semantic_repair(asset_id: str, unit_id: str, req: SemanticRepairRequest):
+    """Accept or reject Basil's proposed cross-region source correction.
+
+    The decision changes only the semantic unit's own source text. Region
+    ids, boxes and OCR text stay exactly as Cicerone left them, so a
+    rejected proposal costs nothing and a later re-detection loses nothing.
+    """
+    manifest = load_manifest(UPLOAD_DIR, asset_id)
+    if manifest is None:
+        raise HTTPException(404, f"no manifest for asset '{asset_id}'")
+    from tofu.layers import basil
+    try:
+        basil.accept_repair(manifest, unit_id, req.accepted)
+    except KeyError as exc:
+        raise HTTPException(404, str(exc))
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+    save_manifest(UPLOAD_DIR, asset_id, manifest)
+    return {"manifest": jsonable(manifest), "accepted": bool(req.accepted)}
 
 
 def _glossary_path(scope: str, project_id: Optional[str] = None) -> Path:
