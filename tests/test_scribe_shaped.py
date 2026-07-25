@@ -5,21 +5,22 @@ import numpy as np
 import pytest
 from PIL import Image, ImageFont
 
+from conftest import DEVANAGARI_FONT, LATIN_FONT, THAI_FONT
 from tofu.core.types import BBox, InstText, Mask, StyleProfil, TextManifest
 from tofu.layers import knead, scribe
 
-NIRMALA = Path(r"C:\Windows\Fonts\Nirmala.ttc")     # Devanagari
-LEELAWADEE = Path(r"C:\Windows\Fonts\LeelawUI.ttf")  # Thai
-ARIAL = Path(r"C:\Windows\Fonts\arial.ttf")
+NIRMALA = DEVANAGARI_FONT
+LEELAWADEE = THAI_FONT
+ARIAL = LATIN_FONT
 
 HINDI = "हिन्दी"
 KSHA = "क्ष"
 THAI = "ภาษาไทย"
 
 needs_shaping = pytest.mark.skipif(not knead.available(), reason="shaping libraries absent")
-needs_deva = pytest.mark.skipif(not NIRMALA.is_file(), reason="Nirmala UI not installed")
-needs_thai = pytest.mark.skipif(not LEELAWADEE.is_file(), reason="Leelawadee UI not installed")
-needs_arial = pytest.mark.skipif(not ARIAL.is_file(), reason="Arial not installed")
+needs_deva = pytest.mark.skipif(NIRMALA is None, reason="no Devanagari font on this system")
+needs_thai = pytest.mark.skipif(THAI_FONT is None, reason="no Thai font on this system")
+needs_arial = pytest.mark.skipif(ARIAL is None, reason="no Latin font on this system")
 
 REGION = (8, 8, 392, 72)
 

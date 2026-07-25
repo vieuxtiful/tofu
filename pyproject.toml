@@ -1,0 +1,115 @@
+## 🍢 tofu-l10n — package metadata
+## vieuxtiful
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tofu-l10n"
+description = "Context-aware visual text localization: detect text in an image, erase it, and re-render it in another language in the original style."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+authors = [{ name = "vieuxtiful" }]
+keywords = [
+    "localization", "l10n", "translation", "ocr", "inpainting",
+    "scene-text", "typesetting", "xliff", "translation-memory",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Topic :: Multimedia :: Graphics",
+    "Topic :: Scientific/Engineering :: Image Processing",
+    "Topic :: Software Development :: Localization",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
+]
+dynamic = ["version"]
+
+## Floors, not pins -- and deliberately unlike server/requirements.txt.
+## That file pins with == because the APPLICATION has to rebuild the exact
+## stack its measurements were taken on. A LIBRARY has to coexist with
+## whatever else is already in the caller's environment, so it states the
+## oldest version it actually works with and gets out of the way.
+dependencies = [
+    "pillow>=10.0",              # scribe rendering, cicerone pre-resize
+    "numpy>=1.26",               # image array interchange
+    "opencv-python-headless>=4.8",  # scene/cleanse/typography/imaging
+    "fonttools>=4.38",           # glyph coverage, the tofu layer's whole job
+    "scikit-image>=0.22",        # imaging.text_mask local thresholding
+    "arabic-reshaper>=3.0",      # scribe RTL joining forms
+    "python-bidi>=0.4",          # scribe RTL visual reordering
+]
+
+[project.optional-dependencies]
+## OCR is an extra, not a core dependency: it drags in torch (~2 GB), and
+## the pipeline is genuinely useful without it -- cicerone falls back to
+## NullBackend, and the TMS round-trip (import XLIFF, erase, re-render)
+## needs no detector at all.
+ocr = ["easyocr>=1.7.1"]
+shaping = ["uharfbuzz>=0.37", "freetype-py>=2.4"]  # Indic/SEA correctness
+glossary = ["openpyxl>=3.1", "xlrd>=2.0.1"]
+server = ["fastapi>=0.110", "uvicorn[standard]>=0.29", "python-multipart>=0.0.9", "pydantic>=2.6"]
+all = ["tofu-l10n[ocr,shaping,glossary,server]"]
+dev = ["pytest>=8.0"]
+
+## NOTE: there is deliberately no [paddle] or [inpaint] extra.
+## PP-OCRv5 (CJK detection) and LaMa (neural inpainting) run OUT-OF-PROCESS
+## under their own interpreters, because paddlepaddle force-replaces numpy
+## and opencv on install -- an extra that pip-installed them here would
+## corrupt the very environment this package needs. Provision them as
+## sibling venvs; see server/requirements-paddle.txt and
+## server/requirements-inpaint.txt. tofu discovers them at runtime and
+## degrades cleanly when they are absent.
+
+[project.urls]
+Homepage = "https://github.com/vieuxtiful/tofu"
+Repository = "https://github.com/vieuxtiful/tofu"
+Issues = "https://github.com/vieuxtiful/tofu/issues"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["tofu*"]
+
+[tool.setuptools.package-data]
+tofu = ["py.typed"]
+
+## Single source of truth. The version lives in tofu/__init__.py and is read
+## from there -- it used to be a literal in interchange.py, which had already
+## drifted into disagreeing with ITSELF (XLIFF headers said 0.2 while TMX
+## headers in the same module said 0.1).
+[tool.setuptools.dynamic]
+version = { attr = "tofu.__version__" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = [
+    "E501",  # long lines: the explanatory comments in this codebase are the point
+    "B008",  # FastAPI's Depends()/File() default-argument idiom
+]
+
+[tool.mypy]
+python_version = "3.11"
+files = ["src/tofu"]
+ignore_missing_imports = true   # cv2, easyocr, uharfbuzz ship no stubs
+## Not strict yet: images cross layer boundaries as `Any` (91 parameters),
+## which is the honest state of the code rather than a lie in a config file.
+## Tightening that is tracked separately -- it means introducing a real
+## image protocol, not sprinkling annotations.
+check_untyped_defs = true
+warn_unused_ignores = true
