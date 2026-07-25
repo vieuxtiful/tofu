@@ -1,0 +1,110 @@
+## 🍢 ToFU — continuous integration
+## vieuxtiful
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: tests (${{ matrix.os }}, py${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.13"]
+        include:
+          # older interpreters on Linux only -- the point is to catch syntax
+          # and stdlib drift, not to re-run the whole matrix twice over
+          - os: ubuntu-latest
+            python: "3.11"
+          - os: ubuntu-latest
+            python: "3.12"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+
+      - name: Install (CPU torch)
+        # The CPU wheel index keeps this a ~200 MB install instead of the
+        # ~2.5 GB CUDA default. Runners have no GPU, so the CUDA build would
+        # be dead weight that also blows the disk quota.
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --extra-index-url https://download.pytorch.org/whl/cpu -e ".[all,dev]"
+
+      - name: Fonts for shaping tests (Linux)
+        # Without these the Devanagari/Thai suites skip rather than run --
+        # tests/conftest.py resolves faces per platform, so supplying Noto
+        # is what makes complex-script coverage real on CI.
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            fonts-dejavu-core fonts-noto-core fonts-liberation
+
+      - name: Run tests
+        env:
+          PYTHONUTF8: "1"   # EasyOCR's progress bar dies on a cp1252 console
+        run: python -m pytest tests/ -q
+
+  package:
+    name: wheel builds and installs clean
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Build sdist and wheel
+        run: |
+          python -m pip install --upgrade pip build twine
+          python -m build
+          python -m twine check dist/*
+
+      - name: Clean-room install
+        # The acceptance test for packaging: install the built wheel into a
+        # FRESH venv and import it with no PYTHONPATH and no source tree on
+        # sys.path. tests/conftest.py injects src/ during normal test runs,
+        # which would otherwise mask a broken package layout entirely.
+        run: |
+          python -m venv /tmp/clean
+          /tmp/clean/bin/python -m pip install --quiet dist/*.whl
+          cd /tmp
+          /tmp/clean/bin/python -c "
+          import tofu
+          assert tofu.__version__, 'version missing'
+          from tofu import BBox, TextManifest, StyleProfil
+          from tofu.utils import interchange
+          m = TextManifest(asset_id='a', total_regions=0, src_lang='en', instances=[])
+          assert 'tool-version=\"%s\"' % tofu.__version__ in interchange.export_xliff(m, 'en', 'es')
+          print('clean-room import OK, version', tofu.__version__)
+          "
+
+      - name: py.typed ships in the wheel
+        run: |
+          python -c "
+          import zipfile, glob
+          names = zipfile.ZipFile(glob.glob('dist/*.whl')[0]).namelist()
+          assert 'tofu/py.typed' in names, 'py.typed missing from wheel: %s' % names[:20]
+          print('py.typed present')
+          "
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/

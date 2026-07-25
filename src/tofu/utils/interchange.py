@@ -32,6 +32,25 @@ from xml.sax.saxutils import escape as xml_escape
 from tofu.core.types import TextManifest
 
 
+def _version() -> str:
+    """The package version, for the tool-provenance headers below.
+
+    Read from tofu.__version__ rather than written out here. These two
+    headers used to carry literals, and they had already drifted into
+    disagreeing with each other -- XLIFF announced 0.2 while TMX, forty
+    lines away in the same file, announced 0.1. Provenance that a CAT tool
+    records against a translation unit is exactly the wrong place for a
+    number nobody remembers to update.
+
+    Imported lazily: tofu/__init__.py re-exports from core.types, and
+    core.types is what imports this module's sibling -- a module-level
+    import here would close that circle.
+    """
+    from tofu import __version__
+
+    return __version__
+
+
 # ---------------------------------------------------------------------------
 # XLIFF 1.2 export
 # ---------------------------------------------------------------------------
@@ -80,7 +99,7 @@ def export_xliff(
                  f'target-language="{targ_lang_full}" '
                  f'datatype="plaintext" original="{manifest.asset_id}">')
     lines.append('    <header>')
-    lines.append('      <tool tool-id="tofu" tool-name="ToFU" tool-version="0.2" />')
+    lines.append(f'      <tool tool-id="tofu" tool-name="ToFU" tool-version="{_version()}" />')
     lines.append('    </header>')
     lines.append('    <body>')
 
@@ -288,7 +307,7 @@ def export_tmx(
     lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
         '<tmx version="1.4">',
-        '  <header creationtool="ToFU" creationtoolversion="0.1"',
+        f'  <header creationtool="ToFU" creationtoolversion="{_version()}"',
         f'    segtype="sentence" o-tmf="plain text"',
         f'    adminlang="en" srclang="{src_full}"',
         '    datatype="plaintext" />',

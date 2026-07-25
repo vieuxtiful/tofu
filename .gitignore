@@ -17,6 +17,9 @@ frontend/node_modules/
 # Build artifacts
 dist/
 build/
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
 
 # OS
 Thumbs.db

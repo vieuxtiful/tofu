@@ -23,6 +23,57 @@ ToFU (text-over-frame-unification) is a seven-layer visual translation pipeline 
 
 ---
 
+## Install as a library
+
+The pipeline is packaged as `tofu-l10n` and usable without the server or the
+frontend:
+
+```
+pip install tofu-l10n
+```
+
+The core install is deliberately light — Pillow, numpy, OpenCV, fontTools,
+scikit-image — and does **not** pull PyTorch. That is enough to erase and
+re-render text from a supplied manifest, which is the whole TMS round-trip
+(import XLIFF → cleanse → scribe → export). Detection is an extra:
+
+| Extra | Adds | For |
+|---|---|---|
+| `[ocr]` | easyocr (pulls torch, ~2 GB) | text detection and recognition |
+| `[shaping]` | uharfbuzz, freetype-py | correct Indic/SE-Asian rendering |
+| `[glossary]` | openpyxl, xlrd | .xlsx/.xls glossary ingest |
+| `[server]` | fastapi, uvicorn | the REST API in `server/` |
+| `[all]` | all of the above | |
+
+```python
+from tofu import TofuPipeline
+
+result = TofuPipeline().process("sign.png", targ_lang="es")
+```
+
+Individual layers work standalone — they exchange a `TextManifest` and
+nothing else:
+
+```python
+from tofu.layers import cicerone, scribe
+
+manifest = cicerone.detect("sign.png")
+image = scribe.render(cleansed, manifest, targ_lang="es")
+```
+
+`import tofu` pulls in no heavy dependency (~70 ms, no torch/OpenCV): the
+orchestrator resolves lazily via PEP 562, so importing the dataclasses for a
+CLI or a test costs nothing.
+
+There is deliberately **no `[paddle]` or `[inpaint]` extra.** PP-OCRv5 (CJK
+detection) and LaMa (neural inpainting) run out-of-process under their own
+interpreters, because `paddlepaddle` force-replaces numpy and OpenCV on
+install — an extra that pip-installed them would corrupt the environment
+this package needs. Provision them as sibling venvs (see below); ToFU
+discovers them at runtime and degrades cleanly when absent.
+
+---
+
 ## Running the stack
 
 **Backend** (Python 3.13 venv — required; easyocr's dependency tree is not yet reliable on 3.14):

@@ -5,18 +5,19 @@ import numpy as np
 import pytest
 from PIL import ImageFont
 
+from conftest import DEVANAGARI_FONT, LATIN_FONT
 from tofu.layers import knead
 
-ARIAL = Path(r"C:\Windows\Fonts\arial.ttf")
-NIRMALA = Path(r"C:\Windows\Fonts\Nirmala.ttc")   # Devanagari, a .ttc collection
+ARIAL = LATIN_FONT      # arial.ttf on Windows, DejaVuSans/Liberation on CI
+NIRMALA = DEVANAGARI_FONT
 
 HINDI = "हिन्दी"
 KSHA = "क्ष"
 ARABIC = "مرحبا"
 
 needs_shaping = pytest.mark.skipif(not knead.available(), reason="uharfbuzz/freetype-py absent")
-needs_arial = pytest.mark.skipif(not ARIAL.is_file(), reason="Arial not installed")
-needs_deva = pytest.mark.skipif(not NIRMALA.is_file(), reason="Nirmala UI not installed")
+needs_arial = pytest.mark.skipif(ARIAL is None, reason="no Latin font on this system")
+needs_deva = pytest.mark.skipif(NIRMALA is None, reason="no Devanagari font on this system")
 
 
 def arial(size=48):
@@ -42,7 +43,7 @@ class TestFaceIdentity:
     def test_bare_name_resolves_through_pillow(self):
         """scribe's fallback chain is bare filenames FreeType cannot find;
         piggybacking on Pillow's lookup is the whole point of this helper."""
-        ident = knead.face_identity(ImageFont.truetype("arial.ttf", 20))
+        ident = knead.face_identity(ImageFont.truetype(ARIAL.name, 20))
         assert ident is not None and Path(ident[0]).is_file()
 
     def test_default_bitmap_font_rejected(self):
@@ -253,6 +254,6 @@ class TestDegradation:
 
         monkeypatch.setattr(builtins, "__import__", no_shaping)
         assert knead.available() is False
-        if ARIAL.is_file():
+        if ARIAL is not None:
             assert knead.knead_run("AV", arial()) is None
             assert knead.run_width("AV", arial()) is None
