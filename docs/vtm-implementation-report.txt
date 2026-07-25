@@ -1,0 +1,355 @@
+================================================================================
+ OPEN VISUAL TRANSLATION MEMORY (VTM) v1.0
+ Implementation report and format description
+================================================================================
+
+ Project      ToFU - context-aware visual text localization
+ Author       vieuxtiful
+ Repository   https://github.com/vieuxtiful/tofu
+ Namespace    urn:vieuxtiful:vtm:1.0
+ License      MIT
+ Status       Draft, published
+ Commits      049da5c  package the pipeline as tofu-l10n
+              017a49d  publish VTM v1.0
+              9930dac  schema prose, capture-bar dimensions
+ Test suite   566 passing (49 of them VTM conformance)
+
+================================================================================
+ 1. THE PROBLEM
+================================================================================
+
+A conventional translation memory stores a pair:
+
+    source string  ->  target string
+
+That is enough to reuse a STRING. It is useless for reusing how the string
+LOOKED.
+
+Text that lives inside an image - signage, game UI, menus, packaging,
+screenshots - carries more than its content. To place "Grilled Meat" where
+the Japanese source read "yakiniku", a tool has to know:
+
+    - WHERE the source sat, in coordinates that survive a resize
+    - HOW LARGE it was
+    - WHAT FACE, weight, colour, stroke and alignment it used
+    - WHAT IT SAT ON, so the original can be erased convincingly
+    - HOW FAR any of the above can be trusted
+
+None of that fits in a TMX segment or an XLIFF trans-unit. So in current
+practice it is discarded at export and re-established by hand for every new
+asset - which is precisely the work a translation memory exists to eliminate.
+
+VTM v1.0 defines the record that carries it.
+
+NON-GOALS. VTM is not an image format, not a rendering specification, and not
+a replacement for XLIFF or TMX. It describes what was translated and how it
+was presented. Section 6 covers how it rides alongside XLIFF.
+
+================================================================================
+ 2. WHAT WAS DELIVERED
+================================================================================
+
+  spec/vtm-1.0.md                  Specification, RFC 2119 language
+  spec/vtm-1.0.schema.json         JSON Schema draft 2020-12
+  spec/conformance/index.json      Vector manifest with expected outcomes
+  spec/conformance/valid/          5 documents a reader MUST accept
+  spec/conformance/invalid/        6 documents a reader MUST reject
+  src/tofu/utils/vtm.py            Reference implementation
+  tests/test_vtm_spec.py           49 tests, run against every vector
+  README.md                        User-facing description
+
+  Product integration:
+  POST /api/export {"format": "vtm"}    verified over live HTTP
+
+================================================================================
+ 3. DOCUMENT STRUCTURE
+================================================================================
+
+{
+  "vtm_version": "1.0",
+  "generator": { "name": "ToFU", "version": "0.1.0" },
+  "created": "2026-07-25T15:45:35+00:00",
+  "source_language": "ja-JP",
+  "target_language": "en-US",
+  "asset": { "id": "japan-street", "width": 627, "height": 489 },
+  "entries": [
+    {
+      "id": "r1",
+      "source": "<source text>",
+      "target": "Grilled Meat",
+      "geometry": {
+        "bbox": { "x": 193, "y": 125, "width": 240, "height": 40 },
+        "polygon": [[193,125],[433,125],[433,165],[193,165]],
+        "rotation": 0.0,
+        "reading_order": 1
+      },
+      "style": {
+        "font_family": "arial.ttf", "font_size": 28, "color": "#1a1a1a",
+        "weight": "bold", "align": "center", "valign": "middle",
+        "stroke": { "color": "#ffffff", "width": 2.0 },
+        "shadow": { "offset_x": 1, "offset_y": 1, "blur": 2.0,
+                    "color": "#00000080" }
+      },
+      "background": { "color": "#8a6a4f", "texture": "textured" },
+      "provenance": { "confidence": 0.93, "qa_score": 0.88,
+                      "engine": "paddleocr", "human_reviewed": true },
+      "visual": { "phash": "b4f1c2a09e3d5871",
+                  "style_fingerprint": "bold|28|#1a1a1a|center" },
+      "x-tofu": { "style": { "tsume": 0.2 }, "cleanse_strategy": "telea" }
+    }
+  ]
+}
+
+REQUIRED at document level  vtm_version, source_language, target_language,
+                            asset (with width and height), entries
+REQUIRED per entry          id, source, target, geometry (with bbox)
+
+CONFORMANCE LEVELS
+
+  Core     The required keys above. A valid visual translation memory.
+  Styled   Core + style. Enables faithful re-rendering.
+  Full     Styled + background + provenance + visual. Enables
+           erase-and-re-render and cross-asset matching.
+
+================================================================================
+ 4. THE THREE DESIGN COMMITMENTS
+================================================================================
+
+Each of these is a decision a consumer would otherwise have to guess at, and
+guessing wrong produces silent, confident errors rather than loud ones.
+
+--------------------------------------------------------------------------------
+ 4.1  GEOMETRY IS MEANINGLESS WITHOUT ITS ASSET
+--------------------------------------------------------------------------------
+
+asset.width and asset.height are REQUIRED. The coordinate system is stated
+once and without exception:
+
+    pixels; origin top-left; x increases rightward; y increases downward.
+
+The requirement is the important part. A bounding box of (10, 20, 100, 30)
+describes a completely different region on a 640-pixel thumbnail than on a
+4096-pixel original. A memory that records geometry without its resolution is
+not merely lossy - it is silently WRONG the moment anything is resized, and
+it fails by placing text confidently in the wrong place, which is worse than
+failing visibly.
+
+Requiring the dimensions makes that class of error DETECTABLE. A validator can
+reject a box that extends past its own asset, which is the signature of
+coordinates captured at a different scale. That check is a published
+conformance vector (invalid/bbox-outside-asset.json), not merely a docstring.
+
+Consumers needing normalized coordinates divide by the asset dimensions.
+Nobody has to reverse-engineer an origin.
+
+Note also that bbox uses NAMED KEYS rather than a 4-tuple. Array ordering
+(x,y,w,h vs x1,y1,x2,y2) is the most common source of silent interop bugs in
+this exact shape.
+
+--------------------------------------------------------------------------------
+ 4.2  STYLE IS A PORTABLE SUBSET, NOT ONE ENGINE'S INTERNALS
+--------------------------------------------------------------------------------
+
+The style object carries only keys a competing implementation can reasonably
+be expected to honour:
+
+    font_family, font_size, color, weight, italic, underline, align, valign,
+    orientation, direction, tracking, leading, stroke{color,width},
+    shadow{offset_x,offset_y,blur,color}
+
+ToFU's internal StyleProfil has 28 fields. The remainder - CJK tsume
+compression, inpainting strategy, garnish profiles, transform presets - are
+real and useful and NO other implementation can be expected to support them.
+They round-trip under the x-tofu extension, so ToFU loses nothing, while a
+conforming reader that ignores every x- key still receives a complete and
+useful record.
+
+The reasoning: a format that standardises one implementation's internals is
+that implementation's serialization wearing a specification's clothes, and
+nobody else can implement it. The subset is the point.
+
+font_family is explicitly a HINT, not a guarantee. A consumer will not always
+have the face and MUST be free to substitute. provenance.glyph_fallback
+records when the producer already had to.
+
+--------------------------------------------------------------------------------
+ 4.3  IT RIDES ALONGSIDE XLIFF RATHER THAN COMPETING WITH IT
+--------------------------------------------------------------------------------
+
+Localization runs on XLIFF. A format that demands a parallel pipeline does not
+get adopted, however good its record is.
+
+Under urn:vieuxtiful:vtm:1.0, an entry attaches to the trans-unit whose id
+matches:
+
+  <xliff version="1.2" xmlns="urn:oasis:names:tc:xliff:document:1.2"
+         xmlns:vtm="urn:vieuxtiful:vtm:1.0">
+    <file source-language="ja-JP" target-language="en-US"
+          original="street-01" vtm:asset-width="1024" vtm:asset-height="768">
+      <body>
+        <trans-unit id="r1">
+          <source>...</source>
+          <target>Grilled Meat</target>
+          <vtm:geometry x="10" y="20" width="120" height="40"
+                        reading-order="1"/>
+          <vtm:style font-family="arial.ttf" font-size="28"
+                     color="#1a1a1a" weight="bold"/>
+        </trans-unit>
+      </body>
+    </file>
+  </xliff>
+
+A CAT tool with no VTM support ignores the foreign namespace and round-trips
+the file unharmed. That property is what makes adoption possible at all.
+
+asset-width and asset-height sit on <file> because section 4.1 requires them
+and a trans-unit has no other way to anchor its geometry.
+
+ToFU was well positioned for this binding: src/tofu/utils/interchange.py had
+already handled XLIFF 1.2 export in four CAT dialects (standard/MemoQ, SDL,
+Crowdin, Smartling) and namespace-agnostic import across XLIFF 1.2 and 2.x,
+plus TMX, TSV, CSV and TXT.
+
+================================================================================
+ 5. PROVENANCE AND TRUST
+================================================================================
+
+A visual TM that reuses a bad pair is worse than one that reuses nothing: it
+propagates an error across every asset that matches it, carrying a confidence
+the original never had.
+
+    provenance.confidence   recognition confidence for the SOURCE text
+    provenance.qa_score     measured quality of the rendered TARGET
+    provenance.human_reviewed
+
+confidence and qa_score answer different questions and MUST NOT be conflated.
+human_reviewed outranks both. Consumers SHOULD apply a threshold before
+reuse, and SHOULD prefer a human-reviewed entry over a higher-scoring
+automatic one.
+
+The visual block (phash, style_fingerprint) is what makes the memory REUSABLE
+rather than merely archival: it lets an entry be matched against a region of
+a different asset entirely.
+
+================================================================================
+ 6. REFERENCE IMPLEMENTATION
+================================================================================
+
+src/tofu/utils/vtm.py
+
+    export_vtm(manifest, src_lang, targ_lang, *, image_size=None,
+               include_untranslated=False) -> dict
+    import_vtm(document) -> List[InstText]
+    validate(document) -> List[str]        # empty list means valid
+
+Behaviours worth noting, each a deliberate choice:
+
+  * export refuses to emit geometry it cannot anchor. If neither
+    manifest.img_dim nor image_size resolves, it raises rather than writing a
+    document that would be uninterpretable later.
+
+  * validate returns ALL problems rather than raising on the first. Someone
+    repairing a hand-edited memory wants the whole list, not a game of
+    whack-a-mole.
+
+  * import refuses an invalid document instead of importing it partially. A
+    silently poisoned TM is the failure mode that matters here.
+
+  * regions flagged dnt (do-not-translate) or excluded are omitted. DNT text
+    is not a translation pair; an excluded region was removed by a human.
+    Untranslated regions are omitted unless include_untranslated is set,
+    which is what you want when exporting a job FOR translation rather than a
+    memory OF one.
+
+  * a foreign x-tofu block cannot inject arbitrary attributes. Vendor keys are
+    accepted only when they name real StyleProfil fields.
+
+  * language codes are normalized to BCP 47 by reusing interchange's existing
+    table rather than introducing a second one that could drift from it.
+
+  * validation is hand-written rather than delegated to a jsonschema library,
+    so checking a document costs no dependency. The published JSON Schema is
+    for third-party tooling.
+
+================================================================================
+ 7. VERIFICATION
+================================================================================
+
+CONFORMANCE VECTORS (spec/conformance/)
+
+  valid/minimal.vtm.json              smallest conforming document
+  valid/styled.vtm.json               core + portable typography
+  valid/full.vtm.json                 every optional block + extension
+  valid/empty-entries.vtm.json        zero entries is legitimate
+  valid/forward-compatible.vtm.json   unknown top-level key, unknown entry
+                                      key, and an x- extension; a 1.x reader
+                                      MUST accept and ignore all three
+
+  invalid/missing-asset-dimensions.json   geometry with no resolution
+  invalid/bbox-outside-asset.json         coordinates from another scale
+  invalid/duplicate-ids.json              ids must be unique
+  invalid/missing-target.json             absent and empty differ
+  invalid/negative-bbox.json              zero extent is not a region
+  invalid/unsupported-version.json        2.x refused, not guessed at
+
+TEST PROPERTIES (tests/test_vtm_spec.py, 49 tests)
+
+  * every valid vector validates and imports
+  * every invalid vector is rejected AND the rejection message names the
+    actual defect - failing by accident is not conformance
+  * the REQUIRED key sets in the schema and in the code are asserted
+    IDENTICAL, so the specification and its implementation cannot drift
+  * export output validates against the spec it claims to implement
+  * round-trip preserves core fields, style, and the vendor extension
+  * a foreign extension cannot inject attributes
+
+The anti-drift assertion has already earned its place: a later reword of the
+schema's prose was caught immediately by the test suite.
+
+END-TO-END
+
+  POST /api/export {"asset_id": ..., "format": "vtm"} verified against a
+  running server on a real stored manifest: HTTP 200, application/json,
+  Content-Disposition attachment filename "<asset>.vtm.json", and output that
+  passes validate().
+
+To re-derive:
+
+  .venv/Scripts/python -m pytest tests/test_vtm_spec.py -q
+  .venv/Scripts/python -c "import json;from tofu.utils import vtm;
+      print(vtm.validate(json.load(open('spec/conformance/valid/full.vtm.json'))))"
+
+================================================================================
+ 8. HONEST ASSESSMENT
+================================================================================
+
+What this is: a well-formed, testable, MIT-licensed specification with a
+working reference implementation, published conformance vectors, and an
+integration path into the tooling the industry already uses. That is more
+than most published schemas can claim.
+
+What it is not, yet: a standard. Publishing a schema does not create one -
+adoption does. A specification becomes a standard when a second, independent
+implementation exists.
+
+The lever is section 4.3. Because VTM is defined as an XLIFF extension
+namespace rather than a rival format, a CAT tool vendor can support it
+incrementally without changing anything about their existing pipeline, and a
+tool that does not support it loses nothing. That is a far lower barrier than
+asking anyone to adopt a new file format, and it is the reason the binding
+was specified before anything else optional.
+
+Suggested next steps toward adoption, in order of leverage:
+
+  1. A validator anyone can run without installing ToFU - the JSON Schema is
+     already published for exactly this, but a hosted or single-file
+     validator lowers the barrier further.
+  2. A second implementation in another language, even a partial reader.
+     One implementation is a format; two is a standard.
+  3. Worked examples against real public assets, showing a memory captured
+     from one image and reused on another - the reuse story is the argument,
+     and it is currently described rather than demonstrated.
+
+================================================================================
+ END OF REPORT
+================================================================================
