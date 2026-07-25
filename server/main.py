@@ -15,7 +15,7 @@ endpoints:
   DELETE /api/manifest/{asset_id}/regions/{rid}  remove a region
   PATCH /api/manifest/{asset_id}/regions/{rid}   update a region
   POST /api/ocr-region                      OCR a specific bbox crop
-  POST /api/export                          export to XLIFF/TMX/TSV/CSV/TXT
+  POST /api/export                          export to XLIFF/TMX/TSV/CSV/TXT/VTM
   POST /api/import                          import translated file
   POST /api/render                          run scene→cleanse→scribe→verify
   POST /api/process                         legacy full pipeline
@@ -1630,6 +1630,22 @@ def export(req: ExportRequest):
         content = interchange.export_csv(manifest); ext, media = "csv", "text/csv"
     elif fmt == "txt":
         content = interchange.export_txt(manifest); ext, media = "txt", "text/plain"
+    elif fmt == "vtm":
+        # Visual Translation Memory (spec/vtm-1.0.md). Unlike the formats
+        # above, this carries geometry and typography as well as the string
+        # pair -- the record needed to re-render a translation the way the
+        # source looked, rather than merely to look it up.
+        import json as _json
+
+        from tofu.utils import vtm as vtm_mod
+        try:
+            document = vtm_mod.export_vtm(manifest, src_lang, req.targ_lang or "")
+        except ValueError as exc:
+            # the asset's pixel dimensions are required and unrecoverable
+            # here: a bbox with no resolution cannot be interpreted later
+            raise HTTPException(422, str(exc))
+        content = _json.dumps(document, ensure_ascii=False, indent=2)
+        ext, media = "vtm.json", "application/json"
     else:
         raise HTTPException(400, f"unknown format '{fmt}'")
     filename = f"{req.asset_id}.{ext}"

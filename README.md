@@ -307,6 +307,38 @@ PaddleOCR's Japanese language selector doesn't receive a Japanese-specific recog
 
 A low-confidence OCR read of a real, well-known place or establishment sign (a train-station gate, a named street, a chain storefront) can often be recovered by checking it against a small list of known names, even when the pixels alone weren't legible enough. Menu uses a stricter gate than Savor's pixel-verified glyph swaps: it only touches reads the recognizer was already unsure about (confidence below 0.6), and only applies a candidate that's a strong fuzzy match (similarity ≥ 0.5). The gazetteer is seeded for the project's dense-CJK-signage test scenes but is designed to grow with whatever real signage future assets turn up — not a fixed answer key for one image. Menu also serves as the reference gazetteer for Savor's dakuten course.
 
+## Open Visual Translation Memory (VTM)
+
+A conventional translation memory stores a pair: source string, target string. That is enough to reuse a *string* and useless for reusing how the string *looked*. To place `Grilled Meat` where `焼肉` was, a tool needs to know where the source sat, how large it was, what face and colour it used, what it sat on, and how far any of that can be trusted — none of which fits in a TMX segment, so in practice it gets discarded and re-established by hand for every asset.
+
+**VTM v1.0** is the record that carries it — an open format, published under MIT:
+
+| | |
+|---|---|
+| Specification | [`spec/vtm-1.0.md`](spec/vtm-1.0.md) |
+| JSON Schema | [`spec/vtm-1.0.schema.json`](spec/vtm-1.0.schema.json) |
+| Conformance vectors | [`spec/conformance/`](spec/conformance/) |
+| Reference implementation | [`tofu.utils.vtm`](src/tofu/utils/vtm.py) |
+| Namespace | `urn:vieuxtiful:vtm:1.0` |
+
+```python
+from tofu.utils import vtm
+
+doc = vtm.export_vtm(manifest, "ja", "en")   # -> dict, JSON-serializable
+problems = vtm.validate(doc)                  # [] when valid
+instances = vtm.import_vtm(doc)               # raises on an invalid document
+```
+
+Also available over HTTP: `POST /api/export` with `{"format": "vtm"}`.
+
+Three commitments shape the format:
+
+- **Geometry is meaningless without its asset.** `asset.width`/`asset.height` are REQUIRED. A bbox of `(10, 20, 100, 30)` describes a different region on a 640px thumbnail than on a 4096px original, and a memory that omits the resolution is silently wrong the moment anything is resized. Requiring the dimensions makes that error *detectable* — the validator rejects a box extending past the asset, which is the signature of coordinates captured at another scale.
+- **Style is a portable subset, not one engine's internals.** Family, size, colour, weight, italic, alignment, orientation, direction, tracking, leading, stroke, shadow — keys any implementation can honour. ToFU's own `tsume` and inpainting strategy round-trip under `x-tofu`, and a reader that ignores every `x-` key still gets a complete record. A format that standardises one implementation's internals is that implementation's serialization wearing a spec's clothes.
+- **It rides alongside XLIFF, not against it.** §7 defines an XLIFF 1.2 extension namespace, so a CAT tool with no VTM support round-trips the file unharmed. Localization runs on XLIFF; a format demanding a parallel pipeline does not get adopted however good its record is.
+
+Validation is hand-written rather than delegated to a JSON Schema library, so checking a document costs no dependency; the published schema is for third-party tooling. `tests/test_vtm_spec.py` runs the reference implementation against every conformance vector, and asserts the spec's stated requirements match the code's — the two cannot drift.
+
 ## Evaluation and accuracy work
 
 The `scripts/eval_detect.py` harness now reports detection **precision/recall/F1** and **normalized edit distance** when a ground-truth file is supplied:

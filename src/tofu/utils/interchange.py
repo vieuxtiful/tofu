@@ -476,6 +476,7 @@ def detect_format(filename: str) -> str:
         "tsv": "tsv",
         "csv": "csv",
         "txt": "txt",
+        "vtm": "vtm",   # Visual Translation Memory, spec/vtm-1.0.md
     }.get(ext, "txt")
 
 

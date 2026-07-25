@@ -1,0 +1,63 @@
+{
+  "$comment": "Conformance vectors for VTM v1.0. A conforming reader MUST accept every document under valid/ and MUST reject every document under invalid/. 'expect' names the substring a rejection message should contain, so an independent implementation can check it failed for the RIGHT reason rather than by accident.",
+  "vtm_version": "1.0",
+  "valid": [
+    {
+      "file": "valid/minimal.vtm.json",
+      "level": "core",
+      "note": "The smallest conforming document: required keys only, one entry."
+    },
+    {
+      "file": "valid/styled.vtm.json",
+      "level": "styled",
+      "note": "Core plus portable typography, enough to re-render faithfully."
+    },
+    {
+      "file": "valid/full.vtm.json",
+      "level": "full",
+      "note": "Real data shape from a Japanese street scene: polygon, background, provenance, visual fingerprints, and a vendor extension."
+    },
+    {
+      "file": "valid/empty-entries.vtm.json",
+      "level": "core",
+      "note": "Zero entries is valid. An asset with no translatable text is a legitimate result, not an error."
+    },
+    {
+      "file": "valid/forward-compatible.vtm.json",
+      "level": "core",
+      "note": "Carries an unknown top-level key, an unknown entry key and an x- extension. A 1.x reader MUST accept all three and ignore them -- this is what makes minor versions additive."
+    }
+  ],
+  "invalid": [
+    {
+      "file": "invalid/missing-asset-dimensions.json",
+      "expect": "asset",
+      "note": "No width/height. Geometry cannot be anchored to a resolution, which is the failure the requirement in §3 exists to prevent."
+    },
+    {
+      "file": "invalid/bbox-outside-asset.json",
+      "expect": "extends past the asset",
+      "note": "Box runs off the declared asset -- the signature of coordinates recorded at a different scale."
+    },
+    {
+      "file": "invalid/duplicate-ids.json",
+      "expect": "duplicate id",
+      "note": "Entry ids must be unique; the XLIFF binding keys trans-units on them."
+    },
+    {
+      "file": "invalid/missing-target.json",
+      "expect": "missing required key 'target'",
+      "note": "target is REQUIRED even when empty -- absent and empty mean different things."
+    },
+    {
+      "file": "invalid/negative-bbox.json",
+      "expect": "must be positive",
+      "note": "Zero or negative extent is not a region."
+    },
+    {
+      "file": "invalid/unsupported-version.json",
+      "expect": "unsupported vtm_version",
+      "note": "A 2.x document may break compatibility; a 1.x reader must refuse rather than guess."
+    }
+  ]
+}

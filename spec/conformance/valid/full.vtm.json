@@ -1,0 +1,67 @@
+{
+  "vtm_version": "1.0",
+  "generator": { "name": "ToFU", "version": "0.1.0" },
+  "created": "2026-07-25T15:45:35+00:00",
+  "source_language": "ja-JP",
+  "target_language": "en-US",
+  "asset": { "id": "japan-street", "width": 627, "height": 489 },
+  "entries": [
+    {
+      "id": "r1",
+      "source": "焼肉",
+      "target": "Grilled Meat",
+      "geometry": {
+        "bbox": { "x": 193, "y": 125, "width": 240, "height": 40 },
+        "polygon": [[193, 125], [433, 125], [433, 165], [193, 165]],
+        "rotation": 0.0,
+        "reading_order": 1
+      },
+      "style": {
+        "font_family": "arial.ttf",
+        "font_size": 28,
+        "color": "#1a1a1a",
+        "weight": "bold",
+        "align": "center",
+        "valign": "middle",
+        "stroke": { "color": "#ffffff", "width": 2.0 },
+        "shadow": { "offset_x": 1, "offset_y": 1, "blur": 2.0, "color": "#00000080" }
+      },
+      "background": { "color": "#8a6a4f", "texture": "textured" },
+      "provenance": {
+        "confidence": 0.93,
+        "qa_score": 0.88,
+        "engine": "paddleocr",
+        "human_reviewed": true,
+        "glyph_fallback": false
+      },
+      "visual": {
+        "phash": "b4f1c2a09e3d5871",
+        "style_fingerprint": "bold|28|#1a1a1a|center"
+      },
+      "x-tofu": {
+        "style": { "tsume": 0.2 },
+        "cleanse_strategy": "telea"
+      }
+    },
+    {
+      "id": "r2",
+      "source": "ビール",
+      "target": "Beer",
+      "source_language": "ja-JP",
+      "target_language": "en-GB",
+      "geometry": {
+        "bbox": { "x": 178, "y": 211, "width": 32, "height": 76 },
+        "polygon": [[182, 211], [178, 283], [204, 286], [209, 213]],
+        "reading_order": 2
+      },
+      "style": {
+        "font_family": "NotoSansJP-Regular.otf",
+        "font_size": 22,
+        "color": "#ffffff",
+        "orientation": "vertical"
+      },
+      "background": { "color": "#af9282", "texture": "textured" },
+      "provenance": { "confidence": 0.71, "engine": "easyocr" }
+    }
+  ]
+}

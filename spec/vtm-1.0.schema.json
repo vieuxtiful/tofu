@@ -1,0 +1,202 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/vieuxtiful/tofu/spec/vtm-1.0.schema.json",
+  "title": "Open Visual Translation Memory (VTM) v1.0",
+  "description": "A translation memory that preserves how text looked, not just what it said: source and target strings anchored to a region of an image, with the typography needed to re-render them faithfully.",
+  "type": "object",
+  "required": ["vtm_version", "source_language", "target_language", "asset", "entries"],
+  "additionalProperties": true,
+
+  "properties": {
+    "vtm_version": {
+      "type": "string",
+      "pattern": "^1\\.[0-9]+$",
+      "description": "Format version. Readers implementing 1.x MUST accept any 1.y document and ignore keys they do not recognise."
+    },
+    "generator": {
+      "type": "object",
+      "description": "What produced this document. Provenance, not identity -- consumers MUST NOT branch on it.",
+      "properties": {
+        "name": { "type": "string" },
+        "version": { "type": "string" }
+      },
+      "required": ["name"]
+    },
+    "created": {
+      "type": "string",
+      "format": "date-time",
+      "description": "RFC 3339 timestamp."
+    },
+    "source_language": {
+      "$ref": "#/$defs/bcp47",
+      "description": "Document-level source language. Entries MAY override."
+    },
+    "target_language": {
+      "$ref": "#/$defs/bcp47",
+      "description": "Document-level target language. Entries MAY override."
+    },
+    "asset": { "$ref": "#/$defs/asset" },
+    "entries": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/entry" }
+    }
+  },
+
+  "$defs": {
+    "bcp47": {
+      "type": "string",
+      "minLength": 2,
+      "description": "BCP 47 language tag, e.g. 'ja-JP', 'zh-Hans', 'en-US'."
+    },
+
+    "asset": {
+      "type": "object",
+      "description": "The image the geometry belongs to. REQUIRED: a bbox is uninterpretable without the resolution it was recorded against -- (10,20,100,30) describes a different region on a 640px thumbnail than on a 4096px original.",
+      "required": ["width", "height"],
+      "properties": {
+        "id": { "type": "string" },
+        "width": { "type": "integer", "exclusiveMinimum": 0 },
+        "height": { "type": "integer", "exclusiveMinimum": 0 },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$",
+          "description": "Optional content hash, so a memory can be tied to an exact asset."
+        }
+      }
+    },
+
+    "bbox": {
+      "type": "object",
+      "description": "Axis-aligned rectangle in PIXELS. Origin is the top-left of the asset; x increases rightward, y increases downward. Named keys rather than a 4-tuple: array ordering is the most common source of silent interop bugs in this shape.",
+      "required": ["x", "y", "width", "height"],
+      "properties": {
+        "x": { "type": "number", "minimum": 0 },
+        "y": { "type": "number", "minimum": 0 },
+        "width": { "type": "number", "exclusiveMinimum": 0 },
+        "height": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+
+    "geometry": {
+      "type": "object",
+      "required": ["bbox"],
+      "properties": {
+        "bbox": { "$ref": "#/$defs/bbox" },
+        "polygon": {
+          "type": "array",
+          "minItems": 3,
+          "description": "Optional tighter outline in the same pixel space, for rotated or curved text the bbox over-covers.",
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": { "type": "number" }
+          }
+        },
+        "rotation": {
+          "type": "number",
+          "description": "Baseline rotation in degrees, counter-clockwise positive."
+        },
+        "reading_order": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Position in the asset's reading sequence. Matters for multi-region signage where order carries meaning."
+        }
+      }
+    },
+
+    "style": {
+      "type": "object",
+      "description": "Portable typography. Deliberately a SUBSET of what a renderer may know: every key here is one a competing implementation can reasonably honour. Engine-specific controls belong under an x- extension.",
+      "properties": {
+        "font_family": { "type": "string" },
+        "font_size": { "type": "number", "exclusiveMinimum": 0, "description": "Pixels, in asset space." },
+        "color": { "$ref": "#/$defs/color" },
+        "weight": { "type": "string", "description": "e.g. 'normal', 'bold', or a numeric CSS weight as a string." },
+        "italic": { "type": "boolean" },
+        "underline": { "type": "boolean" },
+        "align": { "enum": ["left", "center", "right"] },
+        "valign": { "enum": ["top", "middle", "bottom"] },
+        "orientation": { "enum": ["horizontal", "vertical"] },
+        "direction": { "enum": ["ltr", "rtl"] },
+        "tracking": { "type": "number", "description": "Letter spacing in pixels." },
+        "leading": { "type": "number", "description": "Line height in pixels." },
+        "stroke": {
+          "type": "object",
+          "properties": {
+            "color": { "$ref": "#/$defs/color" },
+            "width": { "type": "number", "minimum": 0 }
+          }
+        },
+        "shadow": {
+          "type": "object",
+          "properties": {
+            "offset_x": { "type": "number" },
+            "offset_y": { "type": "number" },
+            "blur": { "type": "number", "minimum": 0 },
+            "color": { "$ref": "#/$defs/color" }
+          }
+        }
+      }
+    },
+
+    "color": {
+      "type": "string",
+      "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+      "description": "#RRGGBB or #RRGGBBAA."
+    },
+
+    "background": {
+      "type": "object",
+      "description": "What the text sat on. Enables a consumer to erase and re-render, not merely to read.",
+      "properties": {
+        "color": { "$ref": "#/$defs/color" },
+        "texture": { "enum": ["flat", "smooth_gradient", "textured"] }
+      }
+    },
+
+    "provenance": {
+      "type": "object",
+      "description": "How much to trust this entry. A visual TM that reuses a low-confidence pair is worse than one that reuses nothing.",
+      "properties": {
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1, "description": "Recognition confidence for the SOURCE text." },
+        "qa_score": { "type": "number", "minimum": 0, "maximum": 1, "description": "Quality of the rendered TARGET, if it was rendered and scored." },
+        "engine": { "type": "string" },
+        "human_reviewed": { "type": "boolean" },
+        "glyph_fallback": { "type": "boolean", "description": "True when the requested face lacked coverage and a substitute was used." }
+      }
+    },
+
+    "visual": {
+      "type": "object",
+      "description": "Fingerprints for matching this entry against a region of a DIFFERENT asset -- the mechanism that makes a visual TM reusable rather than merely archival.",
+      "properties": {
+        "phash": { "type": "string", "description": "Perceptual hash of the source region crop." },
+        "style_fingerprint": { "type": "string" }
+      }
+    },
+
+    "entry": {
+      "type": "object",
+      "required": ["id", "source", "target", "geometry"],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "description": "Unique within the document." },
+        "source": { "type": "string", "description": "Text as it appears in the asset." },
+        "target": { "type": "string", "description": "Localized text." },
+        "source_language": { "$ref": "#/$defs/bcp47" },
+        "target_language": { "$ref": "#/$defs/bcp47" },
+        "geometry": { "$ref": "#/$defs/geometry" },
+        "style": { "$ref": "#/$defs/style" },
+        "background": { "$ref": "#/$defs/background" },
+        "provenance": { "$ref": "#/$defs/provenance" },
+        "visual": { "$ref": "#/$defs/visual" }
+      },
+      "patternProperties": {
+        "^x-": {
+          "description": "Vendor extension. Readers MUST ignore x- keys they do not recognise, and MUST NOT let their absence change interpretation of the standard keys."
+        }
+      }
+    }
+  }
+}

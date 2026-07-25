@@ -1,0 +1,45 @@
+{
+  "vtm_version": "1.0",
+  "generator": { "name": "ToFU", "version": "0.1.0" },
+  "created": "2026-07-25T15:45:35+00:00",
+  "source_language": "ja-JP",
+  "target_language": "en-US",
+  "asset": { "id": "styled-01", "width": 1280, "height": 720 },
+  "entries": [
+    {
+      "id": "r1",
+      "source": "居酒屋",
+      "target": "Izakaya",
+      "geometry": {
+        "bbox": { "x": 220, "y": 140, "width": 260, "height": 72 },
+        "reading_order": 1
+      },
+      "style": {
+        "font_family": "NotoSansJP-Bold.otf",
+        "font_size": 58,
+        "color": "#f2e8d5",
+        "weight": "bold",
+        "align": "center",
+        "orientation": "horizontal",
+        "direction": "ltr",
+        "stroke": { "color": "#1c1008", "width": 3.0 }
+      }
+    },
+    {
+      "id": "r2",
+      "source": "営業中",
+      "target": "Open",
+      "geometry": {
+        "bbox": { "x": 240, "y": 236, "width": 150, "height": 44 },
+        "reading_order": 2
+      },
+      "style": {
+        "font_family": "NotoSansJP-Regular.otf",
+        "font_size": 34,
+        "color": "#d94f3d",
+        "align": "center",
+        "tracking": 1.5
+      }
+    }
+  ]
+}

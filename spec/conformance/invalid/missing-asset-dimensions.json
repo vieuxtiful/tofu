@@ -1,0 +1,10 @@
+{
+  "vtm_version": "1.0",
+  "source_language": "ja-JP",
+  "target_language": "en-US",
+  "asset": { "id": "no-dims-01" },
+  "entries": [
+    { "id": "r1", "source": "出口", "target": "Exit",
+      "geometry": { "bbox": { "x": 40, "y": 60, "width": 120, "height": 36 } } }
+  ]
+}

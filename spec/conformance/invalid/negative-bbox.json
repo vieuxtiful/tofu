@@ -1,0 +1,10 @@
+{
+  "vtm_version": "1.0",
+  "source_language": "ja-JP",
+  "target_language": "en-US",
+  "asset": { "id": "neg-01", "width": 800, "height": 600 },
+  "entries": [
+    { "id": "r1", "source": "出口", "target": "Exit",
+      "geometry": { "bbox": { "x": 40, "y": 60, "width": 0, "height": -12 } } }
+  ]
+}

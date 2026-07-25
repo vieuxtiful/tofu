@@ -1,0 +1,10 @@
+{
+  "vtm_version": "1.0",
+  "source_language": "ja-JP",
+  "target_language": "en-US",
+  "asset": { "id": "rescaled-01", "width": 640, "height": 480 },
+  "entries": [
+    { "id": "r1", "source": "出口", "target": "Exit",
+      "geometry": { "bbox": { "x": 3200, "y": 1800, "width": 400, "height": 120 } } }
+  ]
+}
