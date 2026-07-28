@@ -19,12 +19,15 @@ from tofu.layers.cicerone import (
     _split_tall_detections,
     build_manifest,
     guess_latin_language,
+    label_latin_languages,
     merge_detections,
     merge_vertical_columns,
     probe_uncovered_surfaces,
+    tag_detection_pass,
     union_prefer_primary,
     expand_langset,
     zoom_detect,
+    _dedup_zoom_detections,
 )
 
 
@@ -79,6 +82,66 @@ class TestGuessLatinLanguage:
 
     def test_two_independent_hits_still_win(self):
         assert guess_latin_language(["et", "avec"]) == "fr"
+
+    def test_unaccented_french_street_plate_still_wins(self):
+        # EasyOCR's English reader may strip É, but lexical evidence remains.
+        assert guess_latin_language(["AVENUE", "de la REPUBLIQUE"]) == "fr"
+
+    def test_marginal_read_with_self_corroborating_evidence_can_vote(self):
+        instances = [
+            InstText(
+                id="r1", bounding_box=BBox(x=0, y=0, width=100, height=20),
+                text="AVENUE", confidence=0.99, detected_language="en",
+            ),
+            InstText(
+                id="r2", bounding_box=BBox(x=0, y=30, width=200, height=20),
+                text="de Io Republique", confidence=0.492,
+                detected_language="en",
+            ),
+        ]
+
+        assert label_latin_languages(instances) == "fr"
+        assert [inst.detected_language for inst in instances] == ["fr", "fr"]
+
+
+class TestDetectionPassProvenance:
+    class FakeBackend:
+        languages = ("en",)
+
+    def test_merge_keeps_winner_and_losing_pass_evidence(self):
+        first = det(0, 0, 100, 20, "REPUBLIQUE", 0.72)
+        second = det(0, 0, 100, 20, "RÉPUBLIQUE", 0.91)
+        tag_detection_pass(
+            [first], engine=self.FakeBackend(), pass_number=1,
+            text_threshold=0.7, low_text=0.4,
+        )
+        tag_detection_pass(
+            [second], engine=self.FakeBackend(), pass_number=2,
+            text_threshold=0.5, low_text=0.3,
+        )
+
+        merged = merge_detections([first], [second])
+
+        assert merged[0].text == "RÉPUBLIQUE"
+        assert [(p["pass"], p["selected"]) for p in merged[0].provenance] == [
+            (1, False), (2, True),
+        ]
+
+    def test_manifest_carries_raw_provenance_into_history(self):
+        raw = det(0, 0, 100, 20, "AVENUE", 0.9)
+        tag_detection_pass(
+            [raw], engine=self.FakeBackend(), pass_number=1,
+            text_threshold=0.7, low_text=0.4,
+        )
+
+        manifest = build_manifest(
+            "fixture.png", [raw], identify_languages=False,
+            prune_garbage=False,
+        )
+
+        history = manifest.instances[0].recognition_history
+        assert history and history[0]["stage"] == "detection_pass"
+        assert history[0]["candidate_text"] == "AVENUE"
 
 
 class TestBaselineAwareReadingOrder:
@@ -290,6 +353,40 @@ class TestZoomDetectDedup:
 
         assert len(fine) == 2
         assert {d.text for d in fine} == {"ABCDE", "저녁"}
+
+    def test_a_letter_sized_piece_of_a_word_is_not_a_second_detection(self):
+        # measured on the textured-wall fixture: the scene pre-pass proposed
+        # a wide band covering the whole sign AND two small surfaces sitting
+        # inside the word on it, so zoom read "BAKERY" once whole and again
+        # as the pieces "B" and "RI".  Those pieces overlap the whole read
+        # almost totally but score far below the 0.6 similarity bar against
+        # it, so the overlap+similarity rule above kept all three and
+        # union_prefer_primary promoted them over the coarse pass --
+        # precision 0.5 with two false positives, on an asset whose recall
+        # was already perfect.  Boxes here are the ones actually measured.
+        fine = [
+            det(275, 147, 63, 66, "B", 0.414),
+            det(278, 142, 313, 73, "BAKERY", 1.0),
+            det(473, 144, 80, 69, "RI", 0.938),
+            det(355, 281, 158, 39, "est_ 1962", 0.66),
+        ]
+        kept = _dedup_zoom_detections(fine)
+        assert [d.text for d in kept] == ["BAKERY", "est_ 1962"]
+
+    def test_equal_length_reads_never_swallow_each_other(self):
+        # the containment rule compares text LENGTH strictly, which is what
+        # stops it eliminating both members of a pair: two boxes cannot each
+        # be the longer one.  Without that, a fully-overlapping pair of
+        # equal-length reads would annihilate and the region would vanish
+        # entirely rather than merely lose a duplicate.
+        fine = [det(100, 100, 50, 50, "AB", 0.5), det(100, 100, 50, 50, "CD", 0.9)]
+        assert len(_dedup_zoom_detections(fine)) == 2
+
+    def test_a_neighbour_clipping_the_edge_of_a_longer_read_survives(self):
+        # a short read that merely OVERLAPS a longer one is a neighbour, not
+        # a piece of it -- only near-total containment marks a fragment.
+        fine = [det(278, 142, 313, 73, "BAKERY", 1.0), det(560, 142, 120, 73, "XY", 0.9)]
+        assert {d.text for d in _dedup_zoom_detections(fine)} == {"BAKERY", "XY"}
 
 
 # -- scene-surface probe gates ------------------------------------------------
@@ -809,3 +906,43 @@ class TestInkSupportGate:
             text="に", confidence=0.542,
         )
         assert len(_prune_hallucinations([inst])) == 1
+
+
+class TestSourceLanguageVote:
+    """`src_lang` was read by ToFU (text-expansion ratio), basil.pairing()
+    and memory, but only ever WRITTEN by one server endpoint -- so every
+    pipeline-driven run predicted expansion against an English source no
+    matter what the sign actually said."""
+
+    def test_build_manifest_sets_src_lang(self):
+        m = build_manifest(
+            "fixture.png",
+            [det(0, 0, 200, 60, "焼肉", lang="ja")],
+            identify_languages=False, prune_garbage=False,
+        )
+        assert m.src_lang == "ja"
+
+    def test_vote_is_area_weighted_not_count_weighted(self):
+        # one big storefront sign outranks several small latin fragments:
+        # the scene is Japanese even though "en" wins on raw count
+        m = build_manifest(
+            "fixture.png",
+            [
+                det(0, 0, 400, 200, "歌舞伎町一番街", lang="ja"),
+                det(0, 300, 30, 10, "3F", lang="en"),
+                det(40, 300, 30, 10, "B1", lang="en"),
+                det(80, 300, 30, 10, "XV", lang="en"),
+            ],
+            identify_languages=False, prune_garbage=False,
+        )
+        assert m.src_lang == "ja"
+
+    def test_no_language_evidence_leaves_src_lang_unset(self):
+        # never invent a source language: None means "unknown", which
+        # ToFU treats differently from a confident "en"
+        m = build_manifest(
+            "fixture.png",
+            [det(0, 0, 100, 40, "1234")],
+            identify_languages=False, prune_garbage=False,
+        )
+        assert m.src_lang is None
