@@ -28,29 +28,21 @@ from tofu.layers.cicerone import ScriptDetector  # noqa: E402
 
 
 def _font_registry():
-    """best-effort FontRegistry for savor's dakuten course -- mirrors
-    server/main.py's _font_dir() fallback chain. returns None (course
-    silently skipped, fail-open) when nothing is found."""
-    import os
-    from tofu.layers.fonts import FontRegistry
-    font_dir = os.environ.get("TOFU_FONT_DIR") or (
-        "C:/Windows/Fonts" if sys.platform == "win32" else "/usr/share/fonts"
-    )
-    return FontRegistry(font_dir) if Path(font_dir).exists() else None
+    """best-effort FontRegistry for savor's dakuten course. returns None
+    (course silently skipped, fail-open) when no font directory is found.
+
+    the directory chain is shared with the server -- see
+    tofu.layers.fonts.pantry(); this used to be a second, subtly
+    different copy of it."""
+    from tofu.layers.fonts import FontRegistry, pantry
+    font_dir = pantry()
+    return FontRegistry(font_dir) if font_dir else None
 
 
 def infer_src_lang(manifest) -> str:
-    """area-weighted dominant language (mirrors server logic)."""
-    votes = Counter()
-    for i in manifest.instances:
-        if not i.detected_language:
-            continue
-        area = (
-            i.bounding_box.width * i.bounding_box.height
-            if i.bounding_box is not None else 1
-        )
-        votes[i.detected_language] += max(1, area)
-    return max(votes, key=lambda k: votes[k]) if votes else "en"
+    """area-weighted dominant language -- shared with the server and with
+    build_manifest itself (cicerone.taste_the_room)."""
+    return manifest.src_lang or cicerone.taste_the_room(manifest.instances) or "en"
 
 
 def _iou(a, b) -> float:
@@ -278,7 +270,25 @@ def main() -> None:
     ap.add_argument("--no-probe", action="store_true", help="disable language auto-probe")
     ap.add_argument("--no-scene", action="store_true", help="skip scene pre-pass")
     ap.add_argument("--ground-truth", default=None, help="path to ground-truth JSON (default: image.gt.json)")
-    ap.add_argument("--engine", default="easyocr", choices=("easyocr", "paddleocr"), help="OCR backend to use")
+    # Capture passes the project's LOCKED source language into detection
+    # (server/main.py::_project_lang_hints), so the app runs a tuned charset
+    # while this harness ran a bare ("en",) reader -- and the charset decides
+    # what the recognizer can read at all.  Measured on the avenue plaque:
+    # ('fr','en') reads a shadowed crack in the masonry as "7" at 0.447 on
+    # CRAFT pass 3, and ("en",) does not produce the box at all.  Without
+    # this flag the harness structurally cannot reproduce a Capture result.
+    ap.add_argument("--lang", default=None,
+                    help="comma-separated source language hints, as Capture passes them "
+                         "(e.g. fr). Omit to run the untuned default reader.")
+    # "auto"/"hybrid" are not extra backends -- they are the values every
+    # cross-engine arbitration path gates on (_engine_from_env() in
+    # {"auto","hybrid"}).  Without them here this harness could not reach
+    # hybrid_audit or the skim Paddle veto at all: it sets OCR_ENGINE
+    # unconditionally below, so the literal "easyocr" default silently
+    # disabled arbitration that the server enables by default.
+    ap.add_argument("--engine", default="easyocr",
+                    choices=("easyocr", "paddleocr", "auto", "hybrid"),
+                    help="OCR backend, or auto/hybrid to enable cross-engine arbitration")
     args = ap.parse_args()
 
     import os
@@ -295,6 +305,8 @@ def main() -> None:
     detect_kwargs = {}
     if args.no_probe:
         detect_kwargs["identify_languages"] = False
+    if args.lang:
+        detect_kwargs["languages"] = [l.strip() for l in args.lang.split(",") if l.strip()]
     t1 = time.time()
     manifest = cicerone.detect(
         str(image_path), scene_regions=scene_regions,

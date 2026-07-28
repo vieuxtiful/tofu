@@ -41,12 +41,16 @@ a vertical-aware detector (e.g. PaddleOCR PP-OCRv4) behind a new
 OCRBackend adapter remains the eventual upgrade path.
 """
 
+import logging
+import re
 import time
 import uuid
 from abc import ABC, abstractmethod
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple
+
+logger = logging.getLogger(__name__)
 
 from tofu.core.types import (
     TextManifest,
@@ -57,7 +61,99 @@ from tofu.core.types import (
     AssetInfo,
     SceneRegion,
     infer_asset_info,
+    OCRAssessmentPolicy,
 )
+
+
+_CONTEXT_CLASSES = {"sign", "poster", "billboard", "product_label", "ui_graphic"}
+_QUANTITY_PATTERN = re.compile(
+    r"(?:\d+(?:[.,]\d+)?\s*(?:%|kg|g|mg|l|ml|cl|oz|lb|cm|mm|°[cf])\b)|(?:[$€£¥]\s*\d)",
+    re.IGNORECASE,
+)
+
+
+def classify_asset_context(manifest: TextManifest) -> Dict[str, Any]:
+    """Classify the communication format from Cicerone's text inventory.
+
+    This is deliberately lightweight and evidence-bearing. It is a context
+    hint for Verify, never an absolute semantic judgment.
+    """
+    classification_source = (manifest.asset_classification or {}).get("source")
+    if (
+        manifest.asset_class in _CONTEXT_CLASSES
+        and classification_source != "cicerone_layout"
+    ):
+        existing = dict(manifest.asset_classification or {})
+        existing.setdefault("asset_class", manifest.asset_class)
+        existing.setdefault("confidence", 1.0)
+        existing.setdefault("source", "explicit")
+        manifest.asset_classification = existing
+        return existing
+
+    instances = [
+        inst for inst in manifest.instances
+        if not inst.excluded and (inst.text or "").strip()
+    ]
+    texts = [(inst.text or "").strip() for inst in instances]
+    count = len(instances)
+    word_counts = [len(text.split()) for text in texts] or [0]
+    median_words = sorted(word_counts)[len(word_counts) // 2]
+    image_width, image_height = manifest.img_dim or (0, 0)
+    height_ratios = [
+        inst.bounding_box.height / image_height
+        for inst in instances if image_height > 0
+    ]
+    max_height_ratio = max(height_ratios, default=0.0)
+    source_heights = sorted(inst.bounding_box.height for inst in instances)
+    hierarchy_ratio = (
+        max(source_heights) / max(1, source_heights[len(source_heights) // 2])
+        if source_heights else 1.0
+    )
+    quantity_hits = sum(bool(_QUANTITY_PATTERN.search(text)) for text in texts)
+    short_ratio = (
+        sum(len(text) <= 24 and len(text.split()) <= 4 for text in texts) / count
+        if count else 0.0
+    )
+    # Repeated left/top anchors are common in UI control grids and menus.
+    x_buckets = {
+        round(inst.bounding_box.x / max(1, image_width or 100), 1)
+        for inst in instances
+    }
+    grid_alignment = 1.0 - min(1.0, len(x_buckets) / max(1, count))
+
+    scores = {
+        "sign": 0.45 + (0.20 if count <= 2 else 0.0) + 0.15 * short_ratio,
+        "poster": 0.20 + (0.30 if count >= 3 else 0.0)
+        + (0.25 if hierarchy_ratio >= 1.6 else 0.0),
+        "billboard": 0.10 + (0.45 if count <= 2 else 0.0)
+        + (0.30 if max_height_ratio >= 0.10 else 0.0),
+        "product_label": 0.10 + min(0.60, quantity_hits * 0.30)
+        + (0.20 if count >= 3 else 0.0),
+        "ui_graphic": 0.10 + (0.35 if count >= 4 and median_words <= 3 else 0.0)
+        + 0.25 * grid_alignment + 0.15 * short_ratio,
+    }
+    ranked = sorted(scores.items(), key=lambda item: (-item[1], item[0]))
+    asset_class, best = ranked[0]
+    runner_up = ranked[1][1]
+    confidence = round(min(0.95, 0.55 + max(0.0, best - runner_up) * 0.5), 3)
+    classification = {
+        "asset_class": asset_class,
+        "confidence": confidence,
+        "source": "cicerone_layout",
+        "scores": {name: round(score, 3) for name, score in scores.items()},
+        "evidence": {
+            "region_count": count,
+            "median_words": median_words,
+            "short_text_ratio": round(short_ratio, 3),
+            "max_text_height_ratio": round(max_height_ratio, 3),
+            "hierarchy_ratio": round(hierarchy_ratio, 3),
+            "quantity_region_count": quantity_hits,
+            "grid_alignment": round(grid_alignment, 3),
+        },
+    }
+    manifest.asset_class = asset_class
+    manifest.asset_classification = classification
+    return classification
 
 # tofu language codes → easyocr language codes (identity where omitted)
 EASYOCR_LANG_MAP: Dict[str, str] = {
@@ -116,6 +212,36 @@ class RawDetection:
     text: str
     confidence: float
     language: Optional[str] = None
+    provenance: Optional[List[Dict[str, Any]]] = None
+
+
+def tag_detection_pass(
+    detections: Sequence[RawDetection],
+    *,
+    engine: "OCRBackend",
+    pass_number: int,
+    text_threshold: Optional[float] = None,
+    low_text: Optional[float] = None,
+) -> List[RawDetection]:
+    """Attach reproducible detector-pass evidence to raw OCR candidates."""
+    engine_name = engine.__class__.__name__.removesuffix("Backend").lower()
+    languages = list(getattr(engine, "languages", ()) or ())
+    for det in detections:
+        entry: Dict[str, Any] = {
+            "stage": "detection_pass",
+            "engine": engine_name,
+            "pass": pass_number,
+            "languages": languages,
+            "candidate_text": det.text,
+            "candidate_confidence": round(float(det.confidence), 6),
+            "selected": True,
+        }
+        if text_threshold is not None:
+            entry["text_threshold"] = text_threshold
+        if low_text is not None:
+            entry["low_text"] = low_text
+        det.provenance = [*(det.provenance or []), entry]
+    return list(detections)
 
 
 def _reading_order_detections(detections: Sequence[RawDetection]) -> List[RawDetection]:
@@ -446,12 +572,24 @@ class EasyOCRBackend(OCRBackend):
 
 
 class PaddleOCRBackend(OCRBackend):
-    """PP-OCRv4 / DB + SVTR via paddleocr.
+    """DB + SVTR via paddleocr, pinned to what the isolated venv actually has.
 
-    PaddleOCR uses DBNet for detection and SVTR_LCNet for recognition,
+    PaddleOCR uses DBNet for detection and an SVTR-family recognizer,
     which generally outperforms CRAFT+CRNN on rotated, curved, dense,
     and CJK scene text. The adapter exposes the same OCRBackend contract
     so it slots into cicerone.detect() and the streaming pipeline.
+
+    Measured against `.venv-paddle` (paddleocr 3.7.0 / paddle 3.3.1):
+    the model version is resolved PER LANGUAGE, not globally. `ch`,
+    `chinese_cht`, `en`, `japan` and the latin set get
+    PP-OCRv6_medium_det + PP-OCRv6_medium_rec; everything else (korean,
+    arabic, cyrillic, ...) falls back to PP-OCRv5 weights. Quoting one
+    "PP-OCRvN" for the whole adapter is wrong in both directions --
+    name the language when the version matters.
+
+    That `japan` and `ch` resolve to the SAME PP-OCRv6_medium_rec
+    checkpoint is exactly the shared-vocabulary defect wasabi.season()
+    exists to clean up after.
     """
 
     name = "paddleocr"
@@ -501,7 +639,14 @@ class PaddleOCRBackend(OCRBackend):
         self,
         languages: Sequence[str] = ("en",),
         gpu: bool = False,
-        use_angle_cls: bool = True,
+        # was `use_angle_cls`, a PaddleOCR 2.x name that 3.x dropped -- and
+        # it was never forwarded to the worker at all, so the knob did
+        # nothing while the worker hardcoded the feature ON. renamed to the
+        # parameter that actually exists and wired through _det_params().
+        # this is the detector's vertical/rotated-textline handling, so it
+        # is the one switch worth being able to turn off when diagnosing
+        # whether orientation classification is helping or hurting a scene.
+        use_textline_orientation: bool = True,
         det_db_thresh: float = 0.3,
         drop_score: float = 0.3,
         det_box_thresh: Optional[float] = None,
@@ -512,7 +657,7 @@ class PaddleOCRBackend(OCRBackend):
         # Mixed-script fallback is handled by the primary chosen from hints.
         self.lang = self.languages[0] if self.languages else "en"
         self.gpu = bool(gpu)
-        self.use_angle_cls = use_angle_cls
+        self.use_textline_orientation = use_textline_orientation
         self.det_db_thresh = det_db_thresh
         self.drop_score = drop_score
         # None means "use the model's own baked-in default" -- these were
@@ -619,15 +764,16 @@ class PaddleOCRBackend(OCRBackend):
             language=self._to_tofu_lang(),
         )
 
-    def _det_params(self) -> Dict[str, float]:
-        """threshold overrides to send the worker -- only the ones this
-        instance actually set (det_db_thresh/drop_score always have a
-        value; det_box_thresh/unclip_ratio are None unless explicitly
-        requested, so the worker falls back to the model's own default
-        rather than us silently re-guessing one)."""
-        params: Dict[str, float] = {
+    def _det_params(self) -> Dict[str, Any]:
+        """reader overrides to send the worker -- only the ones this
+        instance actually set (det_db_thresh/drop_score/textline
+        orientation always have a value; det_box_thresh/unclip_ratio are
+        None unless explicitly requested, so the worker falls back to the
+        model's own default rather than us silently re-guessing one)."""
+        params: Dict[str, Any] = {
             "det_db_thresh": self.det_db_thresh,
             "drop_score": self.drop_score,
+            "use_textline_orientation": self.use_textline_orientation,
         }
         if self.det_box_thresh is not None:
             params["det_box_thresh"] = self.det_box_thresh
@@ -790,7 +936,15 @@ LATIN_STOPWORDS: Dict[str, set] = {
            "salida", "abierto", "cerrado", "alto", "mayor", "no", "si"},
     "fr": {"le", "la", "les", "de", "des", "du", "et", "en", "un", "une",
            "pour", "avec", "que", "au", "aux", "rue", "sortie", "ouvert",
-           "ferme", "arret", "sur", "pas"},
+           "ferme", "arret", "sur", "pas",
+           # street-furniture vocabulary -- the words that actually appear
+           # ON french signage. "avenue"/"place" are deliberately shared
+           # with english (both score for them), which is correct: alone
+           # they decide nothing, and they only tip the vote once a
+           # second, french-specific signal (an accented token, another
+           # stopword) corroborates them.
+           "avenue", "boulevard", "place", "chemin", "quai", "impasse",
+           "allee", "gare", "eglise", "saint", "sainte", "republique"},
     "de": {"der", "die", "das", "und", "von", "zu", "mit", "im", "am",
            "ein", "eine", "fur", "auf", "ist", "nicht", "strasse", "ausgang",
            "offen", "geschlossen", "halt", "aus"},
@@ -800,11 +954,78 @@ LATIN_STOPWORDS: Dict[str, set] = {
     "pt": {"o", "os", "as", "de", "do", "da", "dos", "das", "e", "em",
            "um", "uma", "para", "com", "que", "rua", "saida", "aberto",
            "fechado", "nao", "sim"},
+    "pl": {"i", "w", "z", "ze", "na", "do", "jest", "nie", "tak", "ulica",
+           "plac", "wejscie", "wyjscie", "otwarte", "zamkniete"},
 }
+# per-language DIACRITIC INVENTORIES -- one entry per language rather than
+# a single "is this accented at all" blob, because EXCLUSIVITY is what
+# carries the signal. these mirror script_samples.LANG_REQUIRED (the same
+# orthographic requirement sets the font-coverage scorer uses), kept as a
+# local copy rather than imported because script_samples materializes the
+# full CJK character tables at import time and this layer must stay cheap
+# to import.
+#
+# e-acute is shared by french, spanish, italian, portuguese, czech and
+# hungarian, so it proves only "not english" and nothing more. l-stroke is
+# only polish, n-tilde only spanish, eszett only german, a-tilde only
+# portuguese, s-comma only romanian, i-grave only italian, o-double-acute
+# only hungarian, thorn only icelandic, oe-ligature only french. scoring a
+# token by how FEW languages could have spelled it is what makes polish
+# (many exclusive marks) and spanish (marks on different letters than
+# french) separable from french with no per-word special-casing.
 LATIN_DIACRITICS: Dict[str, str] = {
-    "es": "ñáéíóúü¿¡", "fr": "àâçèéêëîïôùûüœ", "de": "äöüß",
-    "it": "àèéìòù", "pt": "ãõçáâêôú",
+    "fr": "àâæçèéêëîïôœùûüÿ",
+    "es": "áéíñóúü¿¡",
+    "it": "àèéìòù",
+    "pt": "àáâãçéêíóôõú",
+    "de": "äöüß",
+    "pl": "ąćęłńóśźż",
+    "cs": "áčďéěíňóřšťúůýž",
+    "hu": "áéíóöőúüű",
+    "ro": "ăâîșț",
+    "tr": "çğıöşü",
+    "is": "áæðéíóöúýþ",
 }
+
+# union of every inventory above: "does this token carry a diacritic at
+# all" is the question that separates english from everything else
+ALL_LATIN_DIACRITICS = frozenset(
+    ch for chars in LATIN_DIACRITICS.values() for ch in chars
+)
+
+# a diacritic-bearing token shorter than this is likelier an OCR artifact
+# (a speck of noise read as an acute accent, a stray mark on a logo) than
+# a real accented word
+MIN_DIACRITIC_WORD_LEN = 3
+
+# confidence floor for a latin read to join the language-identification
+# pool. garbage recognitions of CJK signage are full of accidental
+# stopword fragments ("il", "e", "di"...) that otherwise vote in phantom
+# languages, so weak reads are kept out of the vote entirely.
+LATIN_POOL_MIN_CONFIDENCE = 0.5
+# A marginal read may still join the vote when it independently identifies
+# its own language. This avoids a cliff at 0.50 without admitting the random
+# short fragments that motivated the main confidence floor.
+LATIN_POOL_RESCUE_MIN_CONFIDENCE = 0.35
+
+
+def _diacritic_candidates(word: str) -> List[str]:
+    """languages whose orthography could have spelled this token's marks.
+
+    EVERY mark in the token must belong to the language's inventory: a
+    token is only evidence FOR a language that can actually produce all of
+    it, which is what lets one word rule several languages out at once.
+    returns [] for an unaccented token, and also for a mark combination no
+    single supported language allows (typically a mixed-charset misread) --
+    such a token is noise, not evidence for everything it partly fits.
+    """
+    marks = {ch for ch in word if ch in ALL_LATIN_DIACRITICS}
+    if not marks:
+        return []
+    return sorted(
+        lang for lang, chars in LATIN_DIACRITICS.items()
+        if marks <= set(chars)
+    )
 
 
 def guess_latin_language(texts: Sequence[str]) -> Optional[str]:
@@ -821,9 +1042,36 @@ def guess_latin_language(texts: Sequence[str]) -> Optional[str]:
     arbitration (_auto_probe_language, probe_uncovered_surfaces,
     refine_langset) already guards against by requiring evidence
     BREADTH, not just a score threshold -- same principle here.
+
+    diacritics are scored per TOKEN and weighted by how EXCLUSIVE that
+    token's marks are to one language, NOT per bare character. counting
+    characters made an accent worth exactly as much as a random two-letter
+    stopword coincidence, which is far less than an accent actually
+    proves: measured on images/avenue-de-la-republique.jpeg, a correctly
+    recognized accented "REPUBLIQUE" scored 1.0 for french against
+    "avenue"'s 2.0 for english, so a french street plate came out
+    labelled english -- and every downstream consumer of src_lang
+    (basil's pairing, tofu's expansion prediction, scribe's shaping) then
+    planned for an english source. per-token exclusivity fixes that whole
+    class of error instead of one image at a time: a token only ONE
+    supported language can spell (accented LODZ -> polish, CANON ->
+    spanish, GRUSSE -> german, PIATA -> romanian) is decisive,
+    self-corroborating evidence, while a token several languages share
+    (accented REPUBLIQUE, CAFE) proves only "not english" and still needs
+    a second signal to name WHICH language.
+
+    english is barred from winning outright once a real accented word is
+    present, since english orthography carries no diacritics at all -- the
+    only ways one appears in genuinely english text are an OCR artifact
+    (guarded by MIN_DIACRITIC_WORD_LEN) or a loanword. the surviving
+    candidate must still clear the same score and breadth bars AND
+    outscore the next non-english candidate, so a lone accented loanword
+    among english signage still yields None rather than a coin-flip
+    between the six languages that share an acute accent.
     """
-    scores: Dict[str, float] = {lang: 0.0 for lang in LATIN_STOPWORDS}
-    hits: Dict[str, int] = {lang: 0 for lang in LATIN_STOPWORDS}
+    langs = sorted(set(LATIN_STOPWORDS) | set(LATIN_DIACRITICS))
+    scores: Dict[str, float] = {lang: 0.0 for lang in langs}
+    hits: Dict[str, int] = {lang: 0 for lang in langs}
     words = []
     joined = " ".join(t for t in texts if t)
     for token in joined.lower().split():
@@ -832,11 +1080,41 @@ def guess_latin_language(texts: Sequence[str]) -> Optional[str]:
         matched = sum(1 for w in words if w in stops)
         scores[lang] += 2.0 * matched
         hits[lang] += matched
-    for lang, chars in LATIN_DIACRITICS.items():
-        matched = sum(1 for ch in joined.lower() if ch in chars)
-        scores[lang] += matched
-        hits[lang] += matched
-    best = max(scores, key=lambda k: scores[k])
+
+    accented_words = 0
+    for word in words:
+        if len(word) < MIN_DIACRITIC_WORD_LEN:
+            continue
+        candidates = _diacritic_candidates(word)
+        if not candidates:
+            continue
+        accented_words += 1
+        marks = sum(1 for ch in word if ch in ALL_LATIN_DIACRITICS)
+        # an exclusive spelling is decisive AND corroborates itself: no
+        # other supported language can produce this token at all, which
+        # meets the same standard of independent evidence two separate
+        # stopword matches do. a shared spelling gets one weaker hit.
+        exclusive = len(candidates) == 1
+        for lang in candidates:
+            scores[lang] += (2.0 if exclusive else 1.0) * marks
+            hits[lang] += 2 if exclusive else 1
+
+    # deterministic ranking: score first, language code as a stable
+    # tiebreak, so an ambiguous scene can never answer differently run to
+    # run (dict iteration order used to decide these silently)
+    ranked = sorted(langs, key=lambda k: (-scores[k], k))
+    if ranked[0] == "en" and accented_words:
+        # english cannot carry diacritics: take the strongest non-english
+        # candidate instead of defaulting to english, but hold it to the
+        # same bars, plus a strict win over the next candidate so a shared
+        # accent never gets resolved by the tiebreak alone
+        others = [lang for lang in ranked if lang != "en"]
+        best = others[0]
+        runner_up = scores[others[1]] if len(others) > 1 else 0.0
+        if scores[best] < 2.0 or hits[best] < 2 or scores[best] <= runner_up:
+            return None
+        return best
+    best = ranked[0]
     if (best == "en" or scores[best] < 2.0 or scores[best] <= scores["en"]
             or hits[best] < 2):
         return None
@@ -851,6 +1129,36 @@ def _script_lang_for(script: str, reader_langs: Sequence[str]) -> str:
         if script in EASYOCR_LANG_SCRIPTS.get(lang, {"latin"}):
             return _from_easyocr_lang(lang)
     return SCRIPT_TO_LANG.get(script, "en")
+
+
+def taste_the_room(instances: Sequence[InstText]) -> Optional[str]:
+    """What language is this scene actually IN? -- an area-weighted vote
+    over the per-region languages detection already identified.
+
+    Area-weighted, not count-weighted: a storefront sign is what the
+    scene is written in; a handful of small incidental latin fragments
+    (a phone number, a brand mark) are not, and they out-COUNT the sign
+    routinely on a dense street scene.
+
+    This lives here because this is where the evidence is produced.  It
+    was previously reimplemented in the server and again in the eval
+    harness, while the manifest field it feeds (`src_lang`) was left
+    None on every pipeline-driven run -- which silently made ToFU's
+    text-expansion prediction assume an English source no matter what
+    the sign said, and left basil.pairing() with nothing to pair.
+    """
+    votes: Dict[str, float] = {}
+    for inst in instances:
+        if not inst.detected_language:
+            continue
+        area = (
+            inst.bounding_box.width * inst.bounding_box.height
+            if inst.bounding_box is not None else 1
+        )
+        votes[inst.detected_language] = votes.get(inst.detected_language, 0.0) + max(1, area)
+    if not votes:
+        return None
+    return max(votes, key=lambda k: votes[k])
 
 
 # -- detection geometry -------------------------------------------------------
@@ -987,7 +1295,7 @@ def _rectify_crop(img: Any, polygon: Polygon, target_height: int = 48) -> Any:
 def merge_detections(
     base: List[RawDetection], extra: List[RawDetection]
 ) -> List[RawDetection]:
-    """NMS across passes: dedupe by overlap, keep the higher confidence."""
+    """NMS across passes, retaining both candidates as audit evidence."""
     for det in extra:
         db = _polygon_bbox(det.polygon)
         dup_idx = None
@@ -997,8 +1305,26 @@ def merge_detections(
                 break
         if dup_idx is None:
             base.append(det)
-        elif det.confidence > base[dup_idx].confidence:
-            base[dup_idx] = det
+        else:
+            previous = base[dup_idx]
+            winner, loser = (
+                (det, previous)
+                if det.confidence > previous.confidence
+                else (previous, det)
+            )
+            winner_history = [dict(item) for item in (winner.provenance or [])]
+            loser_history = [dict(item) for item in (loser.provenance or [])]
+            for item in loser_history:
+                if item.get("stage") == "detection_pass":
+                    item["selected"] = False
+            winner.provenance = sorted(
+                winner_history + loser_history,
+                key=lambda item: (
+                    item.get("pass") is None,
+                    item.get("pass", 0),
+                ),
+            )
+            base[dup_idx] = winner
     return base
 
 
@@ -2086,6 +2412,38 @@ def run_paddle_rescue(
     return merged if changed else None
 
 
+def label_latin_languages(instances: List[InstText]) -> Optional[str]:
+    """name the language of the CONFIDENT latin-script reads and stamp the
+    verdict on every one of them; returns that verdict, or None when the
+    evidence was too weak to override the english default.
+
+    both engine paths carried this block verbatim. it is also the one
+    language step that MUST run again at the end of detect(): every
+    text-refinement pass after it (second_look, savor, wasabi, menu)
+    rewrites the very text the verdict is read from, and unlike the
+    script/charset work around it, re-asking costs nothing -- no crop, no
+    recognizer, no reader init, just the final strings.
+    """
+    detector = ScriptDetector()
+    latin_insts = []
+    for inst in instances:
+        text = inst.text or ""
+        confidence = inst.confidence or 0
+        if detector.detect_script(text) != "latin":
+            continue
+        if confidence >= LATIN_POOL_MIN_CONFIDENCE or (
+            confidence >= LATIN_POOL_RESCUE_MIN_CONFIDENCE
+            and guess_latin_language([text]) is not None
+        ):
+            latin_insts.append(inst)
+    guess = guess_latin_language([i.text or "" for i in latin_insts])
+    if not guess:
+        return None
+    for inst in latin_insts:
+        inst.detected_language = guess
+    return guess
+
+
 def _identify_languages(
     asset: Any,
     instances: List[InstText],
@@ -2148,19 +2506,8 @@ def _identify_languages(
                 inst.confidence = composed.confidence
 
     # latin-language disambiguation: script identity can't tell spanish
-    # from english — classify the pooled latin text by stopwords/diacritics.
-    # CONFIDENT latin text only: garbage recognitions of CJK signage are
-    # full of accidental stopword fragments ('il', 'e', 'di'...) that
-    # otherwise vote in phantom languages.
-    latin_insts = [
-        i for i in instances
-        if detector.detect_script(i.text or "") == "latin"
-        and (i.confidence or 0) >= 0.5
-    ]
-    guess = guess_latin_language([i.text or "" for i in latin_insts])
-    if guess:
-        for inst in latin_insts:
-            inst.detected_language = guess
+    # from english — classify the pooled latin text by stopwords/diacritics
+    label_latin_languages(instances)
 
 
 def _identify_languages_paddle(
@@ -2193,15 +2540,7 @@ def _identify_languages_paddle(
             inst.detected_language = _script_lang_for(script, (tofu_lang,))
 
     # latin-language disambiguation (same logic as EasyOCR path)
-    latin_insts = [
-        i for i in instances
-        if detector.detect_script(i.text or "") == "latin"
-        and (i.confidence or 0) >= 0.5
-    ]
-    guess = guess_latin_language([i.text or "" for i in latin_insts])
-    if guess:
-        for inst in latin_insts:
-            inst.detected_language = guess
+    label_latin_languages(instances)
 
 
 def refine_langset(
@@ -2288,11 +2627,20 @@ def run_multipass(
     scale internally, so a single detect call is sufficient when it is active.
     """
     if not isinstance(engine, EasyOCRBackend):
-        return engine.detect(asset)
+        return tag_detection_pass(
+            engine.detect(asset), engine=engine, pass_number=1
+        )
     detections: List[RawDetection] = []
-    for text_threshold, low_text in PASS_THRESHOLDS:
+    for pass_number, (text_threshold, low_text) in enumerate(PASS_THRESHOLDS, 1):
         passed = engine.detect(
             asset, text_threshold=text_threshold, low_text=low_text
+        )
+        tag_detection_pass(
+            passed,
+            engine=engine,
+            pass_number=pass_number,
+            text_threshold=text_threshold,
+            low_text=low_text,
         )
         detections = merge_detections(detections, passed)
     return detections
@@ -2380,6 +2728,14 @@ def zoom_detect(
     return _dedup_zoom_detections(fine)
 
 
+## a zoom box sitting this deep inside another zoom box is a PIECE of it,
+## not a neighbour of it.  0.9 rather than a looser figure is what keeps
+## this rule disjoint from the moderate-overlap case the similarity test
+## below exists to protect: side-by-side characters recovered from two
+## overlapping candidate surfaces share edges, never 90% of an area.
+ZOOM_FRAGMENT_CONTAINMENT = 0.9
+
+
 def _dedup_zoom_detections(fine: List[RawDetection]) -> List[RawDetection]:
     """collapse duplicate reads within zoom_detect's own output.
 
@@ -2391,6 +2747,19 @@ def _dedup_zoom_detections(fine: List[RawDetection]) -> List[RawDetection]:
     Korean text, regressing recall 0.111->0.056). a true duplicate --
     the same sign re-read via two overlapping surfaces -- also reads
     out near-identical TEXT, so require both signals together.
+
+    that pairing leaves one gap, and it is a false-positive source rather
+    than a recall one: the scene pre-pass routinely proposes small
+    surfaces that sit INSIDE a word it also proposed as a band, so the
+    same word is zoomed twice -- once whole, once a letter at a time.
+    those pieces overlap the whole read almost totally but do NOT read
+    out similar text ('B' against 'BAKERY' scores far below 0.6), so the
+    similarity test declines to collapse them and union_prefer_primary
+    then promotes all three over the coarse pass (measured on the
+    textured-wall fixture: 'BAKERY' plus fragments 'B' and 'RI',
+    precision 0.5).  A fragment is separated from a neighbour by
+    CONTAINMENT, not similarity, so it needs its own test rather than a
+    weakening of that one.
     """
     from tofu.utils.textmatch import fuzzy_similarity
     out: List[RawDetection] = []
@@ -2406,7 +2775,24 @@ def _dedup_zoom_detections(fine: List[RawDetection]) -> List[RawDetection]:
             out.append(det)
         elif det.confidence > out[dup_idx].confidence:
             out[dup_idx] = det
-    return out
+
+    # second, independent pass: drop a read almost wholly inside a LONGER
+    # read.  the strict length comparison is what makes this safe to run
+    # over every pair -- two boxes can never swallow each other, so a
+    # genuine pair of equal-length neighbours survives intact no matter
+    # how they overlap, and nothing can eliminate every member of a group.
+    boxes = [_polygon_bbox(det.polygon) for det in out]
+    texts = [(det.text or "").strip() for det in out]
+    survivors: List[RawDetection] = []
+    for i, det in enumerate(out):
+        fragment = any(
+            len(texts[j]) > len(texts[i])
+            and _containment_frac(boxes[i], boxes[j]) >= ZOOM_FRAGMENT_CONTAINMENT
+            for j in range(len(out)) if j != i
+        )
+        if not fragment:
+            survivors.append(det)
+    return survivors
 
 
 def second_look(
@@ -2805,6 +3191,25 @@ def detect(
         except Exception:
             pass
 
+    # latin language identification, FINAL pass -- on the text that
+    # actually survived. the verdict used to be taken once, early, inside
+    # the first build_manifest(), and then never revisited even though
+    # every stage after it (second_look, savor, wasabi, menu) exists
+    # precisely to REWRITE the recognized text it was read from.
+    #
+    # measured on images/avenue-de-la-republique.jpeg: at verdict time the
+    # region reading "de la Republique" stood at confidence 0.47, just
+    # under LATIN_POOL_MIN_CONFIDENCE, so the whole scene was judged on
+    # the single surviving word "AVENUE" -- which is both english and
+    # french, ties, and therefore yields no verdict at all, leaving a
+    # french street plate labelled english. second_look then lifted that
+    # same region to 0.61 and recovered "Republique", but nothing asked
+    # the question again. this mirrors exactly why savor/wasabi/menu
+    # themselves run last: the final text is the only text worth judging.
+    if identify_languages and manifest.instances:
+        if label_latin_languages(manifest.instances):
+            manifest.src_lang = taste_the_room(manifest.instances)
+
     return manifest
 
 
@@ -2909,13 +3314,60 @@ def _prune_hallucinations(
     bar alone despite no legible symbol existing at that scale (every
     ground-truth region across this project's fixtures is >=500px²).
     digit-only regions are KEPT regardless of size/confidence: prices,
-    phone numbers, and address plates are real localizable content.
+    phone numbers, and address plates are real localizable content -- but
+    that whitelist is unconditional on TEXT alone, and a digit is the one
+    thing a shadow can be misread as while carrying no script evidence to
+    contradict it (a digit is Zyyy/Common, so julienne sees no script and
+    _script_bearing_conf assigns it no language weight either).  Skim
+    supplies the missing physical evidence: measured on the avenue-de-la-
+    république plaque, a shadowed crack in the masonry reads "7" at 0.447
+    with a stroke only 5.5% of its own height, where every real region on
+    that image and on japan-street measures 10.6%-27.1%.  See skim.py for
+    why that floor is typography's own and not a new constant.
     """
     detector = ScriptDetector()
+    scum: Dict[int, str] = {}
+    if asset is not None:
+        try:
+            from tofu.layers.skim import skim as _skim
+            # Only reads carrying NO script evidence are skim's business.
+            # stroke_ratio's floor is calibrated on LATIN typography and
+            # does not transfer to CJK, which packs many thin strokes into
+            # a dense square: measured on gemini-street, the real Hangul
+            # regions 윗 / 줄 / 꿀식 / 주 all fall below LIGHT_RATIO, and
+            # offering them to skim cost recall 0.333 -> 0.278.  A read
+            # that decoded to no script at all is the one case with no
+            # script evidence to weigh against a thin-stroke measurement --
+            # and is precisely the gap the has_digit whitelist below leaves.
+            candidates = [
+                inst for inst in instances
+                if detector.detect_script((inst.text or "").strip()) is None
+            ]
+            scum = {id(inst): reason for inst, reason in _skim(candidates, asset)}
+        except Exception:
+            scum = {}   # a failing precision pass must never cost recall
     kept: List[InstText] = []
     for inst in instances:
         text = (inst.text or "").strip()
         if not text:
+            continue
+        reason = scum.get(id(inst))
+        if reason:
+            # The rejection has to be recorded somewhere that OUTLIVES the
+            # instance -- writing it to recognition_history alone would drop
+            # the evidence together with the region it explains, which is
+            # precisely how a suppression pass eats a real detection
+            # unnoticed for a year.  So: the log, which survives, and the
+            # history too, for any caller that keeps rejected instances.
+            b = inst.bounding_box
+            logger.info(
+                "skim lifted %s %r conf=%.3f bbox=(%s,%s,%sx%s): %s",
+                inst.id, text, inst.confidence or 0,
+                b.x if b else "?", b.y if b else "?",
+                b.width if b else "?", b.height if b else "?", reason,
+            )
+            _history(inst, {"stage": "skim", "kept": False, "reason": reason,
+                            "text": text, "confidence": inst.confidence})
             continue
         has_script = detector.detect_script(text) is not None
         has_digit = any(ch.isdigit() for ch in text)
@@ -2961,12 +3413,23 @@ def _history(inst: InstText, entry: Dict[str, Any]) -> None:
 
 
 def _needs_paddle_audit(inst: InstText) -> bool:
+    """Admit exactly the reads hybrid_audit can actually act on.
+
+    This gate used to also admit anything under 0.72 confidence, but
+    acceptance below requires `punctuation_risk` -- so a low-confidence
+    read with no trailing artifact was sent to Paddle, compared, and then
+    always rejected. It bought a rejected-candidate log entry and nothing
+    else, on most regions of a dense CJK scene.
+
+    General low-confidence CJK arbitration is a real thing to want, but
+    it needs its own evidence test rather than borrowing the
+    trailing-dash one. Savor's sniff/chew/swallow split is the model:
+    a separate course, with its own way of being wrong.
+    """
     text = inst.text or ""
     lang = inst.detected_language or inst.language
     cjk = lang in {"ja", "zh-cn", "zh-tw", "zh-hk", "zh-mo", "zh-sg", "ko"}
-    return cjk and bool(text) and (
-        text[-1:] in _TRAILING_ARTIFACTS or (inst.confidence or 0.0) < 0.72
-    )
+    return cjk and bool(text) and text[-1:] in _TRAILING_ARTIFACTS
 
 
 def _no_terminal_dash_ink(asset: Any, bbox: Optional[BBox]) -> Optional[bool]:
@@ -3039,16 +3502,12 @@ def hybrid_audit(asset: Any, instances: List[InstText]) -> int:
             primary_score = inst.confidence or 0.0
             punctuation_risk = before[-1:] in _TRAILING_ARTIFACTS
             no_dash_ink = _no_terminal_dash_ink(asset, inst.bounding_box)
-            canonical_japan_subs = (
-                isinstance(asset, (str, Path)) and Path(asset).stem == "bd95d099a3d8"
-                and inst.id == "r1" and before == "御獄-" and candidate.text == "御嶽"
-            )
             accepted = (
                 candidate.text != before
                 and score >= 0.85
                 and score >= primary_score + 0.10
                 and punctuation_risk
-                and (no_dash_ink is True or canonical_japan_subs)
+                and no_dash_ink is True
             )
             _history(inst, {
                 "stage": "hybrid_audit", "engine": "paddleocr",
@@ -3056,7 +3515,6 @@ def hybrid_audit(asset: Any, instances: List[InstText]) -> int:
                 "primary_text": before, "primary_confidence": round(primary_score, 4),
                 "accepted": accepted,
                 "terminal_dash_ink": no_dash_ink,
-                "canonical_fixture": canonical_japan_subs,
                 "reason": "high-confidence independent reading plus crop-mask evidence resolves trailing punctuation artifact" if accepted else "candidate retained for review; conservative arbitration did not pass",
             })
             if accepted:
@@ -3070,6 +3528,99 @@ def hybrid_audit(asset: Any, instances: List[InstText]) -> int:
                 }
                 changed += 1
     return changed
+
+
+def assess_multi_candidate_ocr(
+    asset: Any,
+    instances: List[InstText],
+    scene_regions: Optional[List[SceneRegion]] = None,
+    policy: Optional[OCRAssessmentPolicy] = None,
+) -> int:
+    """Attach a fresh Paddle verification observation to risky OCR reads.
+
+    The current EasyOCR result remains the proposal. Paddle is a separately
+    invoked verifier; disagreement is retained for review rather than silently
+    replacing source text with an uncalibrated cross-backend confidence.
+    """
+    policy = policy or OCRAssessmentPolicy()
+    if policy.mode == "off" or not instances:
+        return 0
+
+    def risky(inst: InstText) -> bool:
+        if policy.mode == "exhaustive":
+            return True
+        lang = (inst.detected_language or inst.language or "").lower()
+        cjk = lang.startswith(("ja", "zh", "ko"))
+        weak = (inst.confidence or 0.0) < 0.78
+        surface = next((
+            region for region in (scene_regions or [])
+            if _bbox_iou(inst.bounding_box, region.bbox) > 0
+        ), None)
+        textured = getattr(surface, "texture", None) == "textured"
+        vertical = inst.bounding_box.height > inst.bounding_box.width * 1.6
+        return weak or cjk or textured or vertical
+
+    selected = [inst for inst in instances if risky(inst)]
+    if not selected:
+        return 0
+    from tofu.layers.ocr_verification import PaddleRegionVerifier
+    verifier = PaddleRegionVerifier()
+    results = verifier.verify_regions(
+        asset,
+        [inst.bounding_box for inst in selected],
+        [inst.text for inst in selected],
+    )
+    verified = 0
+    for inst, result in zip(selected, results):
+        primary_confidence = float(inst.confidence or 0.0)
+        verification = result.evidence()
+        agreement = verification.get("similarity")
+        score = (
+            0.45 * primary_confidence
+            + 0.35 * float(agreement if agreement is not None else 0.0)
+            + 0.20 * float(result.confidence)
+        )
+        review_required = result.state != "agree"
+        inst.ocr_provenance = {
+            "schema": 1,
+            "policy_revision": policy.calibration_revision,
+            "mode": policy.mode,
+            "observations": [
+                {
+                    "backend": "primary",
+                    "pass_tag": "selected_existing_pipeline",
+                    "text": inst.text or "",
+                    "raw_confidence": round(primary_confidence, 4),
+                    "bbox": {
+                        "x": inst.bounding_box.x, "y": inst.bounding_box.y,
+                        "width": inst.bounding_box.width, "height": inst.bounding_box.height,
+                    },
+                },
+                verification,
+            ],
+            "selected_backend": "primary",
+            "selected_text": inst.text,
+            "score": round(score, 4),
+            "verification_state": result.state,
+            "auto_accepted": not review_required,
+            "review_required": review_required,
+            "reason_codes": (
+                ["paddle_agreement"] if result.state == "agree"
+                else [f"paddle_{result.state}"]
+            ),
+        }
+        _history(inst, {
+            "stage": "multi_candidate_ocr",
+            "engine": "paddleocr",
+            "accepted": result.state == "agree",
+            "candidate_text": result.text,
+            "candidate_confidence": round(result.confidence, 4),
+            "similarity": result.similarity,
+            "reason": f"independent verification {result.state}",
+        })
+        if result.state == "agree":
+            verified += 1
+    return verified
 
 
 def build_manifest(
@@ -3148,6 +3699,10 @@ def build_manifest(
                 detected_language=_det_lang_from_engine(det, engine),
                 reading_order=order,
                 frame_index=None,  # video: set per frame once tracking lands
+                recognition_history=(
+                    [dict(item) for item in det.provenance]
+                    if det.provenance else None
+                ),
             )
         )
 
@@ -3294,7 +3849,13 @@ def build_manifest(
     if prune_garbage:
         instances = _prune_hallucinations(instances, asset)
 
-    return TextManifest(
+    manifest = TextManifest(
+        # the scene's own language, voted from the regions that survived
+        # every filter above. set HERE rather than by whichever caller
+        # happens to remember: leaving it None made ToFU predict text
+        # expansion against an English source on every pipeline-driven
+        # run, and gave basil.pairing() nothing to compare.
+        src_lang=taste_the_room(instances),
         # asset_info.source is a full file path (server/main.py's
         # convention: UPLOAD_DIR/{asset_id}.ext) -- the STEM is the real
         # asset_id; using the raw path leaked local filesystem paths into
@@ -3315,3 +3876,5 @@ def build_manifest(
         duration=asset_info.duration,
         prcssng_time=time.time() - start,
     )
+    classify_asset_context(manifest)
+    return manifest
