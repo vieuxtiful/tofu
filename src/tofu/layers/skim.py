@@ -129,6 +129,45 @@ def is_scum(inst: InstText, asset: Any) -> Tuple[bool, Optional[str]]:
     )
 
 
+## Pixels of box width per character.  Below this a read claims more
+## characters than the box has room to draw legibly: measured, the real
+## short reads on japan-street sit at 9.5-12.5 px/char and the plaques at
+## 17-52, while the suspect digit strings this targets sit at 2.75 ("2932"
+## in an 11x21 box), 5.0 ("9113" in 20x8) and 6.2 ("88688" in 31x22).
+## Deliberately set BELOW the smallest measured real value rather than
+## between the populations -- this signal only nominates a region for a
+## second opinion, so its job is to never nominate a real one.
+MIN_PX_PER_CHAR = 8.0
+
+
+def char_density(inst: InstText) -> Optional[float]:
+    """Box width available per recognised character, or None if unknowable.
+
+    Uses the long axis: a vertical CJK column packs its characters down the
+    height, and dividing its narrow width by the character count would
+    condemn every one of them.
+    """
+    text = (inst.text or "").strip()
+    b = inst.bounding_box
+    if not text or b is None or b.width <= 0 or b.height <= 0:
+        return None
+    return max(b.width, b.height) / len(text)
+
+
+def needs_arbitration(inst: InstText) -> bool:
+    """Whether a read is worth spending a cross-engine second opinion on.
+
+    Deliberately NOT a verdict.  These are reads this layer declined to
+    judge on stroke evidence -- too long for the length gate, or too
+    confident for the confidence gate -- that nonetheless claim more
+    characters than their box can hold.  The caller must still require an
+    independent engine to agree before removing anything, because a thin
+    box is suggestive and nothing more.
+    """
+    density = char_density(inst)
+    return density is not None and density < MIN_PX_PER_CHAR
+
+
 def skim(instances: List[InstText], asset: Any) -> List[Tuple[InstText, str]]:
     """The regions to lift, paired with why.
 

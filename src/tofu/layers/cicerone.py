@@ -2894,6 +2894,7 @@ def detect(
     vertical_split: bool = True,
     paddle_rescue: bool = True,
     polish: bool = True,
+    ocr_assessment_policy: Optional[OCRAssessmentPolicy] = None,
     savor: bool = True,
     wasabi: bool = True,
     menu: bool = True,
@@ -3153,12 +3154,24 @@ def detect(
     if polish and manifest.instances and not isinstance(final_engine, NullBackend):
         second_look(asset, manifest.instances, final_engine)
 
+    # General risk-based cross-provider assessment happens after proposal
+    # generation has settled and before any correction stage mutates text.
+    assess_multi_candidate_ocr(
+        asset, manifest.instances, scene_regions, ocr_assessment_policy
+    )
+
     # Hybrid arbitration runs after every EasyOCR refinement has settled;
     # invoking Paddle earlier would let later EasyOCR passes overwrite the
     # independent candidate that resolves a risky read.
     if (_engine_from_env() in {"auto", "hybrid"}
             and isinstance(final_engine, EasyOCRBackend)):
         hybrid_audit(asset, manifest.instances)
+        # Skim's own arbitration shares that gate and that reasoning: it
+        # runs on the settled text, and it is the only place Paddle is
+        # ever used to REMOVE an EasyOCR read rather than add or replace
+        # one, so it must not see text a later pass would have repaired.
+        manifest.instances = skim_audit(asset, manifest.instances)
+        manifest.total_regions = len(manifest.instances)
 
     # Savor's taste test runs LAST, once, on the FINAL text — after
     # every detection/refinement/re-read pass above has had its say.
@@ -3472,6 +3485,84 @@ def _no_terminal_dash_ink(asset: Any, bbox: Optional[BBox]) -> Optional[bool]:
         return None
 
 
+def skim_audit(asset: Any, instances: List[InstText]) -> List[InstText]:
+    """Cross-engine second opinion on script-less reads skim could not judge.
+
+    Skim removes a read on stroke evidence alone only when nothing
+    contradicts it -- short, weak, script-less, hairline.  That leaves a
+    residual it declines to touch: reads too long for its length gate or
+    too confident for its confidence gate, which still claim more
+    characters than their box can draw.  Measured after skim on the CJK
+    scenes, that residual is seven regions ('2932' in an 11x21 box, '9113'
+    in 20x8, '88688' in 31x22, and four others).
+
+    Paddle arbitrates them, and the rule is deliberately ASYMMETRIC:
+
+      - Paddle reads text there  -> keep, always.  A second engine seeing
+        content is positive evidence and outranks a geometric suspicion.
+      - Paddle reads nothing     -> remove, but ONLY because the density
+        signal already nominated the region.  Paddle silence never removes
+        anything on its own: PaddleOCR inference is not run-to-run
+        deterministic (see _prefer_paddle_on_overlap's docstring, which
+        refuses cross-engine confidence comparison for the same reason),
+        so silence is weak evidence that can confirm a local lean and must
+        never constitute one.
+
+    Costs at most ONE subprocess for the whole image -- detect_in_regions
+    batches every candidate box into a single round trip, which matters
+    because the worker's model cache dies with the process.  Returns the
+    surviving instances; renumbering is the caller's business.
+    """
+    from tofu.layers.skim import needs_arbitration
+    detector = ScriptDetector()
+    candidates = [
+        inst for inst in instances
+        if detector.detect_script((inst.text or "").strip()) is None
+        and inst.bounding_box is not None
+        and needs_arbitration(inst)
+    ]
+    if not candidates or not PaddleOCRBackend.is_available():
+        return instances
+    lang = next(
+        (i.detected_language or i.language for i in instances
+         if (i.detected_language or i.language)),
+        "en",
+    )
+    try:
+        reader = PaddleOCRBackend(languages=[lang], gpu=False)
+        per_region = reader.detect_in_regions(
+            asset, [i.bounding_box for i in candidates]
+        )
+    except Exception:
+        return instances   # a failing arbitration must never cost recall
+    doomed = set()
+    for inst, detections in zip(candidates, per_region):
+        seen = [d for d in detections if (d.text or "").strip()]
+        if seen:
+            _history(inst, {"stage": "skim_audit", "engine": "paddleocr",
+                            "kept": True, "reason": "second engine reads text here",
+                            "candidate": (seen[0].text or "").strip()})
+            continue
+        b = inst.bounding_box
+        density = b and max(b.width, b.height) / max(1, len((inst.text or "").strip()))
+        reason = (
+            f"{density:.1f}px per character with no second-engine read"
+            if density else "no second-engine read"
+        )
+        logger.info("skim_audit lifted %s %r conf=%.3f: %s",
+                    inst.id, (inst.text or "").strip(), inst.confidence or 0, reason)
+        _history(inst, {"stage": "skim_audit", "engine": "paddleocr",
+                        "kept": False, "reason": reason})
+        doomed.add(id(inst))
+    if not doomed:
+        return instances
+    survivors = [i for i in instances if id(i) not in doomed]
+    for order, inst in enumerate(survivors):
+        inst.id = f"r{order + 1}"
+        inst.reading_order = order
+    return survivors
+
+
 def hybrid_audit(asset: Any, instances: List[InstText]) -> int:
     """Use Paddle only to adjudicate risky CJK EasyOCR reads.
 
@@ -3552,9 +3643,13 @@ def assess_multi_candidate_ocr(
         lang = (inst.detected_language or inst.language or "").lower()
         cjk = lang.startswith(("ja", "zh", "ko"))
         weak = (inst.confidence or 0.0) < 0.78
+        b = inst.bounding_box
         surface = next((
             region for region in (scene_regions or [])
-            if _bbox_iou(inst.bounding_box, region.bbox) > 0
+            if (
+                min(b.x + b.width, region.bbox.x + region.bbox.width) > max(b.x, region.bbox.x)
+                and min(b.y + b.height, region.bbox.y + region.bbox.height) > max(b.y, region.bbox.y)
+            )
         ), None)
         textured = getattr(surface, "texture", None) == "textured"
         vertical = inst.bounding_box.height > inst.bounding_box.width * 1.6
