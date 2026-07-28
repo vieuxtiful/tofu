@@ -1,0 +1,39 @@
+{
+  "wave": "phase-7-8-simple-latin",
+  "description": "First verification corpus wave: simple Latin layouts proving the post-Scribe, pre-Garnish report flow.",
+  "cases": [
+    {
+      "id": "flat-sign",
+      "image": "tests/fixtures/flat-sign.png",
+      "ground_truth": "tests/fixtures/flat-sign.gt.json",
+      "source_language": "en",
+      "target_language": "en",
+      "asset_class": "sign",
+      "target_mode": "identity",
+      "expected_regions": 4,
+      "expected_outcome": "pass"
+    },
+    {
+      "id": "gradient-banner",
+      "image": "tests/fixtures/gradient-banner.png",
+      "ground_truth": "tests/fixtures/gradient-banner.gt.json",
+      "source_language": "en",
+      "target_language": "en",
+      "asset_class": "poster",
+      "target_mode": "identity",
+      "expected_regions": 2,
+      "expected_outcome": "pass"
+    },
+    {
+      "id": "serif-vs-sans",
+      "image": "tests/fixtures/serif-vs-sans.png",
+      "ground_truth": "tests/fixtures/serif-vs-sans.gt.json",
+      "source_language": "en",
+      "target_language": "en",
+      "asset_class": "poster",
+      "target_mode": "identity",
+      "expected_regions": 6,
+      "expected_outcome": "pass"
+    }
+  ]
+}

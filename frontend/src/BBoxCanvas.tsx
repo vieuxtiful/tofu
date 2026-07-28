@@ -34,6 +34,11 @@ interface BBoxCanvasProps {
   onHeightChange?: (height: number) => void;
   onDoubleClickExpand?: () => void;
   bboxColor?: string;
+  bboxBlink?: boolean;
+  /** ids of regions that just arrived from the server. Each gets a one-off
+   * two-pass shimmer. The set is owned (and cleared) by the caller so the
+   * animation cannot replay on an ordinary rerender. */
+  newRegionIds?: Set<string> | null;
   onDragStart?: () => void;
   onDragEnd?: () => void;
 }
@@ -65,7 +70,7 @@ export default function BBoxCanvas({
   preview = false, canvasLabel, showPreviewControls = false,
   controlledZoom, onZoomChange, controlledScroll, onScrollChange,
   controlledHeight, onHeightChange, onDoubleClickExpand,
-  bboxColor = "#22d3ee", onDragStart, onDragEnd,
+  bboxColor = "#22d3ee", bboxBlink = false, newRegionIds, onDragStart, onDragEnd,
 }: BBoxCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const syncBarRef = useRef<HTMLDivElement>(null);
@@ -435,6 +440,10 @@ export default function BBoxCanvas({
           {/* bbox overlay — positioned directly over the rendered image */}
           {natural && renderedW && (
             <div
+              // blink is a canvas-level class, not per-region state: every
+              // existing and newly added box then participates without a
+              // single per-region timer or rerender
+              className={bboxBlink ? "bbox-blink" : undefined}
               style={{
                 position: "absolute",
                 top: 0, left: 0,
@@ -502,6 +511,11 @@ export default function BBoxCanvas({
                     onMouseLeave={handleBboxMouseLeave}
                   >
                     <div className="bbox-corners" />
+                    {/* Its own element on purpose: .bbox::before (scanlines)
+                        and .bbox::after (scan sweep) are both already taken.
+                        Boxes are keyed on inst.id, so this mounts exactly
+                        once per arrival and rerenders never restart it. */}
+                    {newRegionIds?.has(inst.id) && <div className="bbox-shimmer" aria-hidden="true" />}
                     {inst.reading_order !== null && (
                       <div
                         className="bbox-badge"

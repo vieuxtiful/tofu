@@ -7,6 +7,9 @@ interface FontComboboxProps {
   onChange: (path: string, family: string, weight: FontWeight | null) => void;
   families: FontFamily[];
   placeholder?: string;
+  /** Display-only resolved font identity (when value is null but a font is resolved).
+   *  Shows the carried-over font from the Translate tab without committing it. */
+  displayIdentity?: { label: string; path: string | null; provenance: string } | null;
 }
 
 // caches the LOAD PROMISE (not just a "started" flag) so repeat callers —
@@ -16,18 +19,39 @@ interface FontComboboxProps {
 // @font-face hasn't actually finished loading yet (the browser silently
 // falls back to a system font mid-measurement), so callers that need
 // accurate metrics (the Translate-tab preview's wrap/fit) must await this.
-const LOADED_FONTS = new Map<string, Promise<void>>();
+const LOADED_FONTS = new Map<string, Promise<boolean>>();
 
-export function loadFontPreview(path: string, family: string): Promise<void> {
+/** injects an @font-face for one font FILE and resolves to whether it
+ * actually loaded. the boolean matters: a caller that measures text
+ * against a face the browser silently failed to fetch gets metrics for
+ * some system fallback instead, and no way to know. */
+export function loadFontPreview(path: string): Promise<boolean> {
   const key = path;
   const cached = LOADED_FONTS.get(key);
   if (cached) return cached;
-  const fontName = `tofu-preview-${key.replace(/[^a-zA-Z0-9]/g, "")}`;
+  const fontName = fontNameForPath(key);
   const url = `/api/font-file?path=${encodeURIComponent(path)}`;
   const style = document.createElement("style");
-  style.textContent = `@font-face { font-family: "${fontName}"; src: url("${url}") format("truetype"); }`;
+  // Each alias resolves to exactly ONE face file, so the descriptors
+  // advertise the full weight/style range: asked for 700 against a face
+  // declared 400, the browser would SYNTHESIZE bold on top of a file that
+  // may already be bold — double-bolding widens the glyphs past what PIL
+  // draws and desynchronizes the fit measurement from the paint. A full
+  // range makes every request land on the file verbatim, which is what
+  // scribe does (it resolves weight/italic by picking a different FILE,
+  // via resolve_face(), not by emboldening one).
+  //
+  // No format() hint: the server may hand back a face extracted from a
+  // .ttc, and a format() the browser rejects makes it skip the source
+  // entirely rather than sniff the bytes.
+  style.textContent =
+    `@font-face { font-family: "${fontName}"; src: url("${url}");` +
+    ` font-weight: 100 900; font-style: normal italic; font-display: block; }`;
   document.head.appendChild(style);
-  const promise = document.fonts.load(`16px "${fontName}"`).then(() => undefined).catch(() => undefined);
+  const promise = document.fonts
+    .load(`16px "${fontName}"`)
+    .then((faces) => faces.length > 0)
+    .catch(() => false);
   LOADED_FONTS.set(key, promise);
   return promise;
 }
@@ -75,7 +99,7 @@ function weightCss(w: FontWeight): React.CSSProperties {
 }
 
 export default function FontCombobox({
-  value, onChange, families, placeholder = "font",
+  value, onChange, families, placeholder = "font", displayIdentity,
 }: FontComboboxProps) {
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState("");
@@ -87,11 +111,17 @@ export default function FontCombobox({
   );
   const selectedWeight = selectedFamily?.weights.find((w) => w.path === value) ?? null;
 
+  const inferred = !value && displayIdentity?.path && displayIdentity.provenance === "nearest_neighbor";
   const displayLabel = value
     ? selectedWeight
       ? `${selectedFamily?.family ?? ""} ${weightLabel(selectedWeight)}`
       : selectedFamily?.family ?? value.split(/[\\/]/).pop()?.replace(/\.(ttf|otf|ttc|otc)$/i, "") ?? value
-    : placeholder;
+    : displayIdentity?.path
+      ? displayIdentity.label
+      : placeholder;
+  const displayFontPath = value
+    ? (selectedWeight?.path ?? selectedFamily?.best_path ?? null)
+    : displayIdentity?.path ?? null;
 
   const openPanel = useCallback(() => {
     setFilter("");
@@ -119,7 +149,7 @@ export default function FontCombobox({
   useEffect(() => {
     if (!open) return;
     families.forEach((f) => {
-      loadFontPreview(f.best_path, f.family);
+      loadFontPreview(f.best_path);
     });
   }, [open, families]);
 
@@ -129,7 +159,7 @@ export default function FontCombobox({
     if (!expandedFamily) return;
     const fam = families.find((f) => f.family === expandedFamily);
     if (!fam) return;
-    fam.weights.forEach((w) => loadFontPreview(w.path, fam.family));
+    fam.weights.forEach((w) => loadFontPreview(w.path));
   }, [expandedFamily, families]);
 
   const q = filter.trim().toLowerCase();
@@ -152,9 +182,10 @@ export default function FontCombobox({
       >
         <span
           className="min-w-0 flex-1 truncate"
-          style={value && selectedFamily ? { fontFamily: fontNameForPath(selectedWeight?.path ?? selectedFamily.best_path) } : undefined}
+          style={displayFontPath ? { fontFamily: fontNameForPath(displayFontPath) } : undefined}
         >
           {displayLabel}
+          {inferred && <span className="ml-0.5 text-amber-600 dark:text-amber-500">~</span>}
         </span>
         <ChevronDown size={10} className="shrink-0 text-zinc-500" />
       </button>

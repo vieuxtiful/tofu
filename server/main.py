@@ -23,19 +23,21 @@ endpoints:
 run:  uvicorn main:app --reload --port 8000   (from server/)
 """
 
+import contextlib
 import dataclasses
 import hashlib
+import io
 import json
 import os
 import re
+import shutil
 import sys
 import time
 import uuid
-from collections import Counter
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
@@ -49,9 +51,13 @@ from pydantic import BaseModel
 from tofu.core.pipeline import TofuPipeline
 from tofu.core.types import (
     PipelineCfg, LayerMode, infer_asset_info, TextManifest, InstText, BBox,
-    RenderParams, StyleProfil,
+    RenderParams, StyleProfil, VldtnClass,
 )
 from tofu.layers.tofu import ToFU, lang_to_script
+from tofu.layers.fonts import (
+    FONT_EXTS, PACKS_SUBDIR, USER_SUBDIR, pantries, pantry, writable_pantry,
+)
+from tofu.layers.sift import sift
 from tofu.layers import cicerone, memory, scribe, garnish, cleanse, scene, verify, inpaint_providers
 from tofu.layers.cicerone import _to_easyocr_lang
 from tofu.utils.manifest_store import save_manifest, load_manifest, _dict_to_manifest
@@ -72,14 +78,23 @@ db.init_db()
 
 
 def _font_dir() -> Optional[str]:
-    for cand in (
-        os.environ.get("TOFU_FONT_DIR"),
-        str(ROOT / "server" / "fonts"),
-        "C:/Windows/Fonts" if os.name == "nt" else "/usr/share/fonts",
-    ):
-        if cand and Path(cand).exists():
-            return cand
-    return None
+    """the one font-directory answer, shared with the eval harnesses.
+
+    this chain used to be duplicated here and in scripts/, so a fix to
+    one never reached the other. see tofu.layers.fonts.pantry().
+    """
+    return pantry()
+
+
+def _font_dirs() -> List[str]:
+    """EVERY font root the server serves from.
+
+    The server takes all of them where the eval harnesses take the first:
+    a harness names one root and joins paths against it, so widening it
+    would change what those measure, while the server's job is to offer
+    the user every face actually available.
+    """
+    return pantries()
 
 
 _validator: Optional[ToFU] = None
@@ -88,8 +103,40 @@ _validator: Optional[ToFU] = None
 def get_validator() -> ToFU:
     global _validator
     if _validator is None:
-        _validator = ToFU(font_library_path=_font_dir())
+        _validator = ToFU(font_library_path=_font_dirs())
     return _validator
+
+
+def _font_roots() -> List[Path]:
+    """Resolved font roots, for deciding whether a path may be served."""
+    roots = [Path(d).resolve() for d in _font_dirs()]
+    # The writable roots may not exist yet but are still legitimate, so
+    # they are named here rather than inferred from what is on disk.
+    for subdir in (USER_SUBDIR, PACKS_SUBDIR):
+        roots.append((ROOT / "server" / "font-library" / subdir).resolve())
+    return roots
+
+
+def _is_served_font(path: Path) -> bool:
+    """Is this file inside a directory the server is willing to serve?
+
+    /api/font-file previously resolved ANY readable path, with
+    application/octet-stream as the fallback media type -- so it would
+    hand back any file on the host that a caller could name. Harmless
+    while fonts only ever came from fixed system directories; not harmless
+    once callers can also PUT files on the box.
+    """
+    try:
+        resolved = path.resolve()
+    except OSError:
+        return False
+    for root in _font_roots():
+        try:
+            resolved.relative_to(root)
+            return True
+        except ValueError:
+            continue
+    return False
 
 
 def jsonable(obj: Any) -> Any:
@@ -186,35 +233,154 @@ def _resolve_auto_fonts(manifest: TextManifest, default_targ_lang: Optional[str]
         return 0
     resolved = 0
     for inst in manifest.instances:
-        if inst.style_profile and inst.style_profile.font_family:
-            continue  # explicit pick -- nothing to resolve
         text = inst.target_text or inst.text or ""
         lang = inst.target_language or default_targ_lang or manifest.targ_lang
         weight = inst.style_profile.font_weight if inst.style_profile else None
         italic = bool(inst.style_profile.italic) if inst.style_profile else False
-        path = scribe.resolve_auto_font(registry, lang, text, weight=weight, italic=italic)
+        explicit = inst.style_profile.font_family if inst.style_profile else None
+        if explicit:
+            # An explicit pick needs no path resolution, but it still goes
+            # through resolve_face() at render time, which is where a
+            # requested italic with no real italic sibling becomes a
+            # SHEAR. The preview has to know that, so the flag is computed
+            # for every region even though the path is not.
+            _, synthetic = scribe.resolve_face(registry, explicit, weight, italic)
+            inst.resolved_synthetic_italic = bool(synthetic)
+            continue
+        path, synthetic = scribe.resolve_auto_font_face(
+            registry, lang, text, weight=weight, italic=italic,
+        )
         if path != inst.resolved_font_family:
             inst.resolved_font_family = path
+        inst.resolved_synthetic_italic = bool(synthetic)
         if path:
             resolved += 1
     return resolved
 
 
+@contextlib.contextmanager
+def _matched_faces_applied(manifest: TextManifest):
+    """Render regions still on "auto" with the face Basil's bouquet agreed on.
+
+    The frontend's resolution ladder (doppelganger.ts) has always ranked
+    ``font_match.recommended_substitute`` above the generic auto default,
+    while /api/render only ever consulted ``style_profile.font_family``.
+    So the Translate preview showed the matched face and the render drew
+    the fallback: a localiser approved one thing and shipped another, and
+    the ladder had to carry a ``useMatch: false`` mode purely to describe
+    the discrepancy.  This closes it from the render side.
+
+    It does not move the boundary that keeps font matching honest.  The
+    assignment lasts exactly as long as the render and is undone in the
+    ``finally``, so the PERSISTED style_profile still holds nothing but a
+    human's explicit pick -- the invariant tests/test_font_matching.py
+    asserts.  A region that HAS an explicit pick is never touched: rung 1
+    outranks rung 2 here for the same reason it does in the ladder.
+
+    Mutating in place rather than rendering a copy is deliberate: scribe
+    writes ``glyph_fallback`` back onto the instances it drew, and a copy
+    thrown away after the render would swallow those flags.
+    """
+    touched: List[Tuple[Any, Optional[StyleProfil]]] = []
+    for inst in manifest.instances:
+        style = inst.style_profile
+        if style is not None and style.font_family:
+            continue  # rung 1: a human already chose, and that always wins
+        match = inst.font_match or {}
+        if match.get("status") == "unavailable":
+            continue
+        path = (match.get("recommended_substitute") or {}).get("font_path")
+        if not path:
+            continue
+        touched.append((inst, style))
+        if style is None:
+            inst.style_profile = StyleProfil(font_family=path)
+        else:
+            style.font_family = path
+    try:
+        yield [inst.id for inst, _ in touched]
+    finally:
+        for inst, style in touched:
+            if style is None:
+                inst.style_profile = None
+            else:
+                style.font_family = None
+
+
+def _revalidate_regions(
+    validator: ToFU,
+    path: Any,
+    manifest: TextManifest,
+    targ_lang: str,
+    font: Optional[str],
+) -> tuple:
+    """Re-validate every effective target language with real per-region
+    typography context, without saying the same thing N times.
+
+    Most of what ToFU reports at this stage — script support, render
+    quality — is a fact about a (language, font, size, effects)
+    combination, not about one box. Validating once per INSTANCE meant a
+    30-region Japanese scene produced 30 identical warnings, each stamped
+    with a different region id, which buries the one finding that is
+    genuinely per-region among 29 copies of a language-level one.
+
+    So: validate once per distinct context, then merge issues that are
+    the same finding, carrying the regions they came from on region_ids.
+
+    returns (merged_issues, languages, validate_calls).
+    """
+    contexts: Dict[tuple, List[str]] = {}
+    for inst in manifest.instances:
+        if inst.dnt or not inst.target_text:
+            continue
+        lang = inst.target_language or targ_lang
+        font_px = (
+            inst.characteristics.size
+            if inst.characteristics and inst.characteristics.size else None
+        )
+        sp = inst.style_profile
+        effects = []
+        if sp:
+            if sp.shadow: effects.append("shadow")
+            if sp.stroke_width: effects.append("stroke")
+            if sp.italic: effects.append("italic")
+        contexts.setdefault((lang, font_px, tuple(effects)), []).append(inst.id)
+
+    merged: Dict[tuple, VldtnClass] = {}
+    for (lang, font_px, effects), region_ids in contexts.items():
+        ctx: Dict[str, Any] = {"font": font} if font else {}
+        if font_px:
+            ctx["font_px"] = font_px
+        if effects:
+            ctx["effects"] = list(effects)
+        for issue in validator.validate(str(path), lang, ctx or None).issues:
+            # a region-scoped issue (ToFU_005/007) keeps its own anchor;
+            # anything else is a property of the context, so it collects
+            # every region that shares that context
+            owners = [issue.region_id] if issue.region_id else list(region_ids)
+            key = (issue.code, issue.message, issue.region_id)
+            existing = merged.get(key)
+            if existing is None:
+                issue.region_id = owners[0]
+                issue.region_ids = list(owners)
+                merged[key] = issue
+            else:
+                existing.region_ids.extend(
+                    r for r in owners if r not in existing.region_ids
+                )
+
+    return list(merged.values()), list({k[0] for k in contexts}), len(contexts)
+
+
 def _infer_src_lang(manifest: TextManifest) -> str:
     """dominant detected language, weighted by region area — a storefront
-    sign outvotes a handful of small incidental latin fragments."""
-    votes: Dict[str, float] = Counter()
-    for i in manifest.instances:
-        if not i.detected_language:
-            continue
-        area = (
-            i.bounding_box.width * i.bounding_box.height
-            if i.bounding_box is not None else 1
-        )
-        votes[i.detected_language] += max(1, area)
-    if not votes:
-        return "en"
-    return max(votes, key=lambda k: votes[k])
+    sign outvotes a handful of small incidental latin fragments.
+
+    the vote itself lives in cicerone (where the evidence is produced and
+    where build_manifest now applies it); this wrapper only keeps the
+    server's "always answer something" contract.
+    """
+    return cicerone.taste_the_room(manifest.instances) or "en"
 
 
 LANGUAGE_NAMES: Dict[str, str] = {
@@ -496,16 +662,44 @@ def languages():
     }
 
 
+# The full catalog is the whole installed library sifted and scored, which
+# is a real cost the first time and free afterwards: the registry is a
+# process singleton and the fonts on disk do not change while we run.
+_CATALOG_CACHE: Dict[Tuple[str, str], List[dict]] = {}
+
+
 @app.get("/api/fonts")
-def fonts(lang: str, limit: int = 24):
+def fonts(lang: str, limit: int = 24, full: bool = False):
+    """Ranked fonts for one target language.
+
+    Two modes, deliberately distinct.  The default is the dropdown's short
+    ranked list, capped at ``limit`` families.  ``full=true`` is the Font
+    Manager's complete catalog: every family, each tagged with a browsing
+    category, and no ``fonts`` face list (the manager picks per family, so
+    computing a flat ranked face list for it would be pure waste).
+    """
     script = lang_to_script.get(lang)
     if script is None:
         raise HTTPException(400, f"unknown language '{lang}'")
     validator = get_validator()
     if validator.font_registry is None:
         return {"script": script, "fonts": [], "families": []}
+
+    if full:
+        cached = _CATALOG_CACHE.get((script, lang))
+        if cached is None:
+            cached = validator.font_registry.families_with_weights(
+                script, lang, limit=None
+            )
+            for fam in cached:
+                fam["category"] = sift(fam["best_path"], fam["family"])
+            _CATALOG_CACHE[(script, lang)] = cached
+        return {"script": script, "fonts": [], "families": cached}
+
     ranked = validator.font_registry.recommend(script, lang, limit=limit)
     families = validator.font_registry.families_with_weights(script, lang, limit=limit)
+    for fam in families:
+        fam["category"] = sift(fam["best_path"], fam["family"])
     return {
         "script": script,
         "fonts": [{"path": p, "coverage": round(c, 4)} for p, c in ranked],
@@ -513,20 +707,278 @@ def fonts(lang: str, limit: int = 24):
     }
 
 
+# OS/2 fsType, the vendor's embedding permission. Bit 1 is the one that
+# matters: the OpenType spec makes Restricted exclusive of the others, but
+# real fonts do not honour that -- measured across 337 installed faces, one
+# ships fsType=14, which is Restricted AND Preview&Print AND Editable at
+# once. A check that tests "is Preview&Print or Editable set" passes that
+# font. Bit 1 is therefore tested FIRST and alone.
+FSTYPE_RESTRICTED = 0x0002
+FSTYPE_PREVIEW_PRINT = 0x0004
+FSTYPE_EDITABLE = 0x0008
+FSTYPE_NO_SUBSET = 0x0100
+FSTYPE_BITMAP_ONLY = 0x0200
+
+
+def _embedding_permission(path: Path, face_part: str = "") -> Dict[str, Any]:
+    """What the font's vendor permits, read from OS/2 fsType.
+
+    Fails OPEN on an unreadable table: a font whose permissions cannot be
+    determined is treated as installable, matching how the rest of the
+    registry degrades. The alternative -- refusing everything unparseable
+    -- would break every face on a machine without fontTools.
+    """
+    result = {
+        "fs_type": None, "restricted": False,
+        "subsettable": True, "bitmap_only": False, "readable": False,
+    }
+    try:
+        from fontTools.ttLib import TTCollection, TTFont
+
+        if face_part.isdigit():
+            font = TTCollection(str(path), lazy=True).fonts[int(face_part)]
+        else:
+            font = TTFont(str(path), lazy=True, fontNumber=0)
+        if "OS/2" not in font:
+            return result
+        value = int(font["OS/2"].fsType or 0)
+    except Exception:
+        return result
+    result.update({
+        "fs_type": value,
+        "readable": True,
+        "restricted": bool(value & FSTYPE_RESTRICTED),
+        "subsettable": not (value & FSTYPE_NO_SUBSET),
+        "bitmap_only": bool(value & FSTYPE_BITMAP_ONLY),
+    })
+    return result
+
+
+def _unsafe_archive_member(name: str) -> bool:
+    """Would extracting this member write outside the target directory?
+
+    Deliberately string-level rather than via pathlib. On Windows
+    ``Path("/abs/evil.ttf").is_absolute()`` is **False** -- an absolute
+    Windows path needs a drive letter -- so a root-anchored POSIX member
+    sails straight through the obvious check. Zip entries are also
+    specified with forward slashes, but nothing stops a hostile archive
+    using backslashes, which pathlib then treats as separators on Windows
+    and as ordinary characters elsewhere.
+
+    So: reject a leading separator of either kind, a drive letter, and any
+    '..' segment under either separator.
+    """
+    if not name:
+        return True
+    normalised = name.replace("\\", "/")
+    if normalised.startswith("/"):
+        return True
+    if len(name) > 1 and name[1] == ":":          # C:\... or C:/...
+        return True
+    return ".." in normalised.split("/")
+
+
+def _register_font_dir(directory: Path) -> int:
+    """Discover a directory into the live registry and invalidate caches.
+
+    _CATALOG_CACHE's own comment says it is safe because "fonts on disk do
+    not change while we run". Runtime installation is precisely what breaks
+    that, so every path that adds or removes faces clears it here rather
+    than relying on each endpoint to remember.
+
+    Scribe's _font_cache deliberately is NOT cleared: it keys on
+    (font_family, size), a newly installed file is a new path, and a new
+    path is a cache miss. It would only go stale if a file were REPLACED at
+    an existing path, which the upload endpoint refuses to do.
+    """
+    validator = get_validator()
+    registry = validator.font_registry
+    if registry is None:
+        return 0
+    loaded = registry.discover(str(directory))
+    _CATALOG_CACHE.clear()
+    return loaded
+
+
+@app.post("/api/fonts/upload")
+async def upload_font(file: UploadFile = File(...)):
+    """Install one font file for this server, available immediately.
+
+    No OS-level installation is involved, and none is needed: scribe
+    renders through ImageFont.truetype(path), the preview is served over
+    /api/font-file, and FontRegistry keys on absolute paths. The system
+    font directory was only ever a discovery convenience.
+    """
+    name = Path(file.filename or "").name
+    if not name or Path(name).suffix.lower() not in FONT_EXTS:
+        raise HTTPException(
+            400, f"expected a font file ({', '.join(sorted(FONT_EXTS))})"
+        )
+    target_dir = writable_pantry(USER_SUBDIR)
+    target = target_dir / name
+    if target.exists():
+        # Replacing a file in place would strand scribe's (font_family,
+        # size) cache on the previous bytes for the rest of the process.
+        raise HTTPException(409, f"'{name}' is already installed")
+
+    target.write_bytes(await file.read())
+    permission = _embedding_permission(target)
+    registry = get_validator().font_registry
+    if registry is None:
+        target.unlink(missing_ok=True)
+        raise HTTPException(503, "no font registry on this server")
+    loaded = registry.load_font(str(target))
+    if not loaded:
+        # A file fontTools cannot parse would fail every future discover()
+        # of this directory, silently, forever.
+        target.unlink(missing_ok=True)
+        raise HTTPException(400, f"'{name}' could not be read as a font")
+    _CATALOG_CACHE.clear()
+    return {
+        "installed": name, "faces": loaded, "path": str(target),
+        "source": USER_SUBDIR, "embedding": permission,
+        # Restricted fonts install and render locally; what they must not do
+        # is get served to browsers for preview. Said plainly rather than
+        # dropped silently.
+        "preview_blocked": permission["restricted"],
+    }
+
+
+@app.get("/api/fonts/packs")
+def list_font_packs():
+    packs = []
+    root = ROOT / "server" / "font-library" / PACKS_SUBDIR
+    if root.is_dir():
+        for entry in sorted(root.iterdir()):
+            if not entry.is_dir():
+                continue
+            meta: Dict[str, Any] = {"name": entry.name}
+            manifest = entry / "pack.json"
+            if manifest.is_file():
+                try:
+                    meta.update(json.loads(manifest.read_text(encoding="utf-8")))
+                except Exception:
+                    meta["error"] = "pack.json is unreadable"
+            meta["face_files"] = sum(
+                1 for p in entry.rglob("*") if p.suffix.lower() in FONT_EXTS
+            )
+            packs.append(meta)
+    return {"packs": packs}
+
+
+@app.post("/api/fonts/packs/install")
+async def install_font_pack(file: UploadFile = File(...)):
+    """Install a zip of fonts plus an optional pack.json."""
+    import zipfile
+
+    name = Path(Path(file.filename or "").name).stem
+    if not name:
+        raise HTTPException(400, "pack needs a filename")
+    root = writable_pantry(PACKS_SUBDIR)
+    target = root / name
+    if target.exists():
+        raise HTTPException(409, f"pack '{name}' is already installed")
+
+    payload = io.BytesIO(await file.read())
+    try:
+        archive = zipfile.ZipFile(payload)
+    except zipfile.BadZipFile:
+        raise HTTPException(400, "pack must be a zip archive")
+    for member in archive.namelist():
+        # Zip Slip: an archive member may name an absolute path or climb
+        # out with '..', and extractall would happily write there.
+        if _unsafe_archive_member(member):
+            raise HTTPException(400, f"unsafe path in archive: {member}")
+    target.mkdir(parents=True)
+    archive.extractall(target)
+
+    loaded = _register_font_dir(target)
+    if not loaded:
+        shutil.rmtree(target, ignore_errors=True)
+        raise HTTPException(400, "archive contained no readable fonts")
+    return {"installed": name, "faces": loaded}
+
+
+@app.delete("/api/fonts/packs/{name}")
+def remove_font_pack(name: str):
+    safe = Path(name).name
+    target = ROOT / "server" / "font-library" / PACKS_SUBDIR / safe
+    if not target.is_dir():
+        raise HTTPException(404, f"no pack '{safe}'")
+    registry = get_validator().font_registry
+    removed = 0
+    if registry is not None:
+        for path in target.rglob("*"):
+            if path.suffix.lower() in FONT_EXTS:
+                # Without this the registry keeps offering families whose
+                # files are gone, and the failure surfaces at render time
+                # inside ImageFont.truetype instead of at the choice.
+                removed += registry.unload_font(str(path))
+    shutil.rmtree(target, ignore_errors=True)
+    _CATALOG_CACHE.clear()
+    return {"removed": safe, "faces_unloaded": removed}
+
+
+_FACE_CACHE: Dict[str, bytes] = {}
+
+
 @app.get("/api/font-file")
 def serve_font_file(path: str):
-    """serve a font file for @font-face preview in the frontend."""
-    p = Path(path)
+    """serve a font file for @font-face preview in the frontend.
+
+    FontRegistry keys the Nth face of a collection as "<file>#<n>"
+    (fonts.py's load_font), and those keys are exactly what reaches the
+    client on style_profile.font_family / resolved_font_family. Path(...)
+    on such a key is not a file, so every collection face used to 404 --
+    and CJK families on Windows are overwhelmingly .ttc, which is
+    precisely where the preview most needs the real face.
+
+    A browser @font-face cannot select a face INSIDE a collection, so
+    serving the whole .ttc would silently preview face 0: msgothic.ttc#1
+    (MS UI Gothic) drawn as face 0 (MS Gothic) is a different typeface at
+    different metrics, which desynchronizes both the fit measurement and
+    the paint from what scribe draws. Extract the requested face into a
+    standalone font instead. Cached in-process because the extraction is
+    pure CPU over an unchanging file and the panel preloads whole
+    families at once.
+    """
+    file_part, _, face_part = path.partition("#")
+    p = Path(file_part)
     if not p.is_file():
         raise HTTPException(404, "font not found")
-    ext = p.suffix.lower()
-    media = {
-        ".ttf": "font/ttf",
-        ".otf": "font/otf",
-        ".ttc": "font/collection",
-        ".otc": "font/collection",
-    }.get(ext, "application/octet-stream")
-    return Response(content=p.read_bytes(), media_type=media)
+    if not _is_served_font(p):
+        # 404 rather than 403: whether some path outside the font roots
+        # exists is not this endpoint's to disclose.
+        raise HTTPException(404, "font not found")
+    if _embedding_permission(p, face_part)["restricted"]:
+        # fsType bit 1. Serving the bytes for @font-face preview puts the
+        # whole face on every client that asks; a face whose vendor
+        # forbade embedding must not be redistributed by us.
+        raise HTTPException(403, "this font's embedding permissions forbid serving it")
+    if not face_part:
+        ext = p.suffix.lower()
+        media = {
+            ".ttf": "font/ttf",
+            ".otf": "font/otf",
+            ".ttc": "font/collection",
+            ".otc": "font/collection",
+        }.get(ext, "application/octet-stream")
+        return Response(content=p.read_bytes(), media_type=media)
+
+    cached = _FACE_CACHE.get(path)
+    if cached is None:
+        try:
+            from fontTools.ttLib import TTCollection
+
+            faces = TTCollection(str(p)).fonts
+            face = faces[int(face_part)]
+        except (ImportError, ValueError, IndexError) as exc:
+            raise HTTPException(404, f"font face not found: {exc}")
+        buf = io.BytesIO()
+        face.save(buf)
+        cached = buf.getvalue()
+        _FACE_CACHE[path] = cached
+    return Response(content=cached, media_type="font/ttf")
 
 
 @app.post("/api/validate")
@@ -549,8 +1001,12 @@ def validate(req: ValidateRequest):
             from tofu.layers.font_matching import identify_manifest_fonts
             identify_manifest_fonts(str(path), manifest, get_validator().font_registry)
             save_manifest(UPLOAD_DIR, req.asset_id, manifest)
-        except Exception:
-            pass
+        except Exception as exc:
+            # A silent failure here looks exactly like "this asset has no
+            # font evidence", which is what a manifest that never got any
+            # also looks like.  Say which one it is.
+            print(f"[tofu] font evidence backfill failed for {req.asset_id}: "
+                  f"{type(exc).__name__}: {exc}")
     report = get_validator().validate(str(path), req.targ_lang, context, manifest)
     return jsonable(report)
 
@@ -959,6 +1415,10 @@ def detect_stream(
                 for n, (tt, lt) in enumerate(cicerone.PASS_THRESHOLDS, 1):
                     yield event({"stage": "cicerone", "pass": n, "status": "running"})
                     passed = backend.detect(str(path), text_threshold=tt, low_text=lt)
+                    cicerone.tag_detection_pass(
+                        passed, engine=backend, pass_number=n,
+                        text_threshold=tt, low_text=lt,
+                    )
                     detections = cicerone.merge_detections(detections, passed)
                     yield event({
                         "stage": "cicerone", "pass": n, "status": "complete",
@@ -967,6 +1427,9 @@ def detect_stream(
             else:
                 # PaddleOCR / single-pass backend
                 passed = backend.detect(str(path))
+                cicerone.tag_detection_pass(
+                    passed, engine=backend, pass_number=1,
+                )
                 detections = cicerone.merge_detections(detections, passed)
                 yield event({
                     "stage": "cicerone", "pass": 1, "status": "complete",
@@ -1164,6 +1627,10 @@ def detect_stream(
                     matched_fonts = 0
                 yield event({"stage": "font_match", "status": "complete", "matched": matched_fonts})
 
+            # Re-evaluate Latin language from the final recognized text.
+            # Savor/Wasabi/menu may have repaired the weak first-pass text;
+            # cicerone.detect() performs this same final pass internally.
+            cicerone.label_latin_languages(manifest.instances)
             manifest.src_lang = _infer_src_lang(manifest)
 
             tm_matched = 0
@@ -2130,7 +2597,8 @@ def preview_render(req: PreviewRenderRequest):
             manifest = scene.analyze(str(path), manifest)
         cleansed = _cleansed_base(req.asset_id, manifest)
         patched = _composite_patches(req.asset_id, cleansed)
-        localized = scribe.render(patched, manifest, req.targ_lang, font_registry=get_validator().font_registry)
+        with _matched_faces_applied(manifest):
+            localized = scribe.render(patched, manifest, req.targ_lang, font_registry=get_validator().font_registry)
         localized = garnish.apply(localized, manifest, patched, get_validator().font_registry)
         if localized is None or not hasattr(localized, "save"):
             raise RuntimeError("preview produced no image")
@@ -2185,7 +2653,8 @@ def preview_candidate_localized(asset_id: str, candidate_id: str, req: Candidate
         candidate = Image.open(OUTPUT_DIR / record["file"]).convert("RGBA")
         b = record["bbox"]
         base.alpha_composite(candidate, (int(b["x"]), int(b["y"])))
-        localized = scribe.render(base, manifest, target, font_registry=get_validator().font_registry)
+        with _matched_faces_applied(manifest):
+            localized = scribe.render(base, manifest, target, font_registry=get_validator().font_registry)
         localized = garnish.apply(localized, manifest, base, get_validator().font_registry)
         crop = localized.crop((int(b["x"]), int(b["y"]), int(b["x"] + b["width"]), int(b["y"] + b["height"])))
         # Candidate previews are requested while text/style edits are being
@@ -2236,9 +2705,15 @@ def render(req: RenderRequest):
             shared_base = _composite_patches(
                 req.asset_id, _cleansed_base(req.asset_id, result.text_manifest)
             )
-            result.output_asset = scribe.render(
-                shared_base, result.text_manifest, req.targ_lang,
-                font_registry=get_validator().font_registry,
+            with _matched_faces_applied(result.text_manifest):
+                result.output_asset = scribe.render(
+                    shared_base, result.text_manifest, req.targ_lang,
+                    font_registry=get_validator().font_registry,
+                )
+            result.verification_report = verify.build_verification_report(
+                result.output_asset,
+                result.text_manifest,
+                get_validator().font_registry,
             )
             result.output_asset = garnish.apply(result.output_asset, result.text_manifest, shared_base, get_validator().font_registry)
             result.qa_report = verify.assess(
@@ -2267,7 +2742,10 @@ def render(req: RenderRequest):
                 if localized.info.get("exif"): save_kwargs["exif"] = localized.info["exif"]
                 if localized.info.get("icc_profile"): save_kwargs["icc_profile"] = localized.info["icc_profile"]
             localized.save(OUTPUT_DIR / out_name, **save_kwargs)
-            output_url = f"/outputs/{out_name}"
+            # The filename is stable across renders, so give the browser a
+            # new URL after every successful write. Otherwise a perspective
+            # edit followed by final render can display the previous PNG.
+            output_url = f"/outputs/{out_name}?v={time.time_ns()}"
             logs.append({
                 "ts": datetime.now().strftime("%H:%M:%S"), "stage": "save",
                 "level": "info", "message": f"wrote {out_name}",
@@ -2299,6 +2777,10 @@ def render(req: RenderRequest):
 
     return {
         "output_url": output_url,
+        "verification_report": (
+            jsonable(result.verification_report)
+            if result.verification_report else None
+        ),
         "qa_report": jsonable(result.qa_report) if result.qa_report else None,
         "qa_passed": result.success and output_url is not None,
         "qa_threshold": cfg.qa_threshold,
@@ -2414,32 +2896,11 @@ def render_stream(
             # per-region font_px/effects context)
             yield event({"stage": "tofu_regions", "status": "running"})
             t0 = time.time()
-            lang_groups: Dict[str, List[InstText]] = {}
-            for inst in manifest2.instances:
-                if inst.dnt or not inst.target_text:
-                    continue
-                lang_groups.setdefault(inst.target_language or targ_lang, []).append(inst)
-            region_issues = []
-            for lang, insts in lang_groups.items():
-                for inst in insts:
-                    ctx: Dict[str, Any] = {"font": font} if font else {}
-                    if inst.characteristics and inst.characteristics.size:
-                        ctx["font_px"] = inst.characteristics.size
-                    sp = inst.style_profile
-                    effects = []
-                    if sp:
-                        if sp.shadow: effects.append("shadow")
-                        if sp.stroke_width: effects.append("stroke")
-                        if sp.italic: effects.append("italic")
-                    if effects:
-                        ctx["effects"] = effects
-                    report = validator.validate(str(path), lang, ctx or None)
-                    for issue in report.issues:
-                        if issue.region_id is None:
-                            issue.region_id = inst.id
-                        region_issues.append(issue)
-            log("tofu", f"re-validated {len(lang_groups)} distinct target "
-                        f"language(s) across regions", t0=t0)
+            region_issues, langs_seen, ctx_count = _revalidate_regions(
+                validator, path, manifest2, targ_lang, font
+            )
+            log("tofu", f"re-validated {len(langs_seen)} distinct target "
+                        f"language(s) across {ctx_count} typography context(s)", t0=t0)
             if region_issues:
                 validation_report.issues = list(validation_report.issues) + region_issues
                 for issue in region_issues:
@@ -2447,7 +2908,7 @@ def render_stream(
                         errors.append(f"tofu {issue.code} ({issue.region_id}): {issue.message}")
             yield event({
                 "stage": "tofu_regions", "status": "complete",
-                "issues": len(region_issues), "languages": list(lang_groups.keys()),
+                "issues": len(region_issues), "languages": langs_seen,
             })
 
             # per-region font merge (mirrors TofuPipeline._process_static)
@@ -2506,12 +2967,24 @@ def render_stream(
             yield event({"stage": "scribe", "status": "running"})
             t0 = time.time()
             try:
-                localized = scribe.render(
-                    cleansed_asset, erase_manifest, targ_lang, render_params,
-                    font_registry=validator.font_registry,
+                with _matched_faces_applied(erase_manifest) as matched:
+                    localized = scribe.render(
+                        cleansed_asset, erase_manifest, targ_lang, render_params,
+                        font_registry=validator.font_registry,
+                    )
+                verification_report = verify.build_verification_report(
+                    localized, erase_manifest, validator.font_registry
                 )
+                verification_report.run_metadata["scope"] = (
+                    "partial" if target_ids is not None else "project"
+                )
+                if target_ids is not None:
+                    verification_report.run_metadata["region_ids"] = sorted(target_ids)
                 localized = garnish.apply(localized, manifest2, cleansed_asset, validator.font_registry)
                 log("scribe", f"rendered target text for '{targ_lang}'", t0=t0)
+                if matched:
+                    log("scribe", f"{len(matched)} region(s) drawn with the matched face "
+                                  f"({', '.join(matched)})")
             except Exception as exc:
                 log("scribe", f"failed: {type(exc).__name__}: {exc}", "error", t0=t0)
                 errors.append(f"scribe failed: {exc}")
@@ -2546,6 +3019,7 @@ def render_stream(
             yield event({
                 "stage": "verify", "status": "complete",
                 "score": qa_report.overall_score if qa_report else None,
+                "verification_status": verification_report.project.overall_status,
             })
 
             # -- memory: only QA-approved regions are remembered --
@@ -2594,6 +3068,7 @@ def render_stream(
             yield event({
                 "stage": "complete",
                 "output_url": output_url,
+                "verification_report": jsonable(verification_report),
                 "qa_report": jsonable(qa_report) if qa_report else None,
                 "qa_passed": qa_passed and output_url is not None,
                 "qa_threshold": threshold,

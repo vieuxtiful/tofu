@@ -1,8 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, CSSProperties } from "react";
 import { FaPlus, FaMinus } from "react-icons/fa";
 import { InstText, FontFamily, SemanticTextUnit } from "./api";
-import { loadFontPreview, fontNameForPath } from "./FontCombobox";
-import { fitWrappedText, getMeasureContext, FitResult } from "./textFit";
+import { loadFontPreview } from "./FontCombobox";
+import { parseQuad, quadToMatrix3d } from "./perspective";
+import { effectiveStrokeWidth, fitWrappedText, getMeasureContext, FitResult, MIN_FONT_PX } from "./textFit";
+import {
+  dupeSpec, resolveFontPath, measureFontSpec, adviseShrink,
+  SizeAdvisory, ITALIC_SHEAR_DEG, VERTICAL_ROW_FACTOR, SUB_SUPER_RATIO,
+} from "./doppelganger";
 import "./bbox.css";
 
 interface TargetPreviewCanvasProps {
@@ -27,6 +32,11 @@ interface TargetPreviewCanvasProps {
 }
 
 type PanState = { startClientX: number; startClientY: number; startScrollLeft: number; startScrollTop: number } | null;
+
+/** Below this, cicerone's own detection polygon is not trusted enough to
+ *  shape the suppression plate, and the full bbox is used instead — an
+ *  over-tight plate would leave source ink visible around the target. */
+const PLATE_MASK_MIN_CONF = 0.5;
 
 export default function TargetPreviewCanvas({
   className, imageUrl, manifest, semanticUnits = [], imgNaturalSize, familiesByLang, defaultTargLang, label,
@@ -180,62 +190,18 @@ export default function TargetPreviewCanvas({
     document.addEventListener("mouseup", onUp);
   }, [onHeightChange, imgNaturalSize, fitWidth, zoom, onDoubleClickExpand]);
 
-  // resolved, non-size CSS bits for a region's target text — shared by
-  // both the canvas measurement (textFit) and the actual React style, so
-  // the two are guaranteed to agree on what's being measured vs drawn.
-  // explicit style_profile.font_family wins; otherwise falls back to
-  // resolved_font_family (what "auto" currently resolves to, computed
-  // server-side by scribe.resolve_auto_font — the same resolution
-  // render() itself performs) instead of the browser's generic default.
-  const resolveTextSpec = useCallback((inst: InstText) => {
-    const fontPath = inst.style_profile?.font_family ?? inst.resolved_font_family ?? undefined;
-    const fontStyleHint = (inst.characteristics?.font_style ?? "").toLowerCase();
-    let fontWeight = 400;
-    let fontStyle: "italic" | "normal" = "normal";
-    let cssFontFamily = "sans-serif";
-    if (fontPath && familiesByLang) {
-      const lang = inst.target_language ?? defaultTargLang;
-      const families = familiesByLang[lang] ?? [];
-      const fam = families.find((f) => f.weights.some((w) => w.path === fontPath) || f.best_path === fontPath);
-      const weight = fam?.weights.find((w) => w.path === fontPath);
-      if (weight) {
-        const wc = weight.weight_class ?? 400;
-        fontWeight = wc <= 300 ? 300 : wc <= 500 ? 400 : wc <= 700 ? 700 : 800;
-        if ((weight.subfamily || "").toLowerCase().includes("italic")) fontStyle = "italic";
-        cssFontFamily = `"${fontNameForPath(fontPath)}"`;
-      } else {
-        if (fontStyleHint.includes("bold")) fontWeight = 700;
-        if (fontStyleHint.includes("italic")) fontStyle = "italic";
-      }
-    } else {
-      if (fontStyleHint.includes("bold")) fontWeight = 700;
-      if (fontStyleHint.includes("italic")) fontStyle = "italic";
-    }
-    const color = inst.style_profile?.color ?? inst.characteristics?.color ?? undefined;
-    // render() passes style_profile.font_size ALONE as _fit_wrapped's
-    // explicit_size -- None means true binary-search auto-fit. falling
-    // back to characteristics.size (the DETECTED source-text size) here
-    // would skip that auto-fit entirely and draw at the source's own
-    // size, which is tuned for the SOURCE string's length, not the
-    // (usually different-length) translation -- a real mismatch for any
-    // region where the translation runs longer or shorter than source.
-    const explicitSizePx = inst.style_profile?.font_size ?? null;
-    const sp = inst.style_profile;
-    return {
-      fontPath, fontWeight, fontStyle, cssFontFamily, color, explicitSizePx,
-      alignV: sp?.align_v ?? null,
-      justification: sp?.justification ?? null,
-      indentPx: sp?.indent ?? 0,
-      trackingPx: sp?.tracking ?? 0,
-      leadingPx: sp?.leading ?? null,
-      baselineShiftPx: sp?.baseline_shift ?? 0,
-      strokeColor: sp?.stroke_color ?? null,
-      strokeWidthPx: sp?.stroke_width ?? 0,
-      subscript: sp?.subscript ?? false,
-      superscript: sp?.superscript ?? false,
-      rotationDeg: sp?.transform?.rotation ?? inst.characteristics?.positioning?.rotation_deg ?? 0,
-    };
-  }, [familiesByLang, defaultTargLang]);
+  // one region's typographic "dupe" — the ticket describing exactly what
+  // scribe.render() will do to it. Shared by both the offscreen canvas
+  // measurement (textFit) and the actual React style, so the two are
+  // guaranteed to agree on what's being measured vs drawn.
+  const dupeCtx = useMemo(
+    () => ({ familiesByLang, defaultTargLang }),
+    [familiesByLang, defaultTargLang],
+  );
+  const specFor = useCallback(
+    (inst: InstText) => dupeSpec(inst, dupeCtx),
+    [dupeCtx],
+  );
 
   // load fonts for target text rendering, THEN compute the wrap/fit for
   // each region against the font that's actually going to be used —
@@ -243,44 +209,73 @@ export default function TargetPreviewCanvas({
   // the browser's fallback system font instead, producing a fit that
   // doesn't match what then gets painted
   const [fitCache, setFitCache] = useState<Record<string, FitResult>>({});
+  const [advisories, setAdvisories] = useState<Record<string, SizeAdvisory>>({});
   useEffect(() => {
     let cancelled = false;
-    const loads: Promise<void>[] = [];
+    // Any resolved path gets an @font-face directly. The /api/fonts family
+    // list is NOT consulted: it is truncated to 24 families and is only
+    // populated for languages another panel already fetched, so gating on
+    // it degraded both the measurement and the paint to a system font for
+    // every face outside that cut.
+    const paths = new Set<string>();
     displayManifest.forEach((inst) => {
-      const fontPath = inst.style_profile?.font_family ?? inst.resolved_font_family;
-      if (!fontPath || !familiesByLang) return;
-      const lang = inst.target_language ?? defaultTargLang;
-      const families = familiesByLang[lang] ?? [];
-      const fam = families.find((f) => f.weights.some((w) => w.path === fontPath) || f.best_path === fontPath);
-      if (fam) loads.push(loadFontPreview(fontPath, fam.family));
+      const { path } = resolveFontPath(inst, dupeCtx);
+      if (path) paths.add(path);
     });
-    Promise.all(loads).then(() => {
+    Promise.all([...paths].map((p) => loadFontPreview(p))).then(() => {
       if (cancelled) return;
       const ctx = getMeasureContext();
+      // fit against the REGION'S OWN natural-pixel bbox, UNPADDED —
+      // scribe._fit_wrapped() fits against bbox.width/height directly
+      // with zero inset (render() draws flush to the bbox edges; see
+      // its line-position math), so subtracting any margin here before
+      // the fit search would systematically pick a smaller font than
+      // the server does. scaled to display size afterward — keeps
+      // MIN_FONT_PX etc. meaningful at any zoom level
+      const fitOnce = (inst: InstText, forcedSizePx: number | null): FitResult => {
+        const spec = specFor(inst);
+        return fitWrappedText(
+          ctx, inst.target_text ?? "",
+          Math.max(1, inst.bounding_box.width),
+          Math.max(1, inst.bounding_box.height),
+          measureFontSpec(spec),
+          forcedSizePx ?? spec.explicitSizePx,
+          spec.leadingPx, spec.wrapText, spec.strokeWidthPx,
+        );
+      };
       const next: Record<string, FitResult> = {};
       for (const inst of displayManifest) {
         if (!inst.target_text || inst.dnt) continue;
-        const spec = resolveTextSpec(inst);
-        const fontSpecTemplate = `${spec.fontStyle} ${spec.fontWeight} {size}px ${spec.cssFontFamily}`;
-        // fit against the REGION'S OWN natural-pixel bbox, UNPADDED —
-        // scribe._fit_wrapped() fits against bbox.width/height directly
-        // with zero inset (render() draws flush to the bbox edges; see
-        // its line-position math), so subtracting any margin here before
-        // the fit search would systematically pick a smaller font than
-        // the server does. scaled to display size afterward — keeps
-        // MIN_FONT_PX etc. meaningful at any zoom level
-        next[inst.id] = fitWrappedText(
-          ctx, inst.target_text,
-          Math.max(1, inst.bounding_box.width),
-          Math.max(1, inst.bounding_box.height),
-          fontSpecTemplate, spec.explicitSizePx, spec.leadingPx,
-          Boolean(inst.style_profile?.transform?.wrap_text),
-        );
+        const spec = specFor(inst);
+        let fit = fitOnce(inst, null);
+        // scribe re-fits super/subscript at round(size * 0.65) — and
+        // re-wraps, since a smaller font breaks lines differently —
+        // but only in auto-fit mode; an explicit size is taken verbatim.
+        if ((spec.superscript || spec.subscript) && !spec.explicitSizePx) {
+          fit = fitOnce(inst, Math.max(MIN_FONT_PX, Math.round(fit.fontSizePx * SUB_SUPER_RATIO)));
+        }
+        next[inst.id] = fit;
       }
       setFitCache(next);
+      // The advisory reads the SAME context the fit just used, at the
+      // fitted size, so the ink it reports is the ink about to be painted.
+      // Tallest line, not the whole block: the question is how big the
+      // GLYPHS came out next to the source's, which a wrapped block's
+      // total height would hide.
+      setAdvisories(adviseShrink(next, displayManifest, semanticUnits, (inst, fit) => {
+        const spec = specFor(inst);
+        ctx.font = measureFontSpec(spec).replace("{size}", String(fit.fontSizePx));
+        let tallest = 0;
+        for (const line of fit.lines) {
+          const m = ctx.measureText(line || " ");
+          const asc = m.actualBoundingBoxAscent, desc = m.actualBoundingBoxDescent;
+          if (asc != null && desc != null) tallest = Math.max(tallest, asc + desc);
+        }
+        return tallest;
+      }));
     });
     return () => { cancelled = true; };
-  }, [displayManifest, familiesByLang, defaultTargLang, resolveTextSpec]);
+  }, [displayManifest, semanticUnits, dupeCtx, specFor]);
 
   return (
     <div
@@ -332,16 +327,28 @@ export default function TargetPreviewCanvas({
                   if (!inst.target_text || inst.dnt) return null;
                   const bg = inst.background_profile?.dominant_color;
                   if (!bg || bg === "transparent") return null;
+                  const b = inst.bounding_box;
+                  // Cleanse erases the STROKE MASK, not the box. Clipping
+                  // the plate to cicerone's own detection polygon follows
+                  // the same outline, so a rotated or irregular run stops
+                  // punching a rectangular hole through artwork the render
+                  // will actually leave intact.
+                  const mask = inst.segmentation_mask;
+                  const poly = mask && mask.confidence >= PLATE_MASK_MIN_CONF && mask.polygon?.length >= 3
+                    ? `polygon(${mask.polygon
+                        .map(([mx, my]) => `${px(mx - b.x)}px ${px(my - b.y)}px`)
+                        .join(", ")})`
+                    : undefined;
                   return <div key={`background-${inst.id}`} style={{
                     position: "absolute",
-                    left: px(inst.bounding_box.x), top: px(inst.bounding_box.y),
-                    width: px(inst.bounding_box.width), height: px(inst.bounding_box.height),
-                    background: bg, zIndex: 0,
+                    left: px(b.x), top: px(b.y),
+                    width: px(b.width), height: px(b.height),
+                    background: bg, zIndex: 0, clipPath: poly,
                   }} />;
                 })}
                 {displayManifest.map((inst) => {
                   if (!inst.target_text || inst.dnt) return null;
-                  const spec = resolveTextSpec(inst);
+                  const spec = specFor(inst);
                   const fit = fitCache[inst.id];
                   // wrap/fit not computed yet (fonts still loading) —
                   // fall back to the region's own detected size as a
@@ -349,8 +356,11 @@ export default function TargetPreviewCanvas({
                   const lines = fit?.lines ?? [inst.target_text];
                   const fontSizePx = (fit?.fontSizePx ?? inst.characteristics?.size ?? inst.bounding_box.height * 0.7) * scale;
                   const lineAdvancePx = (fit?.lineAdvancePx ?? fontSizePx * 1.2 / scale) * scale;
-                  const alignH = inst.style_profile?.align_h;
-                  const defaultAlignItems = alignH === "right" ? "flex-end" : alignH === "center" ? "center" : "flex-start";
+                  const effectiveStrokeWidthPx = effectiveStrokeWidth(
+                    spec.strokeWidthPx, fontSizePx / scale,
+                  ) * scale;
+                  const alignH = spec.alignH;  // scribe defaults to "center", not left
+                  const defaultAlignItems = alignH === "right" ? "flex-end" : alignH === "left" ? "flex-start" : "center";
                   // "last_left"/"last_right"/"justify_center" describe the
                   // LAST line's alignment when the rest are justified —
                   // real inter-word stretch-justify isn't implemented
@@ -361,27 +371,137 @@ export default function TargetPreviewCanvas({
                     : spec.justification === "last_right" ? "flex-end"
                     : spec.justification === "justify_center" ? "center"
                     : undefined;
-                  const isVertical = inst.style_profile?.target_orientation === "vertical";
+                  const isVertical = spec.isVertical;
                   // vertical mode: split target text into words, each word
                   // becomes a column of characters stacked top-to-bottom,
                   // words juxtaposed horizontally left-to-right (or right-to-left)
-                  const isRtl = inst.style_profile?.word_order === "rtl";
                   const verticalWords = isVertical
-                    ? (isRtl
+                    ? (spec.isRtl
                       ? inst.target_text.split(/\s+/).filter(Boolean).reverse()
                       : inst.target_text.split(/\s+/).filter(Boolean))
                     : [];
+                  // scribe steps a stacked column by font.size * 1.15,
+                  // compressed by tsume * font.size * 0.1 per row — not by
+                  // the horizontal line advance.
+                  const verticalRowPx = fontSizePx * VERTICAL_ROW_FACTOR - spec.tsume * fontSizePx * 0.1;
+                  // scribe shifts the whole BLOCK for super/subscript
+                  // (block_h * -0.3 / +0.2) rather than relying on an
+                  // inline baseline shift, which a flex item would ignore.
+                  const blockPx = lines.length * lineAdvancePx;
+                  const scriptShiftPx = spec.superscript ? -blockPx * 0.3
+                    : spec.subscript ? blockPx * 0.2 : 0;
                   const spatial = inst.style_profile?.transform ?? {};
-                  const anchor = (spatial.skew_anchor ?? "center").replace("middle", "center").replace("_", " ");
+                  // A quad REPLACES the affine stage, matching scribe: the
+                  // corner positions already encode any shear, so applying
+                  // skew as well would apply it twice. matrix3d maps the
+                  // box's own local space, so the origin moves to its
+                  // top-left corner and the anchor stops applying — an
+                  // anchor names the point a shear holds still, and a quad
+                  // states outright where all four corners land.
+                  const quadMatrix = quadToMatrix3d(
+                    parseQuad(spatial.quad), inst.bounding_box,
+                  );
+                  const anchor = quadMatrix
+                    ? "0 0"
+                    : (spatial.skew_anchor ?? "center").replace("middle", "center").replace("_", " ");
                   const contentTransform = [
                     spatial.offset_x ? `translateX(${Number(spatial.offset_x) * scale}px)` : null,
                     spatial.offset_y ? `translateY(${Number(spatial.offset_y) * scale}px)` : null,
                     spec.baselineShiftPx ? `translateY(${-spec.baselineShiftPx * scale}px)` : null,
+                    scriptShiftPx ? `translateY(${scriptShiftPx}px)` : null,
                     spec.rotationDeg ? `rotate(${spec.rotationDeg}deg)` : null,
-                    spatial.skew_x ? `skewX(${Number(spatial.skew_x)}deg)` : null,
-                    spatial.skew_y ? `skewY(${Number(spatial.skew_y)}deg)` : null,
-                    spatial.scale_x || spatial.scale_y ? `scale(${Number(spatial.scale_x ?? 1)}, ${Number(spatial.scale_y ?? 1)})` : null,
+                    quadMatrix,
+                    quadMatrix ? null : (spatial.skew_x ? `skewX(${Number(spatial.skew_x)}deg)` : null),
+                    quadMatrix ? null : (spatial.skew_y ? `skewY(${Number(spatial.skew_y)}deg)` : null),
+                    quadMatrix || !(spatial.scale_x || spatial.scale_y) ? null
+                      : `scale(${Number(spatial.scale_x ?? 1)}, ${Number(spatial.scale_y ?? 1)})`,
                   ].filter(Boolean).join(" ") || undefined;
+                  // CSS text-shadow takes the same (dx, dy, blur, color)
+                  // scribe's _shadow_layer composites beneath each line,
+                  // and like scribe it is drawn only when the region
+                  // actually carries a shadow.
+                  const textShadow = spec.shadow
+                    ? `${spec.shadow.offset_x * scale}px ${spec.shadow.offset_y * scale}px ${spec.shadow.blur * scale}px ${spec.shadow.color}`
+                    : undefined;
+                  // A synthetic italic is a mechanical SHEAR of the upright
+                  // face (scribe's ITALIC_SHEAR, applied per line AFTER the
+                  // fit), not a real italic face — so it is a transform
+                  // here too, never `font-style: italic`, which would make
+                  // the browser pick the file verbatim and slant nothing.
+                  const glyphSkew = spec.syntheticItalic ? `skewX(-${ITALIC_SHEAR_DEG}deg)` : undefined;
+                  // Shared per-line/per-glyph typography.
+                  const inkStyle: CSSProperties = {
+                    fontFamily: spec.cssFontFamily,
+                    color: spec.color,
+                    fontSize: `${fontSizePx}px`,
+                    lineHeight: `${lineAdvancePx}px`,
+                    letterSpacing: spec.letterSpacingPx ? `${spec.letterSpacingPx * scale}px` : undefined,
+                    textDecoration: spec.underline ? "underline" : undefined,
+                    textUnderlineOffset: spec.underline && spec.underlineOffsetPx != null
+                      ? `${spec.underlineOffsetPx * scale}px` : undefined,
+                    textDecorationThickness: spec.underline && spec.underlineWidthPx != null
+                      ? `${spec.underlineWidthPx * scale}px` : undefined,
+                    textShadow,
+                    transform: glyphSkew,
+                    WebkitTextStroke: spec.strokeColor && effectiveStrokeWidthPx
+                      ? `${spec.strokePosition === "outer" ? effectiveStrokeWidthPx * 2 : effectiveStrokeWidthPx}px ${spec.strokeColor}` : undefined,
+                    paintOrder: spec.strokePosition === "inner" ? "fill stroke" : "stroke fill",
+                    whiteSpace: "pre",
+                  };
+                  // Say it out loud whenever this region is NOT a faithful
+                  // prediction of the render. Silence here is what made the
+                  // old sans-serif fallback so misleading: the preview
+                  // looked authoritative while measuring a font the server
+                  // would never load.
+                  // A region can be BOTH font-substituted and shrunk, and
+                  // they are independent facts about it — collect every
+                  // note rather than letting the first one mask the rest.
+                  // Colour follows the most severe.
+                  const advisory = advisories[inst.id];
+                  const notes: string[] = [];
+                  let markerColor: string | null = null;
+                  if (spec.provenance === "unresolved") {
+                    notes.push("no font resolved — this region's size and wrapping are not a prediction");
+                    markerColor = "#dc2626";
+                  } else if (spec.provenance === "nearest_neighbor") {
+                    const fm = inst.font_match;
+                    const cohort = fm?.cohort;
+                    notes.push(
+                      cohort
+                        // A cohort answer is a stronger claim than a lone
+                        // region's: it had to survive every region on the
+                        // sign, so say which regions vouched for it.
+                        ? `font: one face agreed across ${cohort.region_ids.join(", ")} on this sign `
+                          + `(worst-fit member ${(cohort.agreement * 100).toFixed(0)}% of its own best) — `
+                          + `the render keeps its own auto font until you accept this in the region table`
+                        : `font: nearest installed substitute by glyph shape (${fm?.status}, score `
+                          + `${fm?.recommended_substitute?.score?.toFixed(2)}) — the render keeps its own auto `
+                          + `font until you accept this in the region table`,
+                    );
+                    const overruled = cohort?.dissent?.find((d) => d.region_id === inst.id);
+                    if (overruled) {
+                      notes.push(
+                        `  ↳ on its own this region preferred ${overruled.preferred} `
+                        + `(${overruled.preferred_score?.toFixed(2)} vs ${overruled.cohort_score.toFixed(2)}); `
+                        + `the sign's shared face won`,
+                      );
+                    }
+                    markerColor = "#f59e0b";
+                  }
+                  if (advisory) {
+                    notes.push(
+                      `size: the translation renders ${Math.round((1 - advisory.ratio) * 100)}% shorter than the `
+                      + `source lettering (${advisory.targetInkPx}px vs ${advisory.sourceInkPx}px tall) — it cannot `
+                      + `fit this box at the source's size`
+                      + (advisory.unshrunkPeers?.length
+                        ? `, while ${advisory.unshrunkPeers.join(", ")} on the same sign kept full size`
+                        : ""),
+                    );
+                    markerColor = markerColor ?? "#0ea5e9";
+                  }
+                  const marker = notes.length
+                    ? { color: markerColor!, title: notes.join("\n") }
+                    : null;
                   return (
                     <div
                       key={inst.id}
@@ -402,7 +522,12 @@ export default function TargetPreviewCanvas({
                         width: "100%", height: "100%", display: "flex",
                         flexDirection: isVertical ? "row" : "column",
                         justifyContent: spec.alignV === "top" ? "flex-start" : spec.alignV === "bottom" ? "flex-end" : "center",
-                        alignItems: isVertical ? (alignH === "right" ? "flex-end" : alignH === "center" ? "center" : "flex-start") : defaultAlignItems,
+                        alignItems: isVertical ? (alignH === "right" ? "flex-end" : alignH === "left" ? "flex-start" : "center") : defaultAlignItems,
+                        // scribe reorders RTL runs itself because PIL has no
+                        // bidi; the browser already does that natively, so
+                        // the equivalent here is to declare the base
+                        // direction rather than to reverse anything.
+                        direction: !isVertical && spec.isRtl ? "rtl" : undefined,
                         transform: contentTransform, transformOrigin: anchor,
                       }}>
                       {isVertical ? (
@@ -420,20 +545,7 @@ export default function TargetPreviewCanvas({
                             {word.split("").map((ch, ci) => (
                               <span
                                 key={ci}
-                                style={{
-                                  fontFamily: spec.cssFontFamily,
-                                  fontWeight: spec.fontWeight,
-                                  fontStyle: spec.fontStyle,
-                                  color: spec.color,
-                                  fontSize: spec.subscript || spec.superscript ? `${fontSizePx * 0.7}px` : `${fontSizePx}px`,
-                                  verticalAlign: spec.subscript ? "sub" : spec.superscript ? "super" : undefined,
-                                  lineHeight: `${lineAdvancePx}px`,
-                                  letterSpacing: spec.trackingPx ? `${spec.trackingPx * scale}px` : undefined,
-                                  textDecoration: inst.style_profile?.underline ? "underline" : undefined,
-                                  WebkitTextStroke: spec.strokeColor && spec.strokeWidthPx
-                                    ? `${spec.strokeWidthPx * scale}px ${spec.strokeColor}` : undefined,
-                                  whiteSpace: "pre",
-                                }}
+                                style={{ ...inkStyle, lineHeight: `${verticalRowPx}px` }}
                               >
                                 {ch}
                               </span>
@@ -445,20 +557,10 @@ export default function TargetPreviewCanvas({
                         <span
                           key={i}
                           style={{
-                            fontFamily: spec.cssFontFamily,
-                            fontWeight: spec.fontWeight,
-                            fontStyle: spec.fontStyle,
-                            color: spec.color,
-                            fontSize: spec.subscript || spec.superscript ? `${fontSizePx * 0.7}px` : `${fontSizePx}px`,
-                            verticalAlign: spec.subscript ? "sub" : spec.superscript ? "super" : undefined,
-                            lineHeight: `${lineAdvancePx}px`,
-                            letterSpacing: spec.trackingPx ? `${spec.trackingPx * scale}px` : undefined,
+                            ...inkStyle,
+                            // scribe applies `indent` to the FIRST line only
                             marginLeft: i === 0 && spec.indentPx ? `${spec.indentPx * scale}px` : undefined,
                             alignSelf: i === lines.length - 1 ? lastLineAlignSelf : undefined,
-                            textDecoration: inst.style_profile?.underline ? "underline" : undefined,
-                            WebkitTextStroke: spec.strokeColor && spec.strokeWidthPx
-                              ? `${spec.strokeWidthPx * scale}px ${spec.strokeColor}` : undefined,
-                            whiteSpace: "pre",
                           }}
                         >
                           {line}
@@ -466,6 +568,16 @@ export default function TargetPreviewCanvas({
                       ))
                       )}
                       </div>
+                      {marker && (
+                        <div
+                          title={marker.title}
+                          style={{
+                            position: "absolute", top: -3, right: -3,
+                            width: 6, height: 6, borderRadius: "50%",
+                            background: marker.color, zIndex: 2,
+                          }}
+                        />
+                      )}
                     </div>
                   );
                 })}

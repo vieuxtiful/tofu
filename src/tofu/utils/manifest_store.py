@@ -8,12 +8,14 @@ Each manifest is stored as uploads/{asset_id}.manifest.json.
 """
 
 import json
+from dataclasses import asdict
 from pathlib import Path
 from typing import Optional
 
 from tofu.core.types import (
     TextManifest, InstText, BBox, Mask, AssetType,
     StyleProfil, BgProfil, CharactText, SceneRegion, SemanticTextUnit, GarnishProfile, GarnishRegion,
+    ReconstructionProfile,
 )
 
 
@@ -81,6 +83,8 @@ def _manifest_to_dict(m: TextManifest) -> dict:
         "img_dim": list(m.img_dim) if m.img_dim else None,
         "scene_regions": [_region_to_dict(r) for r in (m.scene_regions or [])],
         "semantic_units": [_semantic_unit_to_dict(u) for u in (m.semantic_units or [])],
+        "asset_class": m.asset_class,
+        "asset_classification": m.asset_classification,
         "asset_type": m.asset_type.value if hasattr(m.asset_type, "value") else str(m.asset_type),
         "frame_count": m.frame_count,
         "fps": m.fps,
@@ -193,9 +197,15 @@ def _inst_to_dict(inst: InstText) -> dict:
         "tm_suggestion": inst.tm_suggestion,
         "ocr_correction": inst.ocr_correction,
         "recognition_history": inst.recognition_history,
+        "ocr_provenance": inst.ocr_provenance,
         "repair_provenance": inst.repair_provenance,
+        "reconstruction_profile": (
+            asdict(inst.reconstruction_profile)
+            if inst.reconstruction_profile is not None else None
+        ),
         "font_match": inst.font_match,
         "resolved_font_family": inst.resolved_font_family,
+        "resolved_synthetic_italic": inst.resolved_synthetic_italic,
         "semantic_assignment": inst.semantic_assignment,
         "garnish_override": _garnish_to_dict(inst.garnish_override),
         "garnish_enabled": inst.garnish_enabled,
@@ -238,6 +248,7 @@ def _inst_to_dict(inst: InstText) -> dict:
             "tsume": s.tsume,
             "stroke_color": s.stroke_color,
             "stroke_width": s.stroke_width,
+            "stroke_position": s.stroke_position,
             "target_orientation": s.target_orientation,
             "word_order": s.word_order,
             "transform": s.transform,
@@ -318,6 +329,7 @@ def _dict_to_manifest(data: dict) -> TextManifest:
                 tsume=sdict.get("tsume"),
                 stroke_color=sdict.get("stroke_color"),
                 stroke_width=sdict.get("stroke_width"),
+                stroke_position=sdict.get("stroke_position"),
                 target_orientation=sdict.get("target_orientation"),
                 word_order=sdict.get("word_order"),
                 transform=sdict.get("transform"),
@@ -363,13 +375,19 @@ def _dict_to_manifest(data: dict) -> TextManifest:
             tm_suggestion=idict.get("tm_suggestion"),
             ocr_correction=idict.get("ocr_correction"),
             recognition_history=idict.get("recognition_history"),
+            ocr_provenance=idict.get("ocr_provenance"),
             repair_provenance=idict.get("repair_provenance"),
+            reconstruction_profile=(
+                ReconstructionProfile(**idict["reconstruction_profile"])
+                if isinstance(idict.get("reconstruction_profile"), dict) else None
+            ),
             garnish_override=_garnish_from_dict(idict.get("garnish_override")),
             garnish_enabled=idict.get("garnish_enabled"),
             garnish_scope=idict.get("garnish_scope", "whole_selection"),
             garnish_regions=[_garnish_region_from_dict(region) for region in idict.get("garnish_regions", []) if isinstance(region, dict)],
             font_match=idict.get("font_match"),
             resolved_font_family=idict.get("resolved_font_family"),
+            resolved_synthetic_italic=bool(idict.get("resolved_synthetic_italic", False)),
             semantic_assignment=idict.get("semantic_assignment"),
             style_profile=style,
             background_profile=bg,
@@ -385,6 +403,8 @@ def _dict_to_manifest(data: dict) -> TextManifest:
         img_dim=tuple(data["img_dim"]) if data.get("img_dim") else None,
         scene_regions=[_dict_to_region(r) for r in data.get("scene_regions", [])],
         semantic_units=[_dict_to_semantic_unit(u) for u in data.get("semantic_units", [])],
+        asset_class=data.get("asset_class"),
+        asset_classification=data.get("asset_classification"),
         asset_type=atype,
         frame_count=data.get("frame_count", 1),
         fps=data.get("fps"),

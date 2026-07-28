@@ -8,7 +8,7 @@ import { describe, it, expect } from "vitest";
 import { BBox } from "./api";
 import {
   IDENTITY_QUAD, Quad, denormaliseQuad, isIdentityQuad, isUsableQuad,
-  parseQuad, quadFromPolygon, quadToMatrix3d,
+  moveCorner, normaliseQuad, parseQuad, quadFromPolygon, quadToMatrix3d,
 } from "./perspective";
 
 const BOX: BBox = { x: 80, y: 60, width: 240, height: 90 };
@@ -69,6 +69,41 @@ describe("denormaliseQuad", () => {
   it("lets a corner leave the box", () => {
     const [tl] = denormaliseQuad([[-0.5, 0], [1, 0], [1, 1], [0, 1]], BOX);
     expect(tl).toEqual([-40, 60]);
+  });
+});
+
+describe("quad editing helpers", () => {
+  it("normaliseQuad round-trips denormaliseQuad", () => {
+    const quad: Quad = [[-0.5, 0.1], [0.8, -0.2], [1.2, 1.1], [0, 1]];
+    expect(normaliseQuad(denormaliseQuad(quad, BOX), BOX)).toEqual(quad);
+  });
+
+  it("does not clamp a corner outside the image or bbox", () => {
+    expect(normaliseQuad([[-40, 60], [320, 60], [320, 150], [80, 150]], BOX)[0])
+      .toEqual([-0.5, 0]);
+  });
+
+  it("moves one corner and can constrain it to the dominant axis", () => {
+    expect(moveCorner(IDENTITY_QUAD, 0, [0.3, 0.8], { axisLock: "x" })[0])
+      .toEqual([0.3, 0]);
+    expect(moveCorner(IDENTITY_QUAD, 0, [0.3, 0.8], { axisLock: "y" })[0])
+      .toEqual([0, 0.8]);
+  });
+
+  it("mirrors the opposite corner while preserving the centroid", () => {
+    const moved = moveCorner(IDENTITY_QUAD, 0, [-0.25, 0.2], { mirror: true });
+    expect(moved[0]).toEqual([-0.25, 0.2]);
+    expect(moved[2]).toEqual([1.25, 0.8]);
+    const centroid = (quad: Quad) => quad.reduce(
+      ([sx, sy], [x, y]) => [sx + x / 4, sy + y / 4],
+      [0, 0],
+    );
+    expect(centroid(moved)).toEqual(centroid(IDENTITY_QUAD));
+  });
+
+  it("lets the shared validator catch a bowtie produced by a move", () => {
+    const bowtie = moveCorner(IDENTITY_QUAD, 1, [0, 1]);
+    expect(isUsableQuad(bowtie)).toBe(false);
   });
 });
 

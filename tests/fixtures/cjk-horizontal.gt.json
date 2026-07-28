@@ -1,0 +1,22 @@
+{
+  "regions": [
+    {
+      "bbox": [
+        220,
+        161,
+        343,
+        59
+      ],
+      "text": "City Library"
+    },
+    {
+      "bbox": [
+        330,
+        294,
+        216,
+        38
+      ],
+      "text": "Open today"
+    }
+  ]
+}

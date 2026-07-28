@@ -1,18 +1,20 @@
-## 🍢 wasabi — Japanese/simplified-Chinese glyph normalization
+## 🍢 Wasabi — ja-JP/zh-Cn glyph normalization
+## vieuxtiful
 """
 PaddleOCR's "japan" language selector doesn't get a Japanese-specific
-recognition model: in the installed paddleocr build, `lang="japan"`
+recognition model. In ToFU's build (re: paddleocr), `lang="japan"`
 resolves to the SAME shared PP-OCRv6_medium_rec model used for
-`"ch"`/`"chinese_cht"`/`"en"` (confirmed by inspecting the cached
-model's own README, which lists `language: [en, zh]` -- Japanese isn't
+`"ch"`/`"chinese_cht"`/`"en"` (verification: cached
+model's README, which lists `language: [en, zh]` -- Japanese isn't
 even an officially supported language of it). That model's CTC decode
 vocabulary contains both a simplified-Chinese-only glyph form and the
 correct Japanese shinjitai form as separate valid output tokens, with
 no language-conditioning to prefer the right one -- so a `ja`-labeled
 read can confidently emit a Chinese-only character (measured live:
-`劇場通り` read back as `剧場通`, `焼肉` read back as `烧肉`). This is a
-real, confirmed characteristic of the model itself, not something
-fixable by how ToFU calls it -- so this module corrects it after the
+`劇場通り` read back as `剧場通`, `焼肉` read back as `烧肉`). 
+
+This is a real, confirmed characteristic of the model itself, not something
+fixable by how ToFU calls it -- thus, this module corrects it after the
 fact instead.
 
 `season()` is the module's one public entry point (mirrors every other

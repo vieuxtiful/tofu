@@ -144,6 +144,72 @@ class TestResolveAutoFont:
         assert path == r"C:\Windows\Fonts\arial.ttf"
 
 
+class TestResolveAutoFontFace:
+    """resolve_auto_font_face returns resolve_auto_font's answer PLUS the
+    synthetic-italic verdict that goes with it.  A real italic FACE has
+    its own letterforms and advances; scribe's fallback is a mechanical
+    ITALIC_SHEAR of the upright face.  A preview that shows one when the
+    render produces the other misstates both slant and width, and the
+    client cannot re-derive the decision (no registry, no subfamilies)."""
+
+    def test_path_always_agrees_with_resolve_auto_font(self):
+        # the two must never disagree: resolve_auto_font is the documented
+        # answer, and resolve_auto_font_face only adds a second return
+        reg = make_registry([
+            (r"C:\Windows\Fonts\arial.ttf", "Arial", "Regular", 400, LATIN_ONLY),
+            (r"C:\Windows\Fonts\ariali.ttf", "Arial", "Italic", 400, LATIN_ONLY),
+            (r"C:\Windows\Fonts\cjk.ttc#0", "CJK Gothic", "Regular", 400, CJK_SAMPLE),
+        ])
+        for lang, text, kwargs in (
+            ("en", "HELLO", {}),
+            ("en", "HELLO", {"italic": True}),
+            ("en", "HELLO", {"weight": "bold"}),
+            ("ja", "居酒屋", {}),          # coverage swap path
+            ("en", "", {}),                # empty text short-circuit
+        ):
+            path, _ = scribe.resolve_auto_font_face(reg, lang, text, **kwargs)
+            assert path == scribe.resolve_auto_font(reg, lang, text, **kwargs)
+
+    def test_real_italic_sibling_is_not_synthetic(self):
+        reg = make_registry([
+            (r"C:\Windows\Fonts\arial.ttf", "Arial", "Regular", 400, LATIN_ONLY),
+            (r"C:\Windows\Fonts\ariali.ttf", "Arial", "Italic", 400, LATIN_ONLY),
+        ])
+        path, synthetic = scribe.resolve_auto_font_face(reg, "en", "VIEUX", italic=True)
+        assert path == r"C:\Windows\Fonts\ariali.ttf"
+        assert synthetic is False
+
+    def test_missing_italic_sibling_reports_synthetic(self):
+        reg = make_registry([
+            (r"C:\Windows\Fonts\arial.ttf", "Arial", "Regular", 400, LATIN_ONLY),
+        ])
+        path, synthetic = scribe.resolve_auto_font_face(reg, "en", "VIEUX", italic=True)
+        assert path == r"C:\Windows\Fonts\arial.ttf"
+        assert synthetic is True
+
+    def test_upright_request_is_never_synthetic(self):
+        reg = make_registry([
+            (r"C:\Windows\Fonts\arial.ttf", "Arial", "Regular", 400, LATIN_ONLY),
+        ])
+        _, synthetic = scribe.resolve_auto_font_face(reg, "en", "VIEUX")
+        assert synthetic is False
+
+    def test_coverage_swap_keeps_the_synthetic_verdict(self):
+        # render() applies the coverage override to the already-resolved
+        # face WITHOUT re-running the sibling search, so the verdict has
+        # to carry over rather than be recomputed against the replacement
+        reg = make_registry([
+            (r"C:\Windows\Fonts\arial.ttf", "Arial", "Regular", 400, LATIN_ONLY),
+            (r"C:\Windows\Fonts\cjk.ttc#0", "CJK Gothic", "Regular", 400, CJK_SAMPLE),
+        ])
+        path, synthetic = scribe.resolve_auto_font_face(reg, "ja", "居酒屋", italic=True)
+        assert path == r"C:\Windows\Fonts\cjk.ttc#0"
+        assert synthetic is True
+
+    def test_no_registry_returns_none_and_not_synthetic(self):
+        assert scribe.resolve_auto_font_face(None, "en", "HELLO") == (None, False)
+
+
 class TestGetFontHandlesCollectionIndex:
     """regression: FontRegistry keys collection faces as 'path#index'
     (multiple faces share one .ttc/.otc file); PIL takes the index as a

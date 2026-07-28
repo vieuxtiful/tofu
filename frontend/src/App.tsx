@@ -3,11 +3,11 @@ import { createPortal } from "react-dom";
 import InputAdornment from "@mui/material/InputAdornment";
 import TextField from "@mui/material/TextField";
 import {
-  AlertTriangle, AlignCenter, AlignEndHorizontal, AlignEndVertical, AlignJustify, AlignLeft, AlignRight, AlignStartHorizontal, AlignStartVertical, ArrowLeft, ArrowLeftRight, ArrowUpFromLine, Baseline, Bold, BookmarkCheck, Box, Check, ChevronDown, FileImage, FolderOpen, Hexagon, History, Home, Italic, Languages, Loader2,
+  AlertTriangle, AlignCenter, AlignEndHorizontal, AlignEndVertical, AlignJustify, AlignLeft, AlignRight, AlignStartHorizontal, AlignStartVertical, ArrowLeft, ArrowLeftRight, ArrowUpFromLine, Baseline, Bold, BookmarkCheck, Box, Check, ChevronDown, Circle, CircleDashed, CircleDot, CircleOff, FileImage, FolderOpen, Hexagon, History, Home, Italic, Languages, Loader2,
   Play, Plus, RotateCcw, ScanText, ShieldAlert, Sparkles, SquareStack, Subscript, Superscript, Trash2, Type, Underline, X,
 } from "lucide-react";
 import {
-  BBox, FontFamily, FontOption, ImportResult, InpaintPatch, InstText, LanguageOption, Project,
+  BBox, FontFamily, FontOption, FontWeight, ImportResult, InpaintPatch, InstText, LanguageOption, Project,
   RenderResult, RenderStreamEvent, SceneRegion, SemanticSubstitutionPlan, SemanticTextUnit, TextManifest, UploadResponse, ValidationReport, GlossaryStatus,
   addRegion, approveRender, checkDuplicateAsset, deleteProjectAsset, deleteRegion, detectAssetStream,
   fetchFonts, fetchLanguages, getManifest, getProject, importFile, matchFonts, ocrRegion, putManifest,
@@ -21,7 +21,7 @@ import { TbCubePlus, TbPhoto, TbPhotoEdit, TbPhotoScan, TbScanCube, TbCircleDash
 import { FaBoxOpen, FaLink, FaUnlink, FaEyeDropper } from "react-icons/fa";
 import { FaFileImport } from "react-icons/fa6";
 import { PiWarningCircleFill, PiHandGrabbingFill, PiHandGrabbingBold } from "react-icons/pi";
-import { MdOutlineCompare, MdTipsAndUpdates } from "react-icons/md";
+import { MdFontDownload, MdOutlineCompare, MdOutlineFontDownload, MdTipsAndUpdates } from "react-icons/md";
 import { BiAbacus, BiSolidErrorCircle } from "react-icons/bi";
 import { TiWarning } from "react-icons/ti";
 import { HiCubeTransparent } from "react-icons/hi2";
@@ -37,11 +37,19 @@ import SmartFillReview from "./SmartFillReview";
 import { langDisplayName, langFlag, LANGUAGE_REGIONS, REGION_ORDER } from "./languageData";
 import LanguageCombobox from "./LanguageCombobox";
 import FontCombobox, { loadFontPreview, fontNameForPath, weightLabel } from "./FontCombobox";
+import FontManager from "./FontManager";
+import { RecentFont, mergeFamily, pushRecent, readRecent } from "./fontCatalog";
+import { fontIdentity } from "./doppelganger";
 import HexColorInput from "./HexColorInput";
 import RotationDial from "./RotationDial";
 import GarnishSliderField from "./GarnishSlider";
 import BBoxCanvas from "./BBoxCanvas";
 import TargetPreviewCanvas from "./TargetPreviewCanvas";
+import PerspectiveHandles from "./PerspectiveHandles";
+import {
+  IDENTITY_QUAD, Quad, denormaliseQuad, isIdentityQuad, isUsableQuad,
+  parseQuad, quadFromPolygon,
+} from "./perspective";
 import RegionTable from "./RegionTable";
 import SemanticSubstitutionPanel from "./SemanticSubstitutionPanel";
 import { attestedFromManifest } from "./targetGuard";
@@ -53,7 +61,7 @@ import SplashScreen from "./SplashScreen";
 import TitleScreen from "./TitleScreen";
 import ThemeToggle from "./ThemeToggle";
 import BBoxColorDropdown from "./BBoxColorDropdown";
-import { FlipButton, PressButton, ThemeSwitch } from "./Buttons";
+import { FlipButton, PenumbraSwitch, PressButton, ThemeSwitch } from "./Buttons";
 import { SquareLoader } from "./Loaders";
 import ToastSystem, { useToasts, useNotifications, type ToastType, type ToastAction } from "./ToastSystem";
 import NotificationBell from "./NotificationBell";
@@ -63,6 +71,16 @@ import { logoSrc, useTheme } from "./theme";
 const PROJECT_KEY = "tofu.projectId";
 
 type Screen = "splash" | "title" | "pantry" | "main";
+
+function hasActivePerspective(inst: InstText | null | undefined): boolean {
+  if (!inst) return false;
+  const quad = parseQuad(inst.style_profile?.transform?.quad);
+  return Boolean(
+    quad
+    && !isIdentityQuad(quad)
+    && isUsableQuad(denormaliseQuad(quad, inst.bounding_box))
+  );
+}
 
 interface ScanState {
   assetId: string;
@@ -189,7 +207,59 @@ function NumberField({ label, value, onChange }: { label: string; value: number 
 }
 
 function PixelField({ label, value, onChange, min, step = 0.5, placeholder, width = "7rem" }: { label: string; value: number | null | undefined; onChange: (value: number | null) => void; min?: number; step?: number; placeholder?: string; width?: string }) {
-  return <TextField label={label} type="number" size="small" variant="filled" value={value ?? ""} onChange={(event) => onChange(event.target.value === "" ? null : Number(event.target.value))} placeholder={placeholder} slotProps={{ input: { startAdornment: <InputAdornment position="start">px</InputAdornment> }, htmlInput: { min, step } }} sx={{ width, maxWidth: "100%", flexShrink: 0, "& .MuiInputBase-input": { minWidth: 0 } }} />;
+  return <TextField label={label} type="number" size="small" variant="filled" value={value ?? ""} onChange={(event) => onChange(event.target.value === "" ? null : Number(event.target.value))} placeholder={placeholder} slotProps={{ input: { startAdornment: <InputAdornment position="start" disableTypography><span className="text-zinc-400 dark:text-zinc-500">px</span></InputAdornment> }, htmlInput: { min, step } }} sx={{ width, maxWidth: "100%", flexShrink: 0, "& .MuiInputBase-input": { minWidth: 0, color: "#a1a1aa !important" }, "& .MuiInputLabel-root": { color: "#a1a1aa !important" }, "& .MuiFilledInput-root": { backgroundColor: "transparent" }, "& .MuiFilledInput-root::before": { borderColor: "rgba(113,113,122,0.3)" }, "& .MuiFilledInput-root::after": { borderColor: "#22d3ee" }, "& .MuiFilledInput-root:hover::before": { borderColor: "rgba(113,113,122,0.5)" } }} />;
+}
+
+/** total run time of the bbox arrival shimmer. Must stay in step with
+ * `animation: bbox-shimmer 0.5s ... 2` in bbox.css — two passes, one second. */
+const SHIMMER_MS = 1000;
+
+const rangePulseTimers = new WeakMap<HTMLInputElement, number>();
+
+function pulseRangeStep(input: HTMLInputElement) {
+  const prior = rangePulseTimers.get(input);
+  if (prior !== undefined) window.clearTimeout(prior);
+  input.classList.remove("text-warp-step-pulse");
+  void input.offsetWidth;
+  input.classList.add("text-warp-step-pulse");
+  rangePulseTimers.set(input, window.setTimeout(() => {
+    input.classList.remove("text-warp-step-pulse");
+    rangePulseTimers.delete(input);
+  }, 150));
+}
+
+function snapRangePointer(event: React.PointerEvent<HTMLInputElement>, onValue: (value: number) => void) {
+  if (event.button !== 0 || event.currentTarget.disabled) return;
+  const input = event.currentTarget;
+  const rect = input.getBoundingClientRect();
+  const min = Number(input.min);
+  const max = Number(input.max);
+  const step = Number(input.step) || 1;
+  if (!rect.width || !Number.isFinite(min) || !Number.isFinite(max) || max <= min) return;
+  const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+  const steps = Math.round(((min + ratio * (max - min)) - min) / step);
+  const value = Math.max(min, Math.min(max, Number((min + steps * step).toFixed(8))));
+  input.value = String(value);
+  pulseRangeStep(input);
+  onValue(value);
+}
+
+/** Merge a style patch onto a region, preserving every field the patch does
+ * not mention.
+ *
+ * Never rebuild `style_profile` from a hand-written field list. StyleProfil
+ * gains properties over time and nothing makes such a list follow, so the
+ * omitted ones are silently discarded — which is how the Translate tab's
+ * orientation, word-order and font controls came to erase the shadow,
+ * effects and text-warp treatments set in Render's Text & Appearance panel. */
+function withStyle(
+  inst: InstText,
+  patch: Partial<NonNullable<InstText["style_profile"]>>,
+): InstText {
+  return {
+    ...inst,
+    style_profile: { ...(inst.style_profile ?? {}), ...patch } as NonNullable<InstText["style_profile"]>,
+  };
 }
 
 function TitleConfirmOverlay({ onYes, onNo }: { onYes: () => void; onNo: () => void }) {
@@ -365,8 +435,12 @@ export default function App() {
   const [brushIntensity, setBrushIntensity] = useState(50);
   const [localizedZoom, setLocalizedZoom] = useState(1);
   const [localizedDragMode, setLocalizedDragMode] = useState(false);
+  const [perspectiveMode, setPerspectiveMode] = useState(false);
+  const [localizedDisplayScale, setLocalizedDisplayScale] = useState(1);
   const localizedPanRef = useRef<{ startX: number; startY: number; scrollLeft: number; scrollTop: number } | null>(null);
   const localizedScrollRef = useRef<HTMLDivElement>(null);
+  const localizedImageRef = useRef<HTMLImageElement>(null);
+  const quadGestureManifest = useRef<InstText[] | null>(null);
   const brushDrawing = useRef<{ pointerId: number; stroke: BrushStroke } | null>(null);
   const [brushApplying, setBrushApplying] = useState(false);
   const [inpaintPatchIds, setInpaintPatchIds] = useState<string[]>([]);
@@ -388,6 +462,15 @@ export default function App() {
   const [familiesByLang, setFamiliesByLang] = useState<Record<string, FontFamily[]>>({});
   const [script, setScript] = useState<string>("");
   const fontFetches = useRef<Set<string>>(new Set());
+  // The Font Manager's complete catalog, kept apart from familiesByLang:
+  // that one stays the ranked 24 that feeds the dropdown, the table and the
+  // preflight cards. Fetched lazily per language the first time the panel
+  // opens, because it is the whole installed library.
+  const [fullFamiliesByLang, setFullFamiliesByLang] = useState<Record<string, FontFamily[]>>({});
+  const fullFontFetches = useRef<Set<string>>(new Set());
+  const [fullFontsLoading, setFullFontsLoading] = useState(false);
+  const [showFontManager, setShowFontManager] = useState(false);
+  const [recentFonts, setRecentFonts] = useState<RecentFont[]>(() => readRecent(localStorage));
   const [report, setReport] = useState<ValidationReport | null>(null);
   const [renderResult, setRenderResult] = useState<RenderResult | null>(null);
   const [renderSelId, setRenderSelId] = useState<string | null>(null);
@@ -428,16 +511,14 @@ export default function App() {
     e.preventDefault();
     styleDragStartY.current = e.clientY;
     styleDragStartH.current = styleCardRef.current?.offsetHeight ?? 400;
-    // compute max height: localized card bottom - style card top - decisions summary - gap
+    // compute max height: localized card bottom - style card top - gap
     const styleEl = styleCardRef.current;
     const localizedEl = document.querySelector('[data-render-localized]');
-    const decisionsEl = document.querySelector('[data-render-decisions]');
     let maxH = 9999;
     if (styleEl && localizedEl) {
       const styleRect = styleEl.getBoundingClientRect();
       const localizedRect = localizedEl.getBoundingClientRect();
-      const decisionsH = decisionsEl ? (decisionsEl as HTMLElement).offsetHeight : 0;
-      maxH = localizedRect.bottom - styleRect.top - decisionsH - 16;
+      maxH = localizedRect.bottom - styleRect.top - 16;
     }
     const onMove = (ev: MouseEvent) => {
       const delta = ev.clientY - styleDragStartY.current;
@@ -459,18 +540,15 @@ export default function App() {
       setStyleExpandedV(false);
       setStyleCardH(null);
     } else {
-      // expand to max: decisions summary bottom should align with localized asset card bottom
+      // expand to max: align with localized asset card bottom
       const styleEl = styleCardRef.current;
       if (!styleEl) return;
       const localizedEl = document.querySelector('[data-render-localized]');
       if (!localizedEl) return;
-      const decisionsEl = document.querySelector('[data-render-decisions]');
       const styleRect = styleEl.getBoundingClientRect();
       const localizedRect = localizedEl.getBoundingClientRect();
-      // account for decisions summary card height + gap (space-y-4 = 16px)
-      const decisionsH = decisionsEl ? (decisionsEl as HTMLElement).offsetHeight : 0;
       const gap = 16; // space-y-4 gap
-      const maxH = localizedRect.bottom - styleRect.top - decisionsH - gap;
+      const maxH = localizedRect.bottom - styleRect.top - gap;
       preExpandStyleH.current = styleEl.offsetHeight;
       setStyleCardH(Math.max(200, maxH));
       setStyleExpandedV(true);
@@ -507,13 +585,11 @@ export default function App() {
     garnishDragStartH.current = garnishCardRef.current?.offsetHeight ?? 400;
     const garnishEl = garnishCardRef.current;
     const localizedEl = document.querySelector('[data-render-localized]');
-    const decisionsEl = document.querySelector('[data-render-decisions]');
     let maxH = 9999;
     if (garnishEl && localizedEl) {
       const garnishRect = garnishEl.getBoundingClientRect();
       const localizedRect = localizedEl.getBoundingClientRect();
-      const decisionsH = decisionsEl ? (decisionsEl as HTMLElement).offsetHeight : 0;
-      maxH = localizedRect.bottom - garnishRect.top - decisionsH - 16;
+      maxH = localizedRect.bottom - garnishRect.top - 16;
     }
     const onMove = (ev: MouseEvent) => {
       const delta = ev.clientY - garnishDragStartY.current;
@@ -538,11 +614,9 @@ export default function App() {
       if (!garnishEl) return;
       const localizedEl = document.querySelector('[data-render-localized]');
       if (!localizedEl) return;
-      const decisionsEl = document.querySelector('[data-render-decisions]');
       const garnishRect = garnishEl.getBoundingClientRect();
       const localizedRect = localizedEl.getBoundingClientRect();
-      const decisionsH = decisionsEl ? (decisionsEl as HTMLElement).offsetHeight : 0;
-      const maxH = localizedRect.bottom - garnishRect.top - decisionsH - 16;
+      const maxH = localizedRect.bottom - garnishRect.top - 16;
       preExpandGarnishH.current = garnishEl.offsetHeight;
       setGarnishCardH(Math.max(200, maxH));
       setGarnishCardExpandedV(true);
@@ -726,11 +800,33 @@ export default function App() {
   });
   const visibleManifest = orderedManifest.filter((i) => !i.excluded);
   const [imgDim, setImgDim] = useState<[number, number] | null>(null);
+  useEffect(() => {
+    const image = localizedImageRef.current;
+    if (!image || !imgDim?.[0]) return;
+    const update = () => {
+      const width = image.getBoundingClientRect().width;
+      if (width > 0) setLocalizedDisplayScale(width / imgDim[0]);
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(image);
+    return () => observer.disconnect();
+  }, [localizedZoom, imgDim, preRenderUrl, previewUrl]);
+
+  useEffect(() => {
+    if (localizedDragMode || brushMode || lassoMode || colorPickMode) {
+      setPerspectiveMode(false);
+    }
+  }, [localizedDragMode, brushMode, lassoMode, colorPickMode]);
   const [sceneRegions, setSceneRegions] = useState<SceneRegion[]>([]);
   // Render treatment has one selected-instance model.  The Garnish card and
   // localized canvas consume this same derivation so scope/profile changes
   // cannot disagree between the two surfaces.
   const selectedRenderInst = manifest.find((item) => item.id === renderSelId) ?? null;
+  // the region a style edit actually lands on: updateSelectedStyle falls back
+  // to prevSelId during the style panel's collapse animation, so anything
+  // that reports or previews the target must use the same resolution
+  const styleTargetInst = manifest.find((item) => item.id === (renderSelId ?? prevSelId)) ?? null;
   const selectedGarnishSurface = selectedRenderInst ? (() => {
     const b = selectedRenderInst.bounding_box;
     return sceneRegions.find((region) => b.x + b.width / 2 >= region.bbox.x && b.x + b.width / 2 <= region.bbox.x + region.bbox.width && b.y + b.height / 2 >= region.bbox.y && b.y + b.height / 2 <= region.bbox.y + region.bbox.height) ?? null;
@@ -814,6 +910,40 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("tofu.bboxColor", bboxColor);
   }, [bboxColor]);
+  // off by default: a canvas of boxes that all pulse forever is a setting
+  // some people want and most do not
+  const [bboxBlink, setBboxBlink] = useState(
+    () => localStorage.getItem("tofu.bboxBlink") === "true"
+  );
+  useEffect(() => {
+    localStorage.setItem("tofu.bboxBlink", String(bboxBlink));
+  }, [bboxBlink]);
+  const [hideRegionCounter, setHideRegionCounter] = useState(
+    () => localStorage.getItem("tofu.hideRegionCounter") === "true"
+  );
+  useEffect(() => {
+    localStorage.setItem("tofu.hideRegionCounter", String(hideRegionCounter));
+  }, [hideRegionCounter]);
+
+  // --- arrival shimmer ---------------------------------------------------
+  // Regions the SERVER just handed us get a one-off two-pass shimmer, so
+  // "the machine found these" is visually distinct from "these were already
+  // here".  Membership is deliberately transient: the ids are dropped on a
+  // timer once the animation is over, which is what keeps a drag, a text
+  // edit, a reorder or a tab change from replaying it.
+  const [newRegionIds, setNewRegionIds] = useState<Set<string> | null>(null);
+  const shimmerTimer = useRef<number | null>(null);
+  const markRegionsNew = useCallback((instances: InstText[]) => {
+    if (shimmerTimer.current !== null) window.clearTimeout(shimmerTimer.current);
+    setNewRegionIds(new Set(instances.map((i) => i.id)));
+    shimmerTimer.current = window.setTimeout(() => {
+      setNewRegionIds(null);
+      shimmerTimer.current = null;
+    }, SHIMMER_MS + 200);
+  }, []);
+  useEffect(() => () => {
+    if (shimmerTimer.current !== null) window.clearTimeout(shimmerTimer.current);
+  }, []);
   const [showTitleConfirm, setShowTitleConfirm] = useState(false);
   const [pendingAssetDelete, setPendingAssetDelete] = useState<{ assetId: string; filename: string | null } | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -883,6 +1013,36 @@ export default function App() {
       .catch(() => {});
   }, []);
 
+  /** pull the full font catalog for one language, once. Only the Font
+   * Manager needs it, so nothing pays for it until the panel is opened. */
+  /** The font library changed on disk, so every cached catalog is stale.
+   *
+   * Both caches have to go: the per-language memo here, and the server's
+   * own _CATALOG_CACHE (which the install endpoints clear). Dropping only
+   * one leaves a newly installed font invisible until a restart. */
+  const onFontLibraryChanged = useCallback(() => {
+    const languages = Array.from(fullFontFetches.current);
+    fullFontFetches.current.clear();
+    setFullFamiliesByLang({});
+    languages.forEach((lang) => onNeedFullFontsRef.current?.(lang));
+  }, []);
+
+  const onNeedFullFontsRef = useRef<((lang: string) => void) | null>(null);
+
+  const onNeedFullFonts = useCallback((lang: string) => {
+    if (fullFontFetches.current.has(lang)) return;
+    fullFontFetches.current.add(lang);
+    setFullFontsLoading(true);
+    fetchFonts(lang, { full: true })
+      .then((r) => setFullFamiliesByLang((p) => ({ ...p, [lang]: r.families ?? [] })))
+      .catch(() => { fullFontFetches.current.delete(lang); })  // retryable
+      .finally(() => setFullFontsLoading(false));
+  }, []);
+  // onFontLibraryChanged re-fetches the languages already loaded, and is
+  // declared above this; the ref breaks the declaration cycle without
+  // making either depend on the other's identity.
+  onNeedFullFontsRef.current = onNeedFullFonts;
+
   // --- session lifecycle -------------------------------------------------
 
   /** wipe every piece of per-asset state, including the pending autosave
@@ -916,6 +1076,11 @@ export default function App() {
     setColorPickMode(null);
     manifestSkipHistory.current = true;
     setManifest([]);
+    if (shimmerTimer.current !== null) {
+      window.clearTimeout(shimmerTimer.current);
+      shimmerTimer.current = null;
+    }
+    setNewRegionIds(null);
     setManualOrder([]);
     manifestUndoStack.current = [];
     manifestRedoStack.current = [];
@@ -971,13 +1136,14 @@ export default function App() {
     syncUndoRedo();
     manifestSkipHistory.current = true;
     setManifest(m.instances);
+    markRegionsNew(m.instances);
     setImgDim(m.img_dim);
     setSceneRegions(m.scene_regions ?? []);
     setSemanticUnits(m.semantic_units ?? []);
     if (m.src_lang) setSrcLang(m.src_lang);
     if (m.instances.length > 0) setStep(1);
     return p;
-  }, [syncUndoRedo]);
+  }, [syncUndoRedo, markRegionsNew]);
 
   const goPantry = useCallback((mode: "full" | "pantry" | "create" = "full") => {
     setPantryMode(mode);
@@ -1221,6 +1387,79 @@ export default function App() {
     queueLocalizedPreview(next, "style");
     autoSave(next);
   }, [renderSelId, prevSelId, recordLocalizedChange, manifest, autoSave, setManifest, queueLocalizedPreview]);
+
+  const manifestWithSelectedQuad = useCallback((instances: InstText[], quad: Quad): InstText[] => {
+    const selected = renderSelId ?? prevSelId;
+    if (!selected) return instances;
+    return instances.map((inst): InstText => {
+      if (inst.id !== selected) return inst;
+      const transform = { ...(inst.style_profile?.transform ?? {}), quad, preset: "custom" };
+      return {
+        ...inst,
+        style_profile: { ...(inst.style_profile ?? {}), transform } as NonNullable<InstText["style_profile"]>,
+      };
+    });
+  }, [renderSelId, prevSelId]);
+
+  const beginQuadGesture = useCallback(() => {
+    recordLocalizedChange();
+    quadGestureManifest.current = manifest;
+  }, [manifest, recordLocalizedChange]);
+
+  const previewQuadGesture = useCallback((quad: Quad) => {
+    const base = quadGestureManifest.current ?? manifest;
+    const next = manifestWithSelectedQuad(base, quad);
+    manifestSkipHistory.current = true;
+    setManifestRaw(next);
+  }, [manifest, manifestWithSelectedQuad]);
+
+  const finishQuadGesture = useCallback((quad: Quad, cancelled = false) => {
+    const base = quadGestureManifest.current ?? manifest;
+    quadGestureManifest.current = null;
+    const next = manifestWithSelectedQuad(base, quad);
+    manifestSkipHistory.current = true;
+    setManifest(next);
+    if (cancelled) {
+      localizedUndoStack.current.pop();
+      syncLocalizedUndoRedo();
+    } else {
+      queueLocalizedPreview(next, "style");
+      autoSave(next);
+    }
+  }, [manifest, manifestWithSelectedQuad, setManifest, queueLocalizedPreview, autoSave, syncLocalizedUndoRedo]);
+
+  const clearSelectedQuad = useCallback(() => {
+    const selected = renderSelId ?? prevSelId;
+    if (!selected) return;
+    recordLocalizedChange();
+    const next = manifest.map((inst): InstText => {
+      if (inst.id !== selected) return inst;
+      const transform = { ...(inst.style_profile?.transform ?? {}) };
+      delete transform.quad;
+      return {
+        ...inst,
+        style_profile: { ...(inst.style_profile ?? {}), transform } as NonNullable<InstText["style_profile"]>,
+      };
+    });
+    manifestSkipHistory.current = true;
+    setManifest(next);
+    queueLocalizedPreview(next, "style");
+    autoSave(next);
+  }, [renderSelId, prevSelId, manifest, recordLocalizedChange, setManifest, queueLocalizedPreview, autoSave]);
+
+  /** apply a Font Manager pick to the selected Render region.
+   *
+   * Goes through updateSelectedStyle rather than onFontChange so the pick
+   * is undoable, refreshes the localized preview, and sets font_weight —
+   * onFontChange does none of the three. */
+  const onFontManagerPick = useCallback((fam: FontFamily, weight: FontWeight) => {
+    updateSelectedStyle({ font_family: weight.path, font_weight: weight.subfamily });
+    // a font outside the ranked 24 has to join the session's dropdown list
+    // too, or the combobox cannot resolve the path back to a family name
+    const lang = styleTargetInst?.target_language ?? targLang;
+    setFamiliesByLang((prev) => ({ ...prev, [lang]: mergeFamily(prev[lang] ?? [], fam) }));
+    setRecentFonts(pushRecent(localStorage, { family: fam.family, path: weight.path }));
+  }, [updateSelectedStyle, styleTargetInst, targLang]);
 
   const updateSelectedGarnish = useCallback((patch: Partial<NonNullable<InstText["garnish_override"]>>) => {
     const selected = renderSelId ?? prevSelId;
@@ -1573,7 +1812,11 @@ export default function App() {
   const LOCKABLE_TRANSFORM_KEYS: CanvasTransformKey[] = ["skew_x", "skew_y", "arc", "rotation", "scale_x", "scale_y", "offset_x", "offset_y"];
 
   const isTransformLocked = useCallback((key: CanvasTransformKey): boolean => {
-    const transform = manifest.find((inst) => inst.id === (renderSelId ?? prevSelId))?.style_profile?.transform;
+    const inst = manifest.find((item) => item.id === (renderSelId ?? prevSelId));
+    if (inst && ["skew_x", "skew_y", "scale_x", "scale_y"].includes(key) && hasActivePerspective(inst)) {
+      return true;
+    }
+    const transform = inst?.style_profile?.transform;
     return Boolean(transform?.locked_fields?.includes(key));
   }, [manifest, renderSelId, prevSelId]);
 
@@ -1644,7 +1887,9 @@ export default function App() {
       if (!locked.has("offset_x")) reset.offset_x = 0;
       if (!locked.has("offset_y")) reset.offset_y = 0;
       if (!locked.has("rotation")) reset.rotation = 0;
-      updateSelectedStyle({ transform: { ...transform, ...reset } });
+      const cleared = { ...transform, ...reset };
+      delete cleared.quad;
+      updateSelectedStyle({ transform: cleared });
       return;
     }
     updateSelectedStyle({ transform: { ...transform, preset, amount: transform.amount && transform.amount !== 0 ? transform.amount : 12 } });
@@ -1724,14 +1969,16 @@ export default function App() {
       const uploaded = await uploadAsset(file, project.id);
       setAsset(uploaded);
       getProject(project.id).then(setProject).catch(() => {});
-      addToast("success", `"${uploaded.filename}" scanning language…`);
+      // Transient progress belongs in the toast only, not the persistent
+      // notification pane.
+      rawAddToast("success", `"${uploaded.filename}" scanning language…`);
       void runLanguageScan(uploaded, project.id);
     } catch (e) {
       setErrorWithNotif(String(e));
     } finally {
       setBusy(null);
     }
-  }, [project, asset, manifest.length, resetSession, addToast, runLanguageScan]);
+  }, [project, asset, manifest.length, resetSession, rawAddToast, runLanguageScan]);
 
   const proceedWithFile = useCallback((file: File) => {
     if (!project) {
@@ -1909,6 +2156,7 @@ export default function App() {
         const detected = langs?.[0] ?? m.src_lang;
         manifestSkipHistory.current = true;
         setManifest(m.instances);
+        markRegionsNew(m.instances);
         setImgDim(m.img_dim);
         setSceneRegions(m.scene_regions ?? []);
         setSemanticUnits(m.semantic_units ?? []);
@@ -1952,7 +2200,7 @@ export default function App() {
       setDetectStage("idle");
       setErrorWithNotif(message);
     });
-  }, [asset, addToast]);
+  }, [asset, addToast, markRegionsNew]);
 
   const cancelDetect = useCallback(() => {
     if (cancelDetectRef.current) {
@@ -2260,36 +2508,7 @@ export default function App() {
 
   const onFontChange = useCallback((id: string, fontPath: string) => {
     setManifest((prev) => {
-      const next = prev.map((i) => i.id === id ? {
-        ...i,
-        style_profile: {
-          font_family: fontPath,
-          font_weight: i.style_profile?.font_weight ?? null,
-          color: i.style_profile?.color ?? null,
-          font_size: i.style_profile?.font_size ?? null,
-          italic: i.style_profile?.italic ?? null,
-          underline: i.style_profile?.underline ?? null,
-          underline_offset: i.style_profile?.underline_offset ?? null,
-          underline_width: i.style_profile?.underline_width ?? null,
-          subscript: i.style_profile?.subscript ?? null,
-          superscript: i.style_profile?.superscript ?? null,
-          align_h: i.style_profile?.align_h ?? null,
-          align_v: i.style_profile?.align_v ?? null,
-          justification: i.style_profile?.justification ?? null,
-          indent: i.style_profile?.indent ?? null,
-          tracking: i.style_profile?.tracking ?? null,
-          kerning: i.style_profile?.kerning ?? null,
-          leading: i.style_profile?.leading ?? null,
-          baseline_shift: i.style_profile?.baseline_shift ?? null,
-          tab_width: i.style_profile?.tab_width ?? null,
-          tsume: i.style_profile?.tsume ?? null,
-          stroke_color: i.style_profile?.stroke_color ?? null,
-          stroke_width: i.style_profile?.stroke_width ?? null,
-          target_orientation: i.style_profile?.target_orientation ?? null,
-          word_order: i.style_profile?.word_order ?? null,
-          transform: i.style_profile?.transform ?? null,
-        },
-      } : i);
+      const next = prev.map((i) => i.id === id ? withStyle(i, { font_family: fontPath }) : i);
       autoSave(next);
       return next;
     });
@@ -2310,35 +2529,7 @@ export default function App() {
       const next = prev.map((i) => {
         if (i.id !== id) return i;
         const current = i.style_profile?.target_orientation ?? "horizontal";
-        return {
-          ...i,
-          style_profile: {
-            font_family: i.style_profile?.font_family ?? null,
-            font_weight: i.style_profile?.font_weight ?? null,
-            color: i.style_profile?.color ?? null,
-            font_size: i.style_profile?.font_size ?? null,
-            italic: i.style_profile?.italic ?? null,
-            underline: i.style_profile?.underline ?? null,
-            underline_offset: i.style_profile?.underline_offset ?? null,
-            underline_width: i.style_profile?.underline_width ?? null,
-            subscript: i.style_profile?.subscript ?? null,
-            superscript: i.style_profile?.superscript ?? null,
-            align_h: i.style_profile?.align_h ?? null,
-            align_v: i.style_profile?.align_v ?? null,
-            justification: i.style_profile?.justification ?? null,
-            indent: i.style_profile?.indent ?? null,
-            tracking: i.style_profile?.tracking ?? null,
-            kerning: i.style_profile?.kerning ?? null,
-            leading: i.style_profile?.leading ?? null,
-            baseline_shift: i.style_profile?.baseline_shift ?? null,
-            tab_width: i.style_profile?.tab_width ?? null,
-            tsume: i.style_profile?.tsume ?? null,
-            stroke_color: i.style_profile?.stroke_color ?? null,
-            stroke_width: i.style_profile?.stroke_width ?? null,
-            target_orientation: (current === "vertical" ? "horizontal" : "vertical") as "horizontal" | "vertical",
-            word_order: i.style_profile?.word_order ?? null,
-          },
-        };
+        return withStyle(i, { target_orientation: current === "vertical" ? "horizontal" : "vertical" });
       });
       autoSave(next);
       return next;
@@ -2350,35 +2541,7 @@ export default function App() {
       const next = prev.map((i) => {
         if (i.id !== id) return i;
         const current = i.style_profile?.word_order ?? null;
-        return {
-          ...i,
-          style_profile: {
-            font_family: i.style_profile?.font_family ?? null,
-            font_weight: i.style_profile?.font_weight ?? null,
-            color: i.style_profile?.color ?? null,
-            font_size: i.style_profile?.font_size ?? null,
-            italic: i.style_profile?.italic ?? null,
-            underline: i.style_profile?.underline ?? null,
-            underline_offset: i.style_profile?.underline_offset ?? null,
-            underline_width: i.style_profile?.underline_width ?? null,
-            subscript: i.style_profile?.subscript ?? null,
-            superscript: i.style_profile?.superscript ?? null,
-            align_h: i.style_profile?.align_h ?? null,
-            align_v: i.style_profile?.align_v ?? null,
-            justification: i.style_profile?.justification ?? null,
-            indent: i.style_profile?.indent ?? null,
-            tracking: i.style_profile?.tracking ?? null,
-            kerning: i.style_profile?.kerning ?? null,
-            leading: i.style_profile?.leading ?? null,
-            baseline_shift: i.style_profile?.baseline_shift ?? null,
-            tab_width: i.style_profile?.tab_width ?? null,
-            tsume: i.style_profile?.tsume ?? null,
-            stroke_color: i.style_profile?.stroke_color ?? null,
-            stroke_width: i.style_profile?.stroke_width ?? null,
-            target_orientation: i.style_profile?.target_orientation ?? null,
-            word_order: (current === "rtl" ? null : "rtl") as "ltr" | "rtl" | null,
-          },
-        };
+        return withStyle(i, { word_order: current === "rtl" ? null : "rtl" });
       });
       autoSave(next);
       return next;
@@ -2677,6 +2840,7 @@ export default function App() {
 
   const renderResultFromEvent = (ev: RenderStreamEvent): RenderResult => ({
     output_url: ev.output_url ?? null,
+    verification_report: ev.verification_report ?? null,
     qa_report: ev.qa_report ?? null,
     qa_passed: !!ev.qa_passed,
     qa_threshold: ev.qa_threshold ?? 0.8,
@@ -3269,6 +3433,8 @@ export default function App() {
               onImgLoad={setImgSize}
               onExpandToggle={setCanvasExpandedH}
               bboxColor={bboxColor}
+              bboxBlink={bboxBlink}
+              newRegionIds={newRegionIds}
               onDragStart={beginManifestBatch}
               onDragEnd={endManifestBatch}
             />
@@ -3371,7 +3537,7 @@ export default function App() {
                         ? insight.region_ids.join(", ")
                         : insight.region_id ?? "region";
                       if (isFont && insight.font_path && insight.family) {
-                        loadFontPreview(insight.font_path, insight.family);
+                        loadFontPreview(insight.font_path);
                       }
                       return (
                         <div key={insight.key} className={`rounded border px-2.5 py-2 text-xs ${
@@ -3433,7 +3599,7 @@ export default function App() {
                         const families = familiesByLang[targLang] ?? [];
                         const fam = families.find((f) => f.weights.some((w) => w.path === fontPath) || f.best_path === fontPath);
                         const weight = fam?.weights.find((w) => w.path === fontPath) ?? null;
-                        if (fam) loadFontPreview(fontPath, fam.family);
+                        if (fam) loadFontPreview(fontPath);
                         const previewStyle: React.CSSProperties = {};
                         if (weight) {
                           const wc = weight.weight_class;
@@ -3480,12 +3646,24 @@ export default function App() {
                 </div>
               )}
               <ul className="space-y-1 text-sm">
-                {report.issues.map((i, idx) => (
-                  <li key={idx} className={i.severity === "error" ? "text-red-600 dark:text-red-400" : "text-amber-600 dark:text-amber-400"}>
-                    <span className="font-mono text-xs">{i.code}</span> {i.message}
-                    {i.suggestion && <span className="subtext text-zinc-500"> — {i.suggestion}</span>}
-                  </li>
-                ))}
+                {report.issues.map((i, idx) => {
+                  // one finding, one line: the server now merges an issue
+                  // that holds for a whole typography context instead of
+                  // repeating it once per region, so show the regions it
+                  // covers rather than N copies of the same sentence
+                  const covered = i.region_ids?.length ? i.region_ids : (i.region_id ? [i.region_id] : []);
+                  return (
+                    <li key={idx} className={i.severity === "error" ? "text-red-600 dark:text-red-400" : "text-amber-600 dark:text-amber-400"}>
+                      <span className="font-mono text-xs">{i.code}</span> {i.message}
+                      {covered.length > 0 && (
+                        <span className="subtext text-zinc-500">
+                          {" "}({covered.length > 3 ? `${covered.length} regions` : covered.join(", ")})
+                        </span>
+                      )}
+                      {i.suggestion && <span className="subtext text-zinc-500"> — {i.suggestion}</span>}
+                    </li>
+                  );
+                })}
               </ul>
             </Section>
           )}
@@ -3595,7 +3773,11 @@ export default function App() {
               <TargetPreviewCanvas
                 className="mt-[2px]"
                 imageUrl={previewUrl}
-                manifest={manifest}
+                // excluded regions are cleansed but never rendered by
+                // scribe, so a preview that draws them is showing text the
+                // localized asset will not contain — same list the source
+                // canvas and the region table already use
+                manifest={visibleManifest}
                 semanticUnits={semanticUnits}
                 imgNaturalSize={imgSize}
                 familiesByLang={familiesByLang}
@@ -3666,6 +3848,8 @@ export default function App() {
               />
               <RegionTable
                 mode="translate"
+                bboxColor={bboxColor}
+                hideRegionCounter={hideRegionCounter}
                 regions={visibleManifest}
                 selectedId={selectedId}
                 hoveredId={hoveredId}
@@ -3808,19 +3992,23 @@ export default function App() {
                 <div className={`style-panel-morph style-panel-overflow-visible ${!renderSelId || !styleCollapsed ? "expanded" : ""}`}>
                 {(() => {
                   const inst = prevSelId ? manifest.find((i) => i.id === prevSelId) : null;
-                  if (!inst) return <p className="subtext flex items-center gap-1 text-xs text-zinc-500"><MdTipsAndUpdates size={14} className="shrink-0 text-[#2d8cf0]" />select a region to customize text.</p>;
+                  if (!inst) return <p className="subtext flex items-center gap-1 text-xs text-zinc-500"><MdTipsAndUpdates size={14} className="shrink-0 text-[#2d8cf0]" />Select a region to customize text.</p>;
                   const sp = inst.style_profile;
             const updateStyle = updateSelectedStyle;
             const langForInst = inst.target_language ?? targLang;
             const families = familiesByLang[langForInst] ?? [];
             const currentFont = sp?.font_family ?? null;
+            const displayIdentity = !currentFont ? fontIdentity(
+              inst, { familiesByLang, defaultTargLang: targLang },
+            ) : null;
+            if (displayIdentity?.path) loadFontPreview(displayIdentity.path);
             const currentColor = sp?.color ?? null;
             const colorPickerValue = /^#[0-9a-fA-F]{6}$/.test(currentColor ?? "") ? currentColor! : "#000000";
             const currentStrokeColor = sp?.stroke_color ?? null;
             const isJapanese = langForInst === "ja";
             const selectedFontFamily = currentFont ? families.find((f) => f.weights.some((w) => w.path === currentFont) || f.best_path === currentFont) : null;
             const selectedFontWeight = currentFont ? selectedFontFamily?.weights.find((w) => w.path === currentFont) ?? null : null;
-            if (currentFont) loadFontPreview(currentFont, selectedFontFamily?.family ?? "");
+            if (currentFont) loadFontPreview(currentFont);
             const previewFontStyle: React.CSSProperties = {};
             if (selectedFontWeight) {
               const wc = selectedFontWeight.weight_class;
@@ -3844,20 +4032,33 @@ export default function App() {
                     {/* Font family + weight */}
                     <div className="min-w-0 md:col-span-2 md:row-start-1">
                       <label className="subtext mb-1 flex items-center gap-1.5 text-xs text-zinc-500">font{inst.characteristics?.font_style && <span className="flex items-center gap-1 text-[10px]"><ScanText size={11} className="shrink-0 text-cyan-600 dark:text-cyan-400" />detected: <span className="font-medium text-zinc-700 dark:text-zinc-300">{inst.characteristics.font_style}</span></span>}</label>
-                      <FontCombobox
-                        value={currentFont}
-                        families={families}
-                        onChange={(path, _family, weight) => {
-                          updateStyle({ font_family: path || null, font_weight: weight?.subfamily ?? null });
-                        }}
-                        placeholder="auto (best coverage)"
-                      />
+                      <div className="flex items-center gap-1">
+                        <div className="min-w-0 flex-1">
+                          <FontCombobox
+                            value={currentFont}
+                            families={families}
+                            onChange={(path, _family, weight) => {
+                              updateStyle({ font_family: path || null, font_weight: weight?.subfamily ?? null });
+                            }}
+                            placeholder="auto (best coverage)"
+                            displayIdentity={displayIdentity}
+                          />
+                        </div>
+                        <button
+                          onClick={() => { onNeedFullFonts(langForInst); setShowFontManager(true); }}
+                          title="browse every installed font"
+                          aria-label="open font manager"
+                          className="shrink-0 rounded-sm border border-transparent p-1 text-zinc-500 transition hover:border-zinc-300 hover:bg-zinc-200 hover:text-zinc-700 dark:hover:border-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
+                        >
+                          {theme === "dark" ? <MdFontDownload size={13} /> : <MdOutlineFontDownload size={13} />}
+                        </button>
+                      </div>
                     </div>
 
                     {/* Font size */}
                     <div className="md:col-span-2 md:row-start-2">
                       <div className="flex items-center gap-2">
-                        <PixelField label="font size" min={6} value={sp?.font_size} onChange={(value) => updateStyle({ font_size: value })} placeholder={inst.characteristics?.size != null ? `Detected: ${inst.characteristics.size}` : "Auto-fit"} />
+                        <PixelField label="size" min={6} value={sp?.font_size} onChange={(value) => updateStyle({ font_size: value })} placeholder={inst.characteristics?.size != null ? `Detected: ${inst.characteristics.size}` : "Auto-fit"} />
                         {inst.characteristics?.size != null && sp?.font_size == null && (
                           <span className="subtext text-[10px] text-cyan-600/70 dark:text-cyan-400/70">detected · auto-fit</span>
                         )}
@@ -4020,9 +4221,9 @@ export default function App() {
                   <p className="subtext mb-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Appearance</p>
                   <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                     {/* Fill */}
-                    <div>
+                    <div className="grid grid-rows-[auto_1fr]">
                       <label className="subtext mb-1 block text-xs text-zinc-500">fill</label>
-                      <div className="flex items-center gap-2">
+                      <div className="flex min-h-14 items-center gap-2">
                         <input
                           type="color"
                           value={colorPickerValue}
@@ -4041,9 +4242,9 @@ export default function App() {
                     </div>
 
                     {/* Stroke */}
-                    <div>
+                    <div className="grid grid-rows-[auto_1fr]">
                       <label className="subtext mb-1 block text-xs text-zinc-500">stroke</label>
-                      <div className="flex items-center gap-2">
+                      <div className="grid min-h-14 grid-cols-[2.5rem_minmax(0,8rem)_1fr] items-center gap-2">
                         <input
                           type="color"
                           value={currentStrokeColor ?? "#000000"}
@@ -4051,10 +4252,34 @@ export default function App() {
                           className="h-7 w-10 rounded-sm border border-zinc-300 dark:border-zinc-700"
                         />
                         <PixelField label="weight" min={0} value={sp?.stroke_width} onChange={(value) => updateStyle({ stroke_width: value })} width="8rem" />
-                        <button
-                          onClick={() => updateStyle({ stroke_color: null, stroke_width: null })}
-                          className="subtext rounded-sm px-2 py-0.5 text-xs text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800"
-                        >none</button>
+                        <div className="ml-auto grid grid-cols-2 gap-1 self-center justify-self-end" role="group" aria-label="stroke position">
+                          {([
+                            { value: "none", label: "no stroke", icon: CircleOff },
+                            { value: "outer", label: "outer stroke", icon: Circle },
+                            { value: "center", label: "center stroke", icon: CircleDashed },
+                            { value: "inner", label: "inner stroke", icon: CircleDot },
+                          ] as const).map(({ value, label, icon: Icon }) => {
+                            const strokeEnabled = Boolean(sp?.stroke_color && sp?.stroke_width && sp.stroke_width > 0);
+                            const active = value === "none"
+                              ? !strokeEnabled
+                              : strokeEnabled && (sp?.stroke_position ?? "outer") === value;
+                            return <button
+                              key={value}
+                              type="button"
+                              onClick={() => value === "none"
+                                ? updateStyle({ stroke_color: null, stroke_width: null, stroke_position: null })
+                                : updateStyle({
+                                    stroke_color: sp?.stroke_color ?? currentStrokeColor ?? "#000000",
+                                    stroke_width: sp?.stroke_width && sp.stroke_width > 0 ? sp.stroke_width : 1,
+                                    stroke_position: value,
+                                  })}
+                              className={`flex items-center justify-center rounded-sm p-1.5 transition ${active ? "bg-cyan-600 text-white" : "bg-zinc-200 text-zinc-600 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"}`}
+                              title={label}
+                              aria-label={label}
+                              aria-pressed={active}
+                            ><Icon size={14} /></button>;
+                          })}
+                        </div>
                       </div>
                     </div>
 
@@ -4148,7 +4373,7 @@ export default function App() {
                 }
               >
                 {(() => {
-                  if (!selectedRenderInst) return <p className="subtext flex items-center gap-1 text-xs text-zinc-500"><GrSelect size={14} className="text-[#2d8cf0]" />select a region to customize treatment.</p>;
+                  if (!selectedRenderInst) return <p className="subtext flex items-center gap-1 text-xs text-zinc-500"><GrSelect size={14} className="text-[#2d8cf0]" />Select a region to customize treatment.</p>;
                   const perRegion = selectedRenderInst.garnish_scope === "per_region";
                   const g = selectedGarnishProfile;
                   const recommended = selectedGarnishRecommended;
@@ -4157,67 +4382,43 @@ export default function App() {
                     return <GarnishSliderField key={field} label={label} value={Number(g[field])} min={min} max={max} step={step} suffix={suffix} digits={digits} marker={marker} markerLabel={recommended ? `scene recommendation: ${Number(recommended[field]).toFixed(digits)}${suffix}` : undefined} sceneLabel={recommended ? `scene: ${Number(recommended[field]).toFixed(digits)}${suffix}` : undefined} disabled={!selectedGarnishEnabled} onChange={(value) => updateSelectedGarnish({ [field]: value })} />;
                   };
                   return <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <div className="relative shrink-0" ref={garnishScopeRef}>
+                    <div className="relative flex flex-wrap items-center gap-2 pr-7">
+                      <div className={`garnish-scope-morph relative order-1 flex items-center gap-2${!garnishCardCollapsed ? " expanded" : ""}`} ref={garnishScopeRef}>
                         <button type="button" onClick={() => setGarnishScopeOpen((value) => !value)} className="bezier-card flex w-24 items-center justify-between gap-1.5 rounded-md bg-white/60 px-2 py-1 text-[10px] text-violet-700 transition hover:bg-violet-100 dark:bg-zinc-900/60 dark:text-violet-300 dark:hover:bg-zinc-800">{perRegion ? "per region" : "all regions"}<ChevronDown size={10} className={`transition ${garnishScopeOpen ? "rotate-180" : ""}`} /></button>
                         <div className={`dropdown-morph bezier-card absolute left-0 top-full z-200 mt-1 w-24 rounded-lg bg-white p-1 dark:bg-zinc-900${garnishScopeOpen ? " expanded" : ""}`} style={garnishScopeOpen ? { boxShadow: "1px 1px 0 var(--bc-shadow), 2px 2px 6px rgba(0,0,0,0.06)" } : undefined}>
                           <button type="button" onClick={() => { setSelectedGarnishScope("whole_selection"); setGarnishScopeOpen(false); }} className={`flex w-full rounded-md px-2 py-1.5 text-[10px] transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${!perRegion ? "bg-zinc-100 font-medium text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100" : "text-zinc-600 dark:text-zinc-400"}`}>all regions</button>
                           <button type="button" onClick={() => { setSelectedGarnishScope("per_region"); setGarnishScopeOpen(false); }} className={`flex w-full rounded-md px-2 py-1.5 text-[10px] transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${perRegion ? "bg-zinc-100 font-medium text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100" : "text-zinc-600 dark:text-zinc-400"}`}>per region</button>
                         </div>
+                        {recommended && <button type="button" onClick={useSelectedSceneGarnish} className="shrink-0 rounded-sm bg-violet-700 px-1.5 py-0.5 text-[10px] text-white">AI Preset</button>}
                       </div>
-                      <button type="button" onClick={() => setGarnishCardCollapsed((value) => !value)} className="shrink-0 rounded-sm p-1 text-zinc-500 transition hover:bg-zinc-200 dark:hover:bg-zinc-800" title={garnishCardCollapsed ? "expand garnish controls" : "collapse garnish controls"}><FcCollapse size={12} style={{ transform: garnishCardCollapsed ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} /></button>
-                      <div className={`garnish-controls-morph${!garnishCardCollapsed ? " expanded ml-6" : ""}`}>
-                        <fieldset disabled={!selectedGarnishEnabled} className="flex min-w-40 flex-1 flex-col gap-1 disabled:opacity-45">
+                      <div className={`garnish-controls-morph order-3 basis-full${!garnishCardCollapsed ? " expanded mt-1" : ""}`}>
+                        <fieldset disabled={!selectedGarnishEnabled} className="grid w-full grid-cols-2 gap-x-8 gap-y-1 rounded-lg border border-zinc-300/80 bg-white/30 px-6 py-3 disabled:opacity-45 dark:border-zinc-700/80 dark:bg-zinc-950/20 [&>label:nth-child(odd)]:pl-2">
                           {slider("edge blur", "edge_blur_px", 0, 10, 0.1, "px")}
                           {slider("feather", "edge_smoothing_strength", 0, 1, 0.05, "", 2)}
                           {slider("wear", "erosion_px", 0, 5, 0.1, "px")}{slider("thicken", "dilation_px", 0, 5, 0.1, "px")}{slider("grain", "grain_strength", 0, 1, 0.02, "", 2)}{slider("gamma", "gamma_shift", 0.5, 2, 0.05, "", 2)}{slider("smudge", "smudge_strength", 0, 1, 0.02, "", 2)}{slider("angle", "smudge_angle_deg", 0, 360, 1, "°", 0)}
                         </fieldset>
-                        {recommended && <button type="button" onClick={useSelectedSceneGarnish} className="mr-10 shrink-0 self-center rounded-sm bg-violet-700 px-1.5 py-0.5 text-[10px] text-white">AI Preset</button>}
                       </div>
+                      {/* Last child, pushed right by ml-auto, so it sits at the
+                          card's right edge exactly as Text & Appearance's does
+                          and does not move when the controls open beside it. */}
+                      <button type="button" onClick={() => setGarnishCardCollapsed((value) => { const next = !value; if (next) setGarnishScopeOpen(false); return next; })} className="absolute right-0 top-0 shrink-0 rounded-sm p-1 text-zinc-500 transition-colors hover:bg-zinc-200 dark:hover:bg-zinc-800" title={garnishCardCollapsed ? "expand garnish controls" : "collapse garnish controls"}><FcCollapse style={{ transform: garnishCardCollapsed ? "rotate(180deg)" : "none", transition: "transform 0.2s ease-in-out" }} /></button>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       {!recommended && <span className="text-[10px] text-violet-700/75 dark:text-violet-300/75">manual baseline</span>}
                       {garnishPreviewSyncing && <span className="text-[10px] text-violet-700 dark:text-violet-300">updating treatment…</span>}
                     </div>
-                    <SmartFillReview reviews={repairReviews} fallbackIds={repairFallbackIds} previews={localizedCandidatePreviews} previewPending={previewPending} appliedIds={appliedCandidateIds} onRetryPreview={() => setCandidatePreviewRevision((value) => value + 1)} onApply={applyReviewCandidate} onApplyAll={applyAllReviewCandidates} onHoverRegion={setSmartFillHoverId} />
+                    {/* Smart Fill belongs to the Garnish body, so it discloses
+                        with the rest of it rather than sitting under a
+                        collapsed card. */}
+                    <div className={`style-panel-morph${!garnishCardCollapsed ? " expanded" : ""}`}>
+                      <SmartFillReview reviews={repairReviews} fallbackIds={repairFallbackIds} previews={localizedCandidatePreviews} previewPending={previewPending} appliedIds={appliedCandidateIds} onRetryPreview={() => setCandidatePreviewRevision((value) => value + 1)} onApply={applyReviewCandidate} onApplyAll={applyAllReviewCandidates} onHoverRegion={setSmartFillHoverId} />
+                    </div>
                   </div>;
                 })()}
               </Section>
               {!garnishCardExpandedH && <div className="title-drag-handle flex shrink-0 items-center justify-center" onMouseDown={onGarnishDragStart} onDoubleClick={onGarnishDoubleClick} title="drag to resize · double-click to toggle height" style={{ position: "relative" }}><svg width="42" height="14" viewBox="0 0 42 14" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="0.5" y="1" width="41" height="4.5" rx="2.25" fill="currentColor" /><rect x="11" y="8" width="20" height="4.5" rx="2.25" fill="currentColor" /></svg></div>}
             </div>
           )}
-
-
-              {/* decisions summary: what this render will reflect */}
-              <div data-render-decisions="true" className={`bezier-card soft-shadow subtext flex flex-wrap items-center gap-3 rounded-lg bg-white/60 px-4 py-2 text-xs text-zinc-600 dark:bg-zinc-900/60 dark:text-zinc-400 ${stackClass(1)}`}>
-                <span>{translatedCount}/{translatableCount} region(s) translated</span>
-                <span>
-                  targets:{" "}
-                  <span className="text-zinc-800 dark:text-zinc-300">
-                    {[...new Set(manifest.filter((i) => !i.dnt).map((i) => i.target_language ?? targLang))]
-                      .map((l) => langDisplayName(l)).join(", ") || "—"}
-                  </span>
-                </span>
-                <span>
-                  fonts:{" "}
-                  <span className="text-zinc-800 dark:text-zinc-300">
-                    {manifest.filter((i) => !i.dnt).map((i) => {
-                      if (!i.style_profile?.font_family) return `auto (${i.id})`;
-                      const path = i.style_profile.font_family;
-                      const lang = i.target_language ?? targLang;
-                      const families = familiesByLang[lang] ?? [];
-                      const fam = families.find((f) => f.weights.some((w) => w.path === path) || f.best_path === path);
-                      const weight = fam?.weights.find((w) => w.path === path);
-                      const weightName = weight ? weightLabel(weight) : null;
-                      const name = fam?.family ?? (path.split(/[\\/]/).pop() ?? "").replace(/\.(ttf|otf|ttc|otc)$/i, "");
-                      return `${name}${weightName ? ` ${weightName}` : ""} (${i.id})`;
-                    }).join("; ")}
-                  </span>
-                </span>
-                {manifest.some((i) => i.dnt) && (
-                  <span>{manifest.filter((i) => i.dnt).length} DNT (kept as-is)</span>
-                )}
-              </div>
             </div>
 
             {/* Source reference + the single editable localized canvas. */}
@@ -4256,7 +4457,7 @@ export default function App() {
                 <div className="relative">
                 <div ref={localizedScrollRef} className="max-h-[68vh] max-w-full overflow-auto rounded-lg" style={{ cursor: localizedDragMode ? (localizedPanRef.current ? "grabbing" : "grab") : undefined }} onMouseDown={(e) => { if (!localizedDragMode) return; const el = localizedScrollRef.current; if (!el) return; localizedPanRef.current = { startX: e.clientX, startY: e.clientY, scrollLeft: el.scrollLeft, scrollTop: el.scrollTop }; e.preventDefault(); }} onMouseMove={(e) => { if (!localizedPanRef.current) return; const el = localizedScrollRef.current; if (!el) return; el.scrollLeft = localizedPanRef.current.scrollLeft - (e.clientX - localizedPanRef.current.startX); el.scrollTop = localizedPanRef.current.scrollTop - (e.clientY - localizedPanRef.current.startY); }} onMouseUp={() => { localizedPanRef.current = null; }} onMouseLeave={() => { localizedPanRef.current = null; }}>
                 <div className="relative inline-block min-w-full touch-none select-none" style={{ width: `${localizedZoom * 100}%` }}>
-                  <img src={preRenderUrl || previewUrl || "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="} alt="localized treatment canvas" draggable={false} className={`block w-full max-w-none touch-none select-none rounded-lg border border-zinc-300 dark:border-zinc-800 ${localizedDragMode ? "pointer-events-none" : nearFirstPoint ? "cursor-pointer" : (brushMode || lassoMode || colorPickMode) ? "cursor-crosshair" : ""}`}
+                  <img ref={localizedImageRef} src={preRenderUrl || previewUrl || "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="} alt="localized treatment canvas" draggable={false} className={`block w-full max-w-none touch-none select-none rounded-lg border border-zinc-300 dark:border-zinc-800 ${localizedDragMode ? "pointer-events-none" : nearFirstPoint ? "cursor-pointer" : (brushMode || lassoMode || colorPickMode) ? "cursor-crosshair" : ""}`}
                     style={{ touchAction: "none", WebkitUserDrag: "none" } as React.CSSProperties}
                     onDragStart={(event) => event.preventDefault()}
                     onPointerDown={(event) => {
@@ -4289,13 +4490,25 @@ export default function App() {
                     onPointerCancel={(event) => finishBrushStroke(event, true)}
                     onLostPointerCapture={(event) => finishBrushStroke(event, true)}
                     onPointerLeave={() => { if (!brushDrawing.current) setBrushCursor(null); setNearFirstPoint(false); }} />
-                  {imgDim && <svg className={`absolute inset-0 h-full w-full ${brushMode || lassoMode ? "pointer-events-none" : ""}`} viewBox={`0 0 ${imgDim[0]} ${imgDim[1]}`} preserveAspectRatio="none">
+                  {imgDim && <svg data-perspective-overlay className={`absolute inset-0 h-full w-full ${brushMode || lassoMode ? "pointer-events-none" : ""}`} viewBox={`0 0 ${imgDim[0]} ${imgDim[1]}`} preserveAspectRatio="none">
                     {!brushMode && !lassoMode && <>
                       {/* Hit-testing layer stays invisible so UI outlines never mask glyph pixels. */}
-                      {visibleManifest.map((inst) => { const b = inst.bounding_box; return <rect key={inst.id} x={b.x} y={b.y} width={b.width} height={b.height} fill="transparent" stroke="none" onClick={() => setRenderSelId(inst.id)} className="cursor-pointer" />; })}
+                      {!perspectiveMode && visibleManifest.map((inst) => { const b = inst.bounding_box; return <rect key={inst.id} x={b.x} y={b.y} width={b.width} height={b.height} fill="transparent" stroke="none" onClick={() => setRenderSelId(inst.id)} className="cursor-pointer" />; })}
                       {renderSelId && (() => {
                         const inst = visibleManifest.find((item) => item.id === renderSelId);
                         if (!inst) return null;
+                        if (perspectiveMode) {
+                          const quad = parseQuad(inst.style_profile?.transform?.quad);
+                          return <PerspectiveHandles
+                            bbox={inst.bounding_box}
+                            quad={quad}
+                            displayScale={localizedDisplayScale}
+                            imageRect={() => localizedImageRef.current?.getBoundingClientRect() ?? null}
+                            onGestureStart={beginQuadGesture}
+                            onGestureChange={previewQuadGesture}
+                            onGestureEnd={finishQuadGesture}
+                          />;
+                        }
                         const b = inst.bounding_box;
                         const corners: Array<{ cx: number; cy: number; d: string }> = [
                           { cx: b.x, cy: b.y, d: "M0,4 L0,0 L4,0" },
@@ -4360,31 +4573,101 @@ export default function App() {
                   >
                     {localizedDragMode ? <PiHandGrabbingFill size={12} /> : <PiHandGrabbingBold size={12} />}
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setPerspectiveMode((value) => !value)}
+                    disabled={!renderSelId || localizedDragMode || brushMode || lassoMode || Boolean(colorPickMode)}
+                    className={`flex items-center gap-1 rounded-sm px-2 py-1 text-xs ${
+                      perspectiveMode
+                        ? "bg-cyan-900/70 text-cyan-300"
+                        : !renderSelId || localizedDragMode || brushMode || lassoMode || colorPickMode
+                          ? "bg-white text-zinc-300 dark:bg-zinc-800 dark:text-zinc-600"
+                          : "bg-white text-zinc-500 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"
+                    }`}
+                    title={!renderSelId
+                      ? "Select a region to edit its perspective"
+                      : localizedDragMode || brushMode || lassoMode || colorPickMode
+                        ? "Finish the active canvas tool first"
+                        : perspectiveMode ? "Exit four-corner perspective editing" : "Edit four-corner perspective"}
+                  >
+                    <GrSelect size={12} /> perspective
+                  </button>
+                </div>
+                {/* render metadata indicators — bottom-right of localized canvas */}
+                <div className="absolute bottom-2 right-2 z-20 flex max-w-[60%] items-center gap-2 rounded-lg bg-white/80 px-2.5 py-1 text-[10px] backdrop-blur-sm dark:bg-zinc-900/80">
+                  <span className={`font-medium ${translatedCount === translatableCount && translatableCount > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-500 dark:text-red-400"}`}>
+                    {translatedCount}/{translatableCount}
+                  </span>
+                  <span className="text-zinc-300 dark:text-zinc-600">·</span>
+                  <span className="flex items-center gap-1 text-cyan-700 dark:text-cyan-300">
+                    <ScanText size={11} className="shrink-0" />
+                    {[...new Set(manifest.filter((i) => !i.dnt).map((i) => i.target_language ?? targLang))]
+                      .map((l) => langDisplayName(l)).join(", ") || "—"}
+                  </span>
+                  <span className="text-zinc-300 dark:text-zinc-600">·</span>
+                  <span className="truncate text-zinc-600 dark:text-zinc-400" title={manifest.filter((i) => !i.dnt).map((i) => {
+                      const identity = fontIdentity(
+                        i, { familiesByLang, defaultTargLang: targLang },
+                      );
+                      return `${identity.label} (${i.id})`;
+                    }).join("; ")}>
+                    {manifest.filter((i) => !i.dnt).map((i) => {
+                      const identity = fontIdentity(
+                        i, { familiesByLang, defaultTargLang: targLang },
+                      );
+                      return `${identity.label} (${i.id})`;
+                    }).join("; ")}
+                  </span>
+                  {manifest.some((i) => i.dnt) && (
+                    <>
+                      <span className="text-zinc-300 dark:text-zinc-600">·</span>
+                      <span className="text-amber-600 dark:text-amber-400">{manifest.filter((i) => i.dnt).length} DNT</span>
+                    </>
+                  )}
                 </div>
                 </div>
                 {!brushMode && selectedRenderInst && (() => {
                   const transform = selectedRenderInst.style_profile?.transform ?? {};
+                  const parsedQuad = parseQuad(transform.quad);
+                  const perspectiveActive = Boolean(
+                    parsedQuad
+                    && !isIdentityQuad(parsedQuad)
+                    && isUsableQuad(denormaliseQuad(parsedQuad, selectedRenderInst.bounding_box))
+                  );
+                  const detectedQuad = Number(selectedRenderInst.segmentation_mask?.confidence ?? 0) >= 0.5
+                    ? quadFromPolygon(selectedRenderInst.segmentation_mask?.polygon, selectedRenderInst.bounding_box)
+                    : null;
                   const allTransformLocksActive = LOCKABLE_TRANSFORM_KEYS.every((key) => isTransformLocked(key));
-                  return textWarpHost ? createPortal(<div className="space-y-2 text-xs text-cyan-900 dark:text-cyan-100">
+                  return textWarpHost ? createPortal(<div className="text-warp-controls space-y-2 text-xs text-cyan-900 dark:text-cyan-100" onInputCapture={(event) => { const target = event.target; if (target instanceof HTMLInputElement && target.type === "range") pulseRangeStep(target); }}>
                     <div className="flex flex-wrap items-center gap-2">
                       <div className="relative shrink-0" ref={warpRef}><button onClick={() => setWarpOpen((value) => !value)} className="bezier-card flex items-center gap-1.5 rounded-md bg-white/60 px-2 py-1 text-xs text-zinc-700 transition hover:bg-zinc-100 dark:bg-zinc-900/60 dark:text-zinc-300 dark:hover:bg-zinc-800">{WARP_PRESETS.find((preset) => preset.value === (transform.preset ?? "custom"))?.label ?? "Custom"}<ChevronDown size={12} className={`transition ${warpOpen ? "rotate-180" : ""}`} /></button><div className={`dropdown-morph bezier-card absolute left-0 top-full z-200 mt-1 w-40 rounded-lg bg-white p-1 dark:bg-zinc-900${warpOpen ? " expanded" : ""}`} style={warpOpen ? { boxShadow: "1px 1px 0 var(--bc-shadow), 2px 2px 6px rgba(0,0,0,0.06)" } : undefined}>{WARP_PRESETS.map((preset) => <button key={preset.value} onClick={() => { applyCanvasWarpPreset(preset.value); setWarpOpen(false); }} className={`flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-xs transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${(transform.preset ?? "custom") === preset.value ? "bg-zinc-100 font-medium text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100" : "text-zinc-600 dark:text-zinc-400"}`}><span>{preset.label}</span>{preset.value !== "none" && preset.value !== "custom" && <WarpPreview preset={preset.value} />}</button>)}</div></div>
                       <button type="button" onClick={toggleAllTransformLocks} className="rounded-sm p-0.5 transition hover:scale-110" title={allTransformLocksActive ? "Unlock all transform values" : "Lock all transform values"}>{allTransformLocksActive ? <HiLockClosed size={12} className="text-cyan-600 dark:text-cyan-400" /> : <HiLockOpen size={12} className="text-zinc-400 dark:text-zinc-500" />}</button>
+                      <button type="button" disabled={!detectedQuad} onClick={() => detectedQuad && updateSelectedStyle({ transform: { ...transform, quad: detectedQuad, preset: "custom" } })} className="rounded-sm border border-cyan-300 px-1.5 py-0.5 text-[10px] text-cyan-700 disabled:cursor-not-allowed disabled:opacity-35 dark:border-cyan-800 dark:text-cyan-300" title={detectedQuad ? "Seed perspective from the detected text outline" : "No sufficiently confident, usable text outline is available"}>from detection</button>
+                      <button type="button" disabled={!parsedQuad || isIdentityQuad(parsedQuad)} onClick={clearSelectedQuad} className="rounded-sm border border-zinc-300 px-1.5 py-0.5 text-[10px] text-zinc-600 disabled:cursor-not-allowed disabled:opacity-35 dark:border-zinc-700 dark:text-zinc-400">reset perspective</button>
                       <button onClick={() => setWarpCollapsed((value) => !value)} className="ml-auto shrink-0 rounded-sm p-1 text-zinc-500 transition hover:bg-zinc-200 dark:hover:bg-zinc-800" title={warpCollapsed ? "expand" : "collapse"}><FcCollapse style={{ transform: warpCollapsed ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} /></button>
                       <div className={`style-panel-morph style-panel-overflow-visible flex-1 ${!warpCollapsed ? "expanded" : ""}`}>
                         <div className="flex flex-wrap items-center gap-2 pt-1">
-                      {transform?.preset && transform.preset !== "none" && transform.preset !== "custom" && <label className="subtext flex items-center gap-1 text-xs text-zinc-500">amount<input aria-label="warp amount" type="range" min="-25" max="25" step="0.5" value={transform.amount ?? 12} onChange={(e) => updateSelectedStyle({ transform: { ...transform, amount: Number(e.target.value) } })} onDoubleClick={() => updateSelectedStyle({ transform: { ...transform, amount: 12 } })} title="double-click to return to the preset baseline" /><span className="min-w-9 text-right font-mono text-[10px]">{Number(transform.amount ?? 12).toFixed(1)}</span></label>}
+                      {perspectiveActive && <span className="basis-full text-[10px] text-cyan-700 dark:text-cyan-300">Perspective corners replace skew and stretch.</span>}
+                      {transform?.preset && transform.preset !== "none" && transform.preset !== "custom" && <label className="subtext flex items-center gap-1 text-xs text-zinc-500">amount<input aria-label="warp amount" type="range" min="-25" max="25" step="0.5" value={transform.amount ?? 12} onPointerDown={(e) => snapRangePointer(e, (value) => updateSelectedStyle({ transform: { ...transform, amount: value } }))} onChange={(e) => { pulseRangeStep(e.currentTarget); updateSelectedStyle({ transform: { ...transform, amount: Number(e.target.value) } }); }} onDoubleClick={() => updateSelectedStyle({ transform: { ...transform, amount: 12 } })} title="double-click to return to the preset baseline" /><span className="min-w-9 text-right font-mono text-[10px]">{Number(transform.amount ?? 12).toFixed(1)}</span></label>}
                       {([['skew_x', 'X'], ['skew_y', 'Y']] as const).map(([key, label]) => {
                         const hist = transformHistoryRef.current[key];
                         const locked = isTransformLocked(key);
                         const canUndoT = !!(hist && hist.undoStack.length > 0);
                         const canRedoT = !!(hist && hist.redoStack.length > 0);
-                        return <label key={key} className="subtext flex items-center gap-1 text-xs text-zinc-500">{label}<span className="text-[10px]">−45</span><input aria-label={`${label} warp`} type="range" min="-45" max="45" step="0.5" value={transform?.[key] ?? 0} disabled={locked} onChange={(e) => { const v = Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 0, v); updateCanvasTransform(key, v); }} onDoubleClick={() => { trackTransformChange(key, transform?.[key] ?? 0, 0); updateCanvasTransform(key, 0); }} title="double-click to reset to 0" /><input type="number" min="-45" max="45" step="0.5" value={transform?.[key] ?? 0} disabled={locked} onChange={(e) => { const v = e.target.value === "" ? 0 : Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 0, v); updateCanvasTransform(key, v); }} className="w-12 rounded-sm border border-zinc-300 bg-white px-1 py-0.5 text-right font-mono text-[10px] disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900" /><span className="text-[10px]">°</span><button type="button" onClick={() => undoTransformKey(key, 0)} disabled={!canUndoT || locked} className="rounded-sm p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="undo"><LuUndo2 size={10} /></button><button type="button" onClick={() => redoTransformKey(key)} disabled={!canRedoT || locked} className="rounded-sm p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="redo"><LuRedo2 size={10} /></button><button type="button" onClick={() => toggleTransformLock(key)} className={`rounded-sm p-0.5 transition ${locked ? "text-cyan-600 dark:text-cyan-400" : "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"}`} title={locked ? "Unlock" : "Lock"}>{locked ? <HiLockClosed size={10} /> : <HiLockOpen size={10} />}</button></label>;
+                        return <label key={key} className="subtext flex items-center gap-1 text-xs text-zinc-500">{label}<span className="text-[10px]">−45</span><input aria-label={`${label} warp`} type="range" min="-45" max="45" step="0.5" value={transform?.[key] ?? 0} disabled={locked} onPointerDown={(e) => snapRangePointer(e, (v) => { trackTransformChange(key, transform?.[key] ?? 0, v); updateCanvasTransform(key, v); })} onChange={(e) => { pulseRangeStep(e.currentTarget); const v = Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 0, v); updateCanvasTransform(key, v); }} onDoubleClick={() => { trackTransformChange(key, transform?.[key] ?? 0, 0); updateCanvasTransform(key, 0); }} title="double-click to reset to 0" /><input type="number" min="-45" max="45" step="0.5" value={transform?.[key] ?? 0} disabled={locked} onChange={(e) => { const v = e.target.value === "" ? 0 : Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 0, v); updateCanvasTransform(key, v); }} className="w-12 rounded-sm border border-zinc-300 bg-white px-1 py-0.5 text-right font-mono text-[10px] disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900" /><span className="text-[10px]">°</span><button type="button" onClick={() => undoTransformKey(key, 0)} disabled={!canUndoT || locked} className="rounded-sm p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="undo"><LuUndo2 size={10} /></button><button type="button" onClick={() => redoTransformKey(key)} disabled={!canRedoT || locked} className="rounded-sm p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="redo"><LuRedo2 size={10} /></button><button type="button" onClick={() => toggleTransformLock(key)} className={`rounded-sm p-0.5 transition ${locked ? "text-cyan-600 dark:text-cyan-400" : "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"}`} title={locked ? "Unlock" : "Lock"}>{locked ? <HiLockClosed size={10} /> : <HiLockOpen size={10} />}</button></label>;
                       })}
-                      {([['scale_x', 'width'], ['scale_y', 'height']] as const).map(([key, label]) => { const hist = transformHistoryRef.current[key]; const locked = isTransformLocked(key); const canUndoT = !!(hist && hist.undoStack.length > 0); const canRedoT = !!(hist && hist.redoStack.length > 0); return <label key={key} className="subtext flex items-center gap-1 text-xs text-zinc-500">{label}<span className="text-[10px]">0.5x</span><input aria-label={`${label} stretch`} type="range" min="0.5" max="1.5" step="0.01" value={transform?.[key] ?? 1} disabled={locked} onChange={(e) => { const v = Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 1, v); updateCanvasTransform(key, v); }} onDoubleClick={() => { trackTransformChange(key, transform?.[key] ?? 1, 1); updateCanvasTransform(key, 1); }} title="double-click to reset to 1.00x" /><input type="number" min="0.5" max="1.5" step="0.01" value={transform?.[key] ?? 1} disabled={locked} onChange={(e) => { const v = e.target.value === "" ? 1 : Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 1, v); updateCanvasTransform(key, v); }} className="w-12 rounded-sm border border-zinc-300 bg-white px-1 py-0.5 text-right font-mono text-[10px] disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900" /><span className="text-[10px]">x</span><button type="button" onClick={() => undoTransformKey(key, 1)} disabled={!canUndoT || locked} className="rounded-sm p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="undo"><LuUndo2 size={10} /></button><button type="button" onClick={() => redoTransformKey(key)} disabled={!canRedoT || locked} className="rounded-sm p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="redo"><LuRedo2 size={10} /></button><button type="button" onClick={() => toggleTransformLock(key)} className={`rounded-sm p-0.5 transition ${locked ? "text-cyan-600 dark:text-cyan-400" : "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"}`} title={locked ? "Unlock" : "Lock"}>{locked ? <HiLockClosed size={10} /> : <HiLockOpen size={10} />}</button></label>; })}
-                      {([['offset_x', 'pos X'], ['offset_y', 'pos Y']] as const).map(([key, label]) => { const hist = transformHistoryRef.current[key]; const locked = isTransformLocked(key); const canUndoT = !!(hist && hist.undoStack.length > 0); const canRedoT = !!(hist && hist.redoStack.length > 0); return <span key={key} className="subtext flex items-center gap-1 text-xs text-zinc-500"><label className="flex items-center gap-1">{label}<span className="text-[10px]">−50</span><input aria-label={`${label} position`} type="range" min="-50" max="50" step="1" value={transform?.[key] ?? 0} disabled={locked} onChange={(e) => { const v = Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 0, v); updateCanvasTransform(key, v); }} onDoubleClick={() => { trackTransformChange(key, transform?.[key] ?? 0, 0); updateCanvasTransform(key, 0); }} title="double-click to snap to original position" /><input type="number" min="-50" max="50" step="1" value={transform?.[key] ?? 0} disabled={locked} onChange={(e) => { const v = e.target.value === "" ? 0 : Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 0, v); updateCanvasTransform(key, v); }} className="w-12 rounded-sm border border-zinc-300 bg-white px-1 py-0.5 text-right font-mono text-[10px] disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900" /><span className="text-[10px]">px</span></label><button type="button" onClick={() => undoTransformKey(key, 0)} disabled={!canUndoT || locked} className="rounded-sm p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="undo"><LuUndo2 size={10} /></button><button type="button" onClick={() => redoTransformKey(key)} disabled={!canRedoT || locked} className="rounded-sm p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="redo"><LuRedo2 size={10} /></button><button type="button" onClick={() => toggleTransformLock(key)} className={`rounded-sm p-0.5 transition ${locked ? "text-cyan-600 dark:text-cyan-400" : "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"}`} title={locked ? "Unlock" : "Lock"}>{locked ? <HiLockClosed size={10} /> : <HiLockOpen size={10} />}</button></span>; })}
+                      {([['scale_x', 'width'], ['scale_y', 'height']] as const).map(([key, label]) => { const hist = transformHistoryRef.current[key]; const locked = isTransformLocked(key); const canUndoT = !!(hist && hist.undoStack.length > 0); const canRedoT = !!(hist && hist.redoStack.length > 0); return <label key={key} className="subtext flex items-center gap-1 text-xs text-zinc-500">{label}<span className="text-[10px]">0.5x</span><input aria-label={`${label} stretch`} type="range" min="0.5" max="1.5" step="0.01" value={transform?.[key] ?? 1} disabled={locked} onPointerDown={(e) => snapRangePointer(e, (v) => { trackTransformChange(key, transform?.[key] ?? 1, v); updateCanvasTransform(key, v); })} onChange={(e) => { const v = Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 1, v); updateCanvasTransform(key, v); }} onDoubleClick={() => { trackTransformChange(key, transform?.[key] ?? 1, 1); updateCanvasTransform(key, 1); }} title="double-click to reset to 1.00x" /><input type="number" min="0.5" max="1.5" step="0.01" value={transform?.[key] ?? 1} disabled={locked} onChange={(e) => { const v = e.target.value === "" ? 1 : Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 1, v); updateCanvasTransform(key, v); }} className="w-12 rounded-sm border border-zinc-300 bg-white px-1 py-0.5 text-right font-mono text-[10px] disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900" /><span className="text-[10px]">x</span><button type="button" onClick={() => undoTransformKey(key, 1)} disabled={!canUndoT || locked} className="rounded-sm p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="undo"><LuUndo2 size={10} /></button><button type="button" onClick={() => redoTransformKey(key)} disabled={!canRedoT || locked} className="rounded-sm p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="redo"><LuRedo2 size={10} /></button><button type="button" onClick={() => toggleTransformLock(key)} className={`rounded-sm p-0.5 transition ${locked ? "text-cyan-600 dark:text-cyan-400" : "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"}`} title={locked ? "Unlock" : "Lock"}>{locked ? <HiLockClosed size={10} /> : <HiLockOpen size={10} />}</button></label>; })}
+                      {([['offset_x', 'pos X'], ['offset_y', 'pos Y']] as const).map(([key, label]) => { const hist = transformHistoryRef.current[key]; const locked = isTransformLocked(key); const canUndoT = !!(hist && hist.undoStack.length > 0); const canRedoT = !!(hist && hist.redoStack.length > 0); return <span key={key} className="subtext flex items-center gap-1 text-xs text-zinc-500"><label className="flex items-center gap-1">{label}<span className="text-[10px]">−50</span><input aria-label={`${label} position`} type="range" min="-50" max="50" step="1" value={transform?.[key] ?? 0} disabled={locked} onPointerDown={(e) => snapRangePointer(e, (v) => { trackTransformChange(key, transform?.[key] ?? 0, v); updateCanvasTransform(key, v); })} onChange={(e) => { const v = Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 0, v); updateCanvasTransform(key, v); }} onDoubleClick={() => { trackTransformChange(key, transform?.[key] ?? 0, 0); updateCanvasTransform(key, 0); }} title="double-click to snap to original position" /><input type="number" min="-50" max="50" step="1" value={transform?.[key] ?? 0} disabled={locked} onChange={(e) => { const v = e.target.value === "" ? 0 : Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 0, v); updateCanvasTransform(key, v); }} className="w-12 rounded-sm border border-zinc-300 bg-white px-1 py-0.5 text-right font-mono text-[10px] disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900" /><span className="text-[10px]">px</span></label><button type="button" onClick={() => undoTransformKey(key, 0)} disabled={!canUndoT || locked} className="rounded-sm p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="undo"><LuUndo2 size={10} /></button><button type="button" onClick={() => redoTransformKey(key)} disabled={!canRedoT || locked} className="rounded-sm p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="redo"><LuRedo2 size={10} /></button><button type="button" onClick={() => toggleTransformLock(key)} className={`rounded-sm p-0.5 transition ${locked ? "text-cyan-600 dark:text-cyan-400" : "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"}`} title={locked ? "Unlock" : "Lock"}>{locked ? <HiLockClosed size={10} /> : <HiLockOpen size={10} />}</button></span>; })}
                       <label className="subtext flex items-center gap-0.5 text-[10px] text-zinc-400" title="When off, keep one glyph run even when it crosses the cube edge. When on, wrap only after the measured text exceeds the cube width."><input type="checkbox" checked={transform?.wrap_text ?? false} onChange={(e) => updateSelectedStyle({ transform: { ...transform, wrap_text: e.target.checked } })} /> wrap</label>
                       {(() => { const key = "rotation" as const; const current = Number(transform?.rotation ?? 0); const hist = transformHistoryRef.current[key]; const locked = isTransformLocked(key); return <span className="subtext flex items-center gap-1 text-xs text-zinc-500" title="Drag, click, or type to rotate text. Double-click the dial or value to reset."><span>rotate</span><span className="flex items-center gap-0.5"><RotationDial value={current} disabled={locked} onChange={(value) => { trackTransformChange(key, current, value); updateCanvasTransform(key, value); }} onReset={() => { trackTransformChange(key, current, 0); updateCanvasTransform(key, 0); }} /><button type="button" onClick={() => toggleTransformLock(key)} className={`self-center rounded-sm p-0.5 transition ${locked ? "text-cyan-600 dark:text-cyan-400" : "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"}`} title={locked ? "Unlock rotation" : "Lock rotation"}>{locked ? <HiLockClosed size={10} /> : <HiLockOpen size={10} />}</button></span><button type="button" onClick={() => undoTransformKey(key, 0)} disabled={!hist.undoStack.length || locked} className="rounded-sm p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="undo"><LuUndo2 size={10} /></button><button type="button" onClick={() => redoTransformKey(key)} disabled={!hist.redoStack.length || locked} className="rounded-sm p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="redo"><LuRedo2 size={10} /></button></span>; })()}
-                      <span className="subtext flex items-center gap-1 text-xs text-zinc-500" title="Choose the point that stays fixed while skewing or stretching."><span>anchor</span><span className="grid grid-cols-3 gap-px rounded-sm border border-zinc-300 p-0.5 dark:border-zinc-700">{(["top_left", "top_center", "top_right", "middle_left", "center", "middle_right", "bottom_left", "bottom_center", "bottom_right"] as const).map((anchor) => <button key={anchor} type="button" aria-label={`transform anchor ${anchor.replace("_", " ")}`} onClick={() => updateSelectedStyle({ transform: { ...transform, skew_anchor: anchor } })} className={`h-2.5 w-2.5 rounded-xs ${((transform?.skew_anchor ?? "center") === anchor) ? "bg-cyan-600" : "bg-zinc-300 hover:bg-zinc-400 dark:bg-zinc-600 dark:hover:bg-zinc-500"}`} />)}</span></span>
+                      <span className={`subtext flex items-center gap-1 text-xs text-zinc-500 ${perspectiveActive ? "opacity-40" : ""}`} title={perspectiveActive ? "Perspective corners replace the affine anchor" : "Choose the point that stays fixed while skewing or stretching."}>
+                        <span>anchor</span>
+                        <span className="grid grid-cols-3 gap-px rounded-sm border border-zinc-300 p-0.5 dark:border-zinc-700">
+                          {(["top_left", "top_center", "top_right", "middle_left", "center", "middle_right", "bottom_left", "bottom_center", "bottom_right"] as const).map((anchor) => (
+                            <button key={anchor} type="button" disabled={perspectiveActive} aria-label={`transform anchor ${anchor.replace("_", " ")}`} onClick={() => updateSelectedStyle({ transform: { ...transform, skew_anchor: anchor } })} className={`h-2.5 w-2.5 rounded-xs disabled:cursor-not-allowed ${((transform?.skew_anchor ?? "center") === anchor) ? "bg-cyan-600" : "bg-zinc-300 hover:bg-zinc-400 dark:bg-zinc-600 dark:hover:bg-zinc-500"}`} />
+                          ))}
+                        </span>
+                      </span>
                         </div>
                       </div>
                     </div>
@@ -4546,6 +4829,7 @@ export default function App() {
 
           {renderResult && (() => {
             const qa = renderResult.qa_report;
+            const verification = renderResult.verification_report;
             const cov = qa?.progress;
             const per = qa?.per_asset_instance_score ? Object.values(qa.per_asset_instance_score)[0] ?? {} : {};
             const metrics = qa?.metrics ?? {};
@@ -4556,6 +4840,68 @@ export default function App() {
             const coverageComplete = cov ? cov.untranslated === 0 : false;
             return (
               <>
+                {verification && (
+                  <Section title="Verification summary" icon={<BiAbacus size={15} />}>
+                    <div className="space-y-3">
+                      <div className={`rounded-lg border px-3 py-2 ${
+                        verification.project.overall_status === "pass"
+                          ? "border-emerald-300 bg-emerald-50 dark:border-emerald-900/70 dark:bg-emerald-950/30"
+                          : verification.project.overall_status === "review"
+                            ? "border-amber-300 bg-amber-50 dark:border-amber-900/70 dark:bg-amber-950/30"
+                            : "border-red-300 bg-red-50 dark:border-red-900/70 dark:bg-red-950/30"
+                      }`}>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-sm font-semibold capitalize text-zinc-800 dark:text-zinc-100">
+                            {verification.project.overall_status === "pass" ? "Ready" : verification.project.overall_status === "review" ? "Needs review" : "Blocked"}
+                          </span>
+                          {verification.project.overall_score != null && (
+                            <span className="rounded-full bg-white/70 px-2 py-0.5 font-mono text-xs dark:bg-zinc-900/60">
+                              {verification.project.overall_score.toFixed(0)}/100
+                            </span>
+                          )}
+                        </div>
+                        {verification.project.summary && <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">{verification.project.summary}</p>}
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {Object.entries(verification.project.component_scores).map(([name, score]) => (
+                          <span
+                            key={name}
+                            title={score == null ? "No deterministic evidence was available for this component." : `${name.replace(/_/g, " ")} score`}
+                            className="rounded bg-zinc-100 px-2 py-1 text-[10px] text-zinc-600 dark:bg-zinc-900 dark:text-zinc-300"
+                          >
+                            {name.replace(/_/g, " ")}: {score == null ? "not scored" : `${score.toFixed(0)}/100`}
+                          </span>
+                        ))}
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 text-[10px]">
+                        {Object.entries(verification.project.region_totals).map(([status, count]) => (
+                          <span key={status} className="rounded-full border border-zinc-200 px-2 py-0.5 capitalize text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+                            {count} {status.replace(/_/g, " ")}
+                          </span>
+                        ))}
+                        {verification.project.summary_flags.slice(0, 3).map((flag) => (
+                          <span key={flag} className="rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-amber-700 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
+                            {flag.replace(/_/g, " ")}
+                          </span>
+                        ))}
+                      </div>
+                      {verification.project.review_order.length > 0 && (
+                        <div className="space-y-1">
+                          {verification.project.review_order.map((regionId) => {
+                            const region = verification.regions.find((candidate) => candidate.region_id === regionId);
+                            if (!region) return null;
+                            return <div key={regionId} className="flex flex-wrap items-center gap-2 rounded border border-zinc-200 px-2 py-1.5 text-xs dark:border-zinc-800">
+                              <span className={`font-mono font-semibold ${region.status === "fail" ? "text-red-600 dark:text-red-400" : "text-amber-600 dark:text-amber-400"}`}>{regionId}</span>
+                              <span className="capitalize text-zinc-500">{region.status}</span>
+                              {region.overall_score != null && <span className="font-mono text-zinc-500">{region.overall_score.toFixed(0)}/100</span>}
+                              <span className="min-w-0 flex-1 text-zinc-600 dark:text-zinc-300">{region.recommended_action ?? region.flags[0]?.replace(/_/g, " ")}</span>
+                            </div>;
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </Section>
+                )}
                 {/* recommendations checklist */}
                 {qa?.recommendations && qa.recommendations.length > 0 && (
                   <Section
@@ -4594,7 +4940,32 @@ export default function App() {
                       </div>
                       <div>
                         <p className="subtext mb-1 text-xs text-zinc-500">localized ({langDisplayName(targLang)})</p>
-                        <img src={renderResult.output_url} alt="localized" className="rounded-lg border border-zinc-300 dark:border-zinc-800" />
+                        <div className="relative">
+                          <img src={renderResult.output_url} alt="localized" className="w-full rounded-lg border border-zinc-300 dark:border-zinc-800" />
+                          {verification && renderResult.text_manifest?.img_dim && verification.visual_flags.map((flag) => {
+                            const [width, height] = renderResult.text_manifest!.img_dim!;
+                            return <div
+                              key={flag.region_id}
+                              className="pointer-events-none absolute border-2"
+                              title={`${flag.region_id}: ${flag.label ?? flag.severity}`}
+                              style={{
+                                left: `${100 * flag.bounds.x / width}%`,
+                                top: `${100 * flag.bounds.y / height}%`,
+                                width: `${100 * flag.bounds.width / width}%`,
+                                height: `${100 * flag.bounds.height / height}%`,
+                                borderColor: flag.color,
+                                boxShadow: `0 0 0 1px ${flag.color}55`,
+                              }}
+                            >
+                              <span
+                                className="absolute -top-5 left-0 whitespace-nowrap rounded px-1 py-0.5 font-mono text-[9px] font-semibold text-white"
+                                style={{ backgroundColor: flag.color }}
+                              >
+                                {flag.region_id} · {flag.severity}
+                              </span>
+                            </div>;
+                          })}
+                        </div>
                       </div>
                     </div>
                   </Section>
@@ -5012,9 +5383,21 @@ export default function App() {
         />
       )}
 
+      <FontManager
+        open={showFontManager}
+        onClose={() => setShowFontManager(false)}
+        families={fullFamiliesByLang[styleTargetInst?.target_language ?? targLang] ?? []}
+        loading={fullFontsLoading}
+        value={styleTargetInst?.style_profile?.font_family ?? null}
+        targLang={styleTargetInst?.target_language ?? targLang}
+        recent={recentFonts}
+        onPick={onFontManagerPick}
+        onLibraryChanged={onFontLibraryChanged}
+      />
+
       {showSettings && (
         <div className="title-confirm-backdrop" onClick={() => setShowSettings(false)}>
-          <div className="bezier-card title-confirm-card step-fade" style={{ maxWidth: "420px" }} onClick={(e) => e.stopPropagation()}>
+          <div className="bezier-card title-confirm-card step-fade" style={{ maxWidth: "560px", width: "min(560px, calc(100vw - 32px))" }} onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-2 mb-4 w-full">
               <Hexagon size={18} className="text-cyan-500 dark:text-cyan-400" />
               <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">settings</p>
@@ -5023,9 +5406,26 @@ export default function App() {
               <div>
                 <p className="subtext mb-2 text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-600">capture</p>
                 <div className="space-y-2">
-                  <div>
-                    <p className="subtext mb-1 text-xs text-zinc-600 dark:text-zinc-400">bounding boxes</p>
-                    <BBoxColorDropdown value={bboxColor} onChange={setBboxColor} />
+                  <div className="flex items-center justify-between gap-6">
+                    <p className="subtext text-xs text-zinc-600 dark:text-zinc-400">bounding boxes</p>
+                    <div className="w-40 shrink-0">
+                      <BBoxColorDropdown value={bboxColor} onChange={setBboxColor} />
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between gap-6">
+                    <p className="subtext text-xs text-zinc-600 dark:text-zinc-400">bbox blink</p>
+                    <div className="flex w-40 shrink-0 justify-end">
+                      <PenumbraSwitch checked={bboxBlink} onChange={setBboxBlink} label="" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <p className="subtext mb-2 text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-600">translate</p>
+                <div className="flex items-center justify-between gap-6">
+                  <p className="subtext text-xs text-zinc-600 dark:text-zinc-400">hide region counter</p>
+                  <div className="flex w-40 shrink-0 justify-end">
+                    <PenumbraSwitch checked={hideRegionCounter} onChange={setHideRegionCounter} label="" />
                   </div>
                 </div>
               </div>

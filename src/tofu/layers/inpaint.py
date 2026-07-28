@@ -1,4 +1,6 @@
-"""Non-destructive treatment patches for the localized Render canvas."""
+## 🍢 Inpaint -- Non-destructive treatment patches for the localized Render canvas.
+## vieuxtiful
+
 from typing import Any, Dict, List, Tuple
 
 

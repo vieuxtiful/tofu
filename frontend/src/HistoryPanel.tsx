@@ -100,7 +100,7 @@ export default function HistoryPanel({ project, currentAssetId, onRestored, onCl
       <div className={`bezier-card pantry-card${leaving ? " leaving" : ""} flex max-h-[85vh] w-full max-w-2xl flex-col rounded-xl bg-white dark:bg-zinc-900`}>
         <div className="flex items-center justify-between border-b border-zinc-200 px-5 py-4 dark:border-zinc-800">
           <h3 className="flex items-center gap-2 text-lg font-semibold text-zinc-800 dark:text-zinc-200">
-            <History size={18} className="text-cyan-600 dark:text-cyan-400" /> Session History
+            <History size={18} className="text-cyan-600 dark:text-cyan-400" /> session history
             <span className="text-sm font-normal text-zinc-500">— {project.name}</span>
           </h3>
           <button onClick={onClose} className="rounded-sm p-1 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300">
