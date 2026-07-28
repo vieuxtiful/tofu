@@ -1,4 +1,4 @@
-## 🍢 menu — gazetteer-assisted correction for real-world place names
+## 🍢 Menu — gazetteer-assisted correction for real-world place names
 """
 A low-confidence OCR read of a real, well-known place or establishment
 sign (a train-station gate, a named street, a chain storefront) can

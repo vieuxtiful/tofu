@@ -125,6 +125,32 @@ class SceneRegion: ## candidate text-bearing surface from scene's pre-pass
     material: Optional[str] = None         ## user-facing descriptor: "brick / masonry" | "painted sign" | "textured surface"
     garnish_profile: Optional[GarnishProfile] = None
 
+@dataclass(frozen=True)
+class OCRAssessmentPolicy:
+    mode: Literal["off", "risk_based", "exhaustive"] = "risk_based"
+    verifier: Literal["paddleocr"] = "paddleocr"
+    require_verifier_for_auto_accept: bool = True
+    max_region_proposals: int = 8
+    calibration_revision: str = "ocr-v1"
+
+@dataclass(frozen=True)
+class InpaintAssessmentPolicy:
+    mode: Literal["single", "multi"] = "multi"
+    max_neural_candidates: int = 3
+    retry_budget: int = 2
+    require_residual_verification: bool = True
+    calibration_revision: str = "inpaint-v1"
+
+@dataclass
+class ReconstructionProfile:
+    material_class: str = "unknown"
+    material_confidence: float = 0.0
+    planar_confidence: float = 0.0
+    periodic_texture_confidence: float = 0.0
+    perspective_quad: Optional[Polygon] = None
+    perspective_confidence: float = 0.0
+    evidence: Dict[str, Any] = field(default_factory=dict)
+
 @dataclass
 class InstText:
     id: str
@@ -155,7 +181,9 @@ class InstText:
     tm_suggestion: Optional[Dict[str, Any]] = None  ## Memory lookup match: {target_text, score, method, source_asset_id, record_id}
     ocr_correction: Optional[Dict[str, Any]] = None  ## recognition_correct: {applied, original_text/candidate_text, corrected_text?, reason}
     recognition_history: Optional[List[Dict[str, Any]]] = None  ## immutable audit trail of engine candidates and accepted/rejected corrections
+    ocr_provenance: Optional[Dict[str, Any]] = None  ## multi-provider observations, arbitration and independent verification
     repair_provenance: Optional[Dict[str, Any]] = None  ## cleanse provider, confidence gate, fallback and review evidence
+    reconstruction_profile: Optional[ReconstructionProfile] = None
     font_match: Optional[Dict[str, Any]] = None  ## evidence-gated visual font identification + installed/commercial alternatives; never silently overrides a user font choice
     semantic_assignment: Optional[Dict[str, Any]] = None  ## Basil's explicit target-span-to-immutable-region assignment provenance
     garnish_override: Optional[GarnishProfile] = None
@@ -163,6 +191,7 @@ class InstText:
     garnish_scope: str = "whole_selection"  ## whole_selection | per_region; explicit so masks never change whole-selection semantics
     garnish_regions: List[GarnishRegion] = field(default_factory=list)
     resolved_font_family: Optional[str] = None    ## what "auto" (style_profile.font_family=None) currently resolves to — scribe.resolve_auto_font()'s answer, for preview/display only; never itself passed as a render override
+    resolved_synthetic_italic: bool = False       ## True when render() will SHEAR an upright face (no real italic sibling exists) rather than load one — scribe.resolve_face()'s second return value, so a preview can reproduce the same choice instead of guessing from a subfamily string
 
 @dataclass
 class CharactText:
@@ -200,9 +229,27 @@ class StyleProfil:
     # -- appearance --
     stroke_color: Optional[str] = None        # hex
     stroke_width: Optional[float] = None      # px
+    stroke_position: Optional[str] = None     # "outer" | "center" | "inner"
     target_orientation: Optional[str] = None  # "horizontal" | "vertical"
     word_order: Optional[str] = None          # "ltr" | "rtl" for vertical word columns
-    transform: Optional[Dict[str, Any]] = None  # {skew_x, skew_y, arc, preset, amount, scale_x, scale_y}
+    # {skew_x, skew_y, skew_anchor, arc, preset, amount, scale_x, scale_y,
+    #  offset_x, offset_y, rotation, wrap_text, locked_fields, quad}
+    #
+    # `quad` is the projective corner set: four [x, y] pairs ordered
+    # top-left, top-right, bottom-right, bottom-left, NORMALISED to the
+    # region's bounding box -- so [[0,0],[1,0],[1,1],[0,1]] is the identity
+    # and a region that moves or resizes carries its perspective with it.
+    # Values outside 0-1 are legal; that is what lets a corner be pulled
+    # beyond the box.
+    #
+    # It exists because skew_x/skew_y cannot express perspective. Those are
+    # a shear, and shear is affine: it keeps opposite edges parallel and
+    # equal. A sign photographed at an angle has CONVERGING edges, which no
+    # combination of shear, scale and rotation reproduces -- six degrees of
+    # freedom against the eight a homography needs. When a non-identity quad
+    # is present it replaces the affine stage; skew_x/skew_y keep working
+    # unchanged for every manifest that has no quad.
+    transform: Optional[Dict[str, Any]] = None
 
 @dataclass
 class BgProfil:
@@ -247,6 +294,8 @@ class TextManifest: ## loc task manifest via cicerone
     img_dim: Optional[tuple[int, int]] = None
     scene_regions: List[SceneRegion] = field(default_factory=list)
     semantic_units: List[SemanticTextUnit] = field(default_factory=list)
+    asset_class: Optional[str] = None
+    asset_classification: Optional[Dict[str, Any]] = None
     prcssng_time: Optional[float] = None
     asset_type: AssetType = AssetType.IMAGE
     frame_count: int = 1                  ## static image == 1; video == n frames
@@ -278,6 +327,12 @@ class VldtnClass:
     message: str
     suggestion: Optional[str] = None
     region_id: Optional[str] = None
+    ## every region this one issue applies to. a language-level finding
+    ## (script support, render quality) is true of the whole target
+    ## language, not of one box — emitting it once per instance turned a
+    ## single fact into N identical warnings in the preflight panel.
+    ## region_id stays as the primary/first anchor for existing consumers.
+    region_ids: List[str] = field(default_factory=list)
 
 @dataclass
 class VldtnInsight:
@@ -327,6 +382,8 @@ class PipelineCfg:
     qa_threshold: float = 0.8  ## verify gate: below this, run fails and memory is skipped
     scene_backend: str = "classical"       ## "classical" | "sam" | "null"
     scene_model_path: Optional[str] = None ## checkpoint path for model backends (e.g. SAM)
+    ocr_assessment: OCRAssessmentPolicy = field(default_factory=OCRAssessmentPolicy)
+    inpaint_assessment: InpaintAssessmentPolicy = field(default_factory=InpaintAssessmentPolicy)
 
 @dataclass
 class PipelineResult:
@@ -335,6 +392,7 @@ class PipelineResult:
     output_asset: Optional[Any] = None  # Image or Video
     text_manifest: Optional[TextManifest] = None
     validation_report: Optional[VldtnReport] = None
+    verification_report: Optional['VerificationReport'] = None
     qa_report: Optional['QAReport'] = None
     """
     🍢 qa_report: pending definition 7.16.26: must be structured
@@ -352,6 +410,91 @@ class QAReport:
     progress: Dict[str, Any] = field(default_factory=dict)
     metrics: Dict[str, Any] = field(default_factory=dict)
     recommendations: List[str] = field(default_factory=list)
+
+
+# VerificationReport is the canonical, evidence-first Verify contract.  The
+# older QAReport remains above as a compatibility view while its scorers are
+# migrated into the six component scores in later phases.
+VerificationStatus = Literal["pass", "review", "fail"]
+InventoryStatus = Literal[
+    "rendered", "missing", "untranslated", "excluded", "do_not_translate", "extra"
+]
+
+
+@dataclass
+class VerificationEvidence:
+    text: Optional[str] = None
+    bounds: Optional[BBox] = None
+    language: Optional[str] = None
+    #: joined ISO 15924 summary, e.g. "Latn" or "Hani+Kana".  A string is not
+    #: "in a script" -- its characters are (UAX #24) -- so this is a summary
+    #: of `scripts`, never a single majority winner.
+    script: Optional[str] = None
+    #: every ISO 15924 script actually present, Common excluded
+    scripts: List[str] = field(default_factory=list)
+    #: character counts per script, the evidence behind `scripts`
+    script_counts: Dict[str, int] = field(default_factory=dict)
+    #: more than one real script present (correct for Japanese and Korean)
+    is_mixed_script: bool = False
+    #: "Hans" | "Hant" | "undetermined" for Chinese Han text; None otherwise.
+    #: Unicode unifies both orthographies as Hani, so this comes from the
+    #: national charsets rather than from any Unicode property.
+    han_variant: Optional[str] = None
+    direction: Optional[Literal["ltr", "rtl", "ttb"]] = None
+    font_family: Optional[str] = None
+    asset_class: Optional[str] = None
+    clean_render_present: bool = False
+
+
+@dataclass
+class VerificationRegion:
+    region_id: str
+    inventory_status: InventoryStatus
+    source_evidence: VerificationEvidence
+    target_evidence: VerificationEvidence
+    checks: Dict[str, Any] = field(default_factory=dict)
+    scores: Dict[str, Optional[float]] = field(default_factory=dict)
+    flags: List[str] = field(default_factory=list)
+    confidence: Optional[float] = None
+    recommended_action: Optional[str] = None
+    overall_score: Optional[float] = None
+    status: VerificationStatus = "review"
+
+
+@dataclass
+class VerificationProject:
+    overall_status: VerificationStatus = "review"
+    overall_score: Optional[float] = None
+    component_scores: Dict[str, Optional[float]] = field(default_factory=lambda: {
+        "coverage": None,
+        "content_integrity": None,
+        "spatial_fit": None,
+        "typographic_intent": None,
+        "script_rendering_validity": None,
+        "contextual_fit": None,
+    })
+    summary_flags: List[str] = field(default_factory=list)
+    region_totals: Dict[str, int] = field(default_factory=dict)
+    summary: Optional[str] = None
+    review_order: List[str] = field(default_factory=list)
+
+
+@dataclass
+class VerificationVisualFlag:
+    region_id: str
+    bounds: BBox
+    severity: VerificationStatus
+    codes: List[str] = field(default_factory=list)
+    color: str = "#f59e0b"
+    label: Optional[str] = None
+
+
+@dataclass
+class VerificationReport:
+    project: VerificationProject
+    regions: List[VerificationRegion] = field(default_factory=list)
+    visual_flags: List[VerificationVisualFlag] = field(default_factory=list)
+    run_metadata: Dict[str, Any] = field(default_factory=dict)
 
 def map_scores_to_asset_ids(
     text_manifest: TextManifest,

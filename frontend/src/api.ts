@@ -76,13 +76,21 @@ export interface FontWeight {
   subfamily: string;
   weight_class: number;
   coverage: number;
+  /** OS/2 fsSelection bit 0, falling back to the subfamily name. Optional
+   * because manifests and fixtures predating it still typecheck. */
+  italic?: boolean;
 }
+
+/** typographic browsing facet from the backend's sift() — a UI filter, never
+ * an input to font matching, which reaches its verdict from pixels. */
+export type FontCategory = "serif" | "sans" | "mono" | "display" | "unknown";
 
 export interface FontFamily {
   family: string;
   best_path: string;
   best_coverage: number;
   weights: FontWeight[];
+  category?: FontCategory;
 }
 
 export interface LanguageOption {
@@ -157,6 +165,7 @@ export interface InstText {
     }>;
   } | null;
   resolved_font_family?: string | null;  // what "auto" (style_profile.font_family unset) currently renders with — display hint only, never an override
+  resolved_synthetic_italic?: boolean;   // render() will SHEAR an upright face rather than load a real italic one (scribe.resolve_face's second answer)
   font_match?: FontMatch | null;
   semantic_assignment?: {
     schema: number;
@@ -183,6 +192,9 @@ export interface InstText {
     color: string | null;
     font_size: number | null;
     italic: boolean | null;
+    // any subset; scribe merges DEFAULT_SHADOW in for the missing keys,
+    // and draws nothing at all when the whole object is absent
+    shadow?: { offset_x?: number; offset_y?: number; blur?: number; color?: string } | null;
     underline: boolean | null;
     underline_offset?: number | null;
     underline_width?: number | null;
@@ -200,9 +212,25 @@ export interface InstText {
     tsume: number | null;
     stroke_color: string | null;
     stroke_width: number | null;
+    stroke_position?: "outer" | "center" | "inner" | null;
     target_orientation: "horizontal" | "vertical" | null;
     word_order: "ltr" | "rtl" | null;
-    transform?: { skew_x?: number; skew_y?: number; skew_anchor?: string; arc?: number; preset?: string; amount?: number; scale_x?: number; scale_y?: number; offset_x?: number; offset_y?: number; wrap_text?: boolean; rotation?: number | null; locked_fields?: string[] } | null;
+    transform?: {
+      skew_x?: number; skew_y?: number; skew_anchor?: string; arc?: number;
+      preset?: string; amount?: number; scale_x?: number; scale_y?: number;
+      offset_x?: number; offset_y?: number; wrap_text?: boolean;
+      rotation?: number | null; locked_fields?: string[];
+      /** Projective corners: [TL, TR, BR, BL], each [x, y] NORMALISED to the
+       * region's bounding box, so [[0,0],[1,0],[1,1],[0,1]] is the identity
+       * and the perspective travels with the region when it moves or
+       * resizes. Values outside 0–1 are legal — that is what lets a corner
+       * be pulled beyond the box.
+       *
+       * skew_x/skew_y are a shear, and shear is affine: opposite edges stay
+       * parallel. A photographed sign has converging edges, which needs a
+       * homography. A non-identity quad replaces the affine stage. */
+      quad?: number[][];
+    } | null;
   } | null;
   background_profile?: {
     semantic_label: string | null;  // containing scene surface: "panel" | "bordered_region" | ...
@@ -260,6 +288,8 @@ export interface TextManifest {
   img_dim: [number, number] | null;  // original (width, height): the coordinate space of all bboxes
   scene_regions: SceneRegion[];
   semantic_units?: SemanticTextUnit[];
+  asset_class?: string | null;
+  asset_classification?: Record<string, unknown> | null;
   asset_type: string;
   frame_count: number;
   fps: number | null;
@@ -381,6 +411,11 @@ export interface ValidationIssue {
   message: string;
   suggestion: string | null;
   region_id: string | null;
+  /** Every region this one finding applies to. A language-level issue
+   *  (script support, render quality) is true of a whole typography
+   *  context, not of one box — `region_id` is just the primary anchor.
+   *  Older payloads omit this, so treat it as possibly undefined. */
+  region_ids?: string[];
 }
 
 export interface PreflightInsight {
@@ -450,8 +485,45 @@ export interface QAReport {
   recommendations?: string[];
 }
 
+export type VerificationStatus = "pass" | "review" | "fail";
+
+export interface VerificationRegion {
+  region_id: string;
+  inventory_status: string;
+  scores: Record<string, number | null>;
+  flags: string[];
+  recommended_action: string | null;
+  overall_score: number | null;
+  status: VerificationStatus;
+}
+
+export interface VerificationVisualFlag {
+  region_id: string;
+  bounds: BBox;
+  severity: VerificationStatus;
+  codes: string[];
+  color: string;
+  label: string | null;
+}
+
+export interface VerificationReport {
+  project: {
+    overall_status: VerificationStatus;
+    overall_score: number | null;
+    component_scores: Record<string, number | null>;
+    summary_flags: string[];
+    region_totals: Record<string, number>;
+    summary: string | null;
+    review_order: string[];
+  };
+  regions: VerificationRegion[];
+  visual_flags: VerificationVisualFlag[];
+  run_metadata: Record<string, unknown>;
+}
+
 export interface RenderResult {
   output_url: string | null;
+  verification_report: VerificationReport | null;
   qa_report: QAReport | null;
   qa_passed: boolean;
   qa_threshold: number;
@@ -534,6 +606,18 @@ export interface FontMatch {
   candidates: FontMatchCandidate[];
   contextual_candidates?: string[];
   recommended_substitute?: { font_path: string; family: string; subfamily?: string; score: number } | null;
+  // this region's OWN winner, kept for audit when a cohort overruled it
+  region_substitute?: { font_path: string; family: string; subfamily?: string; score: number } | null;
+  // one face agreed across every region Basil tied into the same bouquet
+  cohort?: {
+    id: string;
+    region_ids: string[];
+    method: string;
+    agreement: number;        // worst-served member, normalised
+    mean_agreement: number;
+    per_region: Record<string, number>;
+    dissent: Array<{ region_id: string; preferred: string; preferred_score: number; cohort_score: number }>;
+  } | null;
   external_candidates?: FontMatchCandidate[];
   external_provider?: { name: string; enabled: boolean; reason?: string; error?: string };
 }
@@ -694,8 +778,16 @@ export async function fetchLanguages(): Promise<LanguageOption[]> {
   return data.languages;
 }
 
-export async function fetchFonts(lang: string): Promise<{ script: string; fonts: FontOption[]; families: FontFamily[] }> {
-  return json(await fetch(`/api/fonts?lang=${encodeURIComponent(lang)}`));
+/** `full` asks for the entire installed library instead of the ranked
+ * dropdown subset (which the server truncates to 24 families). The full
+ * catalog omits the flat `fonts` face list — the Font Manager picks per
+ * family, so a ranked face list would be computed for nobody. */
+export async function fetchFonts(
+  lang: string,
+  opts?: { full?: boolean },
+): Promise<{ script: string; fonts: FontOption[]; families: FontFamily[] }> {
+  const full = opts?.full ? "&full=true" : "";
+  return json(await fetch(`/api/fonts?lang=${encodeURIComponent(lang)}${full}`));
 }
 
 export async function validateAsset(
@@ -1013,6 +1105,7 @@ export interface RenderStreamEvent {
   message?: string;          // error
   // "complete" stage mirrors RenderResult
   output_url?: string | null;
+  verification_report?: VerificationReport | null;
   qa_report?: QAReport | null;
   qa_passed?: boolean;
   qa_threshold?: number;
@@ -1084,4 +1177,58 @@ export async function processAsset(
       body: JSON.stringify({ asset_id: assetId, targ_lang: targLang, font }),
     })
   );
+}
+
+// --- font library installation ---
+// No OS-level font install is involved: scribe renders from a path, the
+// preview is served over /api/font-file, and the registry keys on absolute
+// paths. System font directories were only ever a discovery convenience.
+
+export interface FontEmbeddingPermission {
+  fs_type: number | null;
+  restricted: boolean;
+  subsettable: boolean;
+  bitmap_only: boolean;
+  readable: boolean;
+}
+
+export interface FontUploadResult {
+  installed: string;
+  faces: number;
+  path: string;
+  source: string;
+  embedding: FontEmbeddingPermission;
+  /** the vendor's fsType forbids embedding, so it will not be served for
+   * @font-face preview even though it renders locally */
+  preview_blocked: boolean;
+}
+
+export interface FontPack {
+  name: string;
+  version?: string;
+  license?: string;
+  source_url?: string;
+  face_files?: number;
+  error?: string;
+}
+
+export async function uploadFont(file: File): Promise<FontUploadResult> {
+  const body = new FormData();
+  body.append("file", file);
+  return json(await fetch("/api/fonts/upload", { method: "POST", body }));
+}
+
+export async function fetchFontPacks(): Promise<FontPack[]> {
+  const data = await json<{ packs: FontPack[] }>(await fetch("/api/fonts/packs"));
+  return data.packs;
+}
+
+export async function installFontPack(file: File): Promise<{ installed: string; faces: number }> {
+  const body = new FormData();
+  body.append("file", file);
+  return json(await fetch("/api/fonts/packs/install", { method: "POST", body }));
+}
+
+export async function removeFontPack(name: string): Promise<{ removed: string; faces_unloaded: number }> {
+  return json(await fetch(`/api/fonts/packs/${encodeURIComponent(name)}`, { method: "DELETE" }));
 }

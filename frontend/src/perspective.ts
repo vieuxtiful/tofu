@@ -56,6 +56,45 @@ export function denormaliseQuad(quad: Quad, bbox: BBox): Quad {
   ]) as Quad;
 }
 
+/** Pixel-space corners → bbox-relative corners. Values are deliberately
+ * not clamped: projective corners may extend beyond both the bbox and image. */
+export function normaliseQuad(corners: Quad, bbox: BBox): Quad {
+  if (bbox.width <= 0 || bbox.height <= 0) return corners.map(() => [0, 0]) as Quad;
+  return corners.map(([x, y]) => [
+    (x - bbox.x) / bbox.width,
+    (y - bbox.y) / bbox.height,
+  ]) as Quad;
+}
+
+/** Move one projective corner in pixel space.
+ *
+ * `axisLock` keeps the untouched coordinate from the starting quad.
+ * `mirror` moves the opposite corner by the inverse delta, preserving the
+ * four-corner centroid. Validation intentionally remains the caller's job so
+ * invalid in-progress gestures can still be drawn in red. */
+export function moveCorner(
+  quad: Quad,
+  index: 0 | 1 | 2 | 3,
+  to: [number, number],
+  opts: { mirror?: boolean; axisLock?: "x" | "y" } = {},
+): Quad {
+  const next = quad.map(([x, y]) => [x, y] as [number, number]) as Quad;
+  const [fromX, fromY] = next[index];
+  const target: [number, number] = [
+    opts.axisLock === "y" ? fromX : to[0],
+    opts.axisLock === "x" ? fromY : to[1],
+  ];
+  next[index] = target;
+  if (opts.mirror) {
+    const opposite = ((index + 2) % 4) as 0 | 1 | 2 | 3;
+    next[opposite] = [
+      next[opposite][0] - (target[0] - fromX),
+      next[opposite][1] - (target[1] - fromY),
+    ];
+  }
+  return next;
+}
+
 /** Convex, correctly wound, non-degenerate.
  *
  * A self-intersecting or collinear quad has no invertible homography. The

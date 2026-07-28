@@ -7,7 +7,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from tofu.core.types import (
     PipelineCfg, PipelineResult, LayerMode, PrcStatus,
-    TextManifest, VldtnReport, QAReport, RenderParams, StyleProfil,
+    TextManifest, VldtnReport, QAReport, VerificationReport, RenderParams, StyleProfil,
     SceneRegion, AssetType, AssetInfo, infer_asset_info
 )
 from tofu.layers import tofu, cicerone, scene, cleanse, scribe, garnish, verify, memory
@@ -47,6 +47,13 @@ class TofuPipeline:
         # italic to a real sibling font face when one exists, instead of
         # always synthesizing bold/italic from the base face
         self.font_registry = font_registry
+        # ...and through to ToFU, which is the layer that actually needs
+        # to know whether a font can DRAW the target language. the stage
+        # used to call the module-level singleton, which is built with no
+        # font library at all -- so every pipeline run silently validated
+        # against the static script map while the caller was already
+        # holding a real registry.
+        self._validator = tofu.ToFU(font_registry=font_registry)
         self._current_manifest: Optional[TextManifest] = None
         self._current_report: Optional[VldtnReport] = None
         self._manual_manifest: Optional[TextManifest] = None
@@ -129,7 +136,7 @@ class TofuPipeline:
 
         # Layer 0: ToFU ## pre-flight validation
         t0 = time.time()
-        validation_report = self._run_tofu(asset, targ_lang)
+        validation_report = self._run_tofu(asset, targ_lang, font=font)
         self._log("tofu", f"pre-flight for '{targ_lang}': "
                           f"{'passed' if validation_report.passed else 'failed'}", t0=t0)
         if not validation_report.passed:
@@ -177,7 +184,7 @@ class TofuPipeline:
 
         # ToFU re-validation with real regions (expansion feasibility, ToFU_005)
         t0 = time.time()
-        validation_report = self._run_tofu(asset, targ_lang, text_manifest)
+        validation_report = self._run_tofu(asset, targ_lang, text_manifest, font=font)
         self._log("tofu", f"re-validation with {text_manifest.total_regions} region(s): "
                           f"{'passed' if validation_report.passed else 'failed'}", t0=t0)
         if not validation_report.passed:
@@ -274,6 +281,22 @@ class TofuPipeline:
                 validation_report=validation_report,
             )
 
+        # Capture the canonical inventory from Scribe's clean render. Garnish
+        # is downstream so presentation effects cannot contaminate the
+        # localization evidence or its eventual component scores.
+        verification_report: Optional[VerificationReport] = None
+        try:
+            verification_report = verify.build_verification_report(
+                localized_asset, text_manifest, self.font_registry
+            )
+            self._log(
+                "verify",
+                "captured clean-render inventory before Garnish "
+                f"({len(verification_report.regions)} region(s))",
+            )
+        except Exception as exc:
+            self._fail("verify inventory", exc)
+
         # Layer 4b: Garnish — deterministic source-wear treatment, non-fatal.
         try:
             localized_asset = garnish.apply(localized_asset, text_manifest, cleansed_asset, self.font_registry)
@@ -291,6 +314,7 @@ class TofuPipeline:
                 output_asset=localized_asset,
                 text_manifest=text_manifest,
                 validation_report=validation_report,
+                verification_report=verification_report,
             )
         localized_asset = signed_off
 
@@ -336,6 +360,7 @@ class TofuPipeline:
             output_asset=localized_asset,
             text_manifest=text_manifest,
             validation_report=validation_report,
+            verification_report=verification_report,
             qa_report=qa_report,
             memory_updates=memory_updates,
         )
@@ -362,6 +387,7 @@ class TofuPipeline:
         asset,
         targ_lang: str,
         text_manifest: Optional[TextManifest] = None,
+        font: Optional[str] = None,
     ) -> VldtnReport:
         if self.config.tofu_mode == LayerMode.MANUAL:
             # Return a "pending manual review" state
@@ -370,7 +396,52 @@ class TofuPipeline:
                 issues=[],
                 suggested_actions=["Manual validation required for ToFU layer."]
             )
-        return tofu.validate(asset, targ_lang, text_manifest=text_manifest)
+        return self._validator.validate(
+            asset, targ_lang, self._tofu_context(font, text_manifest), text_manifest
+        )
+
+    @staticmethod
+    def _tofu_context(
+        font: Optional[str], text_manifest: Optional[TextManifest]
+    ) -> Optional[Dict[str, Any]]:
+        """What ToFU needs to score anything beyond the script map.
+
+        The requested font is what makes glyph-coverage and text-expansion
+        checks measurable rather than assumed -- process() has always
+        received it and never passed it on, which left ToFU_005 falling
+        back to a flat per-language ratio for every region.
+
+        Region size and effect count come from the manifest once one
+        exists, so the render-quality estimate sees the actual typography
+        instead of its no-information default.
+        """
+        ctx: Dict[str, Any] = {}
+        if font:
+            ctx["font"] = font
+        if text_manifest is not None:
+            sizes = [
+                inst.characteristics.size
+                for inst in text_manifest.instances
+                if inst.characteristics and inst.characteristics.size
+            ]
+            if sizes:
+                # smallest region governs legibility: the run is only as
+                # readable as the text most likely to fail
+                ctx["font_px"] = min(sizes)
+            effects = set()
+            for inst in text_manifest.instances:
+                sp = inst.style_profile
+                if not sp:
+                    continue
+                if sp.shadow:
+                    effects.add("shadow")
+                if sp.stroke_width:
+                    effects.add("stroke")
+                if sp.italic:
+                    effects.add("italic")
+            if effects:
+                ctx["effects"] = sorted(effects)
+        return ctx or None
 
     def _run_cicerone(
         self,
@@ -381,7 +452,12 @@ class TofuPipeline:
         if self.config.cicerone_mode == LayerMode.MANUAL:
             # User provides manual annotations
             return self._get_manual_manifest(asset_info)
-        return cicerone.detect(asset, asset_info, scene_regions=scene_regions)
+        return cicerone.detect(
+            asset,
+            asset_info,
+            scene_regions=scene_regions,
+            ocr_assessment_policy=self.config.ocr_assessment,
+        )
 
     def _get_manual_manifest(self, asset_info: AssetInfo) -> TextManifest:
         """user-authored annotations for MANUAL mode; empty manifest if unset."""
@@ -403,7 +479,11 @@ class TofuPipeline:
     def _run_cleanse(self, asset, text_manifest: TextManifest):
         if self.config.cleanse_mode == LayerMode.MANUAL:
             return asset  # user supplies a manually cleansed asset downstream
-        return cleanse.erase(asset, text_manifest)
+        return cleanse.erase(
+            asset,
+            text_manifest,
+            assessment_policy=self.config.inpaint_assessment,
+        )
 
     def _run_scribe(
         self,

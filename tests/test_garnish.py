@@ -17,7 +17,7 @@ def test_garnish_identity_and_outside_pixels_preserved():
     base = Image.new("RGB", (80, 50), "#64748b")
     scribed = base.copy(); ImageDraw.Draw(scribed).rectangle((25, 16, 45, 25), fill="#f8fafc")
     manifest = _manifest(GarnishProfile())
-    assert list(garnish.apply(scribed, manifest, base).getdata()) == list(scribed.getdata())
+    assert list(garnish.apply(scribed, manifest, base).get_flattened_data()) == list(scribed.get_flattened_data())
 
     manifest.scene_regions[0].garnish_profile = GarnishProfile(edge_blur_px=1, grain_strength=.1, source_confidence=.8)
     out = garnish.apply(scribed, manifest, base)
@@ -43,7 +43,7 @@ def test_disabled_garnish_bypasses_profile_without_losing_override():
     manifest = _manifest(GarnishProfile(edge_blur_px=1.5, grain_strength=.2))
     manifest.instances[0].garnish_override = GarnishProfile(edge_blur_px=2.0, grain_strength=.3)
     manifest.instances[0].garnish_enabled = False
-    assert list(garnish.apply(scribed, manifest, base).getdata()) == list(scribed.getdata())
+    assert list(garnish.apply(scribed, manifest, base).get_flattened_data()) == list(scribed.get_flattened_data())
     assert manifest.instances[0].garnish_override.edge_blur_px == 2.0
 
 

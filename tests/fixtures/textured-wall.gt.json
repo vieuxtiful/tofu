@@ -7,7 +7,12 @@
         305,
         52
       ],
-      "text": "BAKERY"
+      "text": "BAKERY",
+      "style": {
+        "color": "#f5f0e4",
+        "stroke_color": "#281e19",
+        "stroke_width": 2
+      }
     },
     {
       "bbox": [
@@ -16,7 +21,12 @@
         148,
         26
       ],
-      "text": "est. 1962"
+      "text": "est. 1962",
+      "style": {
+        "color": "#f5f0e4",
+        "stroke_color": "#281e19",
+        "stroke_width": 2
+      }
     }
   ]
 }

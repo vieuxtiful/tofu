@@ -43,7 +43,8 @@ class TestWeightAndItalic:
     """stylized-italic fixture carries exact style ground truth."""
 
     @pytest.fixture(scope="class")
-    def analyzed(self):
+    @classmethod
+    def analyzed(cls):
         img, regions = fixture_regions("stylized-italic")
         return [
             (r, analyze_region(img, padded_bbox(r)))

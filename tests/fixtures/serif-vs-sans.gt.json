@@ -1,0 +1,88 @@
+{
+  "regions": [
+    {
+      "bbox": [
+        90,
+        95,
+        164,
+        43
+      ],
+      "text": "La rue",
+      "style": {
+        "serif": true,
+        "weight": "regular",
+        "font_file": "times.ttf"
+      }
+    },
+    {
+      "bbox": [
+        90,
+        205,
+        334,
+        43
+      ],
+      "text": "SANS-NOM",
+      "style": {
+        "serif": true,
+        "weight": "regular",
+        "font_file": "times.ttf"
+      }
+    },
+    {
+      "bbox": [
+        500,
+        92,
+        183,
+        46
+      ],
+      "text": "La rue",
+      "style": {
+        "serif": false,
+        "weight": "regular",
+        "font_file": "arial.ttf"
+      }
+    },
+    {
+      "bbox": [
+        500,
+        201,
+        345,
+        48
+      ],
+      "text": "SANS-NOM",
+      "style": {
+        "serif": false,
+        "weight": "regular",
+        "font_file": "arial.ttf"
+      }
+    },
+    {
+      "bbox": [
+        90,
+        333,
+        281,
+        49
+      ],
+      "text": "Handgloves",
+      "style": {
+        "serif": true,
+        "weight": "bold",
+        "font_file": "timesbd.ttf"
+      }
+    },
+    {
+      "bbox": [
+        500,
+        331,
+        316,
+        52
+      ],
+      "text": "Handgloves",
+      "style": {
+        "serif": false,
+        "weight": "bold",
+        "font_file": "arialbd.ttf"
+      }
+    }
+  ]
+}

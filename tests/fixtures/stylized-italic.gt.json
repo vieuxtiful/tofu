@@ -11,7 +11,10 @@
       "style": {
         "weight": "regular",
         "italic": false,
-        "stroked": false
+        "stroked": false,
+        "color": "#1e1e22",
+        "stroke_color": null,
+        "stroke_width": null
       }
     },
     {
@@ -25,7 +28,10 @@
       "style": {
         "weight": "bold",
         "italic": false,
-        "stroked": false
+        "stroked": false,
+        "color": "#1e1e22",
+        "stroke_color": null,
+        "stroke_width": null
       }
     },
     {
@@ -39,7 +45,10 @@
       "style": {
         "weight": "regular",
         "italic": true,
-        "stroked": false
+        "stroked": false,
+        "color": "#1e1e22",
+        "stroke_color": null,
+        "stroke_width": null
       }
     },
     {
@@ -53,7 +62,10 @@
       "style": {
         "weight": "bold",
         "italic": false,
-        "stroked": true
+        "stroked": true,
+        "color": "#1e1e22",
+        "stroke_color": "#1e3ca0",
+        "stroke_width": 3
       }
     }
   ]

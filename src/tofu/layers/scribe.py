@@ -33,6 +33,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from tofu.core.types import TextManifest, RenderParams, BBox, StyleProfil
+from tofu.layers.fonts import faces_of
 
 FALLBACK_FONTS = ("arial.ttf", "DejaVuSans.ttf", "segoeui.ttf")
 MIN_FONT_PX = 6
@@ -139,6 +140,101 @@ def _pixel_bbox(bbox: BBox) -> BBox:
     )
 
 
+#: The projective identity: corners at the bounding box itself.
+IDENTITY_QUAD = ((0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0))
+_QUAD_EPS = 1e-4
+
+
+def _parse_quad(quad: Any) -> Optional[List[Tuple[float, float]]]:
+    """Four [x, y] pairs, or None when the value is absent or malformed.
+
+    Deliberately tolerant: a manifest is user-editable and round-trips
+    through JSON, so a quad with the wrong arity must degrade to "no
+    perspective" rather than raise inside a render.
+    """
+    if not quad:
+        return None
+    try:
+        corners = [(float(point[0]), float(point[1])) for point in quad]
+    except (TypeError, ValueError, IndexError):
+        return None
+    return corners if len(corners) == 4 else None
+
+
+def _is_identity_quad(corners: Optional[List[Tuple[float, float]]]) -> bool:
+    if corners is None:
+        return True
+    return all(
+        abs(cx - ix) < _QUAD_EPS and abs(cy - iy) < _QUAD_EPS
+        for (cx, cy), (ix, iy) in zip(corners, IDENTITY_QUAD)
+    )
+
+
+def _denormalise_quad(
+    corners: List[Tuple[float, float]], bbox: BBox,
+) -> List[Tuple[float, float]]:
+    """Bbox-relative corners -> image space.
+
+    Normalised storage is what lets a region move or resize without the
+    perspective detaching from it; this is the only place that has to know.
+    """
+    return [
+        (bbox.x + nx * bbox.width, bbox.y + ny * bbox.height)
+        for nx, ny in corners
+    ]
+
+
+def _quad_is_usable(corners: List[Tuple[float, float]]) -> bool:
+    """Convex, correctly wound and non-degenerate.
+
+    A self-intersecting or collinear quad makes getPerspectiveTransform
+    singular, and a singular solve raises in the middle of a render.  The
+    sign of the cross product at each corner catches both: a convex polygon
+    turns the same way at every vertex, and a collinear triple turns not at
+    all.  Callers fall back to the affine path rather than failing.
+    """
+    signs = []
+    for index in range(4):
+        ax, ay = corners[index]
+        bx, by = corners[(index + 1) % 4]
+        cx, cy = corners[(index + 2) % 4]
+        cross = (bx - ax) * (cy - by) - (by - ay) * (cx - bx)
+        if abs(cross) < 1e-9:
+            return False
+        signs.append(cross > 0)
+    return all(signs) or not any(signs)
+
+
+def _perspective_coefficients(
+    destination: List[Tuple[float, float]], source: List[Tuple[float, float]],
+) -> Optional[Tuple[float, ...]]:
+    """Pillow PERSPECTIVE coefficients mapping DESTINATION back to SOURCE.
+
+    Pillow samples by asking, for each output pixel, where it came from --
+    the same inverse convention its AFFINE already uses, which is why this
+    slots into the existing pipeline instead of replacing it.  cv2 solves
+    forward, so the arguments are handed over reversed rather than solving
+    forward and inverting: one call, no matrix inversion, no chance of
+    inverting a near-singular matrix that ``_quad_is_usable`` let through.
+    """
+    try:
+        import cv2
+        import numpy as np
+    except ImportError:
+        return None
+    try:
+        matrix = cv2.getPerspectiveTransform(
+            np.array(destination, dtype=np.float32),
+            np.array(source, dtype=np.float32),
+        )
+    except Exception:
+        return None
+    if not np.isfinite(matrix).all() or abs(matrix[2][2]) < 1e-12:
+        return None
+    matrix = matrix / matrix[2][2]
+    return tuple(float(v) for v in matrix.flatten()[:8])
+
+
 def _apply_style_transform(layer: Any, bbox: BBox, transform: Optional[Dict[str, Any]]) -> Any:
     """Apply deterministic, local text shaping before the detected rotation.
 
@@ -165,11 +261,65 @@ def _apply_style_transform(layer: Any, bbox: BBox, transform: Optional[Dict[str,
             preset, amount, arc = "custom", 0.0, 0.0
         offset_x = int(transform.get("offset_x", 0) or 0)
         offset_y = int(transform.get("offset_y", 0) or 0)
-        if not (sx or sy or arc or amount or scale_x != 1 or scale_y != 1 or offset_x or offset_y):
+        quad_corners = _parse_quad(transform.get("quad"))
+        if _is_identity_quad(quad_corners):
+            quad_corners = None
+        elif not _quad_is_usable(_denormalise_quad(quad_corners, bbox)):
+            # Collinear or self-intersecting: the solve would be singular.
+            # Degrade to whatever affine the region also asked for rather
+            # than raising in the middle of a render.
+            quad_corners = None
+        if not (sx or sy or arc or amount or scale_x != 1 or scale_y != 1
+                or offset_x or offset_y or quad_corners is not None):
             return layer
 
-        def _quality_affine(src, coefficients):
-            """Affine-transform one glyph layer with adaptive supersampling.
+        def _local_coefficients(coefficients, left, top, factor):
+            """Move an inverse map into the crop's supersampled coordinates.
+
+            The crop is a window at (left, top) enlarged by ``factor``, so
+            local and global coordinates differ by S = translate . scale.
+            The map itself is conjugated: T_local = S^-1 . T . S.
+
+            The 6-coefficient branch keeps its original hand-expanded
+            arithmetic rather than going through the matrices.  It is the
+            same algebra, but not the same floating-point ORDER, and every
+            existing render's antialiased edges were produced by this exact
+            expression -- there is no reason to perturb them to share code
+            with a path that did not exist yet.
+            """
+            if len(coefficients) == 6:
+                a, b, c, d, e, f = coefficients
+                return (
+                    a, b, (a * left + b * top + c - left) * factor,
+                    d, e, (d * left + e * top + f - top) * factor,
+                )
+            import numpy as np
+
+            a, b, c, d, e, f, g, h = coefficients
+            transform_matrix = np.array(
+                [[a, b, c], [d, e, f], [g, h, 1.0]], dtype=np.float64
+            )
+            to_global = np.array(
+                [[1.0 / factor, 0.0, left], [0.0, 1.0 / factor, top], [0.0, 0.0, 1.0]],
+                dtype=np.float64,
+            )
+            to_local = np.array(
+                [[factor, 0.0, -factor * left], [0.0, factor, -factor * top],
+                 [0.0, 0.0, 1.0]], dtype=np.float64,
+            )
+            local = to_local @ transform_matrix @ to_global
+            if abs(local[2][2]) < 1e-12:
+                return None
+            local = local / local[2][2]
+            return tuple(float(v) for v in local.flatten()[:8])
+
+        def _quality_warp(src, coefficients):
+            """Warp one glyph layer with adaptive supersampling.
+
+            Takes 6 coefficients for an affine map or 8 for a projective
+            one; Pillow's AFFINE and PERSPECTIVE share the same
+            destination-to-source convention, so only the coefficient count
+            and the local remap differ.
 
             Text is first rasterised by Pillow at its native target pixels.
             Repeatedly rescaling that finished raster is what produced the
@@ -188,6 +338,16 @@ def _apply_style_transform(layer: Any, bbox: BBox, transform: Optional[Dict[str,
             # clipping an unwrapped run while remaining region-local.
             extent = max(ix1 - ix0, iy1 - iy0, bbox.width, bbox.height)
             shear_pad = abs(sx) * bbox.height + abs(sy) * bbox.width
+            # A pulled corner moves ink further than any shear would, and a
+            # crop that does not include where the ink LANDS clips it.
+            if quad_corners is not None:
+                shear_pad = max(shear_pad, max(
+                    max(abs(qx - bx), abs(qy - by))
+                    for (qx, qy), (bx, by) in zip(
+                        _denormalise_quad(quad_corners, bbox),
+                        _denormalise_quad(list(IDENTITY_QUAD), bbox),
+                    )
+                ))
             pad = int(max(16, extent * 1.6 + abs(offset_x) + abs(offset_y) + abs(amount) + shear_pad))
             left, top = max(0, ix0 - pad), max(0, iy0 - pad)
             right, bottom = min(src.width, ix1 + pad), min(src.height, iy1 + pad)
@@ -199,15 +359,17 @@ def _apply_style_transform(layer: Any, bbox: BBox, transform: Optional[Dict[str,
             # spike for a very large selected text region.
             max_high_pixels = 18_000_000
             factor = min(4, max(2, int((max_high_pixels / max(1, crop.width * crop.height)) ** .5)))
-            a, b, c, d, e, f = coefficients
             # Convert the global inverse map to the crop's local coordinate
             # system, then to its supersampled coordinate system.
-            local = (
-                a, b, (a * left + b * top + c - left) * factor,
-                d, e, (d * left + e * top + f - top) * factor,
+            local = _local_coefficients(coefficients, left, top, factor)
+            if local is None:
+                return src
+            method = (
+                Image.Transform.AFFINE if len(local) == 6
+                else Image.Transform.PERSPECTIVE
             )
             high = crop.resize((crop.width * factor, crop.height * factor), Image.Resampling.LANCZOS)
-            transformed = high.transform(high.size, Image.Transform.AFFINE, local, resample=Image.Resampling.BICUBIC)
+            transformed = high.transform(high.size, method, local, resample=Image.Resampling.BICUBIC)
             reduced = transformed.resize(crop.size, Image.Resampling.LANCZOS)
             result = Image.new("RGBA", src.size, (0, 0, 0, 0))
             result.alpha_composite(reduced, (left, top))
@@ -232,14 +394,30 @@ def _apply_style_transform(layer: Any, bbox: BBox, transform: Optional[Dict[str,
         elif "right" in anchor: cx = bbox.x + bbox.width
         if "top" in anchor: cy = bbox.y
         elif "bottom" in anchor: cy = bbox.y + bbox.height
-        if sx or sy or scale_x != 1 or scale_y != 1:
+        if quad_corners is not None:
+            # A quad REPLACES the affine stage: it is the more general map,
+            # so composing the two would apply the region's shear twice --
+            # once as the user typed it and again as the corner positions
+            # already encode it.  arc and offset still run afterwards,
+            # unchanged, so a warped region can still be nudged or arced.
+            #
+            # skew_anchor is not consulted here and must not be: an anchor
+            # names the point a SHEAR holds still, while a quad states where
+            # all four corners land outright. There is nothing left to
+            # anchor.
+            coefficients = _perspective_coefficients(
+                _denormalise_quad(quad_corners, bbox),
+                _denormalise_quad(list(IDENTITY_QUAD), bbox),
+            )
+            out = _quality_warp(layer, coefficients) if coefficients else layer
+        elif sx or sy or scale_x != 1 or scale_y != 1:
             # Compose inverse scale and inverse shear into one sampling pass.
             # Pillow maps destination coordinates back to source coordinates;
             # combining K * S^-1 avoids the former double resample when both
             # skew and stretch were active.  Note that y-shear depends on
             # the inverse X scale (not inverse Y scale).
             inv_x, inv_y = 1 / scale_x, 1 / scale_y
-            out = _quality_affine(layer, (
+            out = _quality_warp(layer, (
                 inv_x, -sx * inv_y, cx * (1 - inv_x) + sx * cy * inv_y,
                 -sy * inv_x, inv_y, cy * (1 - inv_y) + sy * cx * inv_x,
             ))
@@ -416,7 +594,7 @@ def resolve_face(
     """
     if not font_registry or not getattr(font_registry, "fonts", None):
         return font_family, italic
-    fonts = getattr(font_registry, "_fonts", {})
+    fonts = faces_of(font_registry)
 
     lookup_family = font_family
     if not lookup_family:
@@ -508,11 +686,15 @@ def check_glyph_coverage(
     """
     if not font_registry or not text:
         return None, True
-    fonts = getattr(font_registry, "_fonts", {})
+    fonts = faces_of(font_registry)
     if not fonts:
         return None, True
 
-    key = font_registry._key(font_family) if font_family and hasattr(font_registry, "_key") else None
+    key = (
+        font_registry.resolve_key(font_family)
+        if font_family and hasattr(font_registry, "resolve_key")
+        else (font_registry._key(font_family) if font_family and hasattr(font_registry, "_key") else None)
+    )
     current = fonts.get(key) if key else None
     if current is None and font_family is None:
         # "auto" -- no explicit selection. _get_font(None, ...) resolves
@@ -565,6 +747,46 @@ def check_glyph_coverage(
     return best_path, False
 
 
+def resolve_auto_font_face(
+    font_registry, lang: Optional[str], text: str,
+    weight: Optional[str] = None, italic: bool = False,
+) -> Tuple[Optional[str], bool]:
+    """resolve_auto_font()'s answer plus the synthetic-italic decision that
+    goes with it — (resolved_path, needs_synthetic_italic).
+
+    resolve_face() returns two things and resolve_auto_font() discards the
+    second, which is fine for a caller that only needs a path. But a
+    preview has to know WHICH kind of italic it is about to show: a real
+    italic FACE has its own drawn-by-the-designer letterforms and metrics,
+    whereas scribe's fallback is a mechanical ITALIC_SHEAR of the upright
+    face. Showing one when the render will produce the other misstates
+    both the slant and the advance width. The client cannot re-derive this
+    (it has no registry and no subfamily strings), so the decision is
+    computed here, once, next to the rule it mirrors.
+    """
+    if not font_registry or not text:
+        return None, False
+    fonts = faces_of(font_registry)
+    if not fonts:
+        return None, False
+
+    default_path = None
+    synthetic = False
+    if weight or italic:
+        default_path, synthetic = resolve_face(font_registry, None, weight, italic)
+    if default_path is None:
+        default_path = _default_fallback_path(fonts)
+
+    replacement, all_covered = check_glyph_coverage(font_registry, default_path, text, lang)
+    if not all_covered and replacement:
+        # render() applies the coverage override to the already-resolved
+        # face and does NOT re-run the sibling search afterwards, so the
+        # synthetic verdict carries over unchanged. Re-resolving here
+        # would report a face the renderer never picks.
+        return replacement, bool(synthetic)
+    return default_path, bool(synthetic)
+
+
 def resolve_auto_font(
     font_registry, lang: Optional[str], text: str,
     weight: Optional[str] = None, italic: bool = False,
@@ -590,7 +812,7 @@ def resolve_auto_font(
     """
     if not font_registry or not text:
         return None
-    fonts = getattr(font_registry, "_fonts", {})
+    fonts = faces_of(font_registry)
     if not fonts:
         return None
 
@@ -826,11 +1048,29 @@ def _block_extent(draw, lines: List[str], font, spacing: float,
     return r - l, b - t
 
 
+MAX_STROKE_FONT_RATIO = 0.15
+
+
+def _effective_stroke_width(requested: Any, font: Any) -> int:
+    """Normalize an outline to a safe integer width for this font size.
+
+    Stroke is an outline effect, not a replacement for selecting a heavier
+    font face.  Beyond roughly 15% of the em size, counters and neighboring
+    stems begin to close and the outline materially changes glyph anatomy.
+    """
+    try:
+        width = max(0, int(round(float(requested or 0))))
+    except (TypeError, ValueError):
+        return 0
+    font_size = max(1, int(getattr(font, "size", MIN_FONT_PX)))
+    return min(width, max(1, int(round(font_size * MAX_STROKE_FONT_RATIO))))
+
+
 def _fit_wrapped(
     draw, text: str, bbox: BBox, font_family: Optional[str],
     explicit_size: Optional[int] = None, leading: Optional[float] = None,
     tracking: float = 0, kerning: float = 0, wrap_text: bool = False,
-    script: Optional[str] = None,
+    script: Optional[str] = None, stroke_w: int = 0,
 ) -> Tuple[Any, List[str], float]:
     """Fit text with opt-in wrapping.
 
@@ -841,8 +1081,9 @@ def _fit_wrapped(
     extent crosses the cube width.
     """
     def layout(font):
+        effective_stroke = _effective_stroke_width(stroke_w, font)
         return (
-            _wrap_lines(draw, text, font, bbox.width, tracking, kerning, script)
+            _wrap_lines(draw, text, font, max(1, bbox.width - 2 * effective_stroke), tracking, kerning, script)
             if wrap_text else [text or ""]
         )
 
@@ -871,7 +1112,8 @@ def _fit_wrapped(
         # font size is determined by raw ink extent only — tracking and
         # kerning widen the line but must not shrink the chosen size,
         # otherwise increasing spacing silently shrinks the glyphs
-        fit_w, fit_h = _block_extent(draw, lines, font, spacing, script)
+        effective_stroke = _effective_stroke_width(stroke_w, font)
+        fit_w, fit_h = _block_extent(draw, lines, font, spacing, script, stroke_w=effective_stroke)
         if fit_w <= bbox.width and fit_h <= bbox.height:
             best_font, best_lines, best_spacing, lo = font, lines, spacing, mid + 1
         else:
@@ -905,7 +1147,7 @@ def _vertical_block_height(font, n_chars: int, tsume: float) -> float:
 
 def _fit_vertical(
     draw, text: str, bbox: BBox, font_family: Optional[str],
-    explicit_size: Optional[int] = None, tsume: float = 0.0,
+    explicit_size: Optional[int] = None, tsume: float = 0.0, stroke_w: int = 0,
 ) -> Any:
     """binary-search the largest font size whose stacked-column layout
     (row height ~1.15x font size per character, tsume-compressed) fits
@@ -917,12 +1159,13 @@ def _fit_vertical(
     while lo <= hi:
         mid = (lo + hi) // 2
         font = _get_font(font_family, mid)
+        effective_stroke = _effective_stroke_width(stroke_w, font)
         max_w = max(
-            (draw.textbbox((0, 0), ch, font=font)[2] - draw.textbbox((0, 0), ch, font=font)[0]
+            (draw.textbbox((0, 0), ch, font=font, stroke_width=effective_stroke)[2] - draw.textbbox((0, 0), ch, font=font, stroke_width=effective_stroke)[0]
              for ch in text),
             default=0,
         )
-        total_h = _vertical_block_height(font, len(text), tsume)
+        total_h = _vertical_block_height(font, len(text), tsume) + 2 * effective_stroke
         if max_w <= bbox.width and total_h <= bbox.height:
             best, lo = font, mid + 1
         else:
@@ -957,7 +1200,7 @@ def _render_vertical_layer(
     return layer
 
 
-def _fit_vertical_words(draw, words: List[str], bbox: BBox, font_family: Optional[str], explicit_size: Optional[int] = None):
+def _fit_vertical_words(draw, words: List[str], bbox: BBox, font_family: Optional[str], explicit_size: Optional[int] = None, stroke_w: int = 0):
     """Fit explicit vertical word-columns, preserving each word's column."""
     if explicit_size and explicit_size > 0:
         return _get_font(font_family, explicit_size)
@@ -966,8 +1209,9 @@ def _fit_vertical_words(draw, words: List[str], bbox: BBox, font_family: Optiona
     while lo <= hi:
         mid = (lo + hi) // 2
         font = _get_font(font_family, mid)
-        widths = [max((draw.textbbox((0, 0), ch, font=font)[2] - draw.textbbox((0, 0), ch, font=font)[0] for ch in word), default=0) for word in words]
-        heights = [_vertical_block_height(font, len(word), 0.0) for word in words]
+        effective_stroke = _effective_stroke_width(stroke_w, font)
+        widths = [max((draw.textbbox((0, 0), ch, font=font, stroke_width=effective_stroke)[2] - draw.textbbox((0, 0), ch, font=font, stroke_width=effective_stroke)[0] for ch in word), default=0) for word in words]
+        heights = [_vertical_block_height(font, len(word), 0.0) + 2 * effective_stroke for word in words]
         gap = font.size * 0.3 * max(0, len(words) - 1)
         if sum(widths) + gap <= bbox.width and max(heights, default=0) <= bbox.height:
             best, lo = font, mid + 1
@@ -1326,7 +1570,10 @@ def render(
             import dataclasses
             s = dataclasses.replace(s, font_family=covering_path)
 
-        stroke_w = int(s.stroke_width) if s.stroke_width else 0
+        try:
+            requested_stroke_w = max(0, int(round(float(s.stroke_width or 0))))
+        except (TypeError, ValueError):
+            requested_stroke_w = 0
         # Resolve both text components through the same opacity rule.  This
         # is especially important for equal fill/stroke colours: a 50%-alpha
         # fill surrounded by a 100%-alpha stroke produces a visible internal
@@ -1354,14 +1601,22 @@ def render(
             words = text.split()
             explicit_word_columns = s.target_orientation == "vertical" and len(words) > 1
             if explicit_word_columns:
-                font = _fit_vertical_words(measure_draw, words, bbox, s.font_family, s.font_size)
+                font = _fit_vertical_words(
+                    measure_draw, words, bbox, s.font_family, s.font_size,
+                    stroke_w=requested_stroke_w,
+                )
+                stroke_w = _effective_stroke_width(requested_stroke_w, font)
                 layer = _render_vertical_words_layer(
                     base.size, words, font, fill, stroke_fill, stroke_w, bbox, s.word_order
                 )
             else:
                 # Keep the legacy single-column path byte-for-byte for
                 # orientation-unset manifests and single-token overrides.
-                font = _fit_vertical(measure_draw, text, bbox, s.font_family, s.font_size, s.tsume or 0)
+                font = _fit_vertical(
+                    measure_draw, text, bbox, s.font_family, s.font_size,
+                    s.tsume or 0, stroke_w=requested_stroke_w,
+                )
+                stroke_w = _effective_stroke_width(requested_stroke_w, font)
                 layer = _render_vertical_layer(
                     base.size, text, font, fill, stroke_fill, stroke_w, bbox, s.tsume or 0
                 )
@@ -1385,6 +1640,7 @@ def render(
         font, lines, spacing = _fit_wrapped(
             measure_draw, text, bbox, s.font_family, s.font_size, s.leading,
             s.tracking or 0, s.kerning or 0, wrap_text, shape_script,
+            stroke_w=requested_stroke_w,
         )
         # super/subscript: re-fit at a reduced size (also re-wraps, since a
         # smaller font can fit differently) rather than the fitted size —
@@ -1394,7 +1650,9 @@ def render(
             font, lines, spacing = _fit_wrapped(
                 measure_draw, text, bbox, s.font_family, small_size, s.leading,
                 s.tracking or 0, s.kerning or 0, wrap_text, shape_script,
+                stroke_w=requested_stroke_w,
             )
+        stroke_w = _effective_stroke_width(requested_stroke_w, font)
 
         # RTL pass 2 of 2: lines are final, so each one can now be reordered
         # from logical into visual order. Doing it here rather than earlier

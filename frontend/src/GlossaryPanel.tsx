@@ -43,7 +43,7 @@ export default function GlossaryPanel({ theme, projectId, status, onUpload, onDe
   return (
     <div className="mt-3 rounded-lg border border-emerald-200/80 bg-emerald-50/50 p-2 dark:border-emerald-900/80 dark:bg-emerald-950/15">
       <button type="button" onClick={() => setOpen((value) => !value)} className="flex w-full items-center gap-2 text-left text-xs font-semibold text-emerald-900 dark:text-emerald-100">
-        <Icon size={15} /> add glossary
+        <Icon size={15} /> glossary {/* prev. "add glossary" */}
         {status && status.effective_entry_count > 0 && <span className="rounded-full bg-emerald-200 px-1.5 py-0.5 text-[10px] dark:bg-emerald-900">{status.effective_entry_count} terms</span>}
         <ChevronDown size={12} className={`ml-auto shrink-0 text-emerald-700 transition-transform dark:text-emerald-300 ${open ? "rotate-180" : ""}`} />
       </button>

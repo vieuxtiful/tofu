@@ -1,8 +1,6 @@
-## 🍢 ToFU
+## 🍢 Tofu - pre-flight validation layer for glyph support and render feasibility.
 ## vieuxtiful
 """
-pre-flight validation layer for glyph support and render feasibility.
-
 this module provides the tofu (text-over-frame unification) validation layer,
 which ensures that the target language can be rendered correctly by the
 system before any heavy processing begins. it checks font availability,
@@ -11,6 +9,8 @@ script support, and predicts potential rendering issues.
 
 from typing import Optional, Dict, List, Any
 import math
+import statistics
+import unicodedata
 from tofu.core.types import (
     VldtnReport,
     VldtnClass,
@@ -89,6 +89,18 @@ lang_to_script: Dict[str, str] = {
     "lt": "Latn" # lithuanian
 }
 
+# issue-code registry (the full set this layer can raise):
+#   ToFU_000  target language has no script mapping            ERROR
+#   ToFU_001  no font covers the target script                 ERROR
+#   ToFU_002  target script has only partial font support       WARNING
+#   ToFU_003  source glyph segmentation looks unreliable        WARNING
+#   ToFU_004  predicted render quality below RENDER_WARN        WARNING
+#   ToFU_005  translated text will not fit its region      ERROR/WARNING
+#   ToFU_007  transformed text will clip at its box edge        WARNING
+# ToFU_006 was never allocated -- the gap is historical, not a missing
+# check. codes are append-only: they appear in stored manifests and in
+# published eval reports, so renumbering would silently reinterpret them.
+
 # horizontal text-expansion factors relative to an english baseline
 # (industry localisation heuristics; W3C/localisation-vendor guidance)
 EXPANSION_FACTORS: Dict[str, float] = {
@@ -101,9 +113,73 @@ EXPANSION_FACTORS: Dict[str, float] = {
     "zh-cn": 0.60, "zh-sg": 0.60, "zh-tw": 0.60, "zh-hk": 0.60, "zh-mo": 0.60,
 }
 
+# per-script fallbacks for the languages EXPANSION_FACTORS does not name
+# individually. the table above covers 26 of the 63 languages in
+# lang_to_script; the other 37 used to fall through to a silent 1.0,
+# which asserts "this language is exactly as wide as english" for
+# everything from Amharic to Khmer. a script-level figure is still a
+# generalisation, but it is a defensible one and it is visible.
+SCRIPT_EXPANSION_FACTORS: Dict[str, float] = {
+    "Latn": 1.15,   # most non-english latin orthographies run longer
+    "Cyrl": 1.15,
+    "Grek": 1.15,
+    "Arab": 1.05,
+    "Hebr": 0.95,
+    "Hans": 0.60, "Hant": 0.60, "Hani": 0.60,
+    "Jpan": 0.60, "Kore": 0.80, "Hang": 0.80,
+    "Deva": 1.05, "Beng": 1.05, "Guru": 1.05, "Gujr": 1.05,
+    "Taml": 1.10, "Telu": 1.10, "Knda": 1.10, "Mlym": 1.15,
+    "Sinh": 1.10, "Thai": 1.15, "Laoo": 1.15, "Mymr": 1.15, "Khmr": 1.20,
+    "Ethi": 1.05, "Armn": 1.10, "Geor": 1.10,
+}
+
+
+def expansion_factor(lang: Optional[str]) -> float:
+    """Width factor for a language relative to english.
+
+    Falls back to the language's SCRIPT before falling back to 1.0, so an
+    unlisted language inherits a plausible figure instead of silently
+    claiming english-equivalent width.
+    """
+    if not lang:
+        return 1.0
+    if lang in EXPANSION_FACTORS:
+        return EXPANSION_FACTORS[lang]
+    return SCRIPT_EXPANSION_FACTORS.get(lang_to_script.get(lang, ""), 1.0)
+
 # fit thresholds: predicted_width / bbox_width
 EXPANSION_WARN = 1.05   # likely needs condensing or wrapping
 EXPANSION_FAIL = 1.35   # will not fit — block before cleanse/scribe run
+
+# characters that occupy a full em rather than roughly half of one
+_FULL_EM_WIDTHS = {"W", "F"}   # UAX #11 Wide, Fullwidth
+
+
+def measure_in_ems(text: str) -> float:
+    """Rough advance width of a string in em units, with no font metrics.
+
+    UAX #11 (East Asian Width) is the standard answer to "how wide is
+    this character, approximately": W/F occupy a full em, everything else
+    about half. Combining marks add nothing — they stack onto their base
+    glyph rather than advancing the pen.
+
+    This exists because a raw character count is not a width. Comparing
+    len(target)/len(source) scored 焼肉 → "Viande grillée" as a 7×
+    expansion when the honest figure is 3.5×, and — worse — called
+    出口 → "Exit" a 2× overflow when the two actually occupy the same
+    width. Every CJK→Latin region inherited a spurious warning from that
+    arithmetic.
+
+    Deliberately NOT a substitute for real metrics: when a font registry
+    and a selected font are available, ToFU_005 measures the actual
+    advances instead. This is the fallback for when they are not.
+    """
+    total = 0.0
+    for ch in text or "":
+        if unicodedata.combining(ch):
+            continue
+        total += 1.0 if unicodedata.east_asian_width(ch) in _FULL_EM_WIDTHS else 0.5
+    return total
 
 # font lib placeholder – intended to query
 # system fonts or a provided font collection.
@@ -142,6 +218,56 @@ SUPPORTED_SCRIPTS: Dict[str, ScrptSpprt] = {
 }
 
 
+# scripts whose glyphs are dense, connected, or conjunct-forming — the
+# properties that make segmenting one glyph from its neighbours in PIXELS
+# hard, as distinct from alphabetic scripts with separated letterforms
+DENSE_SCRIPTS = {
+    "Hani", "Hans", "Hant", "Jpan", "Kore", "Hang", "Hira", "Kana",
+    "Arab", "Deva", "Beng", "Guru", "Gujr", "Taml", "Telu", "Knda",
+    "Mlym", "Sinh", "Mymr", "Khmr", "Thai",
+}
+
+# a text box shorter than this cannot hold a reliably segmentable glyph:
+# CRNN recognition accuracy collapses under ~16 px x-height, and a
+# detected box runs roughly 1.5-2x x-height
+MIN_LEGIBLE_BOX_PX = 16
+# median box height at which segmentation stops being size-limited
+COMFORTABLE_BOX_PX = 40
+
+# --- warn gates, calibrated rather than guessed --------------------------
+# both of these were set by hand and never checked against a distribution.
+# scripts/eval_tofu.py measured them over nine fixtures x twelve target
+# languages (scripts/eval_out/tofu-calibration-baseline.json):
+#
+#   - the old segmentation score took exactly TWO values (0.65 / 0.85)
+#     across all 108 runs, identical for every asset despite median region
+#     heights spanning 18px to 165px. against a 0.7 gate it fired on 54/108
+#     runs -- precisely the six complex-script target languages, and
+#     nothing about the image. it restated its own input.
+#   - the old render score never once fell below its 0.6 gate (0/108).
+#     with full glyph coverage that formula floors at 0.70, so the check
+#     could not fire without ToFU_001 having already errored.
+#
+# after re-keying the segmentation score to measured SOURCE geometry and
+# threading real typography into the render context, the same sweep gives:
+#
+#   ToFU_003   54/108 -> 12/108, and now on ONE asset across all twelve
+#              target languages rather than on six languages across every
+#              asset. that asset is japan-street (median box 18px, min
+#              8px), the fixture whose measured OCR quality is genuinely
+#              the worst of the nine: garbage fraction 0.118, recall
+#              0.571 against ground truth.
+#   ToFU_004    0/108 -> 24/108, of which 22 fire INDEPENDENTLY of
+#              ToFU_001 (it was previously unreachable without one). it
+#              now flags exactly the two fixtures containing 8px text --
+#              japan-street and gemini-street -- and stays quiet on the
+#              six synthetic fixtures and on china-street.
+#
+# re-derive with: .venv/Scripts/python scripts/eval_tofu.py --tag <label>
+SEGMENTATION_WARN = 0.60
+RENDER_WARN = 0.75
+
+
 class ToFU:
     """
     pre-flight validation engine for localisation rendering.
@@ -155,6 +281,7 @@ class ToFU:
         self,
         font_library_path: Optional[str] = None,
         supported_scripts: Optional[Dict[str, ScrptSpprt]] = None,
+        font_registry: Optional[FontRegistry] = None,
     ):
         """
         initialize the tofu validator.
@@ -162,14 +289,28 @@ class ToFU:
         args:
             font_library_path: path to a font collection (optional).
             supported_scripts: override the default script support map.
+            font_registry: an ALREADY-BUILT registry to score against.
+                discovery walks a whole font directory with fontTools, so
+                a process that already has one (the server, the pipeline)
+                must be able to hand it over instead of paying for a
+                second scan. takes precedence over font_library_path.
+
+        with neither a path nor a registry, validation falls back to the
+        static SUPPORTED_SCRIPTS map -- script-level assumptions rather
+        than real per-font glyph coverage. that fallback is a legitimate
+        degraded mode, but it is NOT the same check, so callers that can
+        supply fonts should.
         """
         self.font_library_path = font_library_path
         self._supported_scripts = supported_scripts or SUPPORTED_SCRIPTS.copy()
-        self.font_registry: Optional[FontRegistry] = (
-            FontRegistry(font_library_path)
-            if font_library_path and HAVE_FONTTOOLS
-            else None
-        )
+        if font_registry is not None:
+            self.font_registry: Optional[FontRegistry] = font_registry
+        else:
+            self.font_registry = (
+                FontRegistry(font_library_path)
+                if font_library_path and HAVE_FONTTOOLS
+                else None
+            )
 
     def validate(
         self,
@@ -239,15 +380,26 @@ class ToFU:
                 )
                 suggested_actions.append("consider using a more complete font.")
 
-        # 2. glyph segmentation feasibility (language‑based heuristic)
-        glyph_score = self._estimate_glyph_segmentation_score(targ_lang, context)
-        if glyph_score < 0.7:
+        # 2. glyph segmentation feasibility — scored from the SOURCE text
+        #    that will actually be segmented, using measured region
+        #    geometry when a manifest exists. no manifest means nothing
+        #    has been looked at yet, so the score is reported but never
+        #    raised as an issue.
+        source_lang = (text_manifest.src_lang if text_manifest else None) or targ_lang
+        glyph_score = self._estimate_glyph_segmentation_score(
+            source_lang, context, text_manifest
+        )
+        if text_manifest is not None and glyph_score < SEGMENTATION_WARN:
             issues.append(
                 VldtnClass(
                     severity=VldtnSeverity.WARNING,
                     code="ToFU_003",
-                    message="glyph segmentation may be unreliable for this language.",
-                    suggestion="manual review or pre‑processing may improve results.",
+                    message=(
+                        "source text is small or fragmented enough that glyph "
+                        "segmentation may be unreliable; erasure and style "
+                        "matching will be approximate."
+                    ),
+                    suggestion="manual review or a higher-resolution source may improve results.",
                 )
             )
             suggested_actions.append("manual glyph segmentation review.")
@@ -258,7 +410,7 @@ class ToFU:
             render_score = self._deterministic_render_score(
                 coverage_pct, context
             )
-        if render_score < 0.6:
+        if render_score < RENDER_WARN:
             issues.append(
                 VldtnClass(
                     severity=VldtnSeverity.WARNING,
@@ -412,27 +564,68 @@ class ToFU:
             ))
         return insights
 
-    def _estimate_glyph_segmentation_score(self, language: str, context: Optional[Dict]) -> float:
+    @staticmethod
+    def _estimate_glyph_segmentation_score(
+        language: Optional[str],
+        context: Optional[Dict],
+        text_manifest: Optional[TextManifest] = None,
+    ) -> float:
         """
-        estimate the feasibility of glyph segmentation for the given language.
+        estimate how reliably source glyphs can be segmented from pixels.
 
-        this is a heuristic based on language complexity. in a real system,
-        it would be derived from a glyph segmentation model or historical data.
+        this is a SOURCE-side property. glyph segmentation is what
+        imaging.text_mask() does to the original ink so that cleanse can
+        erase it, savor can compare it and typography can measure it —
+        none of which has anything to do with the language being rendered.
+        scoring it from targ_lang (as this did) asked the wrong question
+        and, being a constant per language, always returned the same
+        answer whatever the image looked like.
 
-        args:
-            language: language code.
-            context: optional context (e.g., image resolution).
+        with a manifest, the score comes from what was actually measured:
 
-        returns:
-            a score between 0 and 1, where 1 means highly feasible.
+          - median box height, over [10, COMFORTABLE_BOX_PX] px. small
+            text is the documented failure mode for binarization and for
+            CRNN recognition alike.
+          - the small-text tail: the fraction of regions clearing
+            MIN_LEGIBLE_BOX_PX. a scene can have a healthy median and
+            still be full of unreadable signage.
+          - a modest prior for dense/connected/conjunct scripts, which are
+            harder to separate per glyph at any size.
+
+        measured stroke ratio is deliberately NOT a term: it is available
+        on every enriched region, but across this project's fixtures it
+        did not separate them (the thinnest strokes, gemini-street at
+        0.050, sit with the WORST recall while china-street's 0.070 has
+        the best). a term the evidence does not support is noise.
+
+        without a manifest — the pre-detection call, before a single pixel
+        has been examined — this returns the script prior alone, and
+        validate() deliberately raises no issue from it. a guess made
+        before looking is not evidence.
+
+        returns a score between 0 and 1, where 1 means highly feasible.
         """
-        # simple heuristic: languages with complex scripts get lower scores.
-        complex_scripts = {"Arab", "Hani", "Hang", "Hans", "Hant", "Jpan", "Kore", "Deva", "Thai"}
-        script = lang_to_script.get(language)
-        if script in complex_scripts:
-            return 0.65
-        else:
-            return 0.85
+        script = lang_to_script.get(language or "")
+        dense = script in DENSE_SCRIPTS
+        prior = 0.65 if dense else 0.85
+        if text_manifest is None:
+            return prior
+
+        heights = [
+            i.bounding_box.height
+            for i in text_manifest.instances
+            if i.bounding_box is not None and i.bounding_box.height > 0
+        ]
+        if not heights:
+            return prior
+
+        median_h = statistics.median(heights)
+        size_term = max(0.0, min(1.0, (median_h - 10) / (COMFORTABLE_BOX_PX - 10)))
+        tail_term = sum(1 for h in heights if h >= MIN_LEGIBLE_BOX_PX) / len(heights)
+        script_term = 0.75 if dense else 1.0
+        return round(
+            0.55 * size_term + 0.25 * tail_term + 0.20 * script_term, 4
+        )
 
     def _predict_render_quality(self, language: str, context: Optional[Dict]) -> float:
         """
@@ -555,10 +748,7 @@ class ToFU:
         returns {region_id: fit_ratio}; fit > 1 means predicted overflow.
         """
         src_lang = text_manifest.src_lang or "en"
-        ratio = (
-            EXPANSION_FACTORS.get(targ_lang, 1.0)
-            / EXPANSION_FACTORS.get(src_lang, 1.0)
-        )
+        ratio = expansion_factor(targ_lang) / expansion_factor(src_lang)
         font = (context or {}).get("font")
         fits: Dict[str, float] = {}
 
@@ -569,6 +759,7 @@ class ToFU:
 
             target = inst.target_text
             fit = None
+            measured = False   # did anything region-specific inform this fit?
             if self.font_registry and font:
                 measure = target or inst.text
                 adv_em = self.font_registry.avg_advance_em(font, measure)
@@ -581,10 +772,17 @@ class ToFU:
                     # actual target: measure it directly; else predict via ratio
                     predicted = len(measure) * (1.0 if target else ratio) * adv_em * font_px
                     fit = predicted / bbox.width
+                    measured = True
             if fit is None:
                 if target:
-                    # no metrics but actual translation: char-count proxy
-                    fit = len(target) / max(1, len(inst.text))
+                    measured = True
+                    # no metrics but an actual translation: compare the two
+                    # strings by approximate WIDTH, not character count —
+                    # a CJK glyph is one em where a latin letter is half
+                    source_em = measure_in_ems(inst.text)
+                    fit = (
+                        measure_in_ems(target) / source_em if source_em > 0 else 1.0
+                    )
                 else:
                     # no metrics — assume source text fills its box
                     fit = ratio
@@ -595,9 +793,22 @@ class ToFU:
                 # fit — the text cannot overflow, only render small. a
                 # blocking error is reserved for the predictive
                 # (pre-translation) case where planning can still react.
+                #
+                # ...but only when the prediction actually looked at this
+                # region. with neither font metrics nor a translation,
+                # `fit` IS the language-pair ratio: one table lookup,
+                # identical for every region in the project regardless of
+                # its box. that is a real planning signal — a ja→en job
+                # predicts 1.67x and the editor should know — but it
+                # carries no per-region evidence, so it must not fail a
+                # run per region. this surfaced the moment src_lang was
+                # populated correctly: every CJK source localized to a
+                # european language began failing preflight outright,
+                # before the user had entered a single translation.
+                blocking = not target and measured
                 issues.append(
                     VldtnClass(
-                        severity=VldtnSeverity.WARNING if target else VldtnSeverity.ERROR,
+                        severity=VldtnSeverity.ERROR if blocking else VldtnSeverity.WARNING,
                         code="ToFU_005",
                         message=(
                             f"translation for region '{inst.id}' will render well below "
@@ -605,6 +816,9 @@ class ToFU:
                             if target else
                             f"translated text for region '{inst.id}' predicted to "
                             f"overflow its bounding box ({fit:.0%} of available width)."
+                            + ("" if measured else
+                               f" estimated from the {text_manifest.src_lang or 'en'}→{targ_lang} "
+                               "expansion ratio alone; select a font for a per-region measurement.")
                         ),
                         suggestion="shorten translation, reduce font size, or enlarge the region.",
                         region_id=inst.id,
