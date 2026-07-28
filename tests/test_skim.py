@@ -117,6 +117,80 @@ class TestScriptBearingReadsAreNeverOffered:
         assert self._pruned("7") == []
 
 
+class TestCharDensity:
+    def test_a_vertical_column_is_measured_down_its_long_axis(self):
+        # a vertical CJK column packs characters down the height; dividing
+        # its narrow width by the count would condemn every one of them
+        tall = InstText(id="r1", bounding_box=BBox(x=0, y=0, width=20, height=200),
+                        text="ABCD", confidence=0.9)
+        assert skim.char_density(tall) == 50.0
+        assert skim.needs_arbitration(tall) is False
+
+    def test_a_box_too_thin_to_draw_its_characters_is_nominated(self):
+        # measured on japan-street: "2932" inside an 11x21 box
+        thin = InstText(id="r1", bounding_box=BBox(x=0, y=0, width=11, height=21),
+                        text="2932", confidence=0.656)
+        assert skim.char_density(thin) < skim.MIN_PX_PER_CHAR
+        assert skim.needs_arbitration(thin) is True
+
+    @pytest.mark.parametrize("w,h,text", [(25, 15, "3F"), (19, 11, "2F"), (155, 51, "AVENUE")])
+    def test_measured_real_reads_are_never_nominated(self, w, h, text):
+        inst = InstText(id="r1", bounding_box=BBox(x=0, y=0, width=w, height=h),
+                        text=text, confidence=0.5)
+        assert skim.needs_arbitration(inst) is False
+
+
+class TestSkimAudit:
+    """The cross-engine veto. Paddle is monkeypatched: its inference is not
+    run-to-run deterministic, so a live call has no place in this suite."""
+
+    def _run(self, instances, paddle_returns, available=True):
+        from unittest.mock import patch
+        from tofu.layers import cicerone
+
+        def fake_regions(self, asset, bboxes, **kw):
+            return [paddle_returns for _ in bboxes]
+
+        with patch.object(cicerone.PaddleOCRBackend, "is_available", staticmethod(lambda: available)), \
+             patch.object(cicerone.PaddleOCRBackend, "__init__", lambda self, **kw: None), \
+             patch.object(cicerone.PaddleOCRBackend, "detect_in_regions", fake_regions):
+            return cicerone.skim_audit("asset.png", instances)
+
+    def _thin(self):
+        return InstText(id="r1", bounding_box=BBox(x=0, y=0, width=11, height=21),
+                        text="2932", confidence=0.656)
+
+    def test_silence_plus_a_thin_box_removes_the_read(self):
+        assert self._run([self._thin()], []) == []
+
+    def test_a_second_engine_reading_text_vetoes_the_removal(self):
+        from tofu.layers.cicerone import RawDetection
+        seen = [RawDetection(polygon=[(0, 0), (11, 0), (11, 21), (0, 21)],
+                             text="2932", confidence=0.9, language="en")]
+        assert len(self._run([self._thin()], seen)) == 1
+
+    def test_silence_alone_never_removes_a_normally_proportioned_read(self):
+        # not nominated by density, so Paddle is never even asked about it
+        fat = InstText(id="r1", bounding_box=BBox(x=0, y=0, width=200, height=40),
+                       text="OPEN", confidence=0.5)
+        assert len(self._run([fat], [])) == 1
+
+    def test_a_script_bearing_read_is_never_a_candidate(self):
+        han = InstText(id="r1", bounding_box=BBox(x=0, y=0, width=11, height=21),
+                       text="歌舞伎町", confidence=0.6)
+        assert len(self._run([han], [])) == 1
+
+    def test_an_unavailable_paddle_changes_nothing(self):
+        assert len(self._run([self._thin()], [], available=False)) == 1
+
+    def test_survivors_are_renumbered_densely(self):
+        keep = InstText(id="r1", bounding_box=BBox(x=0, y=0, width=200, height=40),
+                        text="OPEN", confidence=0.9)
+        out = self._run([keep, self._thin()], [])
+        assert [i.id for i in out] == ["r1"]
+        assert out[0].reading_order == 0
+
+
 class TestSkimReturnsRatherThanMutates:
     def test_the_caller_owns_the_manifest(self):
         good = _inst("AVENUE", 0.99)
