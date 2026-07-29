@@ -433,7 +433,44 @@ def repair_lama(image: Any, mask: Any) -> Optional[Any]:
     return repair("lama", image, mask).image
 
 
-def quality_gate(image: Any, candidate: Any, mask: Any) -> tuple[bool, dict[str, float | bool | str]]:
+def _structural_continuity_score(cv2, np, before_gray, after_gray, region) -> Optional[float]:
+    """Measure support for source lines that enter and leave the erase mask.
+
+    Absence of qualifying structure is unknown (None), not perfect evidence.
+    """
+    source_edges = cv2.Canny(before_gray, 70, 150)
+    candidate_edges = cv2.Canny(after_gray, 70, 150)
+    lines = cv2.HoughLinesP(
+        source_edges, 1, np.pi / 180, threshold=18,
+        minLineLength=12, maxLineGap=4,
+    )
+    if lines is None:
+        return None
+    support: list[float] = []
+    h, w = region.shape
+    proximity_kernel = np.ones((3, 3), np.uint8)
+    candidate_near = cv2.dilate(
+        (candidate_edges > 0).astype(np.uint8), proximity_kernel, iterations=1
+    ).astype(bool)
+    for raw in np.asarray(lines).reshape(-1, 4):
+        x1, y1, x2, y2 = (int(value) for value in raw)
+        count = max(abs(x2 - x1), abs(y2 - y1)) + 1
+        if count < 2:
+            continue
+        xs = np.clip(np.rint(np.linspace(x1, x2, count)).astype(int), 0, w - 1)
+        ys = np.clip(np.rint(np.linspace(y1, y2, count)).astype(int), 0, h - 1)
+        on_mask = region[ys, xs]
+        # A useful structural observation crosses both sides of the mask and
+        # has enough samples within it to distinguish continuity from noise.
+        if on_mask.sum() < 3 or (~on_mask).sum() < 4:
+            continue
+        support.append(float(candidate_near[ys[on_mask], xs[on_mask]].mean()))
+    if not support:
+        return None
+    return float(sum(support) / len(support))
+
+
+def quality_gate(image: Any, candidate: Any, mask: Any) -> tuple[bool, dict[str, Any]]:
     """Hard-gate, then rank a repair using provider-independent evidence."""
     try:
         import cv2
@@ -482,9 +519,14 @@ def quality_gate(image: Any, candidate: Any, mask: Any) -> tuple[bool, dict[str,
         inner_grad = cv2.Laplacian(gray_after, cv2.CV_32F)[inner]
         grad_gap = abs(float(np.std(inner_grad)) - float(np.std(outer_grad)))
         texture_score = float(np.exp(-grad_gap / max(12.0, float(np.std(outer_grad)))))
+        structural_score = _structural_continuity_score(
+            cv2, np, gray_before, gray_after, region
+        )
+        structural_term = structural_score if structural_score is not None else .5
         score = round(
-            0.35 * seam_score + 0.30 * outside_score
-            + 0.20 * texture_score + 0.15 * residual_score,
+            0.30 * seam_score + 0.25 * outside_score
+            + 0.18 * texture_score + 0.15 * residual_score
+            + 0.12 * structural_term,
             4,
         )
         if outside_delta > .25:
@@ -493,10 +535,15 @@ def quality_gate(image: Any, candidate: Any, mask: Any) -> tuple[bool, dict[str,
             hard_rejections.append("severe_boundary_seam")
         if residual_score < .45:
             hard_rejections.append("glyph_edge_persistence")
+        if structural_score is not None and structural_score < .30:
+            hard_rejections.append("structural_break")
         passed = not hard_rejections and score >= 0.82
         return passed, {"passed": passed, "score": score, "outside_delta": round(outside_delta, 4),
                         "seam_score": round(seam_score, 4),
                         "texture_score": round(texture_score, 4),
+                        "structural_continuity_score": (
+                            None if structural_score is None else round(structural_score, 4)
+                        ),
                         "residual_edge_score": round(residual_score, 4),
                         "edge_persistence": round(edge_persistence, 4),
                         "hard_rejections": hard_rejections,
@@ -513,6 +560,9 @@ def repair_multi_candidate(
     max_candidates: int = 3,
     include_unpromoted: bool = True,
     on_candidate: Optional[Callable[[Dict[str, Any], Any], None]] = None,
+    candidate_transform: Optional[Callable[[Any], Any]] = None,
+    quality_image: Any = None,
+    quality_mask: Any = None,
 ) -> MultiRepairOutcome:
     """Run available neural providers against the same source and rank survivors."""
     specs_by_id: Dict[str, ProviderSpec] = {}
@@ -531,11 +581,47 @@ def repair_multi_candidate(
     eligible: list[tuple[float, int, RepairOutcome]] = []
     for index, spec in enumerate(specs[:max(0, max_candidates)]):
         outcome = repair(spec.provider_id, image, mask)
-        passed, quality = (
+        rectified_passed, rectified_quality = (
             quality_gate(image, outcome.image, mask)
             if outcome.image is not None else
             (False, {"passed": False, "score": 0.0, "hard_rejections": ["provider_error"],
                      "reason": outcome.error or "provider returned no candidate"})
+        )
+        candidate = outcome.image
+        transformed_error = None
+        if candidate is not None and candidate_transform is not None:
+            try:
+                candidate = candidate_transform(candidate)
+            except Exception as exc:
+                transformed_error = f"{type(exc).__name__}: {exc}"[:300]
+                candidate = None
+        if quality_image is not None and quality_mask is not None:
+            original_passed, original_quality = (
+                quality_gate(quality_image, candidate, quality_mask)
+                if candidate is not None else
+                (False, {"passed": False, "score": 0.0,
+                         "hard_rejections": ["inverse_warp_error"],
+                         "reason": transformed_error or "candidate transform failed"})
+            )
+            passed = bool(rectified_passed and original_passed)
+            quality = {
+                "passed": passed,
+                "score": min(
+                    float(rectified_quality.get("score", 0.0)),
+                    float(original_quality.get("score", 0.0)),
+                ),
+                "hard_rejections": list(dict.fromkeys(
+                    list(rectified_quality.get("hard_rejections", []))
+                    + list(original_quality.get("hard_rejections", []))
+                )),
+                "rectified": rectified_quality,
+                "original_space": original_quality,
+            }
+        else:
+            passed, quality = rectified_passed, rectified_quality
+        selected_outcome = RepairOutcome(
+            outcome.provider, candidate, outcome.elapsed_ms,
+            outcome.error or transformed_error, outcome.seed,
         )
         auto_eligible = bool(passed and spec.promoted)
         item = {
@@ -549,10 +635,10 @@ def repair_multi_candidate(
             "selected": False,
         }
         evidence.append(item)
-        if on_candidate is not None and outcome.image is not None:
-            on_candidate(item, outcome.image)
+        if on_candidate is not None and candidate is not None:
+            on_candidate(item, candidate)
         if auto_eligible:
-            eligible.append((float(quality.get("score", 0.0)), -index, outcome))
+            eligible.append((float(quality.get("score", 0.0)), -index, selected_outcome))
     if not eligible:
         return MultiRepairOutcome(None, evidence, "no promoted candidate passed hard gates")
     _, _, selected = max(eligible, key=lambda item: (item[0], item[1]))

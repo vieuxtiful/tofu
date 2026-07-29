@@ -1,0 +1,24 @@
+{
+  "id": "menu.known-places",
+  "kind": "gazetteer",
+  "locale": "ja",
+  "schema_version": "1",
+  "data_version": "1.0.0",
+  "checksum": "sha256:46ba5423f1b7feef107f23c5586c6d7e13d40b139b4b13ef9b1df4bf56b5652c",
+  "provenance": {
+    "maintainer": "ToFU",
+    "method": "curated from confirmed production OCR cases",
+    "source": "project correction corpus"
+  },
+  "license": "MIT",
+  "entries": [
+    {"text": "歌舞伎町一番街", "language": "ja"},
+    {"text": "劇場通り", "language": "ja"},
+    {"text": "バンダイ", "language": "ja"},
+    {"text": "お好み焼本陣", "language": "ja"},
+    {"text": "東南荘", "language": "ja"},
+    {"text": "湯屋", "language": "ja"},
+    {"text": "下島", "language": "ja"},
+    {"text": "濁河温泉", "language": "ja"}
+  ]
+}

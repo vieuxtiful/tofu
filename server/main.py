@@ -49,6 +49,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from tofu.core.pipeline import TofuPipeline
+from tofu.core.events import PipelineEvent, PipelineEventStatus
 from tofu.core.types import (
     PipelineCfg, LayerMode, infer_asset_info, TextManifest, InstText, BBox,
     RenderParams, StyleProfil, VldtnClass,
@@ -426,6 +427,20 @@ def root() -> RedirectResponse:
     return RedirectResponse(FRONTEND_URL)
 
 
+@app.get("/api/capabilities")
+def capabilities():
+    """One side-effect-free runtime contract for frontend feature gating."""
+    from capabilities import build_capabilities
+    from tofu.layers.basil import provider_statuses as semantic_provider_statuses
+
+    return build_capabilities(
+        get_validator,
+        app_version=app.version,
+        inpaint_statuses=inpaint_providers.provider_statuses(),
+        semantic_statuses=semantic_provider_statuses(),
+    )
+
+
 def _startup_font_check() -> None:
     """verify scribe's fallback fonts resolve on this host; log the winner."""
     try:
@@ -592,6 +607,23 @@ class SemanticRepairRequest(BaseModel):
     reading waits here until someone says so explicitly.
     """
     accepted: bool
+
+
+class TranslationRunRequest(BaseModel):
+    region_ids: Optional[List[str]] = None
+    target_lang: Optional[str] = None
+
+
+class TranslationDecisionItem(BaseModel):
+    region_id: str
+    action: str
+    attempt_id: Optional[str] = None
+    text: Optional[str] = None
+
+
+class TranslationDecisionRequest(BaseModel):
+    manifest_revision: str
+    decisions: List[TranslationDecisionItem]
 
 
 # --- upload + languages + fonts ---
@@ -1412,29 +1444,33 @@ def detect_stream(
 
             detections = []
             if isinstance(backend, cicerone.EasyOCRBackend):
-                for n, (tt, lt) in enumerate(cicerone.PASS_THRESHOLDS, 1):
-                    yield event({"stage": "cicerone", "pass": n, "status": "running"})
-                    passed = backend.detect(str(path), text_threshold=tt, low_text=lt)
-                    cicerone.tag_detection_pass(
-                        passed, engine=backend, pass_number=n,
-                        text_threshold=tt, low_text=lt,
-                    )
-                    detections = cicerone.merge_detections(detections, passed)
+                for n, _tt, _lt, cumulative in cicerone.iter_multipass(
+                    backend, str(path)
+                ):
+                    if cumulative is None:
+                        yield event({
+                            "stage": "cicerone", "pass": n,
+                            "status": "running",
+                        })
+                        continue
+                    detections = cumulative
                     yield event({
                         "stage": "cicerone", "pass": n, "status": "complete",
                         "regions": len(detections),
                     })
             else:
-                # PaddleOCR / single-pass backend
-                passed = backend.detect(str(path))
-                cicerone.tag_detection_pass(
-                    passed, engine=backend, pass_number=1,
-                )
-                detections = cicerone.merge_detections(detections, passed)
-                yield event({
-                    "stage": "cicerone", "pass": 1, "status": "complete",
-                    "regions": len(detections),
-                })
+                # PaddleOCR / single-pass backend uses the same canonical
+                # iterator as synchronous Cicerone.
+                for n, _tt, _lt, cumulative in cicerone.iter_multipass(
+                    backend, str(path)
+                ):
+                    if cumulative is None:
+                        continue
+                    detections = cumulative
+                    yield event({
+                        "stage": "cicerone", "pass": n, "status": "complete",
+                        "regions": len(detections),
+                    })
 
             yield event({"stage": "finalize", "status": "running"})
             manifest = cicerone.build_manifest(
@@ -1895,6 +1931,123 @@ def put_manifest(asset_id: str, manifest_data: Dict[str, Any]):
         for inst in manifest.instances if inst.resolved_font_family
     }
     return {"ok": True, "total_regions": manifest.total_regions, "resolved_fonts": resolved_fonts}
+
+
+def _translation_manifest_revision(manifest: TextManifest) -> str:
+    from tofu.utils.manifest_store import _manifest_to_dict
+    payload = json.dumps(
+        _manifest_to_dict(manifest), ensure_ascii=False,
+        sort_keys=True, separators=(",", ":"),
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _translation_glossary_revision(project_id: Optional[str]) -> Optional[str]:
+    paths = [_glossary_path("global")]
+    if project_id:
+        paths.append(_glossary_path("project", project_id))
+    digest = hashlib.sha256()
+    found = False
+    for path in paths:
+        if path.is_file():
+            found = True
+            digest.update(path.read_bytes())
+    return digest.hexdigest() if found else None
+
+
+@app.post("/api/assets/{asset_id}/translation-runs")
+def create_translation_run(asset_id: str, req: TranslationRunRequest):
+    """Create local TM proposals. No network provider is invoked here."""
+    from tofu.utils.translation_workflow import append_attempt, make_tm_attempt
+    from tofu.utils.manifest_store import _manifest_to_dict
+
+    manifest = load_manifest(UPLOAD_DIR, asset_id)
+    if manifest is None:
+        raise HTTPException(404, f"no manifest for asset '{asset_id}'")
+    pid = db.project_for_asset(asset_id)
+    project = db.get_project(pid) if pid else None
+    target_lang = req.target_lang or manifest.targ_lang or (
+        project.get("target_lang") if project else None
+    )
+    if not target_lang:
+        raise HTTPException(422, "target language is required")
+    manifest.targ_lang = target_lang
+    _lookup_tm_for_manifest(asset_id, manifest, _asset_path(asset_id))
+    selected = set(req.region_ids or [inst.id for inst in manifest.instances])
+    unknown = selected - {inst.id for inst in manifest.instances}
+    if unknown:
+        raise HTTPException(404, f"unknown region(s): {', '.join(sorted(unknown))}")
+    base_revision = _translation_manifest_revision(manifest)
+    glossary_revision = _translation_glossary_revision(pid)
+    attempts = []
+    for inst in manifest.instances:
+        if inst.id not in selected:
+            continue
+        attempt = make_tm_attempt(
+            inst, inst.target_language or target_lang,
+            manifest_revision=base_revision,
+            glossary_revision=glossary_revision,
+        )
+        if attempt is not None:
+            append_attempt(inst, attempt)
+            attempts.append({"region_id": inst.id, **attempt})
+    save_manifest(UPLOAD_DIR, asset_id, manifest)
+    revision = _translation_manifest_revision(manifest)
+    if pid:
+        db.add_snapshot(pid, asset_id, _manifest_to_dict(manifest), reason="autosave")
+        db.log_event(pid, "translation-run", f"created {len(attempts)} local TM proposal(s)")
+    return {
+        "run_id": uuid.uuid4().hex,
+        "asset_id": asset_id,
+        "provider_mode": "local_tm_only",
+        "manifest_revision": revision,
+        "attempts": attempts,
+        "unresolved_region_ids": sorted(selected - {item["region_id"] for item in attempts}),
+    }
+
+
+@app.post("/api/assets/{asset_id}/translation-decisions")
+def apply_translation_decisions(asset_id: str, req: TranslationDecisionRequest):
+    """Apply server-owned attempts with optimistic concurrency protection."""
+    from tofu.utils.translation_workflow import apply_decision, find_attempt
+    from tofu.utils.manifest_store import _manifest_to_dict
+
+    manifest = load_manifest(UPLOAD_DIR, asset_id)
+    if manifest is None:
+        raise HTTPException(404, f"no manifest for asset '{asset_id}'")
+    current_revision = _translation_manifest_revision(manifest)
+    if req.manifest_revision != current_revision:
+        raise HTTPException(409, "manifest changed after translation proposals were loaded")
+    by_id = {inst.id: inst for inst in manifest.instances}
+    applied = []
+    for item in req.decisions:
+        inst = by_id.get(item.region_id)
+        if inst is None:
+            raise HTTPException(404, f"unknown region '{item.region_id}'")
+        attempt = find_attempt(inst, item.attempt_id) if item.attempt_id else None
+        if item.attempt_id and attempt is None:
+            raise HTTPException(404, f"unknown translation attempt '{item.attempt_id}'")
+        try:
+            decision = apply_decision(
+                inst, action=item.action, attempt=attempt, text=item.text,
+            )
+        except RuntimeError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        applied.append({"region_id": inst.id, **decision})
+    _resolve_auto_fonts(manifest)
+    save_manifest(UPLOAD_DIR, asset_id, manifest)
+    pid = db.project_for_asset(asset_id)
+    if pid:
+        db.add_snapshot(pid, asset_id, _manifest_to_dict(manifest), reason="autosave")
+        db.log_event(pid, "translation-decision", f"applied {len(applied)} translation decision(s)")
+    return {
+        "asset_id": asset_id,
+        "manifest_revision": _translation_manifest_revision(manifest),
+        "decisions": applied,
+        "manifest": jsonable(manifest),
+    }
 
 
 @app.post("/api/manifest/{asset_id}/regions")
@@ -2793,6 +2946,35 @@ def render(req: RenderRequest):
     }
 
 
+def _render_sse_event_payload(core_event: PipelineEvent) -> Optional[Dict[str, Any]]:
+    """Adapt one canonical core event to the stable render SSE contract."""
+    stage = core_event.stage
+    operation = core_event.operation
+    if stage in {"pipeline", "cicerone", "memory"}:
+        return None
+    if stage == "tofu" and operation == "revalidate":
+        return None
+    if stage == "scene" and operation == "prepass":
+        return None
+
+    payload: Dict[str, Any] = {
+        "stage": stage,
+        "status": {
+            PipelineEventStatus.STARTED: "running",
+            PipelineEventStatus.COMPLETED: "complete",
+            PipelineEventStatus.WARNING: "complete",
+            PipelineEventStatus.FAILED: "error",
+            PipelineEventStatus.PAUSED: "paused",
+        }[core_event.status],
+    }
+    if stage == "tofu" and operation == "preflight":
+        if "passed" in core_event.payload:
+            payload["passed"] = core_event.payload["passed"]
+    if stage == "verify" and operation == "assess":
+        payload["score"] = core_event.payload.get("overall_score")
+    return payload
+
+
 @app.get("/api/render/stream")
 def render_stream(
     asset_id: str,
@@ -2804,10 +2986,9 @@ def render_stream(
     """SSE variant of /api/render: emits progress per layer (tofu, scene,
     tofu_regions, cleanse, scribe, verify) + a final payload shaped like
     /api/render's response. GET (not POST) so the browser's native
-    EventSource can consume it, mirroring /api/detect/stream. Runs the
-    layers directly rather than through TofuPipeline (same reason
-    /api/detect/stream doesn't use the pipeline either: the pipeline is
-    one synchronous call with no per-stage yield points).
+    EventSource can consume it, mirroring /api/detect/stream. Full renders
+    consume the canonical TofuPipeline event observer; partial region renders
+    retain their specialized prior-output composition path below.
 
     also closes the Phase-4-deferred item: after scene enrichment, every
     DISTINCT effective target language across regions (target_language
@@ -2846,6 +3027,171 @@ def render_stream(
 
     def event(data: Dict[str, Any]) -> str:
         return f"data: {_json.dumps(data, ensure_ascii=False)}\n\n"
+
+    def canonical_gen():
+        """Bridge synchronous core callbacks to a live SSE iterator.
+
+        The worker owns processing.  The request iterator only serializes
+        typed core events, so stage ordering cannot drift from Pipeline.
+        """
+        import queue
+        import threading
+
+        messages: "queue.Queue[Optional[Dict[str, Any]]]" = queue.Queue()
+        region_validation: Dict[str, Any] = {
+            "issues": [], "languages": [], "contexts": 0,
+        }
+
+        def observe(core_event: PipelineEvent) -> None:
+            # Internal orchestration details remain available to other
+            # observers, while this adapter preserves the established public
+            # render-stream stage vocabulary.
+            stage = core_event.stage
+            operation = core_event.operation
+            payload = _render_sse_event_payload(core_event)
+            if payload is not None:
+                messages.put(payload)
+
+            # Per-region validation is a render API concern layered on top of
+            # canonical Scene enrichment.  Emit it at the same public seam as
+            # before without reproducing any core stage ordering.
+            if (
+                stage == "scene"
+                and operation == "enrich"
+                and core_event.status == PipelineEventStatus.COMPLETED
+            ):
+                messages.put({"stage": "tofu_regions", "status": "running"})
+                messages.put({
+                    "stage": "tofu_regions",
+                    "status": "complete",
+                    "issues": len(region_validation["issues"]),
+                    "languages": region_validation["languages"],
+                })
+
+        def work() -> None:
+            try:
+                validator = get_validator()
+                cfg = PipelineCfg(cicerone_mode=LayerMode.MANUAL)
+                cfg.qa_threshold = threshold
+                pipeline = TofuPipeline(
+                    cfg,
+                    font_registry=validator.font_registry,
+                    on_event=observe,
+                )
+                pipeline.set_manual_manifest(manifest)
+
+                # Preserve the render endpoint's shared Cleanse/patch
+                # composition while letting Pipeline own when Cleanse runs.
+                pipeline._run_cleanse = lambda asset, value: _composite_patches(
+                    asset_id, _cleansed_base(asset_id, value)
+                )
+                canonical_scribe = pipeline._run_scribe
+
+                def render_with_matched_faces(
+                    cleansed_asset, value, target, render_params=None,
+                ):
+                    with _matched_faces_applied(value):
+                        return canonical_scribe(
+                            cleansed_asset, value, target, render_params
+                        )
+
+                pipeline._run_scribe = render_with_matched_faces
+                canonical_scene = pipeline._run_scene
+
+                def enrich_and_validate(asset, value):
+                    enriched = canonical_scene(asset, value)
+                    issues, languages, contexts = _revalidate_regions(
+                        validator, path, enriched, targ_lang, font
+                    )
+                    region_validation["issues"] = issues
+                    region_validation["languages"] = languages
+                    region_validation["contexts"] = contexts
+                    return enriched
+
+                pipeline._run_scene = enrich_and_validate
+                result = pipeline.process(str(path), targ_lang, font=font)
+
+                if result.validation_report is not None:
+                    result.validation_report.issues = (
+                        list(result.validation_report.issues)
+                        + list(region_validation["issues"])
+                    )
+                for issue in region_validation["issues"]:
+                    if issue.severity.value == "error":
+                        result.errors.append(
+                            f"tofu {issue.code} ({issue.region_id}): {issue.message}"
+                        )
+
+                output_url = None
+                localized = result.output_asset
+                if localized is not None and hasattr(localized, "save"):
+                    messages.put({"stage": "save", "status": "running"})
+                    try:
+                        out_name = f"{asset_id}-{targ_lang}.png"
+                        localized.save(OUTPUT_DIR / out_name)
+                        output_url = f"/outputs/{out_name}"
+                        messages.put({"stage": "save", "status": "complete"})
+                    except Exception as exc:
+                        result.errors.append(
+                            f"save failed: {type(exc).__name__}: {exc}"
+                        )
+
+                manifest2 = result.text_manifest or manifest
+                save_manifest(UPLOAD_DIR, asset_id, manifest2)
+                pid = db.project_for_asset(asset_id)
+                tm_saved_count = 0
+                if pid:
+                    db.log_event(
+                        pid, "render",
+                        f"rendered {asset_id} â†’ {targ_lang} "
+                        f"({'ok' if output_url else 'failed'})",
+                    )
+                    if result.memory_updates:
+                        tm_saved_count = len(
+                            _persist_tm_updates(pid, result.memory_updates)
+                        )
+
+                messages.put({
+                    "stage": "complete",
+                    "output_url": output_url,
+                    "verification_report": (
+                        jsonable(result.verification_report)
+                        if result.verification_report else None
+                    ),
+                    "qa_report": (
+                        jsonable(result.qa_report) if result.qa_report else None
+                    ),
+                    "qa_passed": result.success and output_url is not None,
+                    "qa_threshold": threshold,
+                    "validation_report": (
+                        jsonable(result.validation_report)
+                        if result.validation_report else None
+                    ),
+                    "text_manifest": jsonable(manifest2),
+                    "tm_saved": tm_saved_count,
+                    "logs": result.logs,
+                    "errors": result.errors,
+                })
+            except Exception as exc:
+                messages.put({
+                    "stage": "error",
+                    "message": f"{type(exc).__name__}: {exc}",
+                })
+            finally:
+                messages.put(None)
+
+        threading.Thread(target=work, daemon=True).start()
+        while True:
+            payload = messages.get()
+            if payload is None:
+                return
+            yield event(payload)
+
+    if target_ids is None:
+        return StreamingResponse(
+            canonical_gen(), media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     def gen():
         logs: List[Dict[str, Any]] = []

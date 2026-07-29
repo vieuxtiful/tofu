@@ -113,6 +113,40 @@ export interface TMSuggestion {
   record_id: number | null;
 }
 
+export type TranslationReviewState =
+  | "suggested" | "review_required" | "accepted_automatic"
+  | "accepted_human" | "rejected" | "edited_human"
+  | "superseded" | "stale";
+
+export interface TranslationAttempt {
+  attempt_id: string;
+  provider: string;
+  provider_revision: string;
+  created_at: number;
+  source_text_hash: string;
+  target_lang: string;
+  text: string;
+  raw_score: number | null;
+  raw_score_kind: string;
+  state: TranslationReviewState;
+  eligible_auto_accept: boolean;
+  validation: {
+    eligible: boolean;
+    review_required: boolean;
+    validator_revision: string;
+    issues: Array<{ code: string; severity: "error" | "review" }>;
+  };
+}
+
+export interface TranslationDecision {
+  state: TranslationReviewState;
+  attempt_id: string | null;
+  text: string | null;
+  source_text_hash: string;
+  actor: string;
+  decided_at: number;
+}
+
 export interface TMRecord {
   id: number;
   project_id: string;
@@ -145,6 +179,9 @@ export interface InstText {
   target_language: string | null;
   glyph_fallback?: boolean | null;  // scribe swapped fonts: the requested face lacked codepoints for this text
   tm_suggestion?: TMSuggestion | null;  // translation-memory match from a prior approved render
+  translation_attempts?: TranslationAttempt[];
+  translation_decision?: TranslationDecision | null;
+  translation_history?: TranslationDecision[];
   recognition_history?: Array<{ stage: string; engine: string; candidate_text?: string; candidate_confidence?: number; primary_text?: string; primary_confidence?: number; accepted: boolean; reason: string }> | null;
   repair_provenance?: {
     requested_provider: string;
@@ -859,6 +896,49 @@ export async function putManifest(
   );
 }
 
+export interface TranslationRunResult {
+  run_id: string;
+  asset_id: string;
+  provider_mode: "local_tm_only";
+  manifest_revision: string;
+  attempts: Array<TranslationAttempt & { region_id: string }>;
+  unresolved_region_ids: string[];
+}
+
+export async function createTranslationRun(
+  assetId: string,
+  regionIds?: string[],
+  targetLang?: string,
+): Promise<TranslationRunResult> {
+  return json(await fetch(`/api/assets/${encodeURIComponent(assetId)}/translation-runs`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ region_ids: regionIds, target_lang: targetLang }),
+  }));
+}
+
+export async function applyTranslationDecisions(
+  assetId: string,
+  manifestRevision: string,
+  decisions: Array<{
+    region_id: string;
+    action: "accept" | "reject" | "edit";
+    attempt_id?: string;
+    text?: string;
+  }>,
+): Promise<{
+  asset_id: string;
+  manifest_revision: string;
+  decisions: Array<TranslationDecision & { region_id: string }>;
+  manifest: TextManifest;
+}> {
+  return json(await fetch(`/api/assets/${encodeURIComponent(assetId)}/translation-decisions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ manifest_revision: manifestRevision, decisions }),
+  }));
+}
+
 export async function semanticSubstitution(
   assetId: string,
   unitId: string,
@@ -1231,4 +1311,38 @@ export async function installFontPack(file: File): Promise<{ installed: string; 
 
 export async function removeFontPack(name: string): Promise<{ removed: string; faces_unloaded: number }> {
   return json(await fetch(`/api/fonts/packs/${encodeURIComponent(name)}`, { method: "DELETE" }));
+}
+
+// --- runtime capabilities ---
+
+export interface CapabilityStatus {
+  id: string;
+  available: boolean;
+  ready: boolean;
+  version: string | null;
+  reason: string | null;
+  [detail: string]: unknown;
+}
+
+export interface SystemCapabilities {
+  schema_version: string;
+  build: {
+    app: string;
+    version: string;
+    python: string;
+    platform: string;
+  };
+  compute: { gpu: CapabilityStatus };
+  ocr: { providers: CapabilityStatus[] };
+  scene: { active_backend: string; providers: CapabilityStatus[] };
+  inpainting: { providers: CapabilityStatus[] };
+  shaping: { advanced_available: boolean; providers: CapabilityStatus[] };
+  semantics: { providers: CapabilityStatus[] };
+  translation: { active_provider: string; providers: CapabilityStatus[] };
+  fonts: CapabilityStatus;
+  video: CapabilityStatus;
+}
+
+export async function fetchSystemCapabilities(): Promise<SystemCapabilities> {
+  return json(await fetch("/api/capabilities"));
 }

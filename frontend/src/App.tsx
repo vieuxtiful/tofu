@@ -3215,7 +3215,7 @@ export default function App() {
             )}
           </Section>
 
-          <Section title="Project" className={stackClass(1)}>
+          <Section title="Project Manager" className={stackClass(1)}>
             {project ? (
               <div className="space-y-4 text-sm">
                 <div>
@@ -4244,14 +4244,15 @@ export default function App() {
                     {/* Stroke */}
                     <div className="grid grid-rows-[auto_1fr]">
                       <label className="subtext mb-1 block text-xs text-zinc-500">stroke</label>
-                      <div className="grid min-h-14 grid-cols-[2.5rem_minmax(0,8rem)_1fr] items-center gap-2">
+                      <div className="grid min-h-14 grid-cols-[2.5rem_6rem_minmax(0,7rem)_1fr] items-center gap-2">
                         <input
                           type="color"
                           value={currentStrokeColor ?? "#000000"}
                           onChange={(e) => updateStyle({ stroke_color: e.target.value })}
                           className="h-7 w-10 rounded-sm border border-zinc-300 dark:border-zinc-700"
                         />
-                        <PixelField label="weight" min={0} value={sp?.stroke_width} onChange={(value) => updateStyle({ stroke_width: value })} width="8rem" />
+                        <HexColorInput value={currentStrokeColor} onChange={(color) => updateStyle({ stroke_color: color })} />
+                        <PixelField label="weight" min={0} value={sp?.stroke_width} onChange={(value) => updateStyle({ stroke_width: value })} width="7rem" />
                         <div className="ml-auto grid grid-cols-2 gap-1 self-center justify-self-end" role="group" aria-label="stroke position">
                           {([
                             { value: "none", label: "no stroke", icon: CircleOff },
@@ -5396,7 +5397,7 @@ export default function App() {
       />
 
       {showSettings && (
-        <div className="title-confirm-backdrop" onClick={() => setShowSettings(false)}>
+        <div className="title-confirm-backdrop" style={{ zIndex: 400 }} onClick={() => setShowSettings(false)}>
           <div className="bezier-card title-confirm-card step-fade" style={{ maxWidth: "560px", width: "min(560px, calc(100vw - 32px))" }} onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-2 mb-4 w-full">
               <Hexagon size={18} className="text-cyan-500 dark:text-cyan-400" />

@@ -54,10 +54,17 @@ CORE DATA CONTRACT
   TextManifest (src/tofu/core/types.py) threads through every layer:
     - InstText instances (per region: bbox, polygon mask, OCR text,
       confidence, style profile, background profile, language,
-      correction provenance, recognition history, garnish overrides)
+      correction provenance, recognition history, garnish overrides,
+      reconstruction profile)
     - SceneRegion list (candidate text-bearing surfaces)
     - SemanticTextUnit list (Basil's cross-region linguistic units)
     - src_lang (scene source language, voted from per-region evidence)
+
+  Pipeline progress events (src/tofu/core/events.py):
+    PipelineEvent (stage, operation, status, progress, payload,
+    duration_ms, timestamp). Transport-neutral — SSE, CLI, desktop
+    adapters serialize but must not duplicate orchestration.
+    PipelineObserver callback threaded through TofuPipeline.
 
 
 ─────────────────────────────────────────────────────────────
@@ -322,6 +329,96 @@ TYPOGRAPHY — per-region font-attribute estimation
   evidence — a wrong "regular" is worse than an honest unknown.
 
 
+JULIENNE — character-level script analysis
+  src/tofu/layers/julienne.py
+
+  Cuts a string into individual characters and asks what writing
+  system each belongs to (UAX #24). Per-character analysis — a
+  majority vote reports Japanese 東京タワー as Han, erasing the
+  script that makes the string readable. Returns a SET of scripts,
+  never a single winner. Context resolution for Common/Inherited
+  characters (prolonged sound mark). Han variant detection (GB 2312
+  vs Big5) gated on the text being Chinese, not Japanese kanji or
+  Korean hanja.
+
+
+SKIM — false-positive pruning
+  src/tofu/layers/skim.py
+
+  Lifts non-text detections off before Cleanse erases their pixels.
+  Decides only whether a SHORT, WEAK read is made of strokes thick
+  enough to be lettering — reuses Typography's calibrated
+  LIGHT_RATIO floor. No new estimator, no new constant. Long reads,
+  confident reads, and anything it cannot measure keep their
+  existing treatment.
+
+
+TEMPER — confidence calibration
+  src/tofu/layers/temper.py
+
+  Brings OCR confidence into agreement with observed accuracy.
+  Measures ECE (Expected Calibration Error, Guo et al. ICML 2017)
+  and Brier score over a corpus, then fits a single-parameter
+  temperature scaling map. One parameter cannot reorder anything,
+  so it improves calibration without touching which regions rank
+  as worst. Verify applies the fitted map; the harness measures and
+  fits it.
+
+
+OCR ARBITRATION — engine-independent candidate arbitration
+  src/tofu/layers/ocr_arbitration.py
+
+  Conservative, engine-independent arbitration between OCR
+  candidates. Converts each backend's raw confidence through its
+  own versioned monotonic calibration curve before deciding.
+  Exposes every gate as structured evidence (DecisionKind,
+  ReasonCode). No OCR backend imports — pure logic.
+
+
+OCR VERIFICATION — narrow evidence-bearing OCR verification
+  src/tofu/layers/ocr_verification.py
+
+  Shared by Cicerone and Cleanse. Normalises text for OCR agreement
+  (NFKC, whitespace, casefold for non-CJK), computes similarity via
+  SequenceMatcher, and returns an OCRVerificationResult with
+  structured evidence (state, confidence, similarity, backend,
+  detections).
+
+
+FONTS — font registry
+  src/tofu/layers/fonts.py
+
+  Font discovery, cached cmap coverage scoring, and per-script
+  ranking. Uses fontTools to probe system fonts for actual codepoint
+  coverage. FULL only when ≥99.5% of script sample characters are
+  covered, PARTIAL at ≥80%. Degrades to a static script map when
+  fontTools is absent. Supports bundled fonts (server/fonts/) and
+  user-uploaded fonts.
+
+
+CHARDATA — CCJK charset data
+  src/tofu/layers/_chardata.py
+
+  Standards-derived CCJK character sets, generated at import time
+  from Python's built-in legacy codecs (no giant literals, no
+  external data files):
+    - GB2312_CHARS:     simplified hanzi (mainland, singapore) — 6,763
+    - BIG5_CHARS:       traditional hanzi (taiwan, HK, macau) — ~13,000
+    - JIS_X_0208_KANJI: japanese kanji (JIS X 0208) — ~6,300
+    - KS_X_1001_HANJA:  korean hanja (KS X 1001) — 4,888
+
+
+SCRIPT SAMPLES — per-script sample sets
+  src/tofu/layers/script_samples.py
+
+  Exhaustive character sets per ISO 15924 script code, used to score
+  real font cmap coverage. CCJK codes (Hans/Hant/Jpan/Kore) preserved
+  as distinct, standards-derived sets — never collapsed into Hani.
+  Unassigned codepoints filtered so range-based sets never penalize
+  fonts for characters that do not exist. Also exports LANG_REQUIRED
+  for language-specific diacritic/conjunct coverage.
+
+
 FONT MATCHING — evidence-gated visual font identification
   src/tofu/layers/font_matching.py
 
@@ -363,6 +460,18 @@ INPAINT — non-destructive treatment patches
   correction is non-destructive and undoable. The persisted crop is
   self-contained so undo/redo does not re-run a non-deterministic
   image operation.
+
+
+INPAINT PROVIDERS — neural repair router
+  src/tofu/layers/inpaint_providers.py
+
+  Evidence-gated provider router for neural inpainting. Routes to
+  LaMa (out-of-process, isolated .venv-inpaint, big-lama checkpoint),
+  BrushNet (out-of-process, fixed seed, preserves known pixels), or
+  DiffSTR (same file contract, no public checkpoint yet). Auto-accept
+  only for flat/smooth deterministic reconstruction; textured/uncertain
+  surfaces are review-required candidates. No source image is sent to
+  a cloud service.
 
 
 ─────────────────────────────────────────────────────────────
@@ -408,25 +517,71 @@ TEXTMATCH (utils/textmatch.py)
   Normalization plus fuzzy text similarity (difflib.SequenceMatcher).
 
 
+CORRECTION RESOURCES (utils/correction_resources.py)
+  Versioned, integrity-checked correction dictionaries. Correction
+  data is kept outside algorithms so it can be reviewed, upgraded,
+  and rolled back without changing Python code. A resource checksum
+  covers the canonical entries payload; metadata evolves
+  independently under schema_version. Loaded from
+  src/tofu/resources/corrections/ (menu/, wasabi/).
+
+
+MANIFEST STORE (utils/manifest_store.py)
+  JSON-based persistence for TextManifest objects so the frontend
+  can auto-save and restore the interactive preview state across
+  sessions. Each manifest is stored as uploads/{asset_id}.manifest.json.
+  Full round-trip serialization for all nested dataclasses.
+
+
+TRANSLATE (utils/translate.py)
+  Pluggable machine-translation seam. TranslatorBackend ABC so an
+  MT provider (DeepL, Google, an LLM, a TM lookup) can slot in later
+  behind a stable interface. NullTranslator is the default — the
+  product workflow is TMS round-trip, no MT provider is wired.
+
+
+TRANSLATION WORKFLOW (utils/translation_workflow.py)
+  Local-first translation proposal and decision primitives. Owns
+  stable attempt IDs, stale-source evidence, deterministic
+  validators, and an append-only decision history. Placeholder and
+  number preservation across source/target. Cloud providers
+  intentionally do not live here.
+
+
 ─────────────────────────────────────────────────────────────
 SERVER & FRONTEND
 ─────────────────────────────────────────────────────────────
 
 
-SERVER (server/main.py)
+SERVER (server/main.py + db.py + capabilities.py)
   FastAPI backend. REST API for detection, cleansing, rendering,
-  validation, memory, XLIFF/VTM export, glossary ingest, and
-  bounding-box refinement. SQLite for TM storage and thumbnail
-  persistence. Three isolated venvs: .venv (app), .venv-paddle
-  (PaddleOCR), .venv-inpaint (LaMa/BrushNet).
+  validation, memory, XLIFF/VTM export, glossary ingest, bounding-box
+  refinement, project management, and session snapshots. SQLite for
+  TM storage, thumbnail persistence, projects, project_assets,
+  snapshots, and events. Three isolated venvs: .venv (app),
+  .venv-paddle (PaddleOCR), .venv-inpaint (LaMa/BrushNet).
+
+  db.py: persistent project/session storage. Schema: projects,
+  project_assets, snapshots (full manifest JSON — the "data is never
+  lost" ledger), events. WAL mode, idempotent writes.
+
+  capabilities.py: read-only runtime capability inventory for the
+  API and diagnostics UI. No model construction, downloads, or
+  remote probes — cheap and safe even when every optional backend
+  is absent.
 
 
 FRONTEND (frontend/src/)
-  React + TypeScript SPA. Capture screen with bbox drawing, region
-  table with per-region editing, font manager with category filter,
-  language selectors, garnish controls, memory panel, glossary panel,
-  import/export panel, history panel, toast notifications. Localized
-  Asset Canvas with healing brush and lasso. Proxies /api to port 8000.
+  React 19 + TypeScript SPA, Vite, Tailwind CSS 4, MUI, Lucide icons.
+  Capture screen with bbox drawing, region table with per-region
+  editing, font manager with category filter (SIFT), language
+  selectors, garnish controls, memory panel, glossary panel,
+  import/export panel, history panel (snapshots), semantic
+  substitution panel (Basil), smart-fill review (neural repair),
+  perspective handles, rotation dial, toast notifications, dark/light
+  theme. Localized Asset Canvas with healing brush and lasso.
+  Proxies /api to port 8000. Frontend unit tests via vitest
+  (doppelganger, fontCatalog, perspective).
 
 
 ─────────────────────────────────────────────────────────────
@@ -547,3 +702,35 @@ IMPLEMENTATION COMPLETENESS (from cross-layer audit)
   chain — including its record of what it declined to do.
   Greatest gap: absence of learned models for render-quality
   prediction, surface classification, and holistic QA.
+
+
+─────────────────────────────────────────────────────────────
+RESOURCES
+─────────────────────────────────────────────────────────────
+
+
+  src/tofu/resources/corrections/
+    Versioned correction data loaded by correction_resources.py:
+      menu/     gazetteer entries for Menu (known-place recovery)
+      wasabi/   CJK variant normalisation maps for Wasabi
+
+  spec/
+    VTM v1.0 specification (vtm-1.0.md), JSON schema
+    (vtm-1.0.schema.json), and conformance vectors (valid/ and
+    invalid/ documents with index.json).
+
+  images/
+    Sample images with ground-truth annotations (*.gt.json):
+    japan-street, china-street, avenue-de-la-république,
+    la-rue-sans-nom, gemini-street. Logo assets (tofu-*.png/svg).
+
+  scripts/
+    Evaluation harnesses per layer (eval_detect, eval_paddle,
+    eval_cleanse_providers, eval_render, eval_font_match,
+    eval_memory, eval_savor, eval_tofu, eval_verification_corpus).
+    Out-of-process runners (paddle_worker, inpaint_lama_runner,
+    inpaint_brushnet_runner). Fixture generator (make_fixtures).
+    Verification corpora (JSON).
+
+  playground/
+    Interactive playground app (app.py) for manual exploration.
