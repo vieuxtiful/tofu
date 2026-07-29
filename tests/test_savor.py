@@ -433,3 +433,92 @@ class TestChewSwapsSmallGlyphUpscale:
         )
         assert verdicts.get(0) is True
         assert verdicts.get(2) is True
+
+
+class TestCaseSignature:
+    def test_uniform_cap_clusters_repair_mixed_case_claim(self):
+        # R e p u b l i q u e claimed, but every observed glyph spans the
+        # same robust cap band.  The decision uses the full signature, not
+        # merely one tall character.
+        clusters = [(i * 10, 0, i * 10 + 7, 20) for i in range(10)]
+        candidate, evidence = savor.case_signature_verdict("Republique", clusters)
+        assert candidate == "REPUBLIQUE"
+        assert evidence["state"] == "upper_confirmed"
+
+    def test_mixed_height_title_case_is_review_only(self):
+        clusters = [
+            (0, 0, 7, 20),   # R cap
+            (10, 6, 17, 20), # u x-height
+            (20, 6, 27, 20), # e x-height
+        ]
+        candidate, evidence = savor.case_signature_verdict("Rue", clusters)
+        assert candidate is None
+        assert evidence["state"] == "review"
+
+    def test_insufficient_case_evidence_never_repairs(self):
+        candidate, evidence = savor.case_signature_verdict("Io", [(0, 0, 6, 16), (8, 0, 14, 16)])
+        assert candidate is None
+        assert evidence["state"] == "unresolvable"
+
+
+def test_correction_ledger_preserves_earliest_ocr_text_for_cofiring_courses():
+    inst = make_inst("Republique", BBox(0, 0, 100, 20))
+    savor._record_correction(
+        inst, applied=True, original_text="Republique", corrected_text="REPUBLIQUE",
+        reason="case", course="case_signature",
+    )
+    savor._record_correction(
+        inst, applied=True, original_text="REPUBLIQUE", corrected_text="RÉPUBLIQUE",
+        reason="accent", course="latin_diacritic",
+    )
+    assert inst.ocr_correction["original_text"] == "Republique"
+    assert inst.ocr_correction["corrected_text"] == "RÉPUBLIQUE"
+    assert [step["course"] for step in inst.ocr_correction["steps"]] == [
+        "case_signature", "latin_diacritic",
+    ]
+
+
+class TestDetachedMarkScan:
+    def test_excess_mark_reconciles_to_one_claimed_glyph_and_is_visible(self):
+        raw = [
+            {"box": (0, 6, 8, 20), "area": 60},  # e body
+            {"box": (2, 0, 5, 4), "area": 12},   # acute
+        ]
+        scan = savor._detached_mark_scan(raw, "e")
+        assert scan is not None
+        assert savor._mark_zone_verdict(scan, 0) is True
+
+    def test_tittle_is_expected_but_diaeresis_has_excess_mark(self):
+        raw_i = [
+            {"box": (0, 12, 8, 42), "area": 100}, {"box": (1, 4, 3, 9), "area": 12},
+        ]
+        assert savor._mark_zone_verdict(savor._detached_mark_scan(raw_i, "i"), 0) is False
+        raw_iumlaut = raw_i + [{"box": (5, 4, 7, 9), "area": 12}]
+        assert savor._mark_zone_verdict(savor._detached_mark_scan(raw_iumlaut, "i"), 0) is True
+
+    def test_unreconciled_components_are_unresolvable(self):
+        raw = [{"box": (0, 6, 8, 20), "area": 60}, {"box": (20, 6, 28, 20), "area": 60}]
+        assert savor._detached_mark_scan(raw, "e") is None
+
+    def test_short_accented_cap_word_uses_base_bands_not_mark_top(self):
+        # ÉCOLE-like geometry: the acute sits above the first cap.  Removing
+        # it from band statistics keeps all five base glyphs tall.
+        raw = [
+            {"box": (0, 4, 8, 24), "area": 110}, {"box": (2, 0, 5, 3), "area": 12},
+            {"box": (10, 4, 18, 24), "area": 110}, {"box": (20, 4, 28, 24), "area": 110},
+            {"box": (30, 4, 38, 24), "area": 110}, {"box": (40, 4, 48, 24), "area": 110},
+        ]
+        scan = savor._detached_mark_scan(raw, "École")
+        assert scan is not None
+        candidate, _evidence = savor.case_signature_verdict("École", scan["base_components"])
+        assert candidate == "ÉCOLE"
+
+
+class TestLatinDiacriticCourse:
+    def test_stored_french_form_preserves_observed_uppercase_base(self):
+        proposals = savor._latin_diacritic_proposals("REPUBLIQUE", "fr")
+        assert len(proposals) == 1
+        assert savor._compose_marks("REPUBLIQUE", proposals[0]["positions"]) == "RÉPUBLIQUE"
+
+    def test_language_scope_never_consults_french_forms_for_english(self):
+        assert savor._latin_diacritic_proposals("cafe", "en") == []

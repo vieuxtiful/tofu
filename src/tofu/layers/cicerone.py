@@ -45,6 +45,7 @@ import logging
 import re
 import time
 import uuid
+import unicodedata
 from abc import ABC, abstractmethod
 from pathlib import Path
 from dataclasses import dataclass
@@ -2838,6 +2839,30 @@ def _dedup_zoom_detections(fine: List[RawDetection]) -> List[RawDetection]:
     return survivors
 
 
+def _accent_fold(text: str) -> str:
+    """Comparison-only fold used to protect information already observed."""
+    return "".join(
+        ch for ch in unicodedata.normalize("NFD", text).casefold()
+        if not unicodedata.combining(ch)
+    )
+
+
+def _mark_count(text: str) -> int:
+    return sum(1 for ch in unicodedata.normalize("NFD", text) if unicodedata.combining(ch))
+
+
+def _second_look_decision(incumbent: str, candidate: str, confidence_gain: float) -> tuple[bool, str]:
+    """Asymmetric reread policy: never trade observed orthographic detail for confidence."""
+    if _accent_fold(incumbent) == _accent_fold(candidate):
+        if _mark_count(candidate) < _mark_count(incumbent):
+            return False, "reread drops diacritics present in incumbent"
+        if incumbent.isupper() and not candidate.isupper():
+            return False, "reread drops all-caps evidence present in incumbent"
+        if _mark_count(candidate) > _mark_count(incumbent):
+            return confidence_gain >= -0.05, "reread adds diacritic evidence"
+    return confidence_gain >= .10, "reread requires confidence margin for different text"
+
+
 def second_look(
     asset: Any,
     instances: List[InstText],
@@ -2914,9 +2939,24 @@ def second_look(
                 pass
         if not verified:
             continue
-        if composed.confidence > (inst.confidence or 0):
+        incumbent = inst.text or ""
+        gain = composed.confidence - (inst.confidence or 0)
+        accepted, reason = _second_look_decision(incumbent, composed.text or "", gain)
+        _history(inst, {
+            "stage": "second_look", "candidate_text": composed.text,
+            "candidate_confidence": composed.confidence, "incumbent_text": incumbent,
+            "incumbent_confidence": inst.confidence, "selected": accepted,
+            "reason": reason,
+        })
+        if accepted:
             inst.text = composed.text
             inst.confidence = composed.confidence
+            if composed.confidence < .60:
+                inst.ocr_provenance = {
+                    **(inst.ocr_provenance or {}),
+                    "review_required": True,
+                    "review_reason": "low-confidence Latin second-look promotion",
+                }
             improved += 1
     return improved
 
@@ -3221,6 +3261,10 @@ def detect(
     # best-effort: a tasting failure must never fail detection itself.
     if savor and manifest.instances:
         try:
+            # Latin correction resources are language-scoped.  Establish a
+            # current label before Savor; the existing final pass re-runs it
+            # after corrections have changed the text evidence.
+            label_latin_languages(manifest.instances)
             from tofu.layers.savor import taste
             taste(asset, manifest.instances, font_registry=font_registry)
         except Exception:

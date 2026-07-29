@@ -59,10 +59,13 @@ manifest, after every detection/refinement pass has already run.
 """
 
 import re
+from statistics import median
+import unicodedata
 from typing import Any, List, Optional
 
 from tofu.core.types import BBox, InstText
 from tofu.utils.imaging import load_rgb, text_mask
+from tofu.utils.correction_resources import diacritic_entries, load_correction_resource
 
 # glyph shapes a CRNN commonly confuses (letter <-> digit). bidirectional
 # so an already-correct digit is never treated as "a letter that could be
@@ -116,6 +119,318 @@ TASTING_CANVAS = 24         # common square size both glyph masks are resized to
 # glyphs under-segment at native resolution (see chew_swaps).
 GLYPH_UPSCALE_MIN_PX = 20
 GLYPH_UPSCALE_FACTOR = 3
+
+LATIN_DIACRITIC_RESOURCE = load_correction_resource("savor/latin_diacritics-1.0.0.json")
+LATIN_DIACRITICS = diacritic_entries(LATIN_DIACRITIC_RESOURCE)
+
+# Case evidence is evaluated as a whole-token signature.  These are the
+# lower-case letters whose expected vertical extent is genuinely diagnostic;
+# dots and tall ascenders deliberately do not independently prove a case.
+_X_HEIGHT = set("aceimnorsuvwxz")
+_ASCENDERS = set("bdfhklt")
+_DESCENDERS = set("gjpqy")
+_CASE_MIN_LETTERS = 3
+
+
+def _claimed_case_class(char: str) -> Optional[str]:
+    if not char.isalpha():
+        return None
+    if char.isupper():
+        return "tall"
+    lower = char.lower()
+    if lower in _X_HEIGHT:
+        return "x"
+    if lower in _ASCENDERS:
+        return "tall"
+    if lower in _DESCENDERS:
+        return "desc"
+    # i/j dots and unfamiliar scripts are intentionally non-diagnostic.
+    return None
+
+
+def _observed_case_signature(clusters: List[tuple]) -> List[str]:
+    """Classify clusters relative to a robust line-level top/bottom band."""
+    if not clusters:
+        return []
+    tops = [box[1] for box in clusters]
+    bottoms = [box[3] for box in clusters]
+    heights = [max(1, box[3] - box[1]) for box in clusters]
+    # The upper band is the low quantile, not the median: in Title Case a
+    # majority of x-height letters would otherwise redefine the baseline and
+    # make the lowercase run look like capitals.  One cap anchor is enough;
+    # automatic promotion below still requires that anchor in the OCR claim.
+    top = sorted(tops)[max(0, len(tops) // 5 - 1)]
+    bottom, h = median(bottoms), max(1.0, median(heights))
+    signature: List[str] = []
+    for _x0, y0, _x1, y1 in clusters:
+        # A tall glyph touches both robust bands. X-height glyphs begin lower;
+        # descenders also extend below the baseline.  Keep an "ambiguous"
+        # result rather than inventing precision at low resolution.
+        if y0 <= top + .14 * h and y1 >= bottom - .14 * h:
+            signature.append("tall")
+        elif y0 >= top + .20 * h and y1 > bottom + .12 * h:
+            signature.append("desc")
+        elif y0 >= top + .20 * h and y1 >= bottom - .14 * h:
+            signature.append("x")
+        else:
+            signature.append("ambiguous")
+    return signature
+
+
+def case_signature_verdict(text: str, clusters: List[tuple]) -> tuple[Optional[str], dict]:
+    """Return an unambiguous uppercase repair or review-only evidence.
+
+    Evidence is combinatorial: every diagnostic letter in the token votes
+    against both the claimed case pattern and the all-cap candidate.  This
+    avoids treating one tall ``l`` or one short ``e`` as a case decision.
+    Arbitrary re-casing is never automatic; only an all-cap physical plate can
+    safely repair a mixed/lowercase OCR claim without language context.
+    """
+    chars = [ch for ch in text if not ch.isspace()]
+    if len(chars) != len(clusters):
+        return None, {"state": "unresolvable", "reason": "cluster_count_mismatch"}
+    observed = _observed_case_signature(clusters)
+    diagnostic = [
+        (ch, want, got) for ch, want, got in zip(chars, map(_claimed_case_class, chars), observed)
+        if want is not None and got != "ambiguous"
+    ]
+    letters = [item for item in diagnostic if item[0].isalpha()]
+    if len(letters) < _CASE_MIN_LETTERS:
+        return None, {"state": "unresolvable", "reason": "insufficient_diagnostic_letters"}
+    claimed = sum(want == got or (want == "tall" and got == "tall") for _, want, got in letters) / len(letters)
+    upper = sum(got == "tall" for _, _, got in letters) / len(letters)
+    evidence = {
+        "state": "review", "claimed_signature": "".join(want[0] for _, want, _ in letters),
+        "observed_signature": "".join(got[0] for _, _, got in letters),
+        "claimed_score": round(claimed, 3), "upper_score": round(upper, 3),
+    }
+    candidate = text.upper()
+    has_cap_anchor = any(ch.isupper() for ch, _, _ in letters)
+    if candidate != text and has_cap_anchor and upper >= .80 and upper >= claimed + .35:
+        evidence["state"] = "upper_confirmed"
+        return candidate, evidence
+    return None, evidence
+
+
+def _raw_components(np, cv2, mask, vertical: bool = False) -> List[dict]:
+    """Raw connected components with area retained for detached-mark scans."""
+    m8 = mask.astype(np.uint8) * 255
+    n, _labels, stats, _centroids = cv2.connectedComponentsWithStats(m8, connectivity=8)
+    components = []
+    for index in range(1, n):
+        area = int(stats[index, cv2.CC_STAT_AREA])
+        if area < MIN_MORSEL_AREA:
+            continue
+        x, y = int(stats[index, cv2.CC_STAT_LEFT]), int(stats[index, cv2.CC_STAT_TOP])
+        w, h = int(stats[index, cv2.CC_STAT_WIDTH]), int(stats[index, cv2.CC_STAT_HEIGHT])
+        components.append({"box": (x, y, x + w, y + h), "area": area})
+    components.sort(key=(lambda item: item["box"][1]) if vertical else (lambda item: item["box"][0]))
+    return components
+
+
+def _detached_mark_scan(raw_components: List[dict], text: str) -> Optional[dict]:
+    """Find excess detached above-base marks without consulting a lexicon.
+
+    v1 is intentionally limited to detached marks above a Latin base glyph.
+    Attached marks such as cedilla need a below-baseline ink-profile course.
+    """
+    chars = [char for char in text if not char.isspace()]
+    if not chars or not raw_components:
+        return None
+    areas = [item["area"] for item in raw_components]
+    # A dotted i or diaeresis can make small components the majority.  Use
+    # the upper half as the body scale, otherwise the marks redefine the
+    # median and stop looking small.
+    median_area = max(1.0, median(sorted(areas)[len(areas) // 2:]))
+    detached: List[tuple[int, int]] = []  # (mark raw index, base raw index)
+    for mark_index, mark in enumerate(raw_components):
+        mx0, my0, mx1, my1 = mark["box"]
+        if mark["area"] > .35 * median_area:
+            continue
+        candidates = []
+        for base_index, base in enumerate(raw_components):
+            if base_index == mark_index or base["area"] <= mark["area"]:
+                continue
+            bx0, by0, bx1, _by1 = base["box"]
+            overlap = max(0, min(mx1, bx1) - max(mx0, bx0))
+            if my1 <= by0 and overlap / max(1, mx1 - mx0) >= .45:
+                candidates.append((overlap, -abs((mx0 + mx1) - (bx0 + bx1)), base_index))
+        if candidates:
+            detached.append((mark_index, max(candidates)[2]))
+    mark_indices = {mark for mark, _base in detached}
+    bases = [item for index, item in enumerate(raw_components) if index not in mark_indices]
+    if len(bases) != len(chars):
+        return None
+    bases.sort(key=lambda item: item["box"][0])
+    base_to_position = {id(item): index for index, item in enumerate(bases)}
+    excess: dict[int, List[dict]] = {index: [] for index in range(len(chars))}
+    for mark_index, base_index in detached:
+        base = raw_components[base_index]
+        position = base_to_position.get(id(base))
+        if position is None:
+            continue
+        expected = 1 if chars[position].casefold() in {"i", "j"} else 0
+        # Preserve deterministic left-to-right ordering for multiple dots.
+        if len([pair for pair in detached if pair[1] == base_index]) > expected:
+            excess[position].append(raw_components[mark_index])
+    return {"base_components": [item["box"] for item in bases], "excess_marks": excess}
+
+
+def _mark_zone_verdict(scan: Optional[dict], position: int) -> Optional[bool]:
+    """Whether an excess detached mark is visibly present at one glyph.
+
+    ``None`` means the plate cannot resolve a ~3px mark; callers must never
+    reinterpret it as absence.  ``False`` requires a clear-enough base zone.
+    """
+    if scan is None or position >= len(scan["base_components"]):
+        return None
+    _x0, y0, _x1, y1 = scan["base_components"][position]
+    mark_floor = 3
+    marks = scan["excess_marks"].get(position, [])
+    if marks:
+        heights = [item["box"][3] - item["box"][1] for item in marks]
+        return True if max(heights, default=0) >= mark_floor else None
+    # The expected mark would be roughly 10-15% of the base height.  Do not
+    # claim a clear zone when that signal is below physical resolution.
+    return False if (y1 - y0) * .12 >= mark_floor else None
+
+
+def _plate_clusters(asset: Any, inst: InstText):
+    """Return one stable mask/component/cluster view for Savor courses.
+
+    Case and detached-mark verification must inspect exactly the same plate.
+    Rebuilding components independently can merge a mark with a different
+    neighbour and silently move a character position, so this function is the
+    sole geometry boundary for those courses.
+    """
+    try:
+        import cv2
+        import numpy as np
+    except ImportError:
+        return None
+    text = inst.text or ""
+    if not text:
+        return None
+    image = load_rgb(asset)
+    if image is None:
+        return None
+    mask = text_mask(image, inst.bounding_box, refine=True)
+    if mask is None:
+        return None
+    vertical = _is_vertical_instance(inst.bounding_box)
+    raw_components = _raw_components(np, cv2, mask, vertical=vertical)
+    raw_boxes = [item["box"] for item in raw_components]
+    clusters = _cluster_to_n_glyphs(raw_boxes, len(text.replace(" ", "")), vertical)
+    if clusters is None:
+        return None
+    return mask, raw_components, clusters
+
+
+def chew_case(asset: Any, inst: InstText, plate=None) -> tuple[Optional[str], dict]:
+    """Measure the physical case signature of one Latin token/region."""
+    text = inst.text or ""
+    if not text or len(text.split()) != 1:
+        return None, {"state": "unresolvable", "reason": "not_single_token"}
+    plate = plate or _plate_clusters(asset, inst)
+    if plate is None:
+        return None, {"state": "unresolvable", "reason": "clusters_unresolvable"}
+    _mask, raw_components, clusters = plate
+    scan = _detached_mark_scan(raw_components, text)
+    # Detached marks must not lift a cap/x-height band's top.  If the raw
+    # geometry cannot reconcile to the claimed character count, retain the
+    # legacy clusters but never manufacture a mark decision.
+    case_boxes = scan["base_components"] if scan is not None else clusters
+    return case_signature_verdict(text, case_boxes)
+
+
+def _latin_diacritic_proposals(text: str, language: Optional[str]) -> List[dict]:
+    """Exact stored-form lookup; never runtime-fold arbitrary OCR text."""
+    if not text or not language:
+        return []
+    proposals = []
+    offset = 0
+    for token in text.split(" "):
+        if not token:
+            offset += 1
+            continue
+        matches = [entry for entry in LATIN_DIACRITICS
+                   if entry["language"] == language and entry["folded"] == token.casefold()]
+        # Resource loading rejects duplicate keys.  Keep this fail-closed path
+        # for aggregated/future resources where ambiguity can still arise.
+        if len(matches) == 1:
+            canonical = matches[0]["text"]
+            if len(token) == len(canonical) and token != canonical:
+                positions = []
+                valid = True
+                for index, (seen, proposed) in enumerate(zip(token, canonical)):
+                    seen_nfd, proposed_nfd = unicodedata.normalize("NFD", seen), unicodedata.normalize("NFD", proposed)
+                    if seen_nfd[0].casefold() != proposed_nfd[0].casefold():
+                        valid = False; break
+                    marks = "".join(char for char in proposed_nfd[1:] if unicodedata.combining(char))
+                    if seen != proposed:
+                        if not marks and seen.casefold() != proposed.casefold():
+                            valid = False; break
+                        if marks:
+                            positions.append((offset + index, marks))
+                if valid and positions:
+                    proposals.append({"token": token, "canonical": canonical, "positions": positions,
+                                      "resource": matches[0]})
+        offset += len(token) + 1
+    return proposals
+
+
+def chew_accents(inst: InstText, plate, positions: List[tuple[int, str]]) -> dict[int, Optional[bool]]:
+    """Verify detached above-base marks only; attached marks are v2 scope."""
+    if plate is None:
+        return {position: None for position, _marks in positions}
+    _mask, raw_components, _clusters = plate
+    scan = _detached_mark_scan(raw_components, inst.text or "")
+    return {position: _mark_zone_verdict(scan, position) for position, _marks in positions}
+
+
+def _compose_marks(text: str, positions: List[tuple[int, str]]) -> str:
+    chars = list(text)
+    for position, marks in positions:
+        chars[position] = unicodedata.normalize("NFC", unicodedata.normalize("NFD", chars[position])[0] + marks)
+    return "".join(chars)
+
+
+def _record_correction(inst: InstText, *, applied: bool, original_text: str,
+                       corrected_text: Optional[str] = None,
+                       candidate_text: Optional[str] = None,
+                       reason: str, course: str, **evidence: Any) -> None:
+    """Append a correction step while preserving the OCR's earliest text.
+
+    ``ocr_correction`` remains a dict for manifest compatibility.  The latest
+    correction stays at the top level for existing UI consumers; ``steps`` is
+    an append-only audit ledger for courses that co-fire on one instance.
+    """
+    prior = inst.ocr_correction or {}
+    steps = list(prior.get("steps") or [])
+    if prior and not steps:
+        steps.append({key: value for key, value in prior.items() if key != "steps"})
+    step: dict[str, Any] = {
+        "course": course, "applied": applied, "original_text": original_text,
+        "reason": reason, **evidence,
+    }
+    if corrected_text is not None:
+        step["corrected_text"] = corrected_text
+    if candidate_text is not None:
+        step["candidate_text"] = candidate_text
+    steps.append(step)
+    record: dict[str, Any] = {
+        "applied": applied,
+        "original_text": prior.get("original_text", original_text),
+        "reason": reason,
+        "steps": steps,
+        "course": course,
+        **evidence,
+    }
+    if corrected_text is not None:
+        record["corrected_text"] = corrected_text
+    if candidate_text is not None:
+        record["candidate_text"] = candidate_text
+    inst.ocr_correction = record
 
 
 class Morsel:
@@ -593,6 +908,59 @@ def taste(asset: Any, instances: List[InstText], font_registry: Optional[Any] = 
         text = inst.text or ""
         if not text:
             continue
+        plate = _plate_clusters(asset, inst)
+        lang = inst.detected_language or inst.language
+        # Course 5a: physical case evidence.  Run before lexical/diacritic
+        # work so a confirmed all-cap plate supplies the correct base letters
+        # (``Republique`` -> ``REPUBLIQUE``) for any later mark repair.
+        case_candidate, case_evidence = chew_case(asset, inst, plate=plate)
+        if case_candidate:
+            original = inst.text or ""
+            inst.text = case_candidate
+            _record_correction(
+                inst, applied=True, original_text=original,
+                corrected_text=case_candidate,
+                reason="case signature across the token confirms all-cap lettering",
+                course="case_signature", case_evidence=case_evidence,
+            )
+            swallowed += 1
+            text = case_candidate
+        elif case_evidence.get("state") == "review":
+            # Preserve evidence for mixed/lowercase contradictions without
+            # guessing a title-case or arbitrary per-character correction.
+            _record_correction(
+                inst, applied=False, original_text=inst.text or "",
+                candidate_text=(inst.text or "").upper(),
+                reason="observed case signature conflicts with OCR casing; manual review required",
+                course="case_signature", case_evidence=case_evidence,
+            )
+        # Course 5b: a stored language-scoped canonical form proposes the
+        # mark, while detached-mark geometry independently decides whether it
+        # exists.  No generic accent stripping or whole-glyph IoU participates.
+        for proposal in _latin_diacritic_proposals(inst.text or "", lang):
+            verdicts = chew_accents(inst, plate, proposal["positions"])
+            if all(verdicts.get(position) is True for position, _marks in proposal["positions"]):
+                original = inst.text or ""
+                corrected = _compose_marks(original, proposal["positions"])
+                inst.text = corrected
+                _record_correction(
+                    inst, applied=True, original_text=original, corrected_text=corrected,
+                    reason="stored Latin diacritic form confirmed by detached-mark geometry",
+                    course="latin_diacritic",
+                    correction_resource=LATIN_DIACRITIC_RESOURCE.audit_identity(),
+                    mark_verdicts={str(position): verdicts[position] for position, _marks in proposal["positions"]},
+                )
+                swallowed += 1
+                text = inst.text or text
+            elif any(verdicts.get(position) is None for position, _marks in proposal["positions"]):
+                _record_correction(
+                    inst, applied=False, original_text=inst.text or "",
+                    candidate_text=proposal["canonical"],
+                    reason="stored Latin diacritic candidate requires review; mark geometry is unresolved",
+                    course="latin_diacritic",
+                    correction_resource=LATIN_DIACRITIC_RESOURCE.audit_identity(),
+                    mark_verdicts={str(position): verdicts[position] for position, _marks in proposal["positions"]},
+                )
         for morsel in sniff_out(text):
             verdict = chew_on(asset, inst, morsel)
             if verdict is True:
@@ -622,7 +990,6 @@ def taste(asset: Any, instances: List[InstText], font_registry: Optional[Any] = 
                 }
             # verdict is False: spat out, original text stands, nothing recorded
 
-        lang = inst.detected_language or inst.language
         for dmorsel in sniff_dakuten(inst.text or "", lang):
             verdicts = chew_dakuten(asset, inst, dmorsel, font_registry)
             confirmed = {p: b for p, a, b in dmorsel.positions if verdicts.get(p) is True}
