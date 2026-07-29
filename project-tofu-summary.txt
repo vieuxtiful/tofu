@@ -1,157 +1,613 @@
-project ToFU 
+project ToFU
 とうふ ARCHITECTURE
+vieuxtiful — 2026-07
 
-xx Fully automated: Flip all toggles to "auto" and let the pipeline run end-to-end
+ToFU (Text-over-Frame Unification) is a context-aware visual text
+localization pipeline. Given a source image and a target language, it
+detects text, erases it, reconstructs the background, re-renders the
+translation in the original style, and scores the result — preserving
+the scene's visual context throughout.
 
-xx Fully manual: Flip all toggles to "manual" and control every step
-
-xx Hybrid: Auto-run cicerone() and scene(), manually refine masks, auto-run cleanse() and scribe(), manually verify with verify()
-
-Each function returns structured data that the user can inspect and modify at any point. The tofu() toast notifications become the user's guide through the process.
-
-
----------------
-
-
-LYR/FXN 0: TOFU (the most fun)
-""""
-PRE-FLIGHT VALIDATION (name inspo: "tofu" blocks)
-The guardian layer that validates script support, glyph segmentation feasibility, and render quality. Returns a ValidationReport with issues and suggested actions (DELETE: which can trigger toast notifications on the frontend).
-
-""""
-
-tofu()
-	print f'(ValidationReport)
+Packaged as `tofu-l10n` (pip install tofu-l10n). Engine-agnostic,
+runs on CPU, gates output on measurable accuracy thresholds.
 
 
-""""
-arg defs
-	position: [bounds, (x,y)] / entity (bounding box)
-	duration: t = X (sec, min) / scene
-	object: characters (non-/ccjk)
-	frames: static (1); dynamic (x-->インフィニティ)
-	style: (font [typeface], color code (hexadecimal), ...)
-	opacity: ( ... )
-	resolution: [x, y]
+EXECUTION MODES
+
+  AUTO    Fully algorithmic — flip all toggles to "auto" and let the
+          pipeline run end-to-end.
+
+  MANUAL  User-authored — flip all toggles to "manual" and control
+          every step. Layers pass data through untouched.
+
+  HYBRID  Algorithmic with pause checkpoints — auto-run scene and
+          cicerone, manually refine masks (checkpoint 1), auto-run
+          cleanse and scribe, manually sign off before QA (checkpoint 2),
+          auto-run verify and memory.
+
+Each layer returns structured data (TextManifest) the user can inspect
+and modify at any point. Toast notifications guide the user through
+the process.
 
 
-""""
+PIPELINE STAGE ORDER (v2, 2026-07)
+
+  The implemented order differs from the original diagram. Scene now
+  runs TWICE and ToFU re-validates after detection:
+
+  tofu (pre-flight)
+    → scene PRE-PASS (candidate surfaces constrain detection)
+    → cicerone (multi-pass, scene-filtered, per-region language id)
+    → tofu RE-VALIDATION (real region geometry, expansion feasibility)
+    → scene ENRICHMENT (per-instance style/background profiles)
+    → cleanse (source-text erasure + background reconstruction)
+    → scribe (target-language rendering in detected style)
+    → garnish (deterministic source-wear edge treatment)
+    → verify (quality scoring, QA gate)
+    → memory (visual translation memory, QA-gated storage)
+
+  Every layer exchanges a TextManifest and nothing else.
 
 
-LYR/FXN 1: CICERONE (the most needed)
-""""
-(Italian for "guide" — it shows the localizer where everything is)
+CORE DATA CONTRACT
 
-Detect all text regions in the source image/video frame
-2. Generate precise bounding boxes and segmentation masks
-3. Identify text characteristics (font style, color, size, positioning)
-4. Output a TextManifest — a structured map of every text instance in the asset
-""""
+  TextManifest (src/tofu/core/types.py) threads through every layer:
+    - InstText instances (per region: bbox, polygon mask, OCR text,
+      confidence, style profile, background profile, language,
+      correction provenance, recognition history, garnish overrides,
+      reconstruction profile)
+    - SceneRegion list (candidate text-bearing surfaces)
+    - SemanticTextUnit list (Basil's cross-region linguistic units)
+    - src_lang (scene source language, voted from per-region evidence)
 
-cicerone(region[s], locale[s], characteristics)
-	disp f'("text manifest")
-	## text manifest is a structured map of every text instance in the asset	
-
-
-
-"""" 
-arg defs
-
->> regions
-
->> characteristics 
-	font style ( ... )
-	color (RGBA, CMYK, BW)
-	size (0-[define max])
-	positioning (e.g., warp, skew, ...)	
-
->> segmentation
-""""
+  Pipeline progress events (src/tofu/core/events.py):
+    PipelineEvent (stage, operation, status, progress, payload,
+    duration_ms, timestamp). Transport-neutral — SSE, CLI, desktop
+    adapters serialize but must not duplicate orchestration.
+    PipelineObserver callback threaded through TofuPipeline.
 
 
-LYR/FXN 2: SCENE (the most experimental)
-
-""""
-(Short for "scene understanding" — the world scanner)
-Analyze what's behind each text region (brick wall, person's shirt, digital UI, etc.)
-2. Identify visual elements that need preservation (gradients, patterns, textures)
-3. Detect style attributes of the text (font family, weight, color, shadow, effects)
-4. Output a StyleProfile and BackgroundProfile for each text instance
-
-""""
-
-scene()
-
-""""
-arg defs
+─────────────────────────────────────────────────────────────
+LAYERS
+─────────────────────────────────────────────────────────────
 
 
-""""
+LYR 0: TOFU — pre-flight validation (the most fun)
+  src/tofu/layers/tofu.py
+
+  Name inspo: "tofu" blocks — the Unicode term for missing-glyph
+  boxes. The exact failure the project is named to prevent.
+
+  The pipeline's gatekeeper. Before any heavy processing, it checks:
+    - Script support (ISO 15924 → font glyph coverage)
+    - Glyph segmentation feasibility (from measured source geometry)
+    - Text-expansion fit (industry-standard expansion factors per
+      language pair; warns at 1.05×, blocks at 1.35×)
+    - Render quality (deterministic score from font/effect evidence)
+    - Transform clipping (skew/scale/offset warnings)
+
+  Runs TWICE: once before detection (heuristic), once after Cicerone
+  with real per-region data. A real FontRegistry (fontTools) probes
+  system fonts for actual codepoint coverage — FULL only when a
+  covering font genuinely exists. Per-script support distinguishes
+  Hans, Hant, Jpan, Kore rather than collapsing all CJK.
+
+  Returns VldtnReport with issues, insights, and suggested actions.
 
 
-LYR/FXN 3: CLEANSE (aka scene part deux)
+LYR 1: CICERONE — text detection & recognition (the most needed)
+  src/tofu/layers/cicerone.py
 
-""""
-(It purifies the image of text, leaving only the pure visual)
-1. Remove original text from the image using the masks from cicerone()
-2. Inpaint the background using semantic guidance from scene()
-3. Ensure seamless background reconstruction with no artifacts
+  Italian for "guide" — it shows the localizer where everything is.
 
-""""
+  The pipeline's eye. Multi-pass detection:
+    1. Initial full-frame scan
+    2. Language-adaptive re-detection on under-covered regions
+    3. Zoom rescue passes into scene-identified surfaces at 2×
+    4. Vertical-stack re-split (over-tall CJK signs → per-character)
+    5. PaddleOCR rescue (out-of-process, isolated .venv-paddle)
+    6. Confidence-gated second look
+    7. Hallucination pruning
+    8. Hybrid arbitration (trailing-punctuation artifacts)
 
-cleanse()
+  Two OCR engines behind the same OCRBackend interface:
+    - EasyOCR (default): CRAFT detector + CRNN recognizer
+    - PaddleOCR (opt-in): DBNet + SVTR_LCNet, 4× recall on dense CJK
 
-""""
-arg defs
+  Scene-filter stage uses candidate surfaces to suppress false
+  positives: detections inside panels survive at lower thresholds,
+  detections in open areas must clear a higher bar.
 
-""""
+  CJK-specific: vertical column merge, language arbitration by
+  corroborating-region count, two-phase scene filter.
 
+  Post-recognition QC passes (inside Cicerone):
+    - Savor: glyph-confusion repair (5/S, 0/O, 1/I) — context
+      proposes, pixels verify, orchestrator decides. Plus a
+      dakuten/handakuten course for Japanese kana.
+    - Menu: gazetteer-assisted place-name recovery for low-confidence
+      reads of known real signs (train stations, chain storefronts).
+    - Wasabi: CJK variant normalization — fixes PaddleOCR's shared
+      JP/CN model emitting simplified-Chinese-only glyphs on Japanese
+      reads (剧→劇, 烧→焼, 岛→島).
 
-LYR/FXN 4: SCRIBE (writing perfect text)
-
-""""
-(It purifies the image of text, leaving only the pure visual)
-1. Remove original text from the image using the masks from cicerone()
-2. Inpaint the background using semantic guidance from scene()
-3. Ensure seamless background reconstruction with no artifacts
-""""
-
-(scribe)
-
-""""
-arg defs
-
-""""
-
-LYR/FXN 5: VERIFY (QA inspector)
-""""
-1. Check for visual artifacts or inconsistencies in the generated image
-2. Verify text clarity, readability and style consistency
-3. Validate that all text regions from cicerone() have been addressed
-4. Ensure background inpainting quality meets threshold
-""""
-
-verify()
-
-""""
-arg defs
-""""
+  Outputs TextManifest: bounding boxes, segmentation polygons, OCR
+  text, confidence scores, per-region language identity, and the
+  scene's voted source language.
 
 
-LYR/FXN 6: MEMORY ("Visual" translation memory)
-""""
-(The TM for pixels)
-1. Store localized visual elements (text regions, styles, translations)
-2. Detect visual matches across projects/assets
-3. Suggest previously approved localizations for similar elements
-4. Enable fuzzy matching for visual content
-""""
+LYR 2: SCENE — semantic context & style analysis (the most experimental)
+  src/tofu/layers/scene.py
 
-memory()
+  Short for "scene understanding" — the world scanner.
 
-""""
-arg defs
-""""
+  Two jobs:
+    PRE-PASS (analyze_regions): detects candidate text-bearing
+    surfaces (signs, panels, bordered regions) BEFORE text detection.
+    Cicerone uses these to constrain detection and suppress false
+    positives. ClassicalCVBackend combines:
+      - Contour analysis (Canny + approxPolyDP) for structural surfaces
+      - MSER for text-like blobs (individual chars, short strings)
+      - Adaptive rescue pass with Gaussian blur when default saturates
+      - Orientation-aware deduplication (horizontal label on a
+        vertical CJK sign is NOT a duplicate)
+
+    ENRICHMENT (analyze): fills per-instance StyleProfil (text color,
+    font weight, italic, size) and BgProfil (background color, texture
+    classification, containing surface) for Cleanse and Scribe.
+    Existing user-set values are never overwritten.
+
+  Texture classification ("flat" / "smooth_gradient" / "textured")
+  drives Cleanse's fill strategy selection.
+
+
+LYR 3: CLEANSE — text erasure & inpainting (aka scene part deux)
+  src/tofu/layers/cleanse.py + inpaint_providers.py
+
+  It purifies the image of text, leaving only the pure visual.
+
+  Removes source text and reconstructs the background underneath.
+  The erasure mask is the glyph's own stroke shape (Otsu/Sauvola +
+  GrabCut, dilated for anti-aliased edges) — not the whole bounding
+  box. The bbox rectangle is a fallback only when segmentation fails.
+
+  Fill strategy selected from Scene's BgProfil.texture:
+    - Flat: border-ring median color fill (fast, exact)
+    - Smooth gradient: per-channel linear plane reconstruction
+    - Textured/uncertain: OpenCV Telea inpainting (radius scaled to
+      stroke width)
+
+  Every fill is alpha-feathered (distance-transform falloff). No hard
+  seams. Excluded regions are still erased (only rendering is skipped);
+  DNT regions are left untouched entirely.
+
+  Neural repair (evidence-gated provider router):
+    - LaMa: out-of-process, isolated .venv-inpaint, big-lama checkpoint
+    - BrushNet: out-of-process, fixed seed, preserves known pixels
+    - DiffSTR: supported through same file contract (no public
+      checkpoint yet)
+    - Auto-accept only for flat/smooth deterministic reconstruction;
+      textured/uncertain surfaces are review-required candidates
+    - No source image is sent to a cloud service
+
+  The Localized Asset Canvas starts from this cleansed base. Healing
+  brush and lasso create ordered, RGBA treatment patches —
+  non-destructive and undoable.
+
+
+LYR 4: SCRIBE — style-aware text regeneration (writing perfect text)
+  src/tofu/layers/scribe.py + knead.py
+
+  Renders target-language text onto the cleansed asset, matching
+  Scene's captured styling. Per region:
+    - Renders inst.target_text (untranslated/excluded/DNT skipped)
+    - Greedy word-wrap for space-delimited scripts, char-wrap for CJK
+    - Joint binary search over wrap AND font size together
+    - Colored and faded per StyleProfil + opacity
+    - Optionally rotated, alpha-composited onto the asset
+
+  Font resolution: sibling-face search on the fallback font — finds a
+  real bold or italic face in the same family rather than synthesizing.
+  Vertical CJK column rendering (tategaki) for narrow-and-tall regions.
+  Italic rendered on a layer sized to the text's own extent, sheared
+  around its local origin (not the whole base image).
+
+  RTL scripts (Arab, Hebr, Syrc, Thaa, …) — two passes, keyed on
+  Unicode script not a hardcoded language list:
+    1. press_joins: contextual joining forms via arabic-reshaper
+       (before measuring/fitting — presentation forms need coverage)
+    2. serving_order: logical→visual reordering via python-bidi
+       (per line, after wrapping — UAX #9)
+
+  Complex-script shaping (layers/knead.py):
+    Brahmic scripts (Deva Beng Guru Gujr Orya Taml Telu Knda Mlym Sinh
+    Thai Laoo Khmr Mymr Tibt) routed through HarfBuzz (uharfbuzz) for
+    shaping and FreeType (freetype-py) for rasterization — replacing
+    Pillow's BASIC layout for those regions only. Everything else
+    stays on Pillow (shaping would only add cosmetic kerning).
+    TOFU_SHAPING=0 disables the whole path at runtime.
+
+
+LYR 4b: GARNISH — post-Scribe scene integration
+  src/tofu/layers/garnish.py
+
+  Applies deterministic, source-derived edge treatment to newly
+  rendered text pixels ONLY. The cleansed base is never modified, so
+  neural/manual repair pixels stay reversible and QA can assert
+  outside-mask preservation.
+
+  Diffs scribed asset against cleansed base to isolate new text
+  pixels, then applies: edge blur, distance-transform edge smoothing,
+  erosion/dilation, seeded grain (weighted toward glyph edges), gamma
+  shift, motion-blur smudge along a real rotated path, and an
+  "engrain" pass that blends text RGB toward the underlying surface
+  in the soft edge band so edges look embedded rather than haloed.
+
+
+LYR 5: VERIFY — quality verification (QA inspector)
+  src/tofu/layers/verify.py
+
+  Scores the localized asset per instance. Pipeline gates success and
+  Memory storage on overall_score >= qa_threshold.
+
+  Five metrics (standard in scene-text editing literature):
+    1. OCR round-trip legibility — re-recognize rendered target text,
+       compare against intended string
+    2. Background reconstruction (SSIM) — structural similarity over
+       a border ring OUTSIDE each bbox
+    3. Ink presence — pixel change + glyph edge energy when EasyOCR
+       is unavailable
+    4. Residual source text — re-recognize cleansed crop, compare
+       against original (high similarity = source survived erase =
+       double-exposure defect, multiplies score DOWN)
+    5. Style consistency — CIE76 color ΔE + rendered-height ratio
+
+  Plus: Garnish edge similarity (Sobel orientation histograms) and
+  texture match. Untranslated non-DNT regions score 0.0 (not neutral)
+  — incomplete localizations cannot inflate their own gate. Full
+  coverage breakdown on QAReport.progress.
+
+
+LYR 6: MEMORY — visual translation memory ("The TM for pixels")
+  src/tofu/layers/memory.py
+
+  Stores accepted (source region, target render, style, QA score)
+  tuples for reuse. Three-tier matching cascade:
+    1. EXACT normalized text match
+    2. FUZZY text similarity (ratio >= 0.85)
+    3. VISUAL pHash fingerprint (similarity >= 0.88)
+  Style fingerprint (weight/italic/color) as tiebreaker.
+
+  QA gating enforced in both pipeline and update() — a visual TM
+  poisoned with bad localizations is worse than no TM. Storage-
+  agnostic: update() returns draft records + thumbnail, lookup()
+  matches against caller-supplied pool. server/main.py owns SQLite
+  writes and thumbnail saves; the module stays pure and testable.
+
+
+─────────────────────────────────────────────────────────────
+AUXILIARY MODULES
+─────────────────────────────────────────────────────────────
+
+
+BASIL — semantic registration & target-span substitution
+  src/tofu/layers/basil.py
+
+  B.A.S.I.L. — Bridge for Automated Semantic Integration & Localization
+
+  Bridges OCR's geometric facts (immutable region IDs and boxes that
+  anchor Cleanse and Scribe) and translation's linguistic reality
+  (sentences and named entities spanning several visual regions).
+
+  Three phases:
+    REGISTRATION: groups nearby source regions into SemanticTextUnit
+    objects by spatial proximity and script-appropriate reading order.
+    Evidence-based — a lexicon entity spelled across regions, or
+    agreeing language/type/surface — not box adjacency alone.
+
+    PAIRING: compares source and target typological features (WALS-
+    derived: adjective order, genitive order, designator position for
+    20+ languages) to decide whether cross-region rearrangement is
+    linguistically possible, unnecessary, or unknown. Fails open.
+
+    SUBSTITUTION: aligns user-supplied target phrases back to original
+    region anchors, recording target-region order while preserving
+    every captured box. Never renumbers or moves Cicerone regions.
+
+  Advisory at ToFU's gate. Optional offline Stanza for dependency
+  parsing/NER/alignment (TOFU_BASIL_STANZA_DIR, never auto-downloads).
+  Compact fr→it glossary as evidence, not an MT system.
+
+
+TYPOGRAPHY — per-region font-attribute estimation
+  src/tofu/layers/typography.py
+
+  Estimates visual font attributes from pixels: weight (stroke-width
+  analysis, Epshtein et al. CVPR 2010), slant/italic (shear-search,
+  Vinciarelli & Luettin 2001), size (text row extent), rotation
+  (cv2.minAreaRect). Every estimator degrades to None on weak
+  evidence — a wrong "regular" is worse than an honest unknown.
+
+
+JULIENNE — character-level script analysis
+  src/tofu/layers/julienne.py
+
+  Cuts a string into individual characters and asks what writing
+  system each belongs to (UAX #24). Per-character analysis — a
+  majority vote reports Japanese 東京タワー as Han, erasing the
+  script that makes the string readable. Returns a SET of scripts,
+  never a single winner. Context resolution for Common/Inherited
+  characters (prolonged sound mark). Han variant detection (GB 2312
+  vs Big5) gated on the text being Chinese, not Japanese kanji or
+  Korean hanja.
+
+
+SKIM — false-positive pruning
+  src/tofu/layers/skim.py
+
+  Lifts non-text detections off before Cleanse erases their pixels.
+  Decides only whether a SHORT, WEAK read is made of strokes thick
+  enough to be lettering — reuses Typography's calibrated
+  LIGHT_RATIO floor. No new estimator, no new constant. Long reads,
+  confident reads, and anything it cannot measure keep their
+  existing treatment.
+
+
+TEMPER — confidence calibration
+  src/tofu/layers/temper.py
+
+  Brings OCR confidence into agreement with observed accuracy.
+  Measures ECE (Expected Calibration Error, Guo et al. ICML 2017)
+  and Brier score over a corpus, then fits a single-parameter
+  temperature scaling map. One parameter cannot reorder anything,
+  so it improves calibration without touching which regions rank
+  as worst. Verify applies the fitted map; the harness measures and
+  fits it.
+
+
+OCR ARBITRATION — engine-independent candidate arbitration
+  src/tofu/layers/ocr_arbitration.py
+
+  Conservative, engine-independent arbitration between OCR
+  candidates. Converts each backend's raw confidence through its
+  own versioned monotonic calibration curve before deciding.
+  Exposes every gate as structured evidence (DecisionKind,
+  ReasonCode). No OCR backend imports — pure logic.
+
+
+OCR VERIFICATION — narrow evidence-bearing OCR verification
+  src/tofu/layers/ocr_verification.py
+
+  Shared by Cicerone and Cleanse. Normalises text for OCR agreement
+  (NFKC, whitespace, casefold for non-CJK), computes similarity via
+  SequenceMatcher, and returns an OCRVerificationResult with
+  structured evidence (state, confidence, similarity, backend,
+  detections).
+
+
+FONTS — font registry
+  src/tofu/layers/fonts.py
+
+  Font discovery, cached cmap coverage scoring, and per-script
+  ranking. Uses fontTools to probe system fonts for actual codepoint
+  coverage. FULL only when ≥99.5% of script sample characters are
+  covered, PARTIAL at ≥80%. Degrades to a static script map when
+  fontTools is absent. Supports bundled fonts (server/fonts/) and
+  user-uploaded fonts.
+
+
+CHARDATA — CCJK charset data
+  src/tofu/layers/_chardata.py
+
+  Standards-derived CCJK character sets, generated at import time
+  from Python's built-in legacy codecs (no giant literals, no
+  external data files):
+    - GB2312_CHARS:     simplified hanzi (mainland, singapore) — 6,763
+    - BIG5_CHARS:       traditional hanzi (taiwan, HK, macau) — ~13,000
+    - JIS_X_0208_KANJI: japanese kanji (JIS X 0208) — ~6,300
+    - KS_X_1001_HANJA:  korean hanja (KS X 1001) — 4,888
+
+
+SCRIPT SAMPLES — per-script sample sets
+  src/tofu/layers/script_samples.py
+
+  Exhaustive character sets per ISO 15924 script code, used to score
+  real font cmap coverage. CCJK codes (Hans/Hant/Jpan/Kore) preserved
+  as distinct, standards-derived sets — never collapsed into Hani.
+  Unassigned codepoints filtered so range-based sets never penalize
+  fonts for characters that do not exist. Also exports LANG_REQUIRED
+  for language-specific diacritic/conjunct coverage.
+
+
+FONT MATCHING — evidence-gated visual font identification
+  src/tofu/layers/font_matching.py
+
+  Answers "which available face is closest to the actual glyph
+  outlines?" Renders recognized source string in installed faces,
+  normalizes at measured cap height, combines silhouette Dice +
+  symmetric Chamfer + typographic evidence (stroke contrast, terminal-
+  serif structure, Zramdini & Ingold 1998). A local visual match
+  becomes a recommendation, never an implicit replacement. Optional
+  commercial-catalog lookup is separately gated.
+
+
+SIFT — font library categoriser
+  src/tofu/layers/sift.py
+
+  Browsing facet for the Font Manager panel. Sifts a font library into
+  typographic grades — serif, sans, mono, display. Resolution order:
+  PANOSE declaration → post table fixed-pitch flag → family-name
+  tokens → unknown. Structurally separated from font_matching so the
+  matcher cannot peek at metadata.
+
+
+KNEAD — HarfBuzz shaping + FreeType rasterization
+  src/tofu/layers/knead.py
+
+  The shaping seam for Brahmic scripts where Pillow's BASIC layout
+  produces incorrect conjuncts and mark positioning. HarfBuzz (GSUB
+  conjuncts, GPOS marks) + FreeType rasterization, degrading to
+  Pillow. Letter spacing applied at cluster boundaries, not between
+  glyphs. Coordinate frames convert once (Pillow ascender ↔ FreeType
+  baseline).
+
+
+INPAINT — non-destructive treatment patches
+  src/tofu/layers/inpaint.py
+
+  Healing brush and lasso for the Localized Asset Canvas. Returns
+  RGBA treatment crops over the cleansed base — every manual
+  correction is non-destructive and undoable. The persisted crop is
+  self-contained so undo/redo does not re-run a non-deterministic
+  image operation.
+
+
+INPAINT PROVIDERS — neural repair router
+  src/tofu/layers/inpaint_providers.py
+
+  Evidence-gated provider router for neural inpainting. Routes to
+  LaMa (out-of-process, isolated .venv-inpaint, big-lama checkpoint),
+  BrushNet (out-of-process, fixed seed, preserves known pixels), or
+  DiffSTR (same file contract, no public checkpoint yet). Auto-accept
+  only for flat/smooth deterministic reconstruction; textured/uncertain
+  surfaces are review-required candidates. No source image is sent to
+  a cloud service.
+
+
+─────────────────────────────────────────────────────────────
+UTILITIES
+─────────────────────────────────────────────────────────────
+
+
+IMAGING (utils/imaging.py)
+  Shared asset loading and text_mask() — the widest-fanout function
+  in the package (Scene, Cleanse, Typography, Savor, Font Matching,
+  Verify). Otsu for even illumination, Sauvola for uneven (per-crop
+  choice via low-pass illumination estimate), GrabCut refinement.
+  On a controlled gradient crop: mask IoU lifts from 0.258 to 0.927.
+
+
+INTERCHANGE (utils/interchange.py)
+  XLIFF 1.2 (standard, SDL, Crowdin, Smartling variants), TMX, TSV,
+  CSV, TXT export and import. Region IDs (r1, r2, …) as immutable
+  segment identifiers. Round-trip integrity enforced.
+
+
+GLOSSARY (utils/glossary.py)
+  Glossary ingestion (.xlsx/.xls/.csv/.json) and cascading resolution
+  for Basil. Conservative parser — malformed files fail explicitly.
+  Locale tags retained (en-US ≠ en-EU).
+
+
+VTM (utils/vtm.py)
+  Open Visual Translation Memory format (VTM v1.0, MIT). The record
+  that carries geometry, style, and provenance alongside source/target
+  text — what a conventional TMX segment discards. Published spec,
+  JSON schema, conformance vectors, and reference implementation.
+  Rides alongside XLIFF (§7 extension namespace) — a CAT tool with
+  no VTM support round-trips the file unharmed.
+
+
+PHASH (utils/phash.py)
+  DCT perceptual hash for visual TM matching. 32×32 grayscale, 2D
+  DCT, top-left 8×8 block thresholded against the median.
+
+
+TEXTMATCH (utils/textmatch.py)
+  Normalization plus fuzzy text similarity (difflib.SequenceMatcher).
+
+
+CORRECTION RESOURCES (utils/correction_resources.py)
+  Versioned, integrity-checked correction dictionaries. Correction
+  data is kept outside algorithms so it can be reviewed, upgraded,
+  and rolled back without changing Python code. A resource checksum
+  covers the canonical entries payload; metadata evolves
+  independently under schema_version. Loaded from
+  src/tofu/resources/corrections/ (menu/, wasabi/).
+
+
+MANIFEST STORE (utils/manifest_store.py)
+  JSON-based persistence for TextManifest objects so the frontend
+  can auto-save and restore the interactive preview state across
+  sessions. Each manifest is stored as uploads/{asset_id}.manifest.json.
+  Full round-trip serialization for all nested dataclasses.
+
+
+TRANSLATE (utils/translate.py)
+  Pluggable machine-translation seam. TranslatorBackend ABC so an
+  MT provider (DeepL, Google, an LLM, a TM lookup) can slot in later
+  behind a stable interface. NullTranslator is the default — the
+  product workflow is TMS round-trip, no MT provider is wired.
+
+
+TRANSLATION WORKFLOW (utils/translation_workflow.py)
+  Local-first translation proposal and decision primitives. Owns
+  stable attempt IDs, stale-source evidence, deterministic
+  validators, and an append-only decision history. Placeholder and
+  number preservation across source/target. Cloud providers
+  intentionally do not live here.
+
+
+─────────────────────────────────────────────────────────────
+SERVER & FRONTEND
+─────────────────────────────────────────────────────────────
+
+
+SERVER (server/main.py + db.py + capabilities.py)
+  FastAPI backend. REST API for detection, cleansing, rendering,
+  validation, memory, XLIFF/VTM export, glossary ingest, bounding-box
+  refinement, project management, and session snapshots. SQLite for
+  TM storage, thumbnail persistence, projects, project_assets,
+  snapshots, and events. Three isolated venvs: .venv (app),
+  .venv-paddle (PaddleOCR), .venv-inpaint (LaMa/BrushNet).
+
+  db.py: persistent project/session storage. Schema: projects,
+  project_assets, snapshots (full manifest JSON — the "data is never
+  lost" ledger), events. WAL mode, idempotent writes.
+
+  capabilities.py: read-only runtime capability inventory for the
+  API and diagnostics UI. No model construction, downloads, or
+  remote probes — cheap and safe even when every optional backend
+  is absent.
+
+
+FRONTEND (frontend/src/)
+  React 19 + TypeScript SPA, Vite, Tailwind CSS 4, MUI, Lucide icons.
+  Capture screen with bbox drawing, region table with per-region
+  editing, font manager with category filter (SIFT), language
+  selectors, garnish controls, memory panel, glossary panel,
+  import/export panel, history panel (snapshots), semantic
+  substitution panel (Basil), smart-fill review (neural repair),
+  perspective handles, rotation dial, toast notifications, dark/light
+  theme. Localized Asset Canvas with healing brush and lasso.
+  Proxies /api to port 8000. Frontend unit tests via vitest
+  (doppelganger, fontCatalog, perspective).
+
+
+─────────────────────────────────────────────────────────────
+DEPENDENCY PHILOSOPHY
+─────────────────────────────────────────────────────────────
+
+
+  Heavy backends are optional and resolved at call time, never at
+  import. PaddleOCR and LaMa run out-of-process under isolated
+  interpreters. scikit-image, uharfbuzz, freetype-py degrade to
+  reduced-quality paths when absent. Importing `tofu` pulls in none
+  of them (~70 ms, no torch/OpenCV).
+
+  Three interpreters on purpose:
+    .venv          app + pipeline (CPU torch)         server/requirements.txt
+    .venv-paddle   PP-OCRv5/v6, CJK detection         server/requirements-paddle.txt
+    .venv-inpaint  LaMa neural repair (CUDA torch)    server/requirements-inpaint.txt
+
+  No [paddle] or [inpaint] pip extra — paddlepaddle force-replaces
+  numpy/opencv on install. ToFU discovers them at runtime and degrades
+  cleanly when absent.
+
+
+─────────────────────────────────────────────────────────────
+PIPELINE DIAGRAM (v2)
+─────────────────────────────────────────────────────────────
 
 
 ┌─────────────────────────────────────────────────────────────┐
@@ -159,40 +615,122 @@ arg defs
 └─────────────────────────┬───────────────────────────────────┘
                           ▼
 ┌─────────────────────────────────────────────────────────────┐
-│  🛡️ Layer 0: tofu() ──────── [ AUTO/MANUAL ]              │
-│  Pre-flight validation & script support check              │
+│  🛡️ Layer 0: tofu() ──────── [ AUTO/MANUAL/HYBRID ]        │
+│  Pre-flight validation: script support, glyph coverage,     │
+│  expansion feasibility, render quality                      │
+└─────────────────────────┬───────────────────────────────────┘
+                          ▼
+┌─────────────────────────────────────────────────────────────┐
+│  🧠 Layer 2: scene() ──────── [ AUTO/MANUAL ]  ◄── PRE-PASS │
+│  Candidate text-bearing surfaces constrain detection        │
 └─────────────────────────┬───────────────────────────────────┘
                           ▼
 ┌─────────────────────────────────────────────────────────────┐
 │  🔍 Layer 1: cicerone() ───── [ AUTO/MANUAL ]              │
-│  Text detection & localization                             │
+│  Multi-pass text detection + recognition                    │
+│  + savor() + menu() + wasabi() (post-recognition QC)       │
 └─────────────────────────┬───────────────────────────────────┘
                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│  🧠 Layer 2: scene() ──────── [ AUTO/MANUAL ]              │
-│  Semantic context & style analysis                         │
+│  🛡️ Layer 0: tofu() ──────── RE-VALIDATION                 │
+│  Real region geometry, expansion feasibility                │
+└─────────────────────────┬───────────────────────────────────┘
+                          ▼
+│  🧠 Layer 2: scene() ──────── ENRICHMENT                   │
+│  Per-instance StyleProfil + BgProfil                       │
+│  + typography() + font_matching()                          │
 └─────────────────────────┬───────────────────────────────────┘
                           ▼
 ┌─────────────────────────────────────────────────────────────┐
 │  🧹 Layer 3: cleanse() ────── [ AUTO/MANUAL ]              │
-│  Text erasure & inpainting                                 │
+│  Text erasure + background reconstruction                  │
+│  + inpaint_providers() (LaMa/BrushNet, evidence-gated)     │
 └─────────────────────────┬───────────────────────────────────┘
                           ▼
 ┌─────────────────────────────────────────────────────────────┐
-│  ✍️ Layer 4: scribe() ──────── [ AUTO/MANUAL ]              │
-│  Style-aware text regeneration                             │
+│  ✍️ Layer 4: scribe() ──────── [ AUTO/MANUAL ]             │
+│  Style-aware target-language rendering                     │
+│  + knead() (HarfBuzz/FreeType for Brahmic scripts)         │
+│  + basil() (semantic registration & substitution)          │
 └─────────────────────────┬───────────────────────────────────┘
                           ▼
 ┌─────────────────────────────────────────────────────────────┐
+│  🎨 Layer 4b: garnish() ───── [ AUTO/MANUAL ]              │
+│  Post-Scribe source-wear edge treatment                    │
+└─────────────────────────┬───────────────────────────────────┘
+                          ▼
 │  ✅ Layer 5: verify() ──────── [ AUTO/MANUAL ]              │
-│  Quality verification & QA                                 │
+│  Quality scoring: OCR round-trip, SSIM, ink presence,      │
+│  residual text, style consistency                          │
 └─────────────────────────┬───────────────────────────────────┘
                           ▼
 ┌─────────────────────────────────────────────────────────────┐
 │  ♻️ Layer 6: memory() ──────── [ AUTO/MANUAL ]              │
-│  Visual translation memory update                          │
+│  Visual translation memory (QA-gated, three-tier match)    │
 └─────────────────────────┬───────────────────────────────────┘
                           ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                       OUTPUT ASSET                          │
+│              + TextManifest + QAReport + VTM               │
 └─────────────────────────────────────────────────────────────┘
+
+
+─────────────────────────────────────────────────────────────
+IMPLEMENTATION COMPLETENESS (from cross-layer audit)
+─────────────────────────────────────────────────────────────
+
+
+  ToFU      80%   fontTools, unicodedata
+  Cicerone  82%   EasyOCR, PaddleOCR, Pillow, OpenCV
+  Scene     75%   OpenCV, (Segment Anything)
+  Cleanse   80%   OpenCV, NumPy, (LaMa, BrushNet)
+  Scribe    83%   Pillow, OpenCV, (uharfbuzz, freetype-py)
+  Basil     72%   Pure Python, (Stanza)
+  Wasabi    65%   Pure Python
+  Menu      70%   Pure Python, (Savor pixels)
+  Garnish   68%   Pillow, OpenCV, NumPy
+  Memory    74%   OpenCV (pHash), difflib
+  Savor     73%   Pillow, OpenCV, NumPy
+  Verify    80%   EasyOCR, NumPy, OpenCV
+
+  Aggregate system completeness: ~76%
+
+  The static image pipeline is functional end-to-end.
+  The video pipeline is entirely unimplemented (data structures
+  exist, no temporal processing).
+
+  Greatest strength: evidence-gated, provenance-tracked correction
+  chain — including its record of what it declined to do.
+  Greatest gap: absence of learned models for render-quality
+  prediction, surface classification, and holistic QA.
+
+
+─────────────────────────────────────────────────────────────
+RESOURCES
+─────────────────────────────────────────────────────────────
+
+
+  src/tofu/resources/corrections/
+    Versioned correction data loaded by correction_resources.py:
+      menu/     gazetteer entries for Menu (known-place recovery)
+      wasabi/   CJK variant normalisation maps for Wasabi
+
+  spec/
+    VTM v1.0 specification (vtm-1.0.md), JSON schema
+    (vtm-1.0.schema.json), and conformance vectors (valid/ and
+    invalid/ documents with index.json).
+
+  images/
+    Sample images with ground-truth annotations (*.gt.json):
+    japan-street, china-street, avenue-de-la-république,
+    la-rue-sans-nom, gemini-street. Logo assets (tofu-*.png/svg).
+
+  scripts/
+    Evaluation harnesses per layer (eval_detect, eval_paddle,
+    eval_cleanse_providers, eval_render, eval_font_match,
+    eval_memory, eval_savor, eval_tofu, eval_verification_corpus).
+    Out-of-process runners (paddle_worker, inpaint_lama_runner,
+    inpaint_brushnet_runner). Fixture generator (make_fixtures).
+    Verification corpora (JSON).
+
+  playground/
+    Interactive playground app (app.py) for manual exploration.

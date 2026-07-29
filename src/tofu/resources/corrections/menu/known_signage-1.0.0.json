@@ -1,0 +1,29 @@
+{
+  "id": "menu.known-signage",
+  "kind": "gazetteer",
+  "locale": "multi",
+  "schema_version": "1",
+  "data_version": "1.0.0",
+  "checksum": "sha256:c7a0987c22f4f2a572f7869b1f8832563e8a7553deb9add0daa93270903b50d5",
+  "provenance": {
+    "maintainer": "ToFU",
+    "method": "curated common real-world signage",
+    "source": "project correction corpus"
+  },
+  "license": "MIT",
+  "entries": [
+    {"text": "歓迎", "language": "ja"},
+    {"text": "入口", "language": "ja"},
+    {"text": "出口", "language": "ja"},
+    {"text": "案内", "language": "ja"},
+    {"text": "注意", "language": "ja"},
+    {"text": "営業中", "language": "ja"},
+    {"text": "準備中", "language": "ja"},
+    {"text": "駐車場", "language": "ja"},
+    {"text": "観光案内所", "language": "ja"},
+    {"text": "欢迎", "language": "zh-cn"},
+    {"text": "入口", "language": "zh-cn"},
+    {"text": "出口", "language": "zh-cn"},
+    {"text": "停车场", "language": "zh-cn"}
+  ]
+}

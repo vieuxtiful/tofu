@@ -123,6 +123,14 @@ class TestScribe:
         # alpha fill, which made the join visibly discernible when zoomed.
         assert 120 <= ink.max() <= 128
 
+    def test_excessive_outline_is_capped_relative_to_font_size(self):
+        class Font:
+            size = 40
+
+        assert scribe._effective_stroke_width(100, Font()) == 6
+        assert scribe._effective_stroke_width(2.6, Font()) == 3
+        assert scribe._effective_stroke_width(-4, Font()) == 0
+
     def test_untranslated_region_left_empty(self):
         asset = make_asset(color=(255, 255, 255))
         out = scribe.render(asset, make_manifest([text_inst(target=None)]), "en")

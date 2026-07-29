@@ -1,0 +1,8 @@
+{
+  "partial": false,
+  "note": "COMPLETE GT (not partial): 677x453 photo, French enamel street plaque on rough limestone masonry. The wall carries no text whatsoever outside the plaque, so every detection outside these two boxes is a genuine false positive -- which is the point of this asset. Precision/FP are the headline metrics here; recall is trivially easy (two large high-contrast regions). Annotated 2026-07-28 by crop verification at 4x. Boxes seeded from the two >=0.86-confidence detections and visually confirmed tight against the glyph extents. Known adversarial spot: a shadowed crack between two stones at roughly (426,100,34x52) reads as the digit '7' -- it is masonry, not text.",
+  "regions": [
+    {"bbox": [150, 122, 155, 51], "text": "AVENUE",           "lang": "fr"},
+    {"bbox": [120, 171, 214, 57], "text": "de la RÉPUBLIQUE", "lang": "fr"}
+  ]
+}

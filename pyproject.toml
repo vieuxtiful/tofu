@@ -79,7 +79,7 @@ where = ["src"]
 include = ["tofu*"]
 
 [tool.setuptools.package-data]
-tofu = ["py.typed"]
+tofu = ["py.typed", "resources/corrections/**/*.json"]
 
 ## Single source of truth. The version lives in tofu/__init__.py and is read
 ## from there -- it used to be a literal in interchange.py, which had already

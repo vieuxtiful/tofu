@@ -40,6 +40,7 @@ class TestSeason:
         assert inst.text == "劇場通"
         assert inst.ocr_correction["applied"] is True
         assert inst.ocr_correction["original_text"] == "剧場通"
+        assert inst.ocr_correction["correction_resource"]["data_version"] == "1.0.0"
 
     def test_non_ja_instance_untouched(self):
         inst = _inst("烧肉", lang="zh-cn")

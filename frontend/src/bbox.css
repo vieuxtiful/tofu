@@ -139,6 +139,51 @@
   50% { box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.1); }
 }
 
+/* optional arrival blink (Settings → Capture) — pulses the viewfinder
+   brackets only.  Deliberately NOT on .bbox itself: .bbox-low-conf already
+   owns that element's `animation` property and .selected/.hovered own its
+   `box-shadow`, so the corners are the one layer that can carry a blink
+   while leaving every existing state rendering exactly as it was. */
+.bbox-blink .bbox-corners {
+  animation: bbox-blink 1.4s ease-in-out infinite;
+}
+
+@keyframes bbox-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+
+/* one-off arrival shimmer for regions the server just handed us.
+   Two 0.5s passes = 1s total; the clip container keeps the sweep inside
+   the box so it reads as the box lighting up, not a stripe crossing it. */
+.bbox-shimmer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 2px;
+  pointer-events: none;
+  z-index: 1;
+}
+.bbox-shimmer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 60%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--bbox-color, #22d3ee) 45%, transparent),
+    transparent
+  );
+  animation: bbox-shimmer 0.5s ease-in-out 2;
+}
+
+@keyframes bbox-shimmer {
+  from { transform: translateX(-170%); }
+  to { transform: translateX(270%); }
+}
+
 /* selected state */
 .bbox.selected {
   box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.3);
@@ -326,4 +371,19 @@ html.dark .bbox-meta-tooltip {
 }
 .bbox-canvas-scroll::-webkit-scrollbar:vertical {
   width: 6px;
+}
+
+/* every bbox animation in one place, including the two that predate the
+   blink setting (the always-on scan sweep and the low-confidence pulse) —
+   a canvas full of boxes is exactly the case this media query exists for */
+@media (prefers-reduced-motion: reduce) {
+  .bbox::after,
+  .bbox-low-conf,
+  .bbox-blink .bbox-corners,
+  .bbox-shimmer::after {
+    animation: none;
+  }
+  .bbox-shimmer {
+    display: none;
+  }
 }

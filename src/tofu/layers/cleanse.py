@@ -39,7 +39,7 @@ import hashlib
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from tofu.core.types import TextManifest
+from tofu.core.types import InpaintAssessmentPolicy, TextManifest
 from tofu.utils.imaging import text_mask as _text_mask
 from tofu.layers import inpaint_providers
 
@@ -430,7 +430,160 @@ def _stroke_px(inst) -> Optional[float]:
     return ratio * ch.size
 
 
-def erase(asset: Any, text_manifest: TextManifest, candidate_observer=None) -> Any:
+def _perspective_repair_context(cv2, np, image, mask, inst):
+    """Return rectified provider inputs plus an original-space restorer.
+
+    The existing normalized StyleProfil quad is authoritative. Degenerate,
+    identity, or implausibly large transforms fail open to the normal path.
+    """
+    style = getattr(inst, "style_profile", None)
+    transform = getattr(style, "transform", None) if style else None
+    quad = transform.get("quad") if isinstance(transform, dict) else None
+    source_kind = "style_transform"
+    profile = getattr(inst, "reconstruction_profile", None)
+    if (
+        not quad and profile is not None
+        and getattr(profile, "perspective_confidence", 0.0) >= .70
+    ):
+        quad = getattr(profile, "perspective_quad", None)
+        source_kind = "reconstruction_profile"
+    if not isinstance(quad, (list, tuple)) or len(quad) != 4:
+        return image, mask, None, {"applied": False, "reason": "no_valid_quad"}
+    try:
+        points = np.asarray(quad, dtype=np.float32).reshape(4, 2)
+        if not np.isfinite(points).all():
+            raise ValueError("non-finite quad")
+        bbox = inst.bounding_box
+        # Style quads are normalized to the immutable source bbox. A
+        # reconstruction profile may carry image-space points.
+        if source_kind == "style_transform":
+            unit = np.asarray(((0, 0), (1, 0), (1, 1), (0, 1)), dtype=np.float32)
+            if float(np.max(np.abs(points - unit))) < .01:
+                return image, mask, None, {"applied": False, "reason": "identity_quad"}
+            points[:, 0] = bbox.x + points[:, 0] * bbox.width
+            points[:, 1] = bbox.y + points[:, 1] * bbox.height
+        area = abs(float(cv2.contourArea(points)))
+        top = float(np.linalg.norm(points[1] - points[0]))
+        bottom = float(np.linalg.norm(points[2] - points[3]))
+        left = float(np.linalg.norm(points[3] - points[0]))
+        right = float(np.linalg.norm(points[2] - points[1]))
+        width = int(round(max(top, bottom)))
+        height = int(round(max(left, right)))
+        if area < 25 or min(width, height) < 6 or max(width, height) > 4096:
+            raise ValueError("degenerate quad")
+        target = np.asarray(
+            ((0, 0), (width - 1, 0), (width - 1, height - 1), (0, height - 1)),
+            dtype=np.float32,
+        )
+        matrix = cv2.getPerspectiveTransform(points, target)
+        inverse = cv2.getPerspectiveTransform(target, points)
+        rectified_image = cv2.warpPerspective(
+            image, matrix, (width, height), flags=cv2.INTER_LINEAR,
+            borderMode=cv2.BORDER_REFLECT_101,
+        )
+        rectified_mask = cv2.warpPerspective(
+            mask.astype(np.uint8), matrix, (width, height),
+            flags=cv2.INTER_NEAREST,
+        ).astype(bool)
+        if not rectified_mask.any():
+            raise ValueError("empty rectified mask")
+
+        def restore(candidate):
+            restored = cv2.warpPerspective(
+                np.asarray(candidate, dtype=np.uint8), inverse,
+                (image.shape[1], image.shape[0]), flags=cv2.INTER_LINEAR,
+                borderMode=cv2.BORDER_REFLECT_101,
+            )
+            composed = np.asarray(image, dtype=np.uint8).copy()
+            composed[mask] = restored[mask]
+            return composed
+
+        return rectified_image, rectified_mask, restore, {
+            "applied": True,
+            "source": source_kind,
+            "quad": points.tolist(),
+            "rectified_size": [width, height],
+        }
+    except Exception as exc:
+        return image, mask, None, {
+            "applied": False,
+            "reason": f"invalid_quad:{type(exc).__name__}",
+        }
+
+
+def _verify_final_cleanse(
+    np,
+    cv2,
+    source,
+    working,
+    plans: List[Dict[str, Any]],
+    policy: InpaintAssessmentPolicy,
+) -> None:
+    """Fresh Paddle check of final pre-Scribe pixels with bounded source retries."""
+    if not plans or not policy.require_residual_verification:
+        return
+    from tofu.layers.ocr_verification import PaddleRegionVerifier
+    verifier = PaddleRegionVerifier()
+    active = [plan for plan in plans if (plan["inst"].text or "").strip()]
+    if not active:
+        return
+    for attempt in range(max(0, policy.retry_budget) + 1):
+        results = verifier.verify_regions(
+            working,
+            [plan["inst"].bounding_box for plan in active],
+            [plan["inst"].text for plan in active],
+        )
+        retry: List[Dict[str, Any]] = []
+        for plan, result in zip(active, results):
+            inst = plan["inst"]
+            evidence = result.evidence()
+            evidence["attempt"] = attempt
+            provenance = inst.repair_provenance or {}
+            checks = provenance.setdefault("residual_checks", [])
+            checks.append(evidence)
+            source_like = (
+                result.state == "agree"
+                and result.confidence >= .50
+                and (result.similarity or 0.0) >= .30
+            )
+            hallucinated = result.state == "disagree" and result.confidence >= .70
+            unavailable = result.state in {"unavailable", "error"}
+            if source_like or hallucinated or unavailable:
+                provenance["auto_accepted"] = False
+                provenance["review_required"] = True
+                provenance["residual_verification"] = (
+                    "source_text" if source_like else
+                    "hallucinated_text" if hallucinated else result.state
+                )
+            else:
+                provenance["residual_verification"] = "passed"
+            inst.repair_provenance = provenance
+            if (source_like or hallucinated) and attempt < policy.retry_budget:
+                retry.append(plan)
+        if not retry:
+            break
+        # Every retry is reconstructed from the untouched source, never from a
+        # prior invented fill. Expand only the implicated region's mask.
+        for plan in retry:
+            expanded = cv2.dilate(
+                plan["mask"].astype(np.uint8), np.ones((3, 3), np.uint8),
+                iterations=attempt + 1,
+            ).astype(bool)
+            telea = cv2.inpaint(
+                source, expanded.astype(np.uint8) * 255,
+                TELEA_RADIUS_DEFAULT, cv2.INPAINT_TELEA,
+            )
+            working[expanded] = telea[expanded]
+            plan["mask"] = expanded
+        active = retry
+
+
+def erase(
+    asset: Any,
+    text_manifest: TextManifest,
+    candidate_observer=None,
+    assessment_policy: Optional[InpaintAssessmentPolicy] = None,
+) -> Any:
     """erase detected text regions and reconstruct the background.
 
     per-region strategy is selected from inst.background_profile.texture
@@ -466,6 +619,7 @@ def erase(asset: Any, text_manifest: TextManifest, candidate_observer=None) -> A
     img_array = np.array(base.convert("RGB"))
     h, w = img_array.shape[:2]
     working = img_array.copy()
+    assessment_policy = assessment_policy or InpaintAssessmentPolicy()
 
     # Plan every mask against the untouched source first.  Selection and
     # model-routing must never depend on pixels invented by an earlier repair.
@@ -536,46 +690,96 @@ def erase(asset: Any, text_manifest: TextManifest, candidate_observer=None) -> A
         group_mask = np.zeros((h, w), dtype=bool)
         for plan in group:
             group_mask |= plan["mask"]
-        provider_id = group[0]["provider"]
         group_ids = [plan["inst"].id for plan in group]
         group_key = _repair_group_key(np, group, group_mask)
-        outcome = inpaint_providers.repair(provider_id, img_array, group_mask)
-        repaired = outcome.image
-        accepted, quality = (
-            inpaint_providers.quality_gate(img_array, repaired, group_mask)
-            if repaired is not None else
-            (False, {"passed": False, "score": 0.0, "reason": "provider returned no candidate"})
+        repair_image, repair_mask, restore_candidate, perspective = (
+            _perspective_repair_context(
+                cv2, np, img_array, group_mask, group[0]["inst"]
+            )
+            if len(group) == 1 else
+            (img_array, group_mask, None, {
+                "applied": False, "reason": "multi_region_group",
+            })
         )
-        provider_promoted = bool(inpaint_providers.provider_spec(provider_id).promoted)
-        accepted = bool(accepted and provider_promoted)
-        decision = "accepted" if accepted else (
-            "unpromoted_provider" if repaired is not None and not provider_promoted else "quality_gate_rejected"
-        )
-        artifact = None
-        if repaired is not None and candidate_observer is not None:
+        artifacts: Dict[str, Any] = {}
+
+        def observe_candidate(info, candidate):
+            if candidate_observer is None:
+                return
             try:
-                artifact = candidate_observer({
-                    "group_key": group_key,
-                    "group_ids": group_ids,
-                    "provider": provider_id,
-                    "execution": outcome.evidence(),
-                    "quality_gate": quality,
-                    "decision": decision,
-                }, repaired, group_mask)
+                artifacts[info["candidate_id"]] = candidate_observer({
+                    **info, "group_key": group_key, "group_ids": group_ids,
+                    "decision": "candidate",
+                }, candidate, group_mask)
             except Exception:
-                # Candidate presentation is useful evidence, never an
-                # availability dependency for Cleanse or final rendering.
-                artifact = None
+                artifacts[info["candidate_id"]] = None
+
+        if assessment_policy.mode == "multi":
+            multi = inpaint_providers.repair_multi_candidate(
+                repair_image,
+                repair_mask,
+                max_candidates=assessment_policy.max_neural_candidates,
+                on_candidate=observe_candidate,
+                candidate_transform=restore_candidate,
+                quality_image=img_array if restore_candidate is not None else None,
+                quality_mask=group_mask if restore_candidate is not None else None,
+            )
+            outcome = multi.selected
+            candidate_evidence = multi.candidates
+            repaired = outcome.image if outcome is not None else None
+            accepted = outcome is not None
+            provider_id = outcome.provider if outcome is not None else None
+            decision = "accepted" if accepted else "all_candidates_rejected"
+        else:
+            provider_id = group[0]["provider"]
+            outcome = inpaint_providers.repair(provider_id, repair_image, repair_mask)
+            repaired = (
+                restore_candidate(outcome.image)
+                if restore_candidate is not None and outcome.image is not None
+                else outcome.image
+            )
+            passed, quality = (
+                inpaint_providers.quality_gate(img_array, repaired, group_mask)
+                if repaired is not None else
+                (False, {"passed": False, "score": 0.0, "reason": "provider returned no candidate"})
+            )
+            accepted = bool(passed and inpaint_providers.provider_spec(provider_id).promoted)
+            candidate_evidence = [{
+                "candidate_id": f"{provider_id}:0", "provider": provider_id,
+                "execution": outcome.evidence(), "quality_gate": quality,
+                "eligible": accepted, "selected": accepted,
+            }]
+            if repaired is not None:
+                observe_candidate(candidate_evidence[0], repaired)
+            decision = "accepted" if accepted else "quality_gate_rejected"
         for plan in group:
             inst = plan["inst"]
             if inst.repair_provenance:
-                inst.repair_provenance["execution"] = outcome.evidence()
-                inst.repair_provenance["quality_gate"] = quality
+                inst.repair_provenance["execution"] = (
+                    outcome.evidence() if outcome is not None else {"ok": False}
+                )
                 inst.repair_provenance["repair_group"] = group_ids
                 inst.repair_provenance["repair_group_key"] = group_key
-            _record_candidate(inst, provider_id, accepted,
-                              {"execution": outcome.evidence(), "quality_gate": quality,
-                               "artifact": artifact}, decision, group_ids)
+                inst.repair_provenance["selection_reason"] = decision
+                inst.repair_provenance["perspective"] = perspective
+            for item in candidate_evidence:
+                artifact = artifacts.get(item["candidate_id"])
+                _record_candidate(
+                    inst,
+                    item["provider"],
+                    bool(item.get("selected")),
+                    {
+                        "execution": item.get("execution"),
+                        "quality_gate": item.get("quality_gate"),
+                        "artifact": artifact,
+                        "candidate_id": item["candidate_id"],
+                    },
+                    "accepted" if item.get("selected") else (
+                        "unpromoted_provider" if not item.get("promoted", True)
+                        else "quality_gate_rejected"
+                    ),
+                    group_ids,
+                )
         if accepted and repaired is not None and repaired.shape == img_array.shape:
             # The provider had to preserve the full known context to pass the
             # gate.  We still blend only inside the selected erase footprint.
@@ -593,7 +797,7 @@ def erase(asset: Any, text_manifest: TextManifest, candidate_observer=None) -> A
             for plan in group:
                 inst = plan["inst"]
                 if inst.repair_provenance:
-                    inst.repair_provenance["rejected_candidate"] = provider_id
+                    inst.repair_provenance["rejected_candidate"] = provider_id or "all"
                     inst.repair_provenance["executed_provider"] = "telea_fallback"
                     inst.repair_provenance["auto_accepted"] = False
                     inst.repair_provenance["review_required"] = True
@@ -611,6 +815,10 @@ def erase(asset: Any, text_manifest: TextManifest, candidate_observer=None) -> A
         # accumulate order-dependent repairs across regions.
         telea = cv2.inpaint(img_array, telea_mask.astype(np.uint8) * 255, radius, cv2.INPAINT_TELEA)
         working[telea_mask] = telea[telea_mask]
+
+    _verify_final_cleanse(
+        np, cv2, img_array, working, plans, assessment_policy
+    )
 
     if touched:
         base = base.convert("RGBA")

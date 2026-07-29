@@ -1,18 +1,20 @@
-## 🍢 wasabi — Japanese/simplified-Chinese glyph normalization
+## 🍢 Wasabi — ja-JP/zh-Cn glyph normalization
+## vieuxtiful
 """
 PaddleOCR's "japan" language selector doesn't get a Japanese-specific
-recognition model: in the installed paddleocr build, `lang="japan"`
+recognition model. In ToFU's build (re: paddleocr), `lang="japan"`
 resolves to the SAME shared PP-OCRv6_medium_rec model used for
-`"ch"`/`"chinese_cht"`/`"en"` (confirmed by inspecting the cached
-model's own README, which lists `language: [en, zh]` -- Japanese isn't
+`"ch"`/`"chinese_cht"`/`"en"` (verification: cached
+model's README, which lists `language: [en, zh]` -- Japanese isn't
 even an officially supported language of it). That model's CTC decode
 vocabulary contains both a simplified-Chinese-only glyph form and the
 correct Japanese shinjitai form as separate valid output tokens, with
 no language-conditioning to prefer the right one -- so a `ja`-labeled
 read can confidently emit a Chinese-only character (measured live:
-`劇場通り` read back as `剧場通`, `焼肉` read back as `烧肉`). This is a
-real, confirmed characteristic of the model itself, not something
-fixable by how ToFU calls it -- so this module corrects it after the
+`劇場通り` read back as `剧場通`, `焼肉` read back as `烧肉`). 
+
+This is a real, confirmed characteristic of the model itself, not something
+fixable by how ToFU calls it -- thus, this module corrects it after the
 fact instead.
 
 `season()` is the module's one public entry point (mirrors every other
@@ -26,6 +28,7 @@ which engine or pass produced it.
 from typing import Dict, List
 
 from tofu.core.types import InstText
+from tofu.utils.correction_resources import load_correction_resource, variant_pairs
 
 # curated, growable pairs of (simplified-Chinese-only glyph, Japanese
 # shinjitai equivalent) confirmed to be confused by PaddleOCR's shared
@@ -35,11 +38,10 @@ from tofu.core.types import InstText
 # the same simplification), so only genuinely observed divergent pairs
 # belong here. add a pair only once it's actually been seen in
 # production output, the same discipline menu.py's gazetteer follows.
-SIMPLIFIED_TO_JAPANESE: Dict[str, str] = {
-    "剧": "劇",  # theater: 劇場通り read back as 剧場通
-    "烧": "焼",  # burn/grill: 焼肉/焼皮 read back as 烧肉/烧皮
-    "岛": "島",  # island: 下島 read back as 下岛
-}
+VARIANT_RESOURCE = load_correction_resource(
+    "wasabi/simplified_to_japanese-1.0.0.json"
+)
+SIMPLIFIED_TO_JAPANESE: Dict[str, str] = variant_pairs(VARIANT_RESOURCE)
 
 
 def normalize_japanese_kanji(text: str) -> str:
@@ -74,6 +76,7 @@ def season(instances: List[InstText]) -> int:
             "original_text": text,
             "corrected_text": fixed,
             "reason": "simplified-Chinese glyph form normalized to Japanese shinjitai",
+            "correction_resource": VARIANT_RESOURCE.audit_identity(),
         }
         inst.text = fixed
         corrected += 1

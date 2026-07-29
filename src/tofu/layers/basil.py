@@ -733,6 +733,180 @@ def _same_language(left: InstText, right: InstText) -> bool:
     return not left_lang or not right_lang or left_lang == right_lang
 
 
+def _weight_bucket(inst: InstText) -> str:
+    """Coarse weight class from the region's DETECTED typography.
+
+    Reads ``characteristics.font_style`` -- what capture measured off the
+    pixels -- in preference to ``style_profile.font_weight``, which is the
+    localiser's own pick.  The order used to be the other way round, and
+    that made cohort membership a function of the user's downstream
+    choices: choose a bold face for two regions of a three-region sign and
+    the third falls into a different bucket, ``_same_hand`` then fails on
+    every pair crossing that boundary, and the sign's font evidence
+    fragments into bouquets that go on to disagree with each other.  A
+    bouquet is a claim about how the sign WAS PRINTED, and nothing a user
+    selects afterwards can retroactively change that.
+
+    The pick is still consulted when capture recorded no style at all --
+    some evidence beats none, and an unstyled manifest keeps its old
+    behaviour exactly.
+    """
+    detected = getattr(getattr(inst, "characteristics", None), "font_style", None)
+    value = str((detected or "") or "").lower()
+    if not value:
+        style = getattr(inst, "style_profile", None)
+        value = str((getattr(style, "font_weight", None) or "") or "").lower()
+    if any(token in value for token in ("heavy", "black", "ultra")):
+        return "heavy"
+    if "bold" in value:
+        return "bold"
+    if "light" in value or "thin" in value:
+        return "light"
+    return "regular"
+
+
+# A scene region only speaks for "these share one physical surface" when
+# it is actually a bordered thing and the detector meant it.  Shared by
+# bunch() and bouquet() so the two can never drift apart on what counts as
+# a sign.
+_PANEL_LABELS = {"panel", "bordered_region"}
+_PANEL_MIN_CONFIDENCE = 0.35
+
+
+def _same_hand(left: InstText, right: InstText) -> bool:
+    """Could these two regions have been set in the SAME typeface?
+
+    Deliberately narrower than semantic cohesion: two lines can belong to
+    one phrase yet be set in different faces (a headline over its own
+    fine print), and conversely two unrelated words on one shopfront can
+    share a face.  So this asks only about the drawing of the letters.
+
+    Reuses ``_cohesive``'s gates rather than inventing a second set --
+    that function is already documented as "typographic agreement:
+    same-ish glyph size, same ink where known" and its colour tolerance
+    is the one cicerone tuned for sampled sign colour.  Proximity is
+    required on top, because ink colour and glyph height alone will
+    happily unite two different shops' signage across a street scene.
+    """
+    if not _nearby(left, right):
+        return False
+    if not _cohesive(left, right):
+        return False
+    if _weight_bucket(left) != _weight_bucket(right):
+        return False
+    left_italic = bool(getattr(getattr(left, "style_profile", None), "italic", False))
+    right_italic = bool(getattr(getattr(right, "style_profile", None), "italic", False))
+    return left_italic == right_italic
+
+
+def bouquet(manifest: TextManifest) -> List[Dict[str, Any]]:
+    """Tie regions that appear to be set in one typeface into a bundle.
+
+    A bouquet garni is bound once and seasons the whole pot; these are the
+    regions that should end up seasoned by one font decision rather than
+    each arguing for its own.
+
+    Why this has to exist: font_matching scores every region in ISOLATION,
+    and a region's glyph silhouette is a small, noisy sample of a typeface.
+    Measured on the la-rue-sans-nom plaque -- a single enamel sign, one
+    face, two lines -- "La rue" ranked Centaur (a serif) top at 0.784
+    while "SANS-NOM" ranked Franklin Gothic Demi Cond (a condensed sans)
+    top at 0.813.  Both cannot be right about one sign.  Eight wide capitals
+    and six mixed-case letters simply project different statistics, and
+    whichever face happens to win each small sample wins outright.
+
+    This layer contributes only the JUDGEMENT that a set of regions shares
+    a hand; font_matching still owns every score, because the pixel
+    evidence and the scoring kernel live there.
+
+    Regions reach one bundle by either of two routes: a confident scene
+    panel saying they share a physical surface, or pairwise ``_same_hand``
+    proximity.  Both then have to clear the same typographic gates.
+
+    Returns ``[{"id": "c1", "region_ids": [...]}, ...]`` for bundles of two
+    or more.  A lone region is not a bouquet -- it already has its own
+    answer and nothing to reconcile with.
+    """
+    eligible = [
+        inst for inst in manifest.instances
+        if not inst.excluded and (inst.text or "").strip()
+    ]
+    parent: Dict[str, str] = {inst.id: inst.id for inst in eligible}
+
+    def find(node: str) -> str:
+        while parent[node] != node:
+            parent[node] = parent[parent[node]]
+            node = parent[node]
+        return node
+
+    def union(a: str, b: str) -> None:
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[rb] = ra
+
+    def _panel_same_hand(left: InstText, right: InstText) -> bool:
+        """``_same_hand`` with the proximity question already answered.
+
+        Everything about the drawing of the letters still has to agree --
+        notably ``_cohesive``, so a headline and its own fine print stay
+        apart on the height ratio rather than being bound together merely
+        for sharing a frame.
+
+        The language gate is here and deliberately NOT in ``_same_hand``.
+        This is the permissive path, so it carries the guard that stops a
+        CJK headline being bound to its own romanisation across a wide
+        sign.  It can only ever withhold a NEW union: two adjacent regions
+        in different languages still meet through the pairwise pass below,
+        exactly as they did before.
+        """
+        return (
+            _same_language(left, right)
+            and _cohesive(left, right)
+            and _weight_bucket(left) == _weight_bucket(right)
+            and bool(getattr(getattr(left, "style_profile", None), "italic", False))
+            == bool(getattr(getattr(right, "style_profile", None), "italic", False))
+        )
+
+    # Scene pre-pass.  Inside a bordered sign the architecture has already
+    # answered the proximity question -- the same reasoning bunch() applies
+    # to panels, and the reason it groups on _alike rather than
+    # _adjacent_and_alike there.  It matters here because ``_nearby``
+    # allows a vertical gap of 1.6x glyph height, which a large plaque with
+    # generously leaded lines exceeds while still being unmistakably one
+    # sign set in one face.
+    #
+    # Strictly additive: union-find only ever merges, so this can add
+    # groupings the pairwise pass would miss and can never break one it
+    # would have made.  A manifest with no scene regions behaves
+    # identically to before.
+    for region in manifest.scene_regions or []:
+        if region.semantic_label not in _PANEL_LABELS or region.confidence < _PANEL_MIN_CONFIDENCE:
+            continue
+        members = [inst for inst in eligible if _contains(region.bbox, inst.bounding_box)]
+        for i, left in enumerate(members):
+            for right in members[i + 1:]:
+                if _panel_same_hand(left, right):
+                    union(left.id, right.id)
+
+    for i, left in enumerate(eligible):
+        for right in eligible[i + 1:]:
+            if _same_hand(left, right):
+                union(left.id, right.id)
+
+    order = [inst.id for inst in eligible]
+    grouped: Dict[str, List[str]] = {}
+    for region_id in order:
+        grouped.setdefault(find(region_id), []).append(region_id)
+
+    bundles: List[Dict[str, Any]] = []
+    for root in order:
+        members = grouped.get(root)
+        if not members or len(members) < 2:
+            continue
+        bundles.append({"id": f"c{len(bundles) + 1}", "region_ids": members})
+    return bundles
+
+
 def bunch(manifest: TextManifest, verdict: str) -> List[Dict[str, Any]]:
     """Group instances into candidate sprigs, gated on actual evidence.
 
@@ -753,7 +927,7 @@ def bunch(manifest: TextManifest, verdict: str) -> List[Dict[str, Any]]:
     candidates: List[Tuple[List[InstText], bool]] = []  # (members, from_panel)
 
     for region in manifest.scene_regions or []:
-        if region.semantic_label not in {"panel", "bordered_region"} or region.confidence < 0.35:
+        if region.semantic_label not in _PANEL_LABELS or region.confidence < _PANEL_MIN_CONFIDENCE:
             continue
         members = [inst for inst in visual
                    if inst.id not in claimed and _contains(region.bbox, inst.bounding_box)]

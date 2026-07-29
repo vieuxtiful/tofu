@@ -1454,27 +1454,52 @@ html.light .penumbra-switch {
 .garnish-controls-morph {
   display: flex;
   align-items: center;
-  flex: 0 1 0;
-  max-width: 0;
+  flex: 0 0 100%;
+  max-width: 100%;
   max-height: 0;
   overflow: hidden;
   opacity: 0;
   pointer-events: none;
   transition:
-    max-width 0.4s ease-in-out,
     max-height 0.4s ease-in-out,
     opacity 0.25s ease-out;
 }
 
+/* The scope selector belongs to the card's body, not its header: it reveals
+   with the sliders on expand and takes no room when collapsed.  Same motion
+   as .garnish-controls-morph so the two open together, but it never grows
+   into the sliders' space -- hence flex: 0 0 auto rather than 1 1 0%. */
+.garnish-scope-morph {
+  flex: 0 0 auto;
+  width: 14rem;
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    max-height 0.3s ease-in-out,
+    opacity 0.25s ease-out;
+}
+
+.garnish-scope-morph.expanded {
+  max-height: 2.5rem;
+  /* visible so the scope dropdown can escape the card once it is open */
+  overflow: visible;
+  opacity: 1;
+  pointer-events: auto;
+  transition:
+    max-height 0.3s ease-in-out,
+    opacity 0.25s ease-in 0.15s;
+}
+
 .garnish-controls-morph.expanded {
-  flex: 1 1 0%;
+  flex: 0 0 100%;
   max-width: 100%;
   max-height: 600px;
   overflow: visible;
   opacity: 1;
   pointer-events: auto;
   transition:
-    max-width 0.4s ease-in-out,
     max-height 0.4s ease-in-out,
     opacity 0.25s ease-in 0.15s;
 }
@@ -1522,6 +1547,21 @@ html.light .penumbra-switch {
   border-radius: 9999px;
   background: #5b21b6;
   transition: transform 0.2s ease, background-color 0.2s ease;
+}
+
+/* Each discrete Text Warp step gets a short tactile-looking thumb pulse.
+   This is deliberately scoped away from Garnish's MUI sliders. */
+@keyframes text-warp-step-pulse {
+  0%, 100% { transform: scale(1); }
+  45% { transform: scale(1.2); }
+}
+
+.text-warp-controls input[type="range"].text-warp-step-pulse::-webkit-slider-thumb {
+  animation: text-warp-step-pulse 150ms ease-out;
+}
+
+.text-warp-controls input[type="range"].text-warp-step-pulse::-moz-range-thumb {
+  animation: text-warp-step-pulse 150ms ease-out;
 }
 
 .garnish-activation-toggle:checked {
@@ -1888,11 +1928,22 @@ html.dark .basil-guard-reason {
    CJK entry -- so the native input keeps all three and only its ink moves.
    Every metric below MUST match between the two layers or the colour
    drifts out of register with the glyphs. */
+/* The opaque surface lives on the CONTAINER, not on the input.  Both
+   layers are positioned siblings, so if the input kept a background it
+   would paint over the mirror in DOM order and hide every glyph -- the
+   input's own text is transparent by design, so the field would render
+   empty apart from the caret and placeholder. */
 .basil-plate {
   --bh-pad-x: 0.5rem;
   --bh-pad-y: 0.375rem;
   position: relative;
   margin-top: 0.5rem;
+  border-radius: 0.375rem;
+  background: #fff;
+}
+
+html.dark .basil-plate {
+  background: #18181b;
 }
 
 .basil-plate-input,
@@ -1910,9 +1961,13 @@ html.dark .basil-guard-reason {
   overflow-x: auto;
 }
 
+/* Above the input, so neither the input's border nor its selection
+   highlight can occlude the coloured glyphs.  pointer-events:none keeps
+   every click, drag and IME interaction on the real input underneath. */
 .basil-plate-mirror {
   position: absolute;
   inset: 0;
+  z-index: 2;
   pointer-events: none;
   overflow: hidden;
   color: #18181b;
@@ -1924,16 +1979,17 @@ html.dark .basil-plate-mirror {
 
 .basil-plate-input {
   position: relative;
-  background: #fff;
+  z-index: 1;
+  /* transparent so the container's surface shows through and the mirror
+     above can draw the glyphs; the input keeps caret, selection and IME */
+  background: transparent;
   border-color: #d4d4d8;
-  /* the mirror draws the glyphs; the input keeps the caret and selection */
   color: transparent;
   caret-color: #18181b;
   outline: none;
 }
 
 html.dark .basil-plate-input {
-  background: #18181b;
   border-color: #3f3f46;
   caret-color: #f4f4f5;
 }
@@ -1950,6 +2006,20 @@ html.dark .basil-plate-input {
 
 .basil-plate-input::placeholder {
   color: #a1a1aa;
+}
+
+.basil-placeholder-typewriter {
+  white-space: pre;
+}
+
+.basil-placeholder-cursor {
+  display: inline-block;
+  width: 0.35rem;
+  height: 0.85rem;
+  background: currentColor;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  animation: splash-blink 1s step-end infinite;
 }
 
 .basil-token.mapped {

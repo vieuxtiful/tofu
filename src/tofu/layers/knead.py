@@ -1,4 +1,4 @@
-## 🍢 knead — HarfBuzz shaping + FreeType rasterization
+## 🍢 Knead — HarfBuzz shaping + FreeType rasterization
 ## vieuxtiful
 """
 Text shaping seam: turn a string into positioned glyphs, then bake those

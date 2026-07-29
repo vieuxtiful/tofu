@@ -106,7 +106,20 @@ class TestDetParamForwarding:
 
     def test_defaults_always_included(self):
         backend = PaddleOCRBackend(languages=["ja"])
-        assert backend._det_params() == {"det_db_thresh": 0.3, "drop_score": 0.3}
+        assert backend._det_params() == {
+            "det_db_thresh": 0.3,
+            "drop_score": 0.3,
+            "use_textline_orientation": True,
+        }
+
+    def test_textline_orientation_is_forwardable(self):
+        # same regression class as the thresholds above: this was declared
+        # on __init__ (as the 2.x name use_angle_cls), never forwarded, and
+        # silently hardcoded True inside the worker -- so the caller could
+        # neither read nor change the detector's rotated-textline handling
+        assert PaddleOCRBackend(
+            languages=["ja"], use_textline_orientation=False
+        )._det_params()["use_textline_orientation"] is False
 
     def test_unset_optional_params_omitted(self):
         # None means "use the model's own default" -- must not send a

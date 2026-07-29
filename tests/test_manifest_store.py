@@ -40,6 +40,10 @@ def full_manifest() -> TextManifest:
     return TextManifest(
         asset_id="asset-1", total_regions=1, instances=[inst],
         src_lang="ja", targ_lang="en", img_dim=(960, 640),
+        asset_class="sign",
+        asset_classification={
+            "asset_class": "sign", "confidence": .9, "source": "cicerone_layout",
+        },
         scene_regions=[SceneRegion(
             bbox=BBox(x=0, y=0, width=200, height=300),
             semantic_label="panel", confidence=0.9,
@@ -72,6 +76,8 @@ class TestRoundTrip:
         assert m2.scene_regions[0].semantic_label == "panel"
         assert m2.scene_regions[0].material == "painted sign / panel"
         assert m2.scene_regions[0].polygon[0] == (0, 0)
+        assert m2.asset_class == "sign"
+        assert m2.asset_classification["confidence"] == .9
 
     def test_disk_round_trip(self, tmp_path):
         m = full_manifest()

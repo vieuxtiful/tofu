@@ -12,6 +12,14 @@
 // as the product vision describes.
 
 export const MIN_FONT_PX = 6;
+export const MAX_STROKE_FONT_RATIO = 0.15;
+
+export function effectiveStrokeWidth(strokeWidthPx: number, fontSizePx: number): number {
+  return Math.min(
+    Math.max(0, Math.round(strokeWidthPx || 0)),
+    Math.max(1, Math.round(fontSizePx * MAX_STROKE_FONT_RATIO)),
+  );
+}
 
 export interface FitResult {
   fontSizePx: number;
@@ -72,7 +80,7 @@ function nominalLineHeight(ctx: CanvasRenderingContext2D, fontSizePx: number): n
  * text ("SALE" et al) and pick an unnecessarily smaller font — a real
  * bug this project measured and fixed in scribe.py itself. */
 function actualBlockSize(
-  ctx: CanvasRenderingContext2D, lines: string[], spacingPx: number,
+  ctx: CanvasRenderingContext2D, lines: string[], spacingPx: number, strokeWidthPx = 0,
 ): { width: number; height: number } {
   let width = 0;
   let height = 0;
@@ -84,7 +92,7 @@ function actualBlockSize(
     height += asc != null && desc != null ? asc + desc : parseFloat(ctx.font) || 12;
   }
   height += Math.max(0, lines.length - 1) * spacingPx;
-  return { width, height };
+  return { width: width + 2 * strokeWidthPx, height: height + 2 * strokeWidthPx };
 }
 
 /**
@@ -114,6 +122,7 @@ export function fitWrappedText(
   /** Explicit layout choice from Localized Asset Canvas.  Off keeps one
    * glyph run even if it crosses the cube; on enables real wrap. */
   wrapText = false,
+  strokeWidthPx = 0,
 ): FitResult {
   const setSize = (size: number) => { ctx.font = fontSpec.replace("{size}", String(size)); };
   const safeBoxWidth = Math.max(1, boxWidth);
@@ -122,7 +131,8 @@ export function fitWrappedText(
 
   if (explicitSizePx && explicitSizePx > 0) {
     setSize(explicitSizePx);
-    const lines = wrapText ? wrapLines(ctx, text, safeBoxWidth) : [text];
+    const stroke = effectiveStrokeWidth(strokeWidthPx, explicitSizePx);
+    const lines = wrapText ? wrapLines(ctx, text, Math.max(1, safeBoxWidth - 2 * stroke)) : [text];
     const spacing = spacingFor(explicitSizePx);
     return { fontSizePx: explicitSizePx, lines, lineAdvancePx: nominalLineHeight(ctx, explicitSizePx) + spacing };
   }
@@ -130,18 +140,20 @@ export function fitWrappedText(
   let lo = MIN_FONT_PX;
   let hi = Math.max(MIN_FONT_PX + 1, Math.floor(safeBoxHeight * 2));
   setSize(MIN_FONT_PX);
+  const initialStroke = effectiveStrokeWidth(strokeWidthPx, MIN_FONT_PX);
   let best: FitResult = {
     fontSizePx: MIN_FONT_PX,
-    lines: wrapText ? wrapLines(ctx, text, safeBoxWidth) : [text],
+    lines: wrapText ? wrapLines(ctx, text, Math.max(1, safeBoxWidth - 2 * initialStroke)) : [text],
     lineAdvancePx: nominalLineHeight(ctx, MIN_FONT_PX) * 1.2,
   };
 
   while (lo <= hi) {
     const mid = Math.floor((lo + hi) / 2);
     setSize(mid);
-    const lines = wrapText ? wrapLines(ctx, text, safeBoxWidth) : [text];
+    const stroke = effectiveStrokeWidth(strokeWidthPx, mid);
+    const lines = wrapText ? wrapLines(ctx, text, Math.max(1, safeBoxWidth - 2 * stroke)) : [text];
     const spacing = spacingFor(mid);
-    const { width, height } = actualBlockSize(ctx, lines, spacing);
+    const { width, height } = actualBlockSize(ctx, lines, spacing, stroke);
     if (width <= safeBoxWidth && height <= safeBoxHeight) {
       best = { fontSizePx: mid, lines, lineAdvancePx: nominalLineHeight(ctx, mid) + spacing };
       lo = mid + 1;
