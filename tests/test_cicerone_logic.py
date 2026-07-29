@@ -22,6 +22,8 @@ from tofu.layers.cicerone import (
     label_latin_languages,
     merge_detections,
     merge_vertical_columns,
+    iter_multipass,
+    run_multipass,
     probe_uncovered_surfaces,
     tag_detection_pass,
     union_prefer_primary,
@@ -36,6 +38,30 @@ def det(x, y, w, h, text="t", conf=0.9, lang=None):
         polygon=[(x, y), (x + w, y), (x + w, y + h), (x, y + h)],
         text=text, confidence=conf, language=lang,
     )
+
+
+def test_canonical_multipass_iterator_drives_stream_and_sync_paths():
+    backend = object.__new__(EasyOCRBackend)
+    backend.languages = ("en",)
+    calls = []
+
+    def detect(_asset, *, text_threshold, low_text):
+        calls.append((text_threshold, low_text))
+        n = len(calls)
+        return [det(n * 20, 0, 10, 10, text=f"p{n}")]
+
+    backend.detect = detect
+    emissions = list(iter_multipass(backend, "asset"))
+
+    assert [item[0] for item in emissions] == [1, 1, 2, 2, 3, 3]
+    assert [item[3] is None for item in emissions] == [
+        True, False, True, False, True, False
+    ]
+    assert [d.text for d in emissions[-1][3]] == ["p1", "p2", "p3"]
+
+    calls.clear()
+    final = run_multipass(backend, "asset")
+    assert [d.text for d in final] == ["p1", "p2", "p3"]
 
 
 # -- script identification ----------------------------------------------------

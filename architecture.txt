@@ -5,83 +5,253 @@
 ##   tofu (pre-flight) → SCENE PRE-PASS (candidate surfaces constrain
 ##   detection) → cicerone (multi-pass, scene-filtered, per-region
 ##   language id) → tofu re-validation → scene (per-instance style/bg
-##   enrichment) → cleanse → scribe → verify → memory
+##   enrichment) → cleanse → scribe → garnish → verify → memory
 ## scene runs TWICE: analyze_regions() before cicerone, analyze() after.
 
 project-tofu/
 │
 ├── README.md
 ├── LICENSE
-├── setup.py / pyproject.toml
-├── requirements.txt
+├── pyproject.toml                   # Package metadata (tofu-l10n)
+├── architecture.txt                 # This file
+├── project-tofu-summary.txt         # Detailed layer-by-layer summary
+├── project-tofu-plan.txt            # Project planning notes
 │
 ├── docs/
-│   ├── architecture/
-│   │   ├── overview.md
-│   │   ├── layers.md
-│   │   └── data-contracts.md
-│   ├── api/
-│   │   ├── rest-api.md
-│   │   └── python-sdk.md
-│   └── technical-paper/
-│       └── semantic-weave-architecture.md
+│   ├── cross-layer-architecture.md          # Full cross-layer audit
+│   ├── dependency-upgrade-debt.md           # Tracked dependency debt
+│   ├── multi-candidate-ocr-inpainting-implementation-plan.md
+│   ├── ocr-inpainting-enhancements-preimplementation-review.md
+│   ├── static-release-readiness.md          # Static release checklist
+│   └── vtm-implementation-report.txt        # VTM implementation report
 │
 ├── src/
-│   └── cicero/
-│       ├── __init__.py
+│   └── tofu/
+│       ├── __init__.py              # Public API (TofuPipeline, TextManifest, …)
+│       ├── py.typed                 # PEP 561 marker
+│       ├── requirements.txt         # Pipeline dependencies
 │       │
 │       ├── core/
 │       │   ├── __init__.py
-│       │   ├── pipeline.py          # Main orchestrator
-│       │   ├── config.py            # Configuration management
-│       │   └── types.py             # Shared data types (TextManifest, VldtnReport, etc.)
+│       │   ├── pipeline.py          # Main orchestrator (TofuPipeline)
+│       │   ├── types.py             # Shared data types (TextManifest, VldtnReport, etc.)
+│       │   └── events.py            # Typed pipeline progress events (SSE/CLI)
 │       │
 │       ├── layers/
 │       │   ├── __init__.py
 │       │   ├── tofu.py              # Layer 0: Pre-flight validation
-│       │   ├── cicerone.py          # Layer 1: Text detection & localization
+│       │   ├── cicerone.py          # Layer 1: Text detection & recognition
 │       │   ├── scene.py             # Layer 2: Semantic context & style analysis
 │       │   ├── cleanse.py           # Layer 3: Text erasure & inpainting
 │       │   ├── scribe.py            # Layer 4: Style-aware text regeneration
+│       │   ├── garnish.py           # Layer 4b: Post-Scribe edge treatment
 │       │   ├── verify.py            # Layer 5: Quality verification
-│       │   └── memory.py            # Layer 6: Visual translation memory
-│       │
-│       ├── models/
-│       │   ├── __init__.py
-│       │   ├── detection.py         # OCR / text detection wrappers
-│       │   ├── inpainting.py        # Inpainting model wrappers
-│       │   ├── rendering.py         # Text rendering / generation wrappers
-│       │   └── grounding.py         # Visual grounding / semantic understanding
+│       │   ├── memory.py            # Layer 6: Visual translation memory
+│       │   ├── basil.py             # Semantic registration & target-span substitution
+│       │   ├── savor.py             # Glyph-confusion repair (5/S, 0/O, 1/I)
+│       │   ├── menu.py              # Gazetteer-assisted place-name recovery
+│       │   ├── wasabi.py            # CJK variant normalization
+│       │   ├── typography.py        # Per-region font-attribute estimation
+│       │   ├── font_matching.py     # Evidence-gated visual font identification
+│       │   ├── fonts.py             # Font registry (discovery, cmap coverage, ranking)
+│       │   ├── sift.py              # Font library categoriser (serif/sans/mono/display)
+│       │   ├── knead.py             # HarfBuzz shaping + FreeType rasterization
+│       │   ├── inpaint.py           # Non-destructive treatment patches (healing brush)
+│       │   ├── inpaint_providers.py # Neural repair router (LaMa/BrushNet/DiffSTR)
+│       │   ├── julienne.py          # Character-level script analysis (UAX #24)
+│       │   ├── skim.py              # False-positive pruning (stroke-width gate)
+│       │   ├── temper.py            # Confidence calibration (ECE, Brier, temperature)
+│       │   ├── ocr_arbitration.py   # Engine-independent OCR candidate arbitration
+│       │   ├── ocr_verification.py  # Narrow OCR verification (Cicerone + Cleanse)
+│       │   ├── _chardata.py         # CCJK charset data (GB2312, Big5, JIS, KSX)
+│       │   └── script_samples.py    # Per-script sample sets for cmap coverage
 │       │
 │       ├── utils/
 │       │   ├── __init__.py
-│       │   ├── image.py             # Image processing utilities
-│       │   ├── video.py             # Video frame handling
-│       │   ├── fonts.py             # Font management
-│       │   └── validation.py        # Validation helpers (glyph support, etc.)
+│       │   ├── imaging.py           # Image loading + text_mask() (Otsu/Sauvola/GrabCut)
+│       │   ├── interchange.py       # XLIFF/TMX/TSV/CSV/TXT import & export
+│       │   ├── glossary.py          # Glossary ingestion (.xlsx/.csv/.json) for Basil
+│       │   ├── vtm.py               # Visual Translation Memory format (VTM v1.0)
+│       │   ├── phash.py             # DCT perceptual hash for visual TM matching
+│       │   ├── textmatch.py         # Normalization + fuzzy text similarity
+│       │   ├── correction_resources.py  # Versioned, integrity-checked correction dicts
+│       │   ├── manifest_store.py    # JSON persistence for TextManifest (autosave)
+│       │   ├── translate.py         # Pluggable MT seam (backend interface)
+│       │   └── translation_workflow.py  # Translation proposal & decision primitives
 │       │
-│       └── api/
-│           ├── __init__.py
-│           ├── routes.py            # FastAPI / Flask routes
-│           └── schemas.py           # Pydantic models for API
+│       └── resources/
+│           └── corrections/         # Versioned correction data (menu/, wasabi/)
+│
+├── server/
+│   ├── main.py                      # FastAPI backend (REST API, 150k+ LOC)
+│   ├── db.py                        # SQLite project/session storage
+│   ├── capabilities.py              # Read-only runtime capability inventory
+│   ├── requirements.txt             # App + pipeline deps (CPU torch)
+│   ├── requirements-paddle.txt      # PaddleOCR deps (isolated venv)
+│   ├── requirements-inpaint.txt     # LaMa/BrushNet deps (isolated venv)
+│   ├── requirements.lock.txt        # Locked dependency versions
+│   ├── inpainting-providers.json    # Neural repair provider config
+│   ├── tofu.db                      # SQLite database (projects, snapshots, TM)
+│   ├── font-library/                # Bundled font storage
+│   ├── models/                      # Model checkpoint storage
+│   ├── outputs/                     # Pipeline output artifacts
+│   ├── uploads/                     # User upload storage
+│   └── tm_thumbs/                   # TM thumbnail storage
+│
+├── frontend/
+│   ├── package.json                 # React 19 + TypeScript + Vite
+│   ├── vite.config.ts               # Dev server config (proxies /api → :8000)
+│   ├── tsconfig.json
+│   ├── postcss.config.js            # Tailwind CSS 4
+│   ├── index.html
+│   ├── public/
+│   ├── icons/
+│   └── src/
+│       ├── main.tsx                 # Entry point
+│       ├── App.tsx                  # Root SPA (300k+ LOC)
+│       ├── api.ts                   # API client (REST + SSE)
+│       ├── BBoxCanvas.tsx           # Bounding-box drawing canvas
+│       ├── TargetPreviewCanvas.tsx  # Localized asset preview
+│       ├── RegionTable.tsx          # Per-region editing table
+│       ├── FontManager.tsx          # Font manager with category filter
+│       ├── FontCombobox.tsx         # Font selection dropdown
+│       ├── LanguageSelector.tsx     # Source/target language pickers
+│       ├── SourceLangPicker.tsx     # Source language detection UI
+│       ├── LanguageCombobox.tsx     # Language search dropdown
+│       ├── GlossaryPanel.tsx        # Glossary ingest UI
+│       ├── ImportPanel.tsx          # XLIFF/VTM import
+│       ├── ExportPanel.tsx          # XLIFF/VTM export
+│       ├── MemoryPanel.tsx          # Visual TM panel
+│       ├── HistoryPanel.tsx         # Session history (snapshots)
+│       ├── SemanticSubstitutionPanel.tsx  # Basil substitution UI
+│       ├── GarnishSlider.tsx        # Garnish control sliders
+│       ├── Grainient.tsx            # Gradient/grain editor
+│       ├── SmartFillReview.tsx      # Neural repair review
+│       ├── PerspectiveHandles.tsx   # Perspective transform handles
+│       ├── RotationDial.tsx         # Rotation control
+│       ├── SplashScreen.tsx         # Loading splash
+│       ├── TitleScreen.tsx          # Title/landing screen
+│       ├── ProjectGate.tsx          # Project management
+│       ├── Stepper.tsx              # Pipeline step indicator
+│       ├── ToastSystem.tsx          # Toast notifications
+│       ├── NotificationBell.tsx     # Notification bell
+│       ├── ThemeToggle.tsx          # Dark/light toggle
+│       ├── Loaders.tsx              # Loading spinners
+│       ├── Buttons.tsx              # Shared button components
+│       ├── HexColorInput.tsx        # Color picker
+│       ├── BBoxColorDropdown.tsx    # BBox color selector
+│       ├── detectLanguage.ts        # Language detection logic
+│       ├── languageData.ts          # Language metadata
+│       ├── languageNames.ts         # Language display names
+│       ├── fontCatalog.ts           # Font categorisation (SIFT)
+│       ├── doppelganger.ts          # Font doppelgänger matching
+│       ├── perspective.ts           # Perspective math
+│       ├── textFit.ts               # Text fitting/wrap logic
+│       ├── targetGuard.ts           # Target text validation
+│       ├── regionPalette.ts         # Region color palette
+│       ├── repairLabels.ts          # Repair label definitions
+│       ├── theme.ts                 # Theme config
+│       ├── localizedCanvasTypes.ts  # Canvas type definitions
+│       ├── bbox.css                 # BBox canvas styles
+│       ├── uikit.css                # UI kit styles
+│       ├── index.css                # Global styles
+│       ├── Grainient.css            # Grainient styles
+│       └── *.test.ts                # Frontend unit tests (vitest)
 │
 ├── tests/
-│   ├── __init__.py
-│   ├── test_tofu.py
-│   ├── test_cicerone.py
-│   ├── test_scene.py
-│   ├── test_cleanse.py
-│   ├── test_scribe.py
-│   ├── test_verify.py
-│   └── test_memory.py
+│   ├── conftest.py                  # Shared fixtures
+│   ├── fixtures/                    # Test images + ground truth
+│   ├── test_tofu_validation.py
+│   ├── test_cicerone_logic.py
+│   ├── test_scene_regions.py
+│   ├── test_scene_background.py
+│   ├── test_cleanse_strategies.py
+│   ├── test_cleanse_confidence.py
+│   ├── test_inpaint_provider_routing.py
+│   ├── test_inpaint_treatment.py
+│   ├── test_render_layers.py
+│   ├── test_render_wrap_and_faces.py
+│   ├── test_render_matched_faces.py
+│   ├── test_render_cache_key.py
+│   ├── test_scribe_glyph_guard.py
+│   ├── test_scribe_rtl.py
+│   ├── test_scribe_shaped.py
+│   ├── test_scribe_vertical_rotation.py
+│   ├── test_scribe_perspective.py
+│   ├── test_garnish.py
+│   ├── test_garnish_verify.py
+│   ├── test_verify_phase5.py
+│   ├── test_verification_contract.py
+│   ├── test_verification_corpus.py
+│   ├── test_memory_phase6.py
+│   ├── test_basil.py
+│   ├── test_basil_entities.py
+│   ├── test_basil_pairing.py
+│   ├── test_savor.py
+│   ├── test_menu.py
+│   ├── test_wasabi.py
+│   ├── test_hybrid_arbitration.py
+│   ├── test_ocr_arbitration.py
+│   ├── test_ocr_arbitration_integration.py
+│   ├── test_paddle_bridge.py
+│   ├── test_paddle_bridge_live.py
+│   ├── test_paddle_rescue_logic.py
+│   ├── test_font_matching.py
+│   ├── test_font_proliferation.py
+│   ├── test_fonts_api.py
+│   ├── test_sift.py
+│   ├── test_typography.py
+│   ├── test_knead_shaping.py
+│   ├── test_julienne.py
+│   ├── test_skim.py
+│   ├── test_imaging_threshold.py
+│   ├── test_interchange_xliff.py
+│   ├── test_glossary.py
+│   ├── test_vtm_spec.py
+│   ├── test_manifest_store.py
+│   ├── test_correction_resources.py
+│   ├── test_translation_workflow.py
+│   ├── test_capabilities_api.py
+│   ├── test_pipeline_events.py
+│   ├── test_render_stream_pipeline_events.py
+│   ├── test_region_revalidation.py
+│   ├── test_multi_candidate_assessment.py
+│   └── test_error_rates_and_calibration.py
 │
-├── examples/
-│   ├── basic_usage.py
-│   ├── custom_pipeline.py
-│   └── notebooks/
-│       └── demo.ipynb
+├── scripts/
+│   ├── eval_detect.py               # Detection evaluation harness
+│   ├── eval_paddle.py               # PaddleOCR evaluation
+│   ├── eval_cleanse_providers.py    # Inpainting provider evaluation
+│   ├── eval_render.py               # Rendering evaluation
+│   ├── eval_font_match.py           # Font matching evaluation
+│   ├── eval_memory.py               # TM matching evaluation
+│   ├── eval_savor.py                # Savor correction evaluation
+│   ├── eval_tofu.py                 # ToFU validation evaluation
+│   ├── eval_verification_corpus.py  # Verify corpus evaluation
+│   ├── make_fixtures.py             # Test fixture generator
+│   ├── paddle_worker.py             # PaddleOCR out-of-process worker
+│   ├── inpaint_lama_runner.py       # LaMa out-of-process runner
+│   ├── inpaint_brushnet_runner.py   # BrushNet out-of-process runner
+│   ├── verification_corpus.json     # Verify test corpus
+│   ├── verification_corpus_wave1.json
+│   └── eval_out/                    # Evaluation output artifacts
 │
-└── assets/
-    ├── sample_images/
-    ├── sample_videos/
-    └── fonts/
+├── spec/
+│   ├── vtm-1.0.md                   # VTM format specification
+│   ├── vtm-1.0.schema.json          # VTM JSON schema
+│   └── conformance/                 # VTM conformance vectors
+│       ├── index.json
+│       ├── valid/                   # Valid VTM documents
+│       └── invalid/                 # Invalid VTM documents (rejection cases)
+│
+├── playground/
+│   ├── app.py                       # Interactive playground app
+│   ├── requirements.txt
+│   └── README.md
+│
+├── images/                          # Sample images + ground truth
+│   ├── *.jpeg / *.png               # Test images (japan-street, china-street, …)
+│   ├── *.gt.json                    # Ground truth annotations
+│   └── tofu-*.png / *.svg           # Logo assets
+│
+└── .github/                         # CI/CD workflows

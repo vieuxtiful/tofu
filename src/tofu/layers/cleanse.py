@@ -430,6 +430,87 @@ def _stroke_px(inst) -> Optional[float]:
     return ratio * ch.size
 
 
+def _perspective_repair_context(cv2, np, image, mask, inst):
+    """Return rectified provider inputs plus an original-space restorer.
+
+    The existing normalized StyleProfil quad is authoritative. Degenerate,
+    identity, or implausibly large transforms fail open to the normal path.
+    """
+    style = getattr(inst, "style_profile", None)
+    transform = getattr(style, "transform", None) if style else None
+    quad = transform.get("quad") if isinstance(transform, dict) else None
+    source_kind = "style_transform"
+    profile = getattr(inst, "reconstruction_profile", None)
+    if (
+        not quad and profile is not None
+        and getattr(profile, "perspective_confidence", 0.0) >= .70
+    ):
+        quad = getattr(profile, "perspective_quad", None)
+        source_kind = "reconstruction_profile"
+    if not isinstance(quad, (list, tuple)) or len(quad) != 4:
+        return image, mask, None, {"applied": False, "reason": "no_valid_quad"}
+    try:
+        points = np.asarray(quad, dtype=np.float32).reshape(4, 2)
+        if not np.isfinite(points).all():
+            raise ValueError("non-finite quad")
+        bbox = inst.bounding_box
+        # Style quads are normalized to the immutable source bbox. A
+        # reconstruction profile may carry image-space points.
+        if source_kind == "style_transform":
+            unit = np.asarray(((0, 0), (1, 0), (1, 1), (0, 1)), dtype=np.float32)
+            if float(np.max(np.abs(points - unit))) < .01:
+                return image, mask, None, {"applied": False, "reason": "identity_quad"}
+            points[:, 0] = bbox.x + points[:, 0] * bbox.width
+            points[:, 1] = bbox.y + points[:, 1] * bbox.height
+        area = abs(float(cv2.contourArea(points)))
+        top = float(np.linalg.norm(points[1] - points[0]))
+        bottom = float(np.linalg.norm(points[2] - points[3]))
+        left = float(np.linalg.norm(points[3] - points[0]))
+        right = float(np.linalg.norm(points[2] - points[1]))
+        width = int(round(max(top, bottom)))
+        height = int(round(max(left, right)))
+        if area < 25 or min(width, height) < 6 or max(width, height) > 4096:
+            raise ValueError("degenerate quad")
+        target = np.asarray(
+            ((0, 0), (width - 1, 0), (width - 1, height - 1), (0, height - 1)),
+            dtype=np.float32,
+        )
+        matrix = cv2.getPerspectiveTransform(points, target)
+        inverse = cv2.getPerspectiveTransform(target, points)
+        rectified_image = cv2.warpPerspective(
+            image, matrix, (width, height), flags=cv2.INTER_LINEAR,
+            borderMode=cv2.BORDER_REFLECT_101,
+        )
+        rectified_mask = cv2.warpPerspective(
+            mask.astype(np.uint8), matrix, (width, height),
+            flags=cv2.INTER_NEAREST,
+        ).astype(bool)
+        if not rectified_mask.any():
+            raise ValueError("empty rectified mask")
+
+        def restore(candidate):
+            restored = cv2.warpPerspective(
+                np.asarray(candidate, dtype=np.uint8), inverse,
+                (image.shape[1], image.shape[0]), flags=cv2.INTER_LINEAR,
+                borderMode=cv2.BORDER_REFLECT_101,
+            )
+            composed = np.asarray(image, dtype=np.uint8).copy()
+            composed[mask] = restored[mask]
+            return composed
+
+        return rectified_image, rectified_mask, restore, {
+            "applied": True,
+            "source": source_kind,
+            "quad": points.tolist(),
+            "rectified_size": [width, height],
+        }
+    except Exception as exc:
+        return image, mask, None, {
+            "applied": False,
+            "reason": f"invalid_quad:{type(exc).__name__}",
+        }
+
+
 def _verify_final_cleanse(
     np,
     cv2,
@@ -611,6 +692,15 @@ def erase(
             group_mask |= plan["mask"]
         group_ids = [plan["inst"].id for plan in group]
         group_key = _repair_group_key(np, group, group_mask)
+        repair_image, repair_mask, restore_candidate, perspective = (
+            _perspective_repair_context(
+                cv2, np, img_array, group_mask, group[0]["inst"]
+            )
+            if len(group) == 1 else
+            (img_array, group_mask, None, {
+                "applied": False, "reason": "multi_region_group",
+            })
+        )
         artifacts: Dict[str, Any] = {}
 
         def observe_candidate(info, candidate):
@@ -626,10 +716,13 @@ def erase(
 
         if assessment_policy.mode == "multi":
             multi = inpaint_providers.repair_multi_candidate(
-                img_array,
-                group_mask,
+                repair_image,
+                repair_mask,
                 max_candidates=assessment_policy.max_neural_candidates,
                 on_candidate=observe_candidate,
+                candidate_transform=restore_candidate,
+                quality_image=img_array if restore_candidate is not None else None,
+                quality_mask=group_mask if restore_candidate is not None else None,
             )
             outcome = multi.selected
             candidate_evidence = multi.candidates
@@ -639,8 +732,12 @@ def erase(
             decision = "accepted" if accepted else "all_candidates_rejected"
         else:
             provider_id = group[0]["provider"]
-            outcome = inpaint_providers.repair(provider_id, img_array, group_mask)
-            repaired = outcome.image
+            outcome = inpaint_providers.repair(provider_id, repair_image, repair_mask)
+            repaired = (
+                restore_candidate(outcome.image)
+                if restore_candidate is not None and outcome.image is not None
+                else outcome.image
+            )
             passed, quality = (
                 inpaint_providers.quality_gate(img_array, repaired, group_mask)
                 if repaired is not None else
@@ -664,6 +761,7 @@ def erase(
                 inst.repair_provenance["repair_group"] = group_ids
                 inst.repair_provenance["repair_group_key"] = group_key
                 inst.repair_provenance["selection_reason"] = decision
+                inst.repair_provenance["perspective"] = perspective
             for item in candidate_evidence:
                 artifact = artifacts.get(item["candidate_id"])
                 _record_candidate(

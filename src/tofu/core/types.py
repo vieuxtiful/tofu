@@ -179,6 +179,9 @@ class InstText:
     target_language: Optional[str] = None        ## per-region override of target language (None = use manifest default)
     glyph_fallback: Optional[bool] = None         ## True: scribe swapped the requested font for a codepoint-covering one
     tm_suggestion: Optional[Dict[str, Any]] = None  ## Memory lookup match: {target_text, score, method, source_asset_id, record_id}
+    translation_attempts: List[Dict[str, Any]] = field(default_factory=list)
+    translation_decision: Optional[Dict[str, Any]] = None
+    translation_history: List[Dict[str, Any]] = field(default_factory=list)
     ocr_correction: Optional[Dict[str, Any]] = None  ## recognition_correct: {applied, original_text/candidate_text, corrected_text?, reason}
     recognition_history: Optional[List[Dict[str, Any]]] = None  ## immutable audit trail of engine candidates and accepted/rejected corrections
     ocr_provenance: Optional[Dict[str, Any]] = None  ## multi-provider observations, arbitration and independent verification

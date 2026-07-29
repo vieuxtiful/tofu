@@ -48,7 +48,7 @@ import uuid
 from abc import ABC, abstractmethod
 from pathlib import Path
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -2618,20 +2618,27 @@ def union_prefer_primary(
     return out
 
 
-def run_multipass(
+def iter_multipass(
     engine: OCRBackend, asset: Any
-) -> List[RawDetection]:
-    """three CRAFT passes at descending thresholds with cross-pass NMS.
+) -> Iterator[
+    Tuple[int, Optional[float], Optional[float], Optional[List[RawDetection]]]
+]:
+    """Yield canonical cumulative OCR results after each detection pass.
 
     EasyOCR benefits from threshold sweeps; PaddleOCR's DB detector handles
-    scale internally, so a single detect call is sufficient when it is active.
+    scale internally, so it yields one result.  Both synchronous detection and
+    streaming adapters consume this seam; neither owns a duplicate pass loop.
     """
     if not isinstance(engine, EasyOCRBackend):
-        return tag_detection_pass(
+        yield 1, None, None, None
+        detected = tag_detection_pass(
             engine.detect(asset), engine=engine, pass_number=1
         )
+        yield 1, None, None, detected
+        return
     detections: List[RawDetection] = []
     for pass_number, (text_threshold, low_text) in enumerate(PASS_THRESHOLDS, 1):
+        yield pass_number, text_threshold, low_text, None
         passed = engine.detect(
             asset, text_threshold=text_threshold, low_text=low_text
         )
@@ -2643,6 +2650,19 @@ def run_multipass(
             low_text=low_text,
         )
         detections = merge_detections(detections, passed)
+        yield pass_number, text_threshold, low_text, detections
+
+
+def run_multipass(
+    engine: OCRBackend, asset: Any
+) -> List[RawDetection]:
+    """Run the canonical pass iterator and return its final cumulative set."""
+    detections: List[RawDetection] = []
+    for _number, _text_threshold, _low_text, cumulative in iter_multipass(
+        engine, asset
+    ):
+        if cumulative is not None:
+            detections = cumulative
     return detections
 
 
@@ -3627,19 +3647,23 @@ def assess_multi_candidate_ocr(
     scene_regions: Optional[List[SceneRegion]] = None,
     policy: Optional[OCRAssessmentPolicy] = None,
 ) -> int:
-    """Attach a fresh Paddle verification observation to risky OCR reads.
+    """Arbitrate risky settled reads against a fresh independent OCR pass.
 
-    The current EasyOCR result remains the proposal. Paddle is a separately
-    invoked verifier; disagreement is retained for review rather than silently
-    replacing source text with an uncalibrated cross-backend confidence.
+    Regions are ranked by concrete risk and batched by language so one
+    verifier invocation covers each reader group.  A different reading only
+    replaces the primary when the versioned arbitration policy clears every
+    confidence, ink, geometry, script and language gate.  Empty verifier
+    output is recorded but can never remove the primary; the narrower
+    punctuation and Skim audits retain their additional pixel-evidence rules.
     """
     policy = policy or OCRAssessmentPolicy()
     if policy.mode == "off" or not instances:
         return 0
 
-    def risky(inst: InstText) -> bool:
+    def risk_profile(inst: InstText) -> Tuple[int, List[str]]:
+        flags: List[str] = []
         if policy.mode == "exhaustive":
-            return True
+            flags.append("exhaustive_policy")
         lang = (inst.detected_language or inst.language or "").lower()
         cjk = lang.startswith(("ja", "zh", "ko"))
         weak = (inst.confidence or 0.0) < 0.78
@@ -3653,69 +3677,247 @@ def assess_multi_candidate_ocr(
         ), None)
         textured = getattr(surface, "texture", None) == "textured"
         vertical = inst.bounding_box.height > inst.bounding_box.width * 1.6
-        return weak or cjk or textured or vertical
+        if weak:
+            flags.append("low_confidence")
+        if cjk:
+            flags.append("cjk_reader_risk")
+        if textured:
+            flags.append("textured_surface")
+        if vertical:
+            flags.append("vertical_layout")
+        if (inst.text or "")[-1:] in _TRAILING_ARTIFACTS:
+            flags.append("trailing_artifact")
+        return len(flags), flags
 
-    selected = [inst for inst in instances if risky(inst)]
-    if not selected:
-        return 0
-    from tofu.layers.ocr_verification import PaddleRegionVerifier
-    verifier = PaddleRegionVerifier()
-    results = verifier.verify_regions(
-        asset,
-        [inst.bounding_box for inst in selected],
-        [inst.text for inst in selected],
-    )
-    verified = 0
-    for inst, result in zip(selected, results):
-        primary_confidence = float(inst.confidence or 0.0)
-        verification = result.evidence()
-        agreement = verification.get("similarity")
-        score = (
-            0.45 * primary_confidence
-            + 0.35 * float(agreement if agreement is not None else 0.0)
-            + 0.20 * float(result.confidence)
-        )
-        review_required = result.state != "agree"
-        inst.ocr_provenance = {
-            "schema": 1,
-            "policy_revision": policy.calibration_revision,
-            "mode": policy.mode,
-            "observations": [
-                {
-                    "backend": "primary",
-                    "pass_tag": "selected_existing_pipeline",
-                    "text": inst.text or "",
-                    "raw_confidence": round(primary_confidence, 4),
-                    "bbox": {
-                        "x": inst.bounding_box.x, "y": inst.bounding_box.y,
-                        "width": inst.bounding_box.width, "height": inst.bounding_box.height,
-                    },
-                },
-                verification,
-            ],
-            "selected_backend": "primary",
-            "selected_text": inst.text,
-            "score": round(score, 4),
-            "verification_state": result.state,
-            "auto_accepted": not review_required,
-            "review_required": review_required,
-            "reason_codes": (
-                ["paddle_agreement"] if result.state == "agree"
-                else [f"paddle_{result.state}"]
-            ),
-        }
+    ranked: List[Tuple[int, float, InstText, List[str]]] = []
+    for inst in instances:
+        count, flags = risk_profile(inst)
+        if count:
+            ranked.append((count, (inst.confidence or 0.0), inst, flags))
+    ranked.sort(key=lambda item: (-item[0], item[1], item[2].reading_order))
+    limit = max(0, int(policy.max_region_proposals))
+    selected_records = ranked[:limit] if limit else []
+    for _, _, inst, flags in ranked[limit:]:
         _history(inst, {
             "stage": "multi_candidate_ocr",
             "engine": "paddleocr",
-            "accepted": result.state == "agree",
+            "accepted": False,
+            "decision": "not_assessed",
+            "risk_flags": flags,
+            "reason": "risk-based verification budget exhausted",
+        })
+    selected = [record[2] for record in selected_records]
+    if not selected:
+        return 0
+
+    risk_by_instance = {id(record[2]): record[3] for record in selected_records}
+    from tofu.layers.ocr_verification import PaddleRegionVerifier
+    from tofu.layers.ocr_arbitration import (
+        ArbitrationSignals,
+        DecisionKind,
+        OCRCandidate,
+        arbitrate,
+    )
+
+    # Paddle readers are language-specific.  Grouping avoids a subprocess per
+    # region while preventing a dominant scene language from being used to
+    # "verify" unrelated-script regions.
+    grouped: Dict[str, List[InstText]] = {}
+    for inst in selected:
+        lang = inst.detected_language or inst.language or "en"
+        grouped.setdefault(lang, []).append(inst)
+
+    results_by_instance: Dict[int, Any] = {}
+    for lang, group in grouped.items():
+        verifier = PaddleRegionVerifier(languages=[lang])
+        results = verifier.verify_regions(
+            asset,
+            [inst.bounding_box for inst in group],
+            [inst.text for inst in group],
+            language=lang,
+        )
+        for inst, result in zip(group, results):
+            results_by_instance[id(inst)] = result
+
+    changed = 0
+    detector = ScriptDetector()
+    for inst in selected:
+        result = results_by_instance.get(id(inst))
+        if result is None:
+            continue
+        primary_confidence = float(inst.confidence or 0.0)
+        verification = result.evidence()
+        language = inst.detected_language or inst.language or "en"
+        primary_text = inst.text or ""
+        primary_script = detector.detect_script(primary_text)
+        alternate_script = detector.detect_script(result.text)
+        alternate_risks: List[str] = []
+        primary_len = len(re.sub(r"\W+", "", primary_text, flags=re.UNICODE))
+        alternate_len = len(re.sub(r"\W+", "", result.text, flags=re.UNICODE))
+        if primary_len and alternate_len:
+            ratio = alternate_len / primary_len
+            if ratio < 0.5 or ratio > 2.0:
+                alternate_risks.append("length_discontinuity")
+        # The established hybrid audit requires both a high-confidence
+        # alternate and proof that no terminal dash ink exists.  General
+        # arbitration must not bypass that extra safeguard.
+        if primary_text[-1:] in _TRAILING_ARTIFACTS and result.text != primary_text:
+            alternate_risks.append("requires_terminal_artifact_audit")
+
+        candidate_geometry: Optional[BBox] = None
+        polygons = [
+            item.get("polygon") for item in (verification.get("detections") or [])
+            if item.get("polygon")
+        ]
+        if polygons:
+            points = [point for polygon in polygons for point in polygon]
+            xs, ys = [point[0] for point in points], [point[1] for point in points]
+            candidate_geometry = BBox(
+                x=int(min(xs)), y=int(min(ys)),
+                width=max(1, int(max(xs) - min(xs))),
+                height=max(1, int(max(ys) - min(ys))),
+            )
+        geometry_support = 0.0
+        if candidate_geometry is not None:
+            b = inst.bounding_box
+            overlap_w = max(
+                0,
+                min(b.x + b.width, candidate_geometry.x + candidate_geometry.width)
+                - max(b.x, candidate_geometry.x),
+            )
+            overlap_h = max(
+                0,
+                min(b.y + b.height, candidate_geometry.y + candidate_geometry.height)
+                - max(b.y, candidate_geometry.y),
+            )
+            intersection = overlap_w * overlap_h
+            geometry_support = min(
+                intersection / max(1, b.width * b.height),
+                intersection / max(
+                    1, candidate_geometry.width * candidate_geometry.height
+                ),
+            )
+
+        selected_pass = next((
+            item for item in reversed(inst.recognition_history or [])
+            if item.get("stage") == "detection_pass" and item.get("selected")
+        ), {})
+        primary_engine = str(selected_pass.get("engine") or "easyocr")
+        primary = OCRCandidate(
+            engine=primary_engine,
+            engine_version=str(selected_pass.get("engine_version") or "unknown"),
+            text=primary_text,
+            raw_confidence=max(0.0, min(1.0, primary_confidence)),
+            languages=(language,),
+            script=primary_script,
+            risk_flags=tuple(risk_by_instance.get(id(inst), [])),
+            provenance={"region_id": inst.id, "role": "primary"},
+        )
+        alternate = OCRCandidate(
+            engine=result.backend or "paddleocr",
+            engine_version="isolated-worker",
+            text=result.text or "",
+            raw_confidence=max(0.0, min(1.0, float(result.confidence or 0.0))),
+            languages=(language,),
+            script=alternate_script,
+            risk_flags=tuple(alternate_risks),
+            provenance={"region_id": inst.id, "role": "independent_verifier"},
+        )
+        signals = ArbitrationSignals(
+            ink_support=1.0 if _has_ink_support(asset, inst.bounding_box) else 0.0,
+            geometry_support=max(0.0, min(1.0, geometry_support)),
+            script_compatible=(
+                None
+                if not primary_script or not alternate_script
+                else primary_script == alternate_script
+            ),
+            language_compatible=True,
+        )
+        decision = arbitrate(primary, alternate, signals)
+        reason_codes = [reason.value for reason in decision.reason_codes]
+        accepted = decision.kind == DecisionKind.ACCEPT
+        consensus = decision.kind == DecisionKind.AGREE
+        review_required = (
+            decision.kind == DecisionKind.REVIEW
+            or result.state in {"unavailable", "error", "no_text"}
+        )
+        observations = []
+        for item in inst.recognition_history or []:
+            if item.get("stage") == "detection_pass":
+                observations.append({
+                    "backend": item.get("engine", "easyocr"),
+                    "pass_tag": f"detection_pass_{item.get('pass')}",
+                    "text": item.get("candidate_text", ""),
+                    "raw_confidence": item.get("candidate_confidence"),
+                    "selected": bool(item.get("selected")),
+                })
+        observations.extend([
+            {
+                "backend": "primary",
+                "pass_tag": "selected_existing_pipeline",
+                "text": primary_text,
+                "raw_confidence": round(primary_confidence, 4),
+                "bbox": {
+                    "x": inst.bounding_box.x, "y": inst.bounding_box.y,
+                    "width": inst.bounding_box.width,
+                    "height": inst.bounding_box.height,
+                },
+            },
+            verification,
+        ])
+        inst.ocr_provenance = {
+            "schema": 2,
+            "policy_revision": policy.calibration_revision,
+            "mode": policy.mode,
+            "arbitration_policy_version": decision.policy_version,
+            "calibration_registry_version": decision.calibration_registry_version,
+            "observations": observations,
+            "selected_backend": decision.selected,
+            "selected_text": result.text if accepted else primary_text,
+            "verification_state": result.state,
+            "decision": decision.kind.value,
+            "auto_accepted": accepted or consensus,
+            "review_required": review_required,
+            "reason_codes": reason_codes,
+            "signals": {
+                "ink_support": signals.ink_support,
+                "geometry_support": round(signals.geometry_support, 4),
+                "script_compatible": signals.script_compatible,
+                "language_compatible": signals.language_compatible,
+            },
+            "primary_calibrated_confidence": decision.primary.calibrated_confidence,
+            "alternate_calibrated_confidence": decision.alternate.calibrated_confidence,
+        }
+        _history(inst, {
+            "stage": "multi_candidate_ocr",
+            "engine": result.backend or "paddleocr",
+            "accepted": accepted or consensus,
+            "applied": accepted,
+            "decision": decision.kind.value,
             "candidate_text": result.text,
             "candidate_confidence": round(result.confidence, 4),
             "similarity": result.similarity,
-            "reason": f"independent verification {result.state}",
+            "risk_flags": risk_by_instance.get(id(inst), []),
+            "reason_codes": reason_codes,
+            "reason": (
+                "independent alternate cleared all conservative arbitration gates"
+                if accepted else
+                f"independent candidate {decision.kind.value}; primary retained"
+            ),
         })
-        if result.state == "agree":
-            verified += 1
-    return verified
+        if accepted:
+            inst.text = result.text
+            inst.confidence = float(result.confidence)
+            inst.ocr_correction = {
+                "applied": True,
+                "original_text": primary_text,
+                "corrected_text": result.text,
+                "reason": "versioned cross-engine OCR arbitration",
+                "policy_version": decision.policy_version,
+                "calibration_registry_version": decision.calibration_registry_version,
+            }
+            changed += 1
+    return changed
 
 
 def build_manifest(

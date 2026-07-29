@@ -28,6 +28,7 @@ which engine or pass produced it.
 from typing import Dict, List
 
 from tofu.core.types import InstText
+from tofu.utils.correction_resources import load_correction_resource, variant_pairs
 
 # curated, growable pairs of (simplified-Chinese-only glyph, Japanese
 # shinjitai equivalent) confirmed to be confused by PaddleOCR's shared
@@ -37,11 +38,10 @@ from tofu.core.types import InstText
 # the same simplification), so only genuinely observed divergent pairs
 # belong here. add a pair only once it's actually been seen in
 # production output, the same discipline menu.py's gazetteer follows.
-SIMPLIFIED_TO_JAPANESE: Dict[str, str] = {
-    "剧": "劇",  # theater: 劇場通り read back as 剧場通
-    "烧": "焼",  # burn/grill: 焼肉/焼皮 read back as 烧肉/烧皮
-    "岛": "島",  # island: 下島 read back as 下岛
-}
+VARIANT_RESOURCE = load_correction_resource(
+    "wasabi/simplified_to_japanese-1.0.0.json"
+)
+SIMPLIFIED_TO_JAPANESE: Dict[str, str] = variant_pairs(VARIANT_RESOURCE)
 
 
 def normalize_japanese_kanji(text: str) -> str:
@@ -76,6 +76,7 @@ def season(instances: List[InstText]) -> int:
             "original_text": text,
             "corrected_text": fixed,
             "reason": "simplified-Chinese glyph form normalized to Japanese shinjitai",
+            "correction_resource": VARIANT_RESOURCE.audit_identity(),
         }
         inst.text = fixed
         corrected += 1

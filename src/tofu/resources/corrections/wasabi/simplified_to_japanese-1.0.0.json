@@ -1,0 +1,19 @@
+{
+  "id": "wasabi.simplified-to-japanese",
+  "kind": "variant-pairs",
+  "locale": "ja",
+  "schema_version": "1",
+  "data_version": "1.0.0",
+  "checksum": "sha256:dc1e0bf21209c0e3ca1482f3102ed29ec63930d895f3aeb2ff5aaba36863ed73",
+  "provenance": {
+    "maintainer": "ToFU",
+    "method": "curated from confirmed PaddleOCR confusions",
+    "source": "project correction corpus"
+  },
+  "license": "MIT",
+  "entries": [
+    {"source": "剧", "target": "劇"},
+    {"source": "烧", "target": "焼"},
+    {"source": "岛", "target": "島"}
+  ]
+}

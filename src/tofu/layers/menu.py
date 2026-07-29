@@ -22,6 +22,7 @@ had its say.
 from typing import Any, List, NamedTuple, Optional
 
 from tofu.core.types import InstText
+from tofu.utils.correction_resources import gazetteer_entries, load_correction_resource
 from tofu.utils.textmatch import fuzzy_similarity
 
 # a read this confident is trusted over the gazetteer -- a correction
@@ -82,16 +83,8 @@ CORROBORATION_MIN_SIBLINGS = 2
 # photos. seeded for this project's dense-CJK-signage test scenes, but
 # meant to grow with whatever real signage future assets turn up --
 # not a fixed answer key for one image.
-KNOWN_PLACES: List[tuple] = [
-    ("歌舞伎町一番街", "ja"),
-    ("劇場通り", "ja"),
-    ("バンダイ", "ja"),
-    ("お好み焼本陣", "ja"),
-    ("東南荘", "ja"),
-    ("湯屋", "ja"),
-    ("下島", "ja"),
-    ("濁河温泉", "ja"),
-]
+KNOWN_PLACES_RESOURCE = load_correction_resource("menu/known_places-1.0.0.json")
+KNOWN_PLACES: List[tuple] = gazetteer_entries(KNOWN_PLACES_RESOURCE)
 
 # common signage words -- not places, so they are deliberately NOT in
 # KNOWN_PLACES (browse() must not rewrite a storefront read into a
@@ -99,21 +92,8 @@ KNOWN_PLACES: List[tuple] = [
 # whether several fragmented regions spell one entity: cicerone
 # routinely splits a two-glyph sign like 歓迎 into one region per glyph,
 # and reassembling it is an entity question, not a place-name question.
-KNOWN_SIGNAGE: List[tuple] = [
-    ("歓迎", "ja"),
-    ("入口", "ja"),
-    ("出口", "ja"),
-    ("案内", "ja"),
-    ("注意", "ja"),
-    ("営業中", "ja"),
-    ("準備中", "ja"),
-    ("駐車場", "ja"),
-    ("観光案内所", "ja"),
-    ("欢迎", "zh-cn"),
-    ("入口", "zh-cn"),
-    ("出口", "zh-cn"),
-    ("停车场", "zh-cn"),
-]
+KNOWN_SIGNAGE_RESOURCE = load_correction_resource("menu/known_signage-1.0.0.json")
+KNOWN_SIGNAGE: List[tuple] = gazetteer_entries(KNOWN_SIGNAGE_RESOURCE)
 
 
 class MenuMatch(NamedTuple):
@@ -418,6 +398,7 @@ def browse(instances: List[InstText], asset: Any = None,
                     "original_text": original,
                     "corrected_text": new_text,
                     "reason": reason,
+                    "correction_resource": KNOWN_PLACES_RESOURCE.audit_identity(),
                 }
                 inst.text = new_text
                 corrected += 1
@@ -435,6 +416,7 @@ def browse(instances: List[InstText], asset: Any = None,
                                   for s in inconclusive
                               )
                               + "), pixel evidence inconclusive",
+                    "correction_resource": KNOWN_PLACES_RESOURCE.audit_identity(),
                 }
             # a substring alignment is structural evidence of a composite
             # read -- never fall through to the whole-string rewrite,
@@ -449,6 +431,7 @@ def browse(instances: List[InstText], asset: Any = None,
             "original_text": text,
             "corrected_text": match.text,
             "reason": f"gazetteer match ({match.similarity:.2f} similarity) against a known place/establishment name",
+            "correction_resource": KNOWN_PLACES_RESOURCE.audit_identity(),
         }
         inst.text = match.text
         corrected += 1
