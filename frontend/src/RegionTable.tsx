@@ -2,10 +2,12 @@ import { Fragment, useCallback, useEffect, useRef, useState, type CSSProperties,
 import { FontFamily, FontOption, InstText, LanguageOption } from "./api";
 import { AlertTriangle, AlertCircle, BookmarkCheck, ChevronDown, Eye, EyeOff, GripVertical, Loader2, ScanText, Trash2, AlignLeft, AlignVerticalJustifyCenter, ArrowLeftRight } from "lucide-react";
 import { LuReplace } from "react-icons/lu";
+import { BsTranslate } from "react-icons/bs";
 import { langDisplayName } from "./languageData";
 import { textLangMatchesTarget } from "./detectLanguage";
 import LanguageCombobox from "./LanguageCombobox";
-import { loadFontPreview, fontNameForPath, weightLabel } from "./FontCombobox";
+import { loadFontPreview, weightLabel } from "./FontCombobox";
+import { fontIdentity } from "./doppelganger";
 import { HiLockClosed, HiLockOpen } from "react-icons/hi";
 import { FaSearch } from "react-icons/fa";
 import "./bbox.css";
@@ -53,6 +55,8 @@ interface RegionTableProps {
   onReorder?: (fromId: string, toId: string) => void;
   onBatchBegin?: () => void;
   onBatchEnd?: () => void;
+  bboxColor?: string;
+  hideRegionCounter?: boolean;
 }
 
 function confColor(conf: number | null): string {
@@ -60,11 +64,6 @@ function confColor(conf: number | null): string {
   if (conf >= 0.8) return "text-emerald-400";
   if (conf >= 0.6) return "text-amber-400";
   return "text-red-400";
-}
-
-function fontName(path: string): string {
-  const base = path.split(/[\\/]/).pop() ?? path;
-  return base.replace(/\.(ttf|otf|ttc|otc)(#\d+)?$/i, "");
 }
 
 // column model: label collapses to `short` below `narrowAt` px
@@ -85,7 +84,7 @@ const ALL_COLS: Col[] = [
   { key: "srctgt", label: "Source / Target", short: "S/T", w: 220, min: 80, narrowAt: 120, resizable: true },
   { key: "lang", label: "Lang", w: 68, min: 50, resizable: true },
   { key: "font", label: "Font", w: 104, min: 56, resizable: true },
-  { key: "conf", label: "Conf", w: 46, min: 40 },
+  { key: "conf", label: "Conf.", w: 46, min: 40 },
   { key: "actions", label: "", w: 78, min: 78 },
 ];
 
@@ -101,7 +100,7 @@ export default function RegionTable({
   mode, regions, selectedId, hoveredId, onSelect, onHover, onTextChange, onTargetChange,
   onDelete, onOcr, onToggleDnt, onTargetLangChange, onSrcLangChange, onFontChange,
   onApplyTargetLang, ocrLoading, languages, defaultTargLang, defaultSrcLang, fontsByLang, familiesByLang, onNeedFonts,
-  lockedLangs, onToggleLangLock, onOrientationToggle, onWordOrderToggle, onFontMatch, fontMatchingId, formerTargLang, targLang, footer, onReorder, onBatchBegin, onBatchEnd,
+  lockedLangs, onToggleLangLock, onOrientationToggle, onWordOrderToggle, onFontMatch, fontMatchingId, formerTargLang, targLang, footer, onReorder, onBatchBegin, onBatchEnd, bboxColor, hideRegionCounter,
 }: RegionTableProps) {
   const COLS = ALL_COLS.filter((c) => MODE_COLS[mode].includes(c.key));
   const rowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
@@ -127,26 +126,6 @@ export default function RegionTable({
   // pagination (translate mode only) — rows per page determined by
   // actual table container height so pagination only appears when
   // entries overflow the visible area
-  const ROW_HEIGHT = 32; // approximate px per row (px-2 py-1 text-sm + border)
-  const HEADER_HEIGHT = 28; // approximate px for the thead
-  const [capacity, setCapacity] = useState(999);
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => {
-      const fit = Math.max(1, Math.floor((el.clientHeight - HEADER_HEIGHT) / ROW_HEIGHT));
-      setCapacity(fit);
-    });
-    ro.observe(el);
-    setCapacity(Math.max(1, Math.floor((el.clientHeight - HEADER_HEIGHT) / ROW_HEIGHT)));
-    return () => ro.disconnect();
-  }, []);
-  const rowsPerPage = mode === "translate" ? capacity : regions.length;
-  const needsPagination = mode === "translate" && regions.length > rowsPerPage;
-  const totalPages = needsPagination ? Math.max(1, Math.ceil(regions.length / rowsPerPage)) : 1;
-  const [currentPage, setCurrentPage] = useState(0);
-  useEffect(() => { if (currentPage > totalPages - 1) setCurrentPage(Math.max(0, totalPages - 1)); }, [totalPages, currentPage]);
-  useEffect(() => { if (mode === "translate") setCurrentPage(0); }, [mode]);
   const sortedRegions = (() => {
     let r = regions;
     if (searchQuery.trim()) {
@@ -168,10 +147,6 @@ export default function RegionTable({
     }
     return r;
   })();
-
-  const pagedRegions = needsPagination
-    ? sortedRegions.slice(currentPage * rowsPerPage, (currentPage + 1) * rowsPerPage)
-    : sortedRegions;
 
   const availableCodes = languages.map((l) => l.code);
 
@@ -265,32 +240,23 @@ export default function RegionTable({
 
   return (
     <div className={`bezier-card soft-shadow flex h-full flex-col rounded-lg bg-white/60 dark:bg-zinc-900/60 ${footer ? "overflow-visible" : "overflow-hidden"}`}>
-      {/* stats bar */}
-      <div className="subtext flex items-center justify-between border-b border-zinc-300 px-3 py-2 text-xs text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
-        <div className="flex items-center gap-2">
-          <span>regions: {regions.length}</span>
-          {needsPagination && (
-            <div className="flex items-center gap-1">
-              {Array.from({ length: totalPages }).map((_, i) => (
-                <button
-                  key={i}
-                  onClick={() => setCurrentPage(i)}
-                  className={`rounded-lg px-2 py-0.5 text-xs font-medium transition ${
-                    i === currentPage
-                      ? "bg-cyan-600 text-white"
-                      : "bg-zinc-200 text-zinc-600 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"
-                  }`}
-                >
-                  {i + 1}
-                </button>
-              ))}
-            </div>
+      {mode === "translate" && (
+        <h2 className="subtext mx-3 mb-3 mt-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+          <BsTranslate size={14} />
+          Translate
+          {!hideRegionCounter && (
+            <span className="text-[10px] font-medium normal-case tracking-normal" style={{ color: bboxColor ?? "#22d3ee" }}>
+              regions: {regions.length}
+            </span>
           )}
+        </h2>
+      )}
+      {/* stats bar */}
+      {mode === "capture" && (
+        <div className="subtext flex items-center justify-between border-b border-zinc-300 px-3 py-2 text-xs text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
+          <span>regions: {regions.length}</span>
         </div>
-        {regions.some((r) => r.confidence !== null) && (
-          <span>avg conf {(avgConf * 100).toFixed(0)}%</span>
-        )}
-      </div>
+      )}
 
       {/* apply-to-selected bar (translation work only) */}
       {mode === "translate" && checked.size > 0 && (
@@ -356,6 +322,13 @@ export default function RegionTable({
                       {headerLabel(c)}
                       <span className={`text-[10px] ${translated === regions.length && regions.length > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-500 dark:text-red-400"}`}>
                         {translated}/{regions.length}
+                      </span>
+                    </span>
+                  ) : c.key === "conf" && regions.some((r) => r.confidence !== null) ? (
+                    <span className="flex items-center gap-2">
+                      {headerLabel(c)}
+                      <span className={`text-[10px] ${confColor(avgConf)}`}>
+                        {(avgConf * 100).toFixed(0)}%
                       </span>
                     </span>
                   ) : c.key === "lang" && mode === "capture" && lockedLangs && regions.length > 0 && lockedLangs.size === regions.length ? (
@@ -430,7 +403,7 @@ export default function RegionTable({
             </tr>
           </thead>
           <tbody>
-            {pagedRegions.map((inst, pageIndex) => {
+            {sortedRegions.map((inst, rowIndex) => {
               const isSel = inst.id === selectedId;
               const isHovered = inst.id === hoveredId;
               const isExpanded = inst.id === expandedId;
@@ -506,7 +479,7 @@ export default function RegionTable({
                     <td className="px-2 py-1 text-xs text-zinc-500">
                       <span className={`flex items-center gap-0.5 ${canReorder ? "cursor-grab active:cursor-grabbing" : ""}`}>
                         {canReorder && <GripVertical size={10} className="shrink-0 text-zinc-400 dark:text-zinc-600" />}
-                        {(needsPagination ? currentPage * rowsPerPage : 0) + pageIndex + 1}
+                        {rowIndex + 1}
                       </span>
                     </td>
                     <td className="truncate px-2 py-1 font-mono text-xs text-zinc-400">
@@ -592,62 +565,43 @@ export default function RegionTable({
                       </td>
                     )}
                     {mode === "translate" && (() => {
-                      // explicit pick wins; otherwise fall back to what
-                      // "auto" currently resolves to (resolved_font_family,
-                      // computed server-side by scribe.resolve_auto_font —
-                      // the same resolution render() itself performs) so
-                      // this column shows a real font name ("Arial Bold")
-                      // instead of just the bare detected style ("bold")
-                      const explicitPath = inst.style_profile?.font_family;
-                      const fontPath = explicitPath ?? inst.resolved_font_family ?? null;
+                      // Resolved through doppelganger.fontIdentity(), the same
+                      // ladder TargetPreviewCanvas paints with.  This column
+                      // used to run its own `explicit ?? resolved_font_family`
+                      // and so skipped the nearest-neighbour rung entirely,
+                      // listing la-rue-sans-nom as "Arial Regular" beside a
+                      // preview drawn in Baskerville Old Face.
+                      const identity = fontIdentity(inst, { familiesByLang, defaultTargLang });
                       const fontStyle = inst.characteristics?.font_style ?? "";
                       const fs = fontStyle.toLowerCase();
-                      const lang = inst.target_language ?? defaultTargLang;
-                      const families = familiesByLang?.[lang] ?? [];
-                      const fam = fontPath
-                        ? families.find((f) => f.weights.some((w) => w.path === fontPath) || f.best_path === fontPath)
-                        : undefined;
-                      const weight = fam?.weights.find((w) => w.path === fontPath);
 
                       const style: CSSProperties = {};
-                      if (weight) {
-                        const wc = weight.weight_class;
-                        if (wc <= 400) style.fontWeight = 400;
-                        else if (wc <= 500) style.fontWeight = 500;
-                        else if (wc <= 600) style.fontWeight = 600;
-                        else if (wc <= 700) style.fontWeight = 700;
-                        else style.fontWeight = 800;
-                        if ((weight.subfamily || "").toLowerCase().includes("italic")) style.fontStyle = "italic";
-                        style.fontFamily = fontNameForPath(fontPath!);
-                        loadFontPreview(fontPath!, fam?.family ?? "");
+                      if (identity.cssFontFamily && identity.path) {
+                        // The alias carries the face's own weight and slant,
+                        // so asking for them again would double-apply them.
+                        style.fontFamily = identity.cssFontFamily;
+                        loadFontPreview(identity.path);
                       } else {
                         if (fs.includes("bold")) style.fontWeight = 700;
                         if (fs.includes("italic")) style.fontStyle = "italic";
                       }
 
-                      // prefer a real "{Family} {Weight}" label; fall back
-                      // to the raw file name when the font isn't in this
-                      // language's family list (e.g. resolution happened
-                      // before familiesByLang for this lang was fetched),
-                      // then to the bare detected style, then "auto"
-                      const familyLabel = fam
-                        ? `${fam.family}${weight ? ` ${weightLabel(weight)}` : ""}`
-                        : fontPath
-                        ? fontName(fontPath)
-                        : null;
-                      const label = [
-                        familyLabel,
-                        !familyLabel && fontStyle && fontStyle !== "regular" ? fontStyle : null,
-                      ].filter(Boolean).join(" ") || "auto";
-
-                      const hasContent = fontStyle || fontPath;
+                      const inferred = identity.provenance === "nearest_neighbor";
+                      const title = inferred
+                        ? `${identity.label} — closest installed face by glyph shape. `
+                          + `The render keeps its own auto font until you accept this below.`
+                        : identity.label;
+                      const hasContent = fontStyle || identity.path;
                       return (
                         <td className="px-2 py-1" onClick={(e) => e.stopPropagation()}>
                           {hasContent ? (
                             <div className="flex items-center gap-2">
                               <ScanText size={11} className="shrink-0 text-cyan-600 dark:text-cyan-400" />
-                              <span className="block truncate text-xs text-zinc-500 dark:text-zinc-400" style={style} title={label}>
-                                {label}
+                              <span className="block truncate text-xs text-zinc-500 dark:text-zinc-400" style={style} title={title}>
+                                {identity.label}
+                                {/* an inferred face is not a selected one, and
+                                    the column must not imply otherwise */}
+                                {inferred && <span className="ml-1 text-amber-600 dark:text-amber-500">~</span>}
                               </span>
                             </div>
                           ) : (
@@ -858,7 +812,7 @@ export default function RegionTable({
                 </Fragment>
               );
             })}
-            {pagedRegions.length === 0 && (
+            {sortedRegions.length === 0 && (
               <tr>
                 <td colSpan={COLS.length} className="subtext px-3 py-6 text-left text-xs text-zinc-500 dark:text-zinc-600">
                   Click "draw bbox" (+) to begin.
@@ -866,8 +820,8 @@ export default function RegionTable({
               </tr>
             )}
             {/* ghost rows to fill remaining space for UI seamlessness */}
-            {pagedRegions.length > 0 && pagedRegions.length < 20 && (
-              Array.from({ length: Math.max(3, 20 - pagedRegions.length) }).map((_, i) => (
+            {sortedRegions.length > 0 && sortedRegions.length < 20 && (
+              Array.from({ length: Math.max(3, 20 - sortedRegions.length) }).map((_, i) => (
                 <tr key={`ghost-${i}`} className="border-b border-zinc-100 dark:border-zinc-900/30" style={{ opacity: 0.3 }}>
                   {COLS.map((c) => (
                     <td key={c.key} className="px-2 py-1 text-xs text-zinc-300 dark:text-zinc-700">&nbsp;</td>

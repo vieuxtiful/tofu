@@ -1,6 +1,5 @@
-"""Garnish — post-Scribe natural scene integration.
-
-Only the newly rendered text-difference layer is treated.  The cleansed base
+## 🍢 Garnish - post-Scribe natural scene integration
+"""Only the newly rendered text-difference layer is treated.  The cleansed base
 is never modified, so neural/manual repair pixels remain reversible and QA can
 assert outside-mask preservation.
 """

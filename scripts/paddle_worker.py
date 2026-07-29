@@ -25,7 +25,8 @@ Request (stdin, one JSON object):
     "det_db_thresh": 0.3,             # optional -> PaddleOCR's text_det_thresh
     "det_box_thresh": 0.6,            # optional -> text_det_box_thresh
     "drop_score": 0.3,                # optional -> text_rec_score_thresh
-    "unclip_ratio": 1.4               # optional -> text_det_unclip_ratio
+    "unclip_ratio": 1.4,              # optional -> text_det_unclip_ratio
+    "use_textline_orientation": true  # optional -> use_textline_orientation
   }
   a reader is cached per (lang, threshold-params) combination -- omitted
   threshold keys fall back to PaddleOCR's own model defaults rather than
@@ -51,12 +52,17 @@ os.environ.setdefault("FLAGS_use_mkldnn", "0")
 
 _readers = {}  # (lang, det_params) -> PaddleOCR instance, reused across calls
 
-# request key -> PaddleOCR constructor kwarg it maps to
+# request key -> PaddleOCR constructor kwarg it maps to.
+# use_textline_orientation keeps its own name: it is the 3.x replacement
+# for 2.x's use_angle_cls, and it is the detector's vertical/rotated
+# textline handling -- previously hardcoded True below with no way for
+# the caller to turn it off.
 _DET_PARAM_MAP = {
     "det_db_thresh": "text_det_thresh",
     "det_box_thresh": "text_det_box_thresh",
     "drop_score": "text_rec_score_thresh",
     "unclip_ratio": "text_det_unclip_ratio",
+    "use_textline_orientation": "use_textline_orientation",
 }
 
 
@@ -68,11 +74,14 @@ def _get_reader(lang: str, det_params: dict | None = None):
         kwargs = {
             _DET_PARAM_MAP[k]: v for k, v in det_params.items() if k in _DET_PARAM_MAP
         }
+        # textline orientation stays ON unless the caller explicitly says
+        # otherwise -- setdefault rather than a positional argument, or a
+        # caller sending it would collide with **kwargs.
+        kwargs.setdefault("use_textline_orientation", True)
         _readers[cache_key] = PaddleOCR(
             lang=lang,
             use_doc_orientation_classify=False,
             use_doc_unwarping=False,
-            use_textline_orientation=True,
             enable_mkldnn=False,
             **kwargs,
         )

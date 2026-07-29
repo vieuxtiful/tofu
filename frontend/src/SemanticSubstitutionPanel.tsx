@@ -1,8 +1,9 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, Check, Loader2, RotateCcw, ScanText, ShieldAlert, Sparkles, X } from "lucide-react";
 import { FcCollapse } from "react-icons/fc";
 import { MdTipsAndUpdates } from "react-icons/md";
-import { TbLeafFilled, TbReplace, TbReplaceFilled } from "react-icons/tb";
+import { CgArrangeBack } from "react-icons/cg";
+import { TbLeafFilled } from "react-icons/tb";
 import type { GlossaryStatus, InstText, SemanticSubstitutionPlan, SemanticTextUnit } from "./api";
 import type { Theme } from "./theme";
 import GlossaryPanel from "./GlossaryPanel";
@@ -10,6 +11,8 @@ import { regionColorMap } from "./regionPalette";
 import { guardTargetText, type AttestedSet, type GuardVerdict } from "./targetGuard";
 import basilHeaderUrl from "../../images/basil-header.png";
 import basilHeaderDarkUrl from "../../images/basil-header-dark.png";
+
+const PLACEHOLDER_TEXT = "Enter target phrase";
 
 type Props = {
   units: SemanticTextUnit[];
@@ -64,7 +67,7 @@ export default function SemanticSubstitutionPanel({
         <img
           alt=""
           src={theme === "dark" ? basilHeaderDarkUrl : basilHeaderUrl}
-          className={`absolute -top-8 object-cover object-top transition-opacity duration-300 [mask-image:linear-gradient(to_bottom,black_0%,black_58%,transparent_100%)] ${theme === "dark" ? "-left-px w-[calc(100%+1px)]" : "inset-x-0 w-full"} ${open ? "opacity-100" : "opacity-55"}`}
+          className={`absolute -top-8 object-cover object-top transition-opacity duration-300 ${theme === "dark" ? "-left-px w-[calc(100%+1px)] [mask-image:linear-gradient(to_bottom,black_0%,black_48%,transparent_90%,transparent_100%)]" : "inset-x-0 w-full [mask-image:linear-gradient(to_bottom,black_0%,black_58%,transparent_96%,transparent_100%)]"} ${open ? "opacity-100" : "opacity-55"}`}
         />
       </div>
       <div className="relative z-10">
@@ -75,8 +78,8 @@ export default function SemanticSubstitutionPanel({
       <button type="button" onClick={() => setOpen((value) => !value)} className="absolute right-0 top-0 rounded-sm p-1 text-zinc-500 transition hover:bg-zinc-200 dark:hover:bg-zinc-800" title={open ? "collapse Basil" : "expand Basil"} aria-label={open ? "collapse Basil" : "expand Basil"}>
         <FcCollapse size={12} style={{ transform: open ? "none" : "rotate(180deg)", transition: "transform 0.2s" }} />
       </button>
-      <p className="mb-1 flex items-start gap-1.5 text-xs text-cyan-900/75 dark:text-cyan-200/70">
-        <MdTipsAndUpdates size={14} className="mt-0.5 shrink-0 text-[#2d8cf0]" />
+      <p className="subtext mb-1 flex items-center gap-1 text-xs text-zinc-500">
+        <MdTipsAndUpdates size={14} className="shrink-0 text-[#2d8cf0]" />
         <span>Set target arrangement and review before plating.</span>
       </p>
       <div className={`style-panel-morph${open ? " expanded" : ""}`}>
@@ -165,6 +168,7 @@ function BasilUnitCard({
   return (
     <div className="rounded-lg border border-cyan-200 bg-white/80 p-3 dark:border-cyan-900 dark:bg-zinc-950/45">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+        <span className="font-medium text-zinc-800 dark:text-zinc-100">{unit.source_text}</span>
         <span className="flex items-center gap-1.5 text-[10px] text-zinc-500 dark:text-zinc-400">
           <ScanText size={12} className="shrink-0 text-cyan-600 dark:text-cyan-400" />
           <span className="font-medium text-zinc-700 dark:text-zinc-300">{unit.entity_type.replace(/_/g, " ")}</span>
@@ -172,7 +176,6 @@ function BasilUnitCard({
             {Math.round(unit.confidence * 100)}%
           </span>
         </span>
-        <span className="font-medium text-zinc-800 dark:text-zinc-100">{unit.source_text}</span>
       </div>
 
       {/* the halo: one coloured square per source region, in reading order */}
@@ -264,7 +267,7 @@ function BasilUnitCard({
               title={guard && !guard.ok ? guard.reason : undefined}
               className="inline-flex items-center justify-center gap-1 rounded-md bg-cyan-700 px-2.5 py-1.5 text-xs font-medium text-white transition hover:bg-cyan-800 disabled:cursor-not-allowed disabled:opacity-45"
             >
-              {loading ? <Loader2 size={13} className="animate-spin" /> : theme === "dark" ? <TbReplaceFilled size={14} /> : <TbReplace size={14} />}
+              {loading ? <Loader2 size={13} className="animate-spin" /> : <CgArrangeBack size={15} />}
               arrange
             </button>
             {guard && !guard.ok && value.trim() && (
@@ -338,7 +341,17 @@ function HaloField({
   label: string;
 }) {
   const mirrorRef = useRef<HTMLDivElement>(null);
+  const [typedPlaceholder, setTypedPlaceholder] = useState(0);
   const offending = useMemo(() => new Set((guard?.offending ?? []).map(normToken)), [guard]);
+
+  useEffect(() => {
+    if (value) { setTypedPlaceholder(0); return; }
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    for (let i = 1; i <= PLACEHOLDER_TEXT.length; i++) {
+      timers.push(setTimeout(() => setTypedPlaceholder(i), i * 70));
+    }
+    return () => timers.forEach(clearTimeout);
+  }, [value]);
 
   // Split on whitespace but KEEP the separators, so the mirror reproduces
   // the input string exactly and the two stay in glyph-for-glyph register.
@@ -356,6 +369,12 @@ function HaloField({
   return (
     <div className="basil-plate">
       <div className="basil-plate-mirror" aria-hidden="true" ref={mirrorRef}>
+        {value === "" && (
+          <span className="basil-placeholder-typewriter" style={{ color: "#a1a1aa" }}>
+            {PLACEHOLDER_TEXT.slice(0, typedPlaceholder)}
+            <span className="basil-placeholder-cursor" />
+          </span>
+        )}
         {pieces.map((piece, index) => {
           if (!piece) return null;
           if (/^\s+$/.test(piece)) return <span key={index}>{piece}</span>;
@@ -384,7 +403,6 @@ function HaloField({
         onScroll={(event) => {
           if (mirrorRef.current) mirrorRef.current.scrollLeft = event.currentTarget.scrollLeft;
         }}
-        placeholder="Complete target phrase"
         className="basil-plate-input"
         spellCheck={false}
       />

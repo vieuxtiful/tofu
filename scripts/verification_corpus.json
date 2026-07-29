@@ -1,0 +1,581 @@
+{
+  "suite": "phase-7-10-demo-verification",
+  "description": "Deterministic images introduced in waves. Every case declares regions, target language, asset class, and expected review outcome. Wave 5 reuses earlier layouts to vary only the target language.",
+  "waves": [
+    {
+      "id": "wave-1-simple-latin",
+      "cases": [
+        {
+          "id": "flat-sign",
+          "image": "tests/fixtures/flat-sign.png",
+          "ground_truth": "tests/fixtures/flat-sign.gt.json",
+          "source_language": "en",
+          "target_language": "en",
+          "asset_class": "sign",
+          "target_mode": "identity",
+          "expected_regions": 4,
+          "expected_outcome": "pass"
+        },
+        {
+          "id": "gradient-banner",
+          "image": "tests/fixtures/gradient-banner.png",
+          "ground_truth": "tests/fixtures/gradient-banner.gt.json",
+          "source_language": "en",
+          "target_language": "en",
+          "asset_class": "poster",
+          "target_mode": "identity",
+          "expected_regions": 2,
+          "expected_outcome": "pass"
+        },
+        {
+          "id": "serif-vs-sans",
+          "image": "tests/fixtures/serif-vs-sans.png",
+          "ground_truth": "tests/fixtures/serif-vs-sans.gt.json",
+          "source_language": "en",
+          "target_language": "en",
+          "asset_class": "poster",
+          "target_mode": "identity",
+          "expected_regions": 6,
+          "expected_outcome": "pass"
+        }
+      ]
+    },
+    {
+      "id": "wave-2-dense-layouts",
+      "cases": [
+        {
+          "id": "dense-layout",
+          "image": "tests/fixtures/dense-layout.png",
+          "ground_truth": "tests/fixtures/dense-layout.gt.json",
+          "source_language": "en",
+          "target_language": "fr",
+          "asset_class": "ui_graphic",
+          "targets": [
+            "ACTUALITÉS",
+            "MÉTÉO",
+            "SPORT",
+            "CULTURE"
+          ],
+          "expected_regions": 4,
+          "expected_outcome": "review"
+        },
+        {
+          "id": "product-label",
+          "image": "tests/fixtures/product-label.png",
+          "ground_truth": "tests/fixtures/product-label.gt.json",
+          "source_language": "en",
+          "target_language": "fr",
+          "asset_class": "product_label",
+          "targets": [
+            "TONIQUE AMANDE",
+            "500 ml",
+            "CONTIENT DES NOIX"
+          ],
+          "expected_regions": 3,
+          "expected_outcome": "pass"
+        },
+        {
+          "id": "ui-controls",
+          "image": "tests/fixtures/ui-controls.png",
+          "ground_truth": "tests/fixtures/ui-controls.gt.json",
+          "source_language": "en",
+          "target_language": "fr",
+          "asset_class": "ui_graphic",
+          "targets": [
+            "Enregistrer",
+            "Annuler",
+            "Supprimer le compte"
+          ],
+          "expected_regions": 3,
+          "expected_outcome": "review"
+        },
+        {
+          "id": "tight-space",
+          "image": "tests/fixtures/tight-space.png",
+          "ground_truth": "tests/fixtures/tight-space.gt.json",
+          "source_language": "en",
+          "target_language": "de",
+          "asset_class": "sign",
+          "targets": [
+            "Nur für Mitglieder"
+          ],
+          "expected_regions": 1,
+          "expected_outcome": "pass"
+        }
+      ]
+    },
+    {
+      "id": "wave-3-difficult-rendering",
+      "cases": [
+        {
+          "id": "textured-wall",
+          "image": "tests/fixtures/textured-wall.png",
+          "ground_truth": "tests/fixtures/textured-wall.gt.json",
+          "source_language": "en",
+          "target_language": "fr",
+          "asset_class": "sign",
+          "targets": [
+            "BOULANGERIE",
+            "depuis 1962"
+          ],
+          "expected_regions": 2,
+          "expected_outcome": "review"
+        },
+        {
+          "id": "stylized-italic",
+          "image": "tests/fixtures/stylized-italic.png",
+          "ground_truth": "tests/fixtures/stylized-italic.gt.json",
+          "source_language": "en",
+          "target_language": "fr",
+          "asset_class": "poster",
+          "targets": [
+            "Graisse normale",
+            "Déclaration forte",
+            "Accent italique",
+            "Titre détouré"
+          ],
+          "expected_regions": 4,
+          "expected_outcome": "review"
+        },
+        {
+          "id": "shadow-effects",
+          "image": "tests/fixtures/shadow-effects.png",
+          "ground_truth": "tests/fixtures/shadow-effects.gt.json",
+          "source_language": "en",
+          "target_language": "fr",
+          "asset_class": "poster",
+          "targets": [
+            "MARCHÉ DE NUIT",
+            "Chaque vendredi"
+          ],
+          "expected_regions": 2,
+          "expected_outcome": "review"
+        },
+        {
+          "id": "cjk-horizontal",
+          "image": "tests/fixtures/cjk-horizontal.png",
+          "ground_truth": "tests/fixtures/cjk-horizontal.gt.json",
+          "source_language": "en",
+          "target_language": "ja",
+          "asset_class": "sign",
+          "targets": [
+            "市立図書館",
+            "本日開館"
+          ],
+          "expected_regions": 2,
+          "expected_outcome": "pass"
+        }
+      ]
+    },
+    {
+      "id": "wave-4-multilingual-scale",
+      "cases": [
+        {
+          "id": "cjk-vertical",
+          "image": "tests/fixtures/cjk-vertical.png",
+          "ground_truth": "tests/fixtures/cjk-vertical.gt.json",
+          "source_language": "ja",
+          "target_language": "ja",
+          "asset_class": "sign",
+          "target_mode": "identity",
+          "expected_regions": 2,
+          "expected_outcome": "pass"
+        },
+        {
+          "id": "rtl-sign",
+          "image": "tests/fixtures/rtl-sign.png",
+          "ground_truth": "tests/fixtures/rtl-sign.gt.json",
+          "source_language": "en",
+          "target_language": "ar",
+          "asset_class": "sign",
+          "targets": [
+            "مرحبًا"
+          ],
+          "expected_regions": 1,
+          "expected_outcome": "pass"
+        },
+        {
+          "id": "mixed-script",
+          "image": "tests/fixtures/mixed-script.png",
+          "ground_truth": "tests/fixtures/mixed-script.gt.json",
+          "source_language": "en",
+          "target_language": "ar",
+          "asset_class": "product_label",
+          "targets": [
+            "TOFU برو",
+            "الإصدار 2"
+          ],
+          "expected_regions": 2,
+          "expected_outcome": "pass"
+        },
+        {
+          "id": "expansion-en",
+          "image": "tests/fixtures/expansion-en.png",
+          "ground_truth": "tests/fixtures/expansion-en.gt.json",
+          "source_language": "en",
+          "target_language": "de",
+          "asset_class": "sign",
+          "targets": [
+            "Bitte halten Sie diesen Bereich sauber"
+          ],
+          "expected_regions": 1,
+          "expected_outcome": "pass"
+        }
+      ]
+    },
+    {
+      "id": "wave-5-language-matrix",
+      "description": "One source layout localized into each target language, with targets kept close to the source length so the case isolates script identification, ISO 15924 agreement and CER. Expansion is exercised separately below.",
+      "cases": [
+        {
+          "id": "lang-fr",
+          "image": "tests/fixtures/cjk-horizontal.png",
+          "ground_truth": "tests/fixtures/cjk-horizontal.gt.json",
+          "source_language": "en",
+          "target_language": "fr",
+          "asset_class": "sign",
+          "target_mode": "translate",
+          "targets": [
+            "Bibliothèque",
+            "Ouvert"
+          ],
+          "expected_regions": 2,
+          "expected_outcome": "pass"
+        },
+        {
+          "id": "lang-it",
+          "image": "tests/fixtures/cjk-horizontal.png",
+          "ground_truth": "tests/fixtures/cjk-horizontal.gt.json",
+          "source_language": "en",
+          "target_language": "it",
+          "asset_class": "sign",
+          "target_mode": "translate",
+          "targets": [
+            "Biblioteca",
+            "Aperto"
+          ],
+          "expected_regions": 2,
+          "expected_outcome": "pass"
+        },
+        {
+          "id": "lang-es",
+          "image": "tests/fixtures/cjk-horizontal.png",
+          "ground_truth": "tests/fixtures/cjk-horizontal.gt.json",
+          "source_language": "en",
+          "target_language": "es",
+          "asset_class": "sign",
+          "target_mode": "translate",
+          "targets": [
+            "Biblioteca",
+            "Abierto"
+          ],
+          "expected_regions": 2,
+          "expected_outcome": "pass"
+        },
+        {
+          "id": "lang-de",
+          "image": "tests/fixtures/cjk-horizontal.png",
+          "ground_truth": "tests/fixtures/cjk-horizontal.gt.json",
+          "source_language": "en",
+          "target_language": "de",
+          "asset_class": "sign",
+          "target_mode": "translate",
+          "targets": [
+            "Bücherei",
+            "Geöffnet"
+          ],
+          "expected_regions": 2,
+          "expected_outcome": "pass"
+        },
+        {
+          "id": "lang-pl",
+          "image": "tests/fixtures/cjk-horizontal.png",
+          "ground_truth": "tests/fixtures/cjk-horizontal.gt.json",
+          "source_language": "en",
+          "target_language": "pl",
+          "asset_class": "sign",
+          "target_mode": "translate",
+          "targets": [
+            "Biblioteka",
+            "Otwarte"
+          ],
+          "expected_regions": 2,
+          "expected_outcome": "pass"
+        },
+        {
+          "id": "lang-ru",
+          "image": "tests/fixtures/cjk-horizontal.png",
+          "ground_truth": "tests/fixtures/cjk-horizontal.gt.json",
+          "source_language": "en",
+          "target_language": "ru",
+          "asset_class": "sign",
+          "target_mode": "translate",
+          "targets": [
+            "Библиотека",
+            "Открыто"
+          ],
+          "expected_regions": 2,
+          "expected_outcome": "pass"
+        },
+        {
+          "id": "lang-zh-cn",
+          "image": "tests/fixtures/cjk-horizontal.png",
+          "ground_truth": "tests/fixtures/cjk-horizontal.gt.json",
+          "source_language": "en",
+          "target_language": "zh-cn",
+          "asset_class": "sign",
+          "target_mode": "translate",
+          "targets": [
+            "市图书馆",
+            "今天开放"
+          ],
+          "expected_regions": 2,
+          "expected_outcome": "pass"
+        },
+        {
+          "id": "lang-zh-hk",
+          "image": "tests/fixtures/cjk-horizontal.png",
+          "ground_truth": "tests/fixtures/cjk-horizontal.gt.json",
+          "source_language": "en",
+          "target_language": "zh-hk",
+          "asset_class": "sign",
+          "target_mode": "translate",
+          "targets": [
+            "市圖書館",
+            "今天開放"
+          ],
+          "expected_regions": 2,
+          "expected_outcome": "pass"
+        },
+        {
+          "id": "lang-ko",
+          "image": "tests/fixtures/cjk-horizontal.png",
+          "ground_truth": "tests/fixtures/cjk-horizontal.gt.json",
+          "source_language": "en",
+          "target_language": "ko",
+          "asset_class": "sign",
+          "target_mode": "translate",
+          "targets": [
+            "시립 도서관",
+            "오늘 개방"
+          ],
+          "expected_regions": 2,
+          "expected_outcome": "pass"
+        },
+        {
+          "id": "lang-ja",
+          "image": "tests/fixtures/cjk-horizontal.png",
+          "ground_truth": "tests/fixtures/cjk-horizontal.gt.json",
+          "source_language": "en",
+          "target_language": "ja",
+          "asset_class": "sign",
+          "target_mode": "translate",
+          "targets": [
+            "市立図書館",
+            "本日開館"
+          ],
+          "expected_regions": 2,
+          "expected_outcome": "pass"
+        },
+        {
+          "id": "lang-ja-mixed-script",
+          "image": "tests/fixtures/cjk-horizontal.png",
+          "ground_truth": "tests/fixtures/cjk-horizontal.gt.json",
+          "source_language": "en",
+          "target_language": "ja",
+          "asset_class": "sign",
+          "target_mode": "translate",
+          "targets": [
+            "東京タワー",
+            "本日開館"
+          ],
+          "expected_regions": 2,
+          "expected_outcome": "pass",
+          "note": "Correctly written Japanese mixes Han and katakana. ISO 15924 Jpan admits Hani+Hira+Kana, so this must NOT read as contamination."
+        },
+        {
+          "id": "lang-ko-with-hanja",
+          "image": "tests/fixtures/cjk-horizontal.png",
+          "ground_truth": "tests/fixtures/cjk-horizontal.gt.json",
+          "source_language": "en",
+          "target_language": "ko",
+          "asset_class": "sign",
+          "target_mode": "translate",
+          "targets": [
+            "特別市 도서관",
+            "오늘 개방"
+          ],
+          "expected_regions": 2,
+          "expected_outcome": "pass",
+          "note": "Korean with hanja: Kore admits Hangul + Han. The old majority vote called 서울特別市 'cjk'."
+        },
+        {
+          "id": "negative-zh-cn-traditional",
+          "image": "tests/fixtures/cjk-horizontal.png",
+          "ground_truth": "tests/fixtures/cjk-horizontal.gt.json",
+          "source_language": "en",
+          "target_language": "zh-cn",
+          "asset_class": "sign",
+          "target_mode": "translate",
+          "targets": [
+            "市圖書館",
+            "今天開放"
+          ],
+          "expected_regions": 2,
+          "expected_outcome": "review",
+          "note": "Traditional orthography in a zh-cn (Hans) region. Both fonts carry the glyphs and OCR reads it perfectly, so ONLY the han_variant check can see this."
+        },
+        {
+          "id": "negative-zh-hk-simplified",
+          "image": "tests/fixtures/cjk-horizontal.png",
+          "ground_truth": "tests/fixtures/cjk-horizontal.gt.json",
+          "source_language": "en",
+          "target_language": "zh-hk",
+          "asset_class": "sign",
+          "target_mode": "translate",
+          "targets": [
+            "市图书馆",
+            "今天开放"
+          ],
+          "expected_regions": 2,
+          "expected_outcome": "review",
+          "note": "Simplified orthography in a zh-hk (Hant) region; the mirror case."
+        },
+        {
+          "id": "negative-untranslated-cyrillic",
+          "image": "tests/fixtures/cjk-horizontal.png",
+          "ground_truth": "tests/fixtures/cjk-horizontal.gt.json",
+          "source_language": "en",
+          "target_language": "fr",
+          "asset_class": "sign",
+          "target_mode": "translate",
+          "targets": [
+            "Библиотека",
+            "Открыто"
+          ],
+          "expected_regions": 2,
+          "expected_outcome": "review",
+          "note": "Cyrillic left untranslated in a French region: unexpected_scripts."
+        },
+        {
+          "id": "expansion-de-in-fixed-box",
+          "image": "tests/fixtures/cjk-horizontal.png",
+          "ground_truth": "tests/fixtures/cjk-horizontal.gt.json",
+          "source_language": "en",
+          "target_language": "de",
+          "asset_class": "sign",
+          "target_mode": "translate",
+          "targets": [
+            "Stadtbibliothek Zentrale",
+            "Heute durchgehend geöffnet"
+          ],
+          "expected_regions": 2,
+          "expected_outcome": "review",
+          "note": "German expanding ~2x inside the source box. Scribe shrinks to fit and spatial_fit stays 100, so typography_scale_review is the only thing that can report it. Expected to flag."
+        }
+      ]
+    },
+    {
+      "id": "wave-6-perspective",
+      "description": "Regions seated on a plane rather than on the canvas. skew cannot express this: shear keeps opposite edges parallel, a photographed plane makes them converge. These pin the containment change — a warped region must be measured against its quad, because against its source rectangle a corner pulled outward reads as overflow on a render doing exactly what was asked.",
+      "cases": [
+        {
+          "id": "perspective-converging",
+          "image": "tests/fixtures/cjk-horizontal.png",
+          "ground_truth": "tests/fixtures/cjk-horizontal.gt.json",
+          "source_language": "en",
+          "target_language": "en",
+          "asset_class": "sign",
+          "target_mode": "identity",
+          "expected_regions": 2,
+          "expected_outcome": "pass",
+          "transform": {
+            "quad": [
+              [
+                0.18,
+                0.0
+              ],
+              [
+                0.82,
+                0.0
+              ],
+              [
+                1.0,
+                1.0
+              ],
+              [
+                0.0,
+                1.0
+              ]
+            ]
+          },
+          "note": "Top corners pulled inward: the trapezoid a sign makes when its far edge is further from the camera."
+        },
+        {
+          "id": "perspective-outward-corners",
+          "image": "tests/fixtures/cjk-horizontal.png",
+          "ground_truth": "tests/fixtures/cjk-horizontal.gt.json",
+          "source_language": "en",
+          "target_language": "en",
+          "asset_class": "sign",
+          "target_mode": "identity",
+          "expected_regions": 2,
+          "expected_outcome": "pass",
+          "transform": {
+            "quad": [
+              [
+                -0.25,
+                0.0
+              ],
+              [
+                1.25,
+                0.0
+              ],
+              [
+                1.0,
+                1.0
+              ],
+              [
+                0.0,
+                1.0
+              ]
+            ]
+          },
+          "note": "Corners pulled OUTSIDE the source box. Measured against the bbox this reports ~18% overflow and drops to review; against the quad it is correct. This is the regression the containment change prevents."
+        },
+        {
+          "id": "perspective-degenerate-falls-back",
+          "image": "tests/fixtures/cjk-horizontal.png",
+          "ground_truth": "tests/fixtures/cjk-horizontal.gt.json",
+          "source_language": "en",
+          "target_language": "en",
+          "asset_class": "sign",
+          "target_mode": "identity",
+          "expected_regions": 2,
+          "expected_outcome": "pass",
+          "transform": {
+            "quad": [
+              [
+                0.0,
+                0.0
+              ],
+              [
+                0.5,
+                0.0
+              ],
+              [
+                1.0,
+                0.0
+              ],
+              [
+                0.0,
+                1.0
+              ]
+            ]
+          },
+          "note": "Collinear corners have no invertible homography. Render and check must BOTH fall back to the affine/bbox path, or one measures something the other did not draw."
+        }
+      ]
+    }
+  ]
+}

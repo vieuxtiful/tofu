@@ -1,0 +1,8 @@
+{
+  "partial": false,
+  "note": "COMPLETE GT (not partial): 1024x768 photo, French enamel street plaque on smooth rendered stucco with a white downpipe at the left edge. No text anywhere outside the plaque, so any detection outside these two boxes is a genuine false positive. Serves as the NEGATIVE CONTROL for the avenue-de-la-république false-positive work: same sign type, same language, but a smooth rather than textured background -- detection is already clean here (both regions read at >=0.999), so any precision fix must leave this asset untouched. Annotated 2026-07-28 by crop verification.",
+  "regions": [
+    {"bbox": [361, 268, 314, 100], "text": "La rue",   "lang": "fr"},
+    {"bbox": [241, 415, 543, 110], "text": "SANS-NOM", "lang": "fr"}
+  ]
+}
