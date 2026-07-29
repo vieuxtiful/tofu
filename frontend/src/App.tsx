@@ -1700,9 +1700,10 @@ export default function App() {
           setScan((s) => (s?.assetId === uploaded.asset_id && s.status === "passed" ? null : s));
         }, 2600);
       }
-    } catch (e) {
+    } catch {
       setScan(null);
-      addToast("warning", `language scan failed: ${e}`);
+      // Language scanning is advisory. Upload remains usable when OCR is
+      // unavailable or a difficult image cannot be classified.
     }
   }, [addToast]);
 
@@ -1724,7 +1725,6 @@ export default function App() {
       const uploaded = await uploadAsset(file, project.id);
       setAsset(uploaded);
       getProject(project.id).then(setProject).catch(() => {});
-      addToast("success", `"${uploaded.filename}" scanning language…`);
       void runLanguageScan(uploaded, project.id);
     } catch (e) {
       setErrorWithNotif(String(e));
@@ -2001,13 +2001,24 @@ export default function App() {
   const onAddRegion = useCallback(async (bbox: BBox) => {
     if (!asset) return;
     setDrawMode(false);
+    let final = bbox;
+    let finalText: string | undefined;
     try {
       const refined = await refineRegion(asset.asset_id, bbox);
       const best = refined.regions[0];
-      const final: BBox = best
-        ? { x: best.bbox.x, y: best.bbox.y, width: best.bbox.width, height: best.bbox.height }
-        : bbox;
-      const finalText = best ? best.text : undefined;
+      if (best && best.bbox.width > 0 && best.bbox.height > 0) {
+        final = {
+          x: best.bbox.x, y: best.bbox.y,
+          width: best.bbox.width, height: best.bbox.height,
+        };
+        finalText = best.text;
+      }
+    } catch {
+      // Refinement is a convenience, not a prerequisite for manual capture.
+      // A missing OCR engine or a hard crop must never discard the user's box.
+      addToast("info", "Region added without OCR refinement.");
+    }
+    try {
       const inst = await addRegion(asset.asset_id, final, finalText);
       setManifest((prev) => {
         const next = [...prev, inst];
@@ -2018,7 +2029,7 @@ export default function App() {
     } catch (e) {
       setErrorWithNotif(String(e));
     }
-  }, [asset, autoSave]);
+  }, [asset, autoSave, addToast]);
 
   const onUpdateRegion = useCallback((id: string, bbox: BBox) => {
     setManifest((prev) => {

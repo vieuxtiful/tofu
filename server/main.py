@@ -114,6 +114,39 @@ def _asset_path(asset_id: str) -> Path:
     return matches[0]
 
 
+def _normalized_asset_bbox(asset_id: str, raw: Dict[str, Any]) -> BBox:
+    """Validate and clip a client rectangle to the uploaded image.
+
+    Canvas gestures are already clamped in the browser, but API callers and
+    stale browser state are not. Keeping this at the HTTP boundary prevents
+    malformed rectangles from becoming Pillow crops, OCR-worker failures, or
+    invalid persisted manifest geometry.
+    """
+    required = ("x", "y", "width", "height")
+    try:
+        values = {key: int(raw[key]) for key in required}
+    except (KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(422, "bbox requires integer x, y, width, and height") from exc
+    if values["width"] <= 0 or values["height"] <= 0:
+        raise HTTPException(422, "bbox width and height must be positive")
+
+    path = _asset_path(asset_id)
+    try:
+        from PIL import Image
+        with Image.open(path) as image:
+            image_width, image_height = image.size
+    except Exception as exc:
+        raise HTTPException(422, f"cannot determine asset dimensions: {type(exc).__name__}") from exc
+
+    left = max(0, values["x"])
+    top = max(0, values["y"])
+    right = min(image_width, values["x"] + values["width"])
+    bottom = min(image_height, values["y"] + values["height"])
+    if right <= left or bottom <= top:
+        raise HTTPException(422, "bbox does not intersect the asset")
+    return BBox(x=left, y=top, width=right - left, height=bottom - top)
+
+
 def _persist_tm_updates(pid: Optional[str], drafts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """endpoint-owned I/O for memory.update()'s draft records: save each
     thumbnail crop to disk, write the row to tm_records, and return a
@@ -1432,6 +1465,7 @@ def put_manifest(asset_id: str, manifest_data: Dict[str, Any]):
 
 @app.post("/api/manifest/{asset_id}/regions")
 def add_region(asset_id: str, req: RegionCreate):
+    bbox = _normalized_asset_bbox(asset_id, req.dict())
     manifest = load_manifest(UPLOAD_DIR, asset_id)
     if manifest is None:
         manifest = TextManifest(
@@ -1445,7 +1479,7 @@ def add_region(asset_id: str, req: RegionCreate):
     next_num = max(existing_nums, default=0) + 1
     new_inst = InstText(
         id=f"r{next_num}",
-        bounding_box=BBox(x=req.x, y=req.y, width=req.width, height=req.height),
+        bounding_box=bbox,
         text=req.text, target_text=req.target_text,
         reading_order=len(manifest.instances),
     )
@@ -1484,10 +1518,17 @@ def update_region(asset_id: str, rid: str, req: RegionUpdate):
     inst = next((i for i in manifest.instances if i.id == rid), None)
     if inst is None:
         raise HTTPException(404, f"region '{rid}' not found")
-    if req.x is not None: inst.bounding_box.x = req.x
-    if req.y is not None: inst.bounding_box.y = req.y
-    if req.width is not None: inst.bounding_box.width = req.width
-    if req.height is not None: inst.bounding_box.height = req.height
+    geometry_changed = any(
+        value is not None for value in (req.x, req.y, req.width, req.height)
+    )
+    if geometry_changed:
+        current = inst.bounding_box
+        inst.bounding_box = _normalized_asset_bbox(asset_id, {
+            "x": current.x if req.x is None else req.x,
+            "y": current.y if req.y is None else req.y,
+            "width": current.width if req.width is None else req.width,
+            "height": current.height if req.height is None else req.height,
+        })
     if req.text is not None: inst.text = req.text
     if req.target_text is not None: inst.target_text = req.target_text
     if req.dnt is not None: inst.dnt = req.dnt
@@ -1529,7 +1570,7 @@ def update_region(asset_id: str, rid: str, req: RegionUpdate):
 @app.post("/api/ocr-region")
 def ocr_region(req: OcrRegionRequest):
     path = _asset_path(req.asset_id)
-    bbox = req.bbox
+    bbox = _normalized_asset_bbox(req.asset_id, req.bbox)
     try:
         from PIL import Image
         import numpy as np
@@ -1539,9 +1580,7 @@ def ocr_region(req: OcrRegionRequest):
         img = Image.open(str(path)).convert("RGB")
     except Exception as exc:
         raise HTTPException(500, f"cannot open asset image: {exc}")
-    crop = img.crop((bbox["x"], bbox["y"], bbox["x"] + bbox["width"], bbox["y"] + bbox["height"]))
-    if crop.width == 0 or crop.height == 0:
-        return {"text": "", "confidence": 0.0, "detected_language": None}
+    crop = img.crop((bbox.x, bbox.y, bbox.x + bbox.width, bbox.y + bbox.height))
     try:
         import easyocr  # noqa: F401
     except ImportError:
@@ -1585,16 +1624,12 @@ def refine_region(req: RefineRegionRequest):
     detected sub-boxes in original-image coordinates so the UI can snap
     a rough rectangle to precise text polygons."""
     path = _asset_path(req.asset_id)
-    bbox = req.bbox
-    x, y, w, h = bbox["x"], bbox["y"], bbox["width"], bbox["height"]
-    if w <= 0 or h <= 0:
-        raise HTTPException(400, "bbox must have positive width and height")
+    region = _normalized_asset_bbox(req.asset_id, req.bbox)
 
     import os
     if req.engine:
         os.environ["OCR_ENGINE"] = req.engine.lower()
 
-    from tofu.core.types import BBox as TofuBBox
     from tofu.layers import cicerone
 
     manifest = load_manifest(UPLOAD_DIR, req.asset_id)
@@ -1613,7 +1648,6 @@ def refine_region(req: RefineRegionRequest):
         except ImportError:
             raise HTTPException(500, "EasyOCR is not installed")
 
-    region = TofuBBox(x=x, y=y, width=w, height=h)
     try:
         per_region = backend.detect_in_regions(str(path), [region], pad=0)
     except Exception as exc:
