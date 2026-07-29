@@ -369,6 +369,7 @@ class VldtnReport:
     scrpt_spprt: Dict[str, ScrptSpprt] = field(default_factory=dict)
     glyph_segmentation_score: Optional[float] = None
     render_quality_score: Optional[float] = None
+    render_quality_evidence: Dict[str, float] = field(default_factory=dict)
     expansion_fit: Dict[str, float] = field(default_factory=dict)  ## region_id -> predicted_width / bbox_width
     suggested_actions: List[str] = field(default_factory=list)
     insights: List[VldtnInsight] = field(default_factory=list)

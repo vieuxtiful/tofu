@@ -37,6 +37,7 @@ export interface Project {
   asset_kind: AssetKind;
   created_at: number;
   updated_at: number;
+  archived_at?: number | null;
   asset_count?: number;
   snapshot_count?: number;
   assets?: ProjectAsset[];
@@ -719,8 +720,12 @@ export async function createProject(
   );
 }
 
-export async function listProjects(): Promise<Project[]> {
-  const data = await json<{ projects: Project[] }>(await fetch("/api/projects"));
+export async function listProjects(options?: { archived?: boolean; query?: string; sort?: "updated" | "created" | "name" }): Promise<Project[]> {
+  const qs = new URLSearchParams();
+  if (options?.archived !== undefined) qs.set("archived", String(options.archived));
+  if (options?.query) qs.set("query", options.query);
+  if (options?.sort) qs.set("sort", options.sort);
+  const data = await json<{ projects: Project[] }>(await fetch(`/api/projects${qs.size ? `?${qs}` : ""}`));
   return data.projects;
 }
 
@@ -730,7 +735,7 @@ export async function getProject(id: string): Promise<Project> {
 
 export async function updateProject(
   id: string,
-  updates: Partial<{ name: string; target_lang: string; source_lang: string }>
+  updates: Partial<{ name: string; target_lang: string; source_lang: string; archived: boolean }>
 ): Promise<Project> {
   return json(
     await fetch(`/api/projects/${encodeURIComponent(id)}`, {
@@ -743,6 +748,14 @@ export async function updateProject(
 
 export async function deleteProject(id: string): Promise<{ ok: boolean }> {
   return json(await fetch(`/api/projects/${encodeURIComponent(id)}`, { method: "DELETE" }));
+}
+
+export async function archiveProject(id: string): Promise<Project> {
+  return json(await fetch(`/api/projects/${encodeURIComponent(id)}/archive`, { method: "POST" }));
+}
+
+export async function restoreProject(id: string): Promise<Project> {
+  return json(await fetch(`/api/projects/${encodeURIComponent(id)}/restore`, { method: "POST" }));
 }
 
 export async function getProjectHistory(id: string, assetId?: string): Promise<ProjectHistory> {
@@ -1321,6 +1334,7 @@ export interface CapabilityStatus {
   ready: boolean;
   version: string | null;
   reason: string | null;
+  project_creation_enabled?: boolean;
   [detail: string]: unknown;
 }
 

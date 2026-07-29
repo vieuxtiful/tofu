@@ -94,14 +94,14 @@ def test_raw_confidences_are_not_compared_without_per_engine_calibration():
     assert ReasonCode.INSUFFICIENT_CALIBRATED_MARGIN in decision.reason_codes
 
 
-def test_same_normalized_text_records_agreement_without_replacement():
+def test_case_or_diacritic_mismatch_requires_review_not_false_consensus():
     decision = arbitrate(
         _candidate("easyocr", "RÉPUBLIQUE!", 0.8),
         _candidate("paddleocr", "république", 0.8),
         _signals(),
     )
 
-    assert decision.kind is DecisionKind.AGREE
+    assert decision.kind is DecisionKind.REVIEW
     assert decision.selected == "primary"
 
 

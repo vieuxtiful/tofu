@@ -26,6 +26,7 @@ scene has two jobs:
 
 from abc import ABC, abstractmethod
 from pathlib import Path
+from threading import Lock
 from typing import Any, Dict, List, Optional, Tuple
 
 from tofu.core.types import (
@@ -511,20 +512,43 @@ class SAMBackend(SceneBackend):
         self.model_type = model_type
         self.max_regions = max_regions
         self._generator = None
+        self._load_lock = Lock()
+        self.lifecycle_state = "missing" if not checkpoint_path else "loading"
+        self.failure_reason: Optional[str] = None
+
+    def status(self) -> Dict[str, Any]:
+        """Cheap, serializable lifecycle state for diagnostics/UI."""
+        return {
+            "id": "sam", "state": self.lifecycle_state,
+            "ready": self.lifecycle_state == "ready",
+            "checkpoint_configured": bool(self.checkpoint_path and Path(self.checkpoint_path).is_file()),
+            "reason": self.failure_reason,
+        }
 
     def _ensure(self):
         if self._generator is not None:
             return
-        from segment_anything import (  # deferred: optional heavy import
-            sam_model_registry, SamAutomaticMaskGenerator,
-        )
-        if not self.checkpoint_path or not Path(self.checkpoint_path).exists():
-            raise FileNotFoundError(
-                "SAM checkpoint not found; set PipelineCfg.scene_model_path "
-                "to a downloaded checkpoint (e.g. sam_vit_b_01ec64.pth)"
-            )
-        sam = sam_model_registry[self.model_type](checkpoint=str(self.checkpoint_path))
-        self._generator = SamAutomaticMaskGenerator(sam)
+        with self._load_lock:
+            if self._generator is not None:
+                return
+            self.lifecycle_state = "loading"
+            try:
+                from segment_anything import (  # deferred: optional heavy import
+                    sam_model_registry, SamAutomaticMaskGenerator,
+                )
+                if not self.checkpoint_path or not Path(self.checkpoint_path).exists():
+                    raise FileNotFoundError(
+                        "SAM checkpoint not found; set PipelineCfg.scene_model_path "
+                        "to a downloaded checkpoint (e.g. sam_vit_b_01ec64.pth)"
+                    )
+                sam = sam_model_registry[self.model_type](checkpoint=str(self.checkpoint_path))
+                self._generator = SamAutomaticMaskGenerator(sam)
+                self.lifecycle_state, self.failure_reason = "ready", None
+            except Exception as exc:
+                self._generator = None
+                self.lifecycle_state = "failed"
+                self.failure_reason = f"{type(exc).__name__}: {exc}"
+                raise
 
     def analyze(self, asset: Any) -> List[SceneRegion]:
         img = _load_rgb(asset)

@@ -404,12 +404,10 @@ class ToFU:
             )
             suggested_actions.append("manual glyph segmentation review.")
 
-        # 3. render quality prediction (deterministic; learned model swaps in later)
-        render_score = self._predict_render_quality(targ_lang, context)
-        if script is not None:
-            render_score = self._deterministic_render_score(
-                coverage_pct, context
-            )
+        # 3. deterministic, evidence-bearing render-quality prediction.
+        quality_context = dict(context or {})
+        quality_context["font_coverage"] = coverage_pct if script is not None else 0.0
+        render_score = self._predict_render_quality(targ_lang, quality_context)
         if render_score < RENDER_WARN:
             issues.append(
                 VldtnClass(
@@ -443,6 +441,7 @@ class ToFU:
             scrpt_spprt=script_support,
             glyph_segmentation_score=glyph_score,
             render_quality_score=render_score,
+            render_quality_evidence=self._render_quality_evidence(quality_context),
             expansion_fit=expansion_fit,
             suggested_actions=suggested_actions,
             insights=insights,
@@ -628,22 +627,48 @@ class ToFU:
         )
 
     def _predict_render_quality(self, language: str, context: Optional[Dict]) -> float:
-        """
-        predict render quality based on de‑rendering parameters.
+        """Return a deterministic score derived from observable evidence."""
+        return round(sum(self._render_quality_evidence(context).values()), 4)
 
-        based on shimoda et al., 2021 – de‑rendering stylized texts.
-        in practice, this would use a learned model; here we provide a stub.
+    @staticmethod
+    def _render_quality_evidence(context: Optional[Dict]) -> Dict[str, float]:
+        """Weighted, persisted terms behind the preflight quality score."""
+        ctx = context or {}
 
-        args:
-            language: language code.
-            context: optional context (e.g., font size, background).
+        def unit(value: Any, default: float) -> float:
+            try:
+                return max(0.0, min(1.0, float(value)))
+            except (TypeError, ValueError):
+                return default
 
-        returns:
-            a score between 0 and 1.
-        """
-        # default when no script/coverage information is available;
-        # _deterministic_render_score supersedes this when a script resolves.
-        return 0.75
+        coverage = unit(ctx.get("font_coverage"), 0.0)
+        font_px = ctx.get("font_px")
+        size = 0.75 if font_px is None else unit((float(font_px) - 6) / 10, 0.0)
+        effect = max(0.0, 1.0 - 0.12 * len(ctx.get("effects") or []))
+        plane = unit(ctx.get("plane_fit", ctx.get("perspective_confidence")), 0.70)
+        contrast = unit(ctx.get("text_contrast"), 0.70)
+        repair = unit(ctx.get("repair_confidence"), 0.70)
+        verification = ctx.get("verification") or {}
+        if not isinstance(verification, dict):
+            verification = {}
+        project = verification.get("project") if isinstance(verification.get("project"), dict) else verification
+        raw_prior = project.get("overall_score", 1.0)
+        try:
+            prior = float(raw_prior)
+        except (TypeError, ValueError):
+            prior = 1.0
+        if prior > 1:
+            prior /= 100.0
+        prior = unit(prior, 1.0)
+        return {
+            "glyph_coverage": 0.24 * coverage,
+            "font_size": 0.12 * size,
+            "effect_complexity": 0.06 * effect,
+            "plane_fit": 0.14 * plane,
+            "text_contrast": 0.14 * contrast,
+            "repair_confidence": 0.14 * repair,
+            "prior_verification": 0.16 * prior,
+        }
 
     def _resolve_script_support(
         self,

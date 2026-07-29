@@ -594,6 +594,7 @@ class ProjectUpdate(BaseModel):
     name: Optional[str] = None
     target_lang: Optional[str] = None
     source_lang: Optional[str] = None
+    archived: Optional[bool] = None
 
 class SnapshotCreate(BaseModel):
     asset_id: str
@@ -1085,12 +1086,19 @@ def create_project(req: ProjectCreate):
         raise HTTPException(400, "project name must not be empty")
     if req.asset_kind not in ("image", "video"):
         raise HTTPException(400, f"unknown asset kind '{req.asset_kind}'")
+    if req.asset_kind == "video":
+        # Keep the server contract aligned with /api/capabilities.  Accepting
+        # an unrenderable project here would strand users after the wizard.
+        raise HTTPException(409, "video localization is not implemented")
     return db.create_project(name, req.target_lang, req.asset_kind)
 
 
 @app.get("/api/projects")
-def list_projects():
-    return {"projects": db.list_projects()}
+def list_projects(archived: Optional[bool] = None, query: Optional[str] = None,
+                  sort: str = "updated"):
+    if sort not in {"updated", "created", "name"}:
+        raise HTTPException(400, "sort must be updated, created, or name")
+    return {"projects": db.list_projects(archived=archived, query=query, sort=sort)}
 
 
 @app.get("/api/projects/{pid}")
@@ -1113,8 +1121,25 @@ def get_project(pid: str):
 @app.patch("/api/projects/{pid}")
 def update_project(pid: str, req: ProjectUpdate):
     project = db.update_project(
-        pid, name=req.name, target_lang=req.target_lang, source_lang=req.source_lang
+        pid, name=req.name, target_lang=req.target_lang, source_lang=req.source_lang,
+        archived=req.archived,
     )
+    if project is None:
+        raise HTTPException(404, f"project '{pid}' not found")
+    return project
+
+
+@app.post("/api/projects/{pid}/archive")
+def archive_project(pid: str):
+    project = db.set_project_archived(pid, True)
+    if project is None:
+        raise HTTPException(404, f"project '{pid}' not found")
+    return project
+
+
+@app.post("/api/projects/{pid}/restore")
+def restore_project(pid: str):
+    project = db.set_project_archived(pid, False)
     if project is None:
         raise HTTPException(404, f"project '{pid}' not found")
     return project
@@ -1332,6 +1357,7 @@ def detect(req: DetectRequest):
 
     manifest = cicerone.detect(
         str(path), info, backend=backend, scene_regions=scene_regions,
+        languages=hints,
         font_registry=get_validator().font_registry,
     )
     manifest.src_lang = _infer_src_lang(manifest)
