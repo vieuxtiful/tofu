@@ -82,17 +82,20 @@ def _gpu_status() -> Dict[str, Any]:
 def _sam_status() -> Dict[str, Any]:
     installed = _module_available("segment_anything")
     checkpoint = os.environ.get("TOFU_SAM_CHECKPOINT")
+    enabled = os.environ.get("TOFU_SAM_ENABLED", "").strip().lower() in {"1", "true", "yes"}
     checkpoint_ready = bool(checkpoint and Path(checkpoint).is_file())
-    if not installed:
-        reason = "segment-anything is not installed"
+    if not enabled:
+        state, reason = "disabled", "SAM is disabled; set TOFU_SAM_ENABLED=1 after provisioning a checkpoint"
+    elif not installed:
+        state, reason = "missing", "segment-anything is not installed"
     elif not checkpoint_ready:
-        reason = "no readable checkpoint is configured in TOFU_SAM_CHECKPOINT"
+        state, reason = "missing", "no readable checkpoint is configured in TOFU_SAM_CHECKPOINT"
     else:
-        reason = None
+        state, reason = "ready", None
     return _entry(
-        "sam", installed, ready=installed and checkpoint_ready,
+        "sam", installed and enabled, ready=installed and checkpoint_ready and enabled,
         version=_version("segment-anything"), reason=reason,
-        configured=bool(checkpoint), checkpoint_ready=checkpoint_ready,
+        configured=bool(checkpoint), checkpoint_ready=checkpoint_ready, state=state,
         lifecycle="on_demand",
     )
 
@@ -142,6 +145,7 @@ def build_capabilities(
 ) -> Dict[str, Any]:
     """Return the complete, JSON-safe runtime contract."""
     from tofu.layers import cicerone, knead, scene
+    from tofu.layers.language_models import DiacriticRestorationProvider, get_language_provider
     from tofu.utils import translate
 
     easy_available = _module_available("easyocr")
@@ -176,6 +180,10 @@ def build_capabilities(
                     reason=None if paddle_available else "isolated PaddleOCR worker is unavailable",
                     role="independent_verifier",
                 ),
+            ],
+            "language_models": [
+                get_language_provider().status(),
+                DiacriticRestorationProvider().status(),
             ],
         },
         "scene": {

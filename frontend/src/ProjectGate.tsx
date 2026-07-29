@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, History, Loader2, Plus, Trash2, X } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowLeft, ArrowRight, History, Loader2, Plus, Search, Trash2, X } from "lucide-react";
 import { MdMonochromePhotos } from "react-icons/md";
 import { AiFillVideoCamera } from "react-icons/ai";
 import { TbCubePlus } from "react-icons/tb";
-import { AssetKind, LanguageOption, Project, createProject, deleteProject, listProjects, updateProject } from "./api";
+import { AssetKind, LanguageOption, Project, SystemCapabilities, archiveProject, createProject, deleteProject, fetchSystemCapabilities, listProjects, restoreProject, updateProject } from "./api";
 import SourceLangPicker from "./SourceLangPicker";
 import { Theme, logoSrc } from "./theme";
 
@@ -56,6 +56,10 @@ export default function ProjectGate({ languages, onSelectProject, onClose, theme
   const [pendingDelete, setPendingDelete] = useState<Project | null>(null);
   const [wizardLeaving, setWizardLeaving] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+  const [projectQuery, setProjectQuery] = useState("");
+  const [projectSort, setProjectSort] = useState<"updated" | "created" | "name">("updated");
+  const [capabilities, setCapabilities] = useState<SystemCapabilities | null>(null);
   const viewRef = useRef<View>(view);
   viewRef.current = view;
 
@@ -69,14 +73,15 @@ export default function ProjectGate({ languages, onSelectProject, onClose, theme
   };
 
   const refresh = () => {
-    listProjects()
+    listProjects({ archived: showArchived, query: projectQuery || undefined, sort: projectSort })
       .then((p) => {
         setProjects(p);
         if (p.length === 0 && !listOnly) setView("create-name");
       })
       .catch((e) => { setProjects([]); setError(String(e)); });
   };
-  useEffect(refresh, []);
+  useEffect(refresh, [showArchived, projectQuery, projectSort]);
+  useEffect(() => { fetchSystemCapabilities().then(setCapabilities).catch(() => setCapabilities(null)); }, []);
 
   const onCreate = async () => {
     if (!assetKind || !targetLang) return;
@@ -111,10 +116,22 @@ export default function ProjectGate({ languages, onSelectProject, onClose, theme
     }
   };
 
-  const kindCard = (kind: AssetKind, icon: React.ReactNode, title: string, blurb: string, accent: string) => (
+  const toggleArchive = async (project: Project) => {
+    try {
+      if (project.archived_at) await restoreProject(project.id);
+      else await archiveProject(project.id);
+      refresh();
+    } catch (e) { setError(String(e)); }
+  };
+
+  const kindCard = (kind: AssetKind, icon: React.ReactNode, title: string, blurb: string, accent: string) => {
+    const videoBlocked = kind === "video" && capabilities?.video.project_creation_enabled === false;
+    return (
     <button
-      onClick={() => setAssetKind(kind)}
-      className={`flex flex-col items-center gap-2 rounded-lg border p-6 text-center transition ${
+      onClick={() => !videoBlocked && setAssetKind(kind)}
+      disabled={videoBlocked}
+      title={videoBlocked ? String(capabilities?.video.reason ?? "Video localization is unavailable") : undefined}
+      className={`flex flex-col items-center gap-2 rounded-lg border p-6 text-center transition disabled:cursor-not-allowed disabled:opacity-50 ${
         assetKind === kind
           ? `${accent} `
           : "border-zinc-300 bg-zinc-100 hover:border-cyan-600 dark:border-zinc-700 dark:bg-zinc-800/50"
@@ -122,9 +139,10 @@ export default function ProjectGate({ languages, onSelectProject, onClose, theme
     >
       {icon}
       <p className="text-sm font-medium text-zinc-800 dark:text-zinc-200">{title}</p>
-      <p className="subtext text-xs text-zinc-500">{blurb}</p>
+      <p className="subtext text-xs text-zinc-500">{videoBlocked ? String(capabilities?.video.reason ?? blurb) : blurb}</p>
     </button>
   );
+  };
 
   return (
     <div className={`fixed inset-0 z-400 flex items-center justify-center bg-black/70 p-6 pantry-overlay${leaving ? " leaving" : ""}`}>
@@ -158,6 +176,16 @@ export default function ProjectGate({ languages, onSelectProject, onClose, theme
 
         {view === "list" && (
           <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="flex min-w-45 flex-1 items-center gap-1 rounded-md border border-zinc-300 px-2 py-1 dark:border-zinc-700">
+                <Search size={13} className="text-zinc-500" />
+                <input value={projectQuery} onChange={(e) => setProjectQuery(e.target.value)} placeholder="search projects" className="min-w-0 flex-1 bg-transparent text-xs outline-none" />
+              </label>
+              <select value={projectSort} onChange={(e) => setProjectSort(e.target.value as typeof projectSort)} className="rounded-md border border-zinc-300 bg-transparent px-2 py-1 text-xs dark:border-zinc-700">
+                <option value="updated">recent</option><option value="created">created</option><option value="name">name</option>
+              </select>
+              <button onClick={() => setShowArchived((value) => !value)} className="rounded-md border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-700">{showArchived ? "active" : "archived"}</button>
+            </div>
             {!listOnly && (
               <button
                 onClick={() => { transitionTo("create-name"); setError(null); }}
@@ -219,16 +247,19 @@ export default function ProjectGate({ languages, onSelectProject, onClose, theme
                 >
                   <Trash2 size={14} />
                 </button>
+                <button onClick={() => toggleArchive(p)} title={p.archived_at ? "Restore project" : "Archive project"} className="relative rounded-sm p-1.5 text-zinc-400 hover:bg-zinc-200 hover:text-cyan-600 dark:text-zinc-600 dark:hover:bg-zinc-700">
+                  {p.archived_at ? <ArchiveRestore size={14} /> : <Archive size={14} />}
+                </button>
               </div>
               );
             })}
             {projects && projects.length > 0 && (
               <button
-                onClick={() => { /* TODO: historical view */ }}
+                onClick={() => setShowArchived((value) => !value)}
                 className="flex w-full items-center justify-center gap-2 rounded-lg border border-zinc-300 bg-zinc-50 p-3 text-sm text-zinc-500 transition hover:border-cyan-600 hover:text-cyan-700 dark:border-zinc-700 dark:bg-zinc-800/30 dark:text-zinc-400 dark:hover:text-cyan-300"
               >
                 <History size={16} />
-                historical
+                {showArchived ? "active projects" : "historical projects"}
               </button>
             )}
           </div>

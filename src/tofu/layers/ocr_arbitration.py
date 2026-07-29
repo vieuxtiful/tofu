@@ -175,7 +175,11 @@ _NON_WORD = re.compile(r"[\W_]+", re.UNICODE)
 
 
 def _normalized_text(text: str) -> str:
-    return _NON_WORD.sub("", unicodedata.normalize("NFKC", text).casefold())
+    # Keep case and combining marks intact.  They are semantic OCR evidence:
+    # ``RÉPUBLIQUE`` vs ``Republique`` must not be laundered into an
+    # "independent consensus" merely because both strings normalize to the
+    # same lower-case token.  Whitespace/punctuation remain non-semantic.
+    return _NON_WORD.sub("", unicodedata.normalize("NFKC", text))
 
 
 def _candidate_evidence(

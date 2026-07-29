@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS projects (
   target_lang TEXT NOT NULL,
   source_lang TEXT,
   asset_kind  TEXT NOT NULL DEFAULT 'image',
+  archived_at REAL,
   created_at  REAL NOT NULL,
   updated_at  REAL NOT NULL
 );
@@ -119,6 +120,8 @@ def init_db() -> None:
             con.execute(
                 "ALTER TABLE projects ADD COLUMN asset_kind TEXT NOT NULL DEFAULT 'image'"
             )
+        if "archived_at" not in cols:
+            con.execute("ALTER TABLE projects ADD COLUMN archived_at REAL")
         # migration: assets uploaded before duplicate-image detection existed
         asset_cols = {r["name"] for r in con.execute("PRAGMA table_info(project_assets)")}
         if "content_hash" not in asset_cols:
@@ -143,13 +146,34 @@ def create_project(name: str, target_lang: str,
     return get_project(pid)  # type: ignore[return-value]
 
 
-def list_projects() -> List[Dict[str, Any]]:
+def list_projects(*, archived: Optional[bool] = None, query: Optional[str] = None,
+                  sort: str = "updated") -> List[Dict[str, Any]]:
+    """Return project summaries without loading manifests.
+
+    Archive is a reversible lifecycle state, deliberately distinct from delete:
+    projects and their snapshot ledger remain recoverable until explicitly
+    deleted.  Existing rows migrate as active (``archived_at IS NULL``).
+    """
+    where: List[str] = []
+    vals: List[Any] = []
+    if archived is not None:
+        where.append("p.archived_at IS NOT NULL" if archived else "p.archived_at IS NULL")
+    if query:
+        where.append("lower(p.name) LIKE ?")
+        vals.append(f"%{query.casefold()}%")
+    order = {
+        "updated": "p.updated_at DESC",
+        "created": "p.created_at DESC",
+        "name": "lower(p.name) ASC",
+    }.get(sort, "p.updated_at DESC")
     with _conn() as con:
         rows = con.execute(
             """SELECT p.*,
                       (SELECT COUNT(*) FROM project_assets a WHERE a.project_id = p.id) AS asset_count,
                       (SELECT COUNT(*) FROM snapshots s WHERE s.project_id = p.id) AS snapshot_count
-               FROM projects p ORDER BY p.updated_at DESC"""
+               FROM projects p"""
+            + (" WHERE " + " AND ".join(where) if where else "")
+            + f" ORDER BY {order}", vals
         ).fetchall()
     return [dict(r) for r in rows]
 
@@ -171,7 +195,8 @@ def get_project(pid: str) -> Optional[Dict[str, Any]]:
 
 def update_project(pid: str, *, name: Optional[str] = None,
                    target_lang: Optional[str] = None,
-                   source_lang: Optional[str] = None) -> Optional[Dict[str, Any]]:
+                   source_lang: Optional[str] = None,
+                   archived: Optional[bool] = None) -> Optional[Dict[str, Any]]:
     sets, vals = [], []
     if name is not None:
         sets.append("name = ?"); vals.append(name)
@@ -179,6 +204,9 @@ def update_project(pid: str, *, name: Optional[str] = None,
         sets.append("target_lang = ?"); vals.append(target_lang)
     if source_lang is not None:
         sets.append("source_lang = ?"); vals.append(source_lang)
+    if archived is not None:
+        sets.append("archived_at = ?")
+        vals.append(time.time() if archived else None)
     if not sets:
         return get_project(pid)
     sets.append("updated_at = ?"); vals.append(time.time())
@@ -186,6 +214,14 @@ def update_project(pid: str, *, name: Optional[str] = None,
     with _conn() as con:
         con.execute(f"UPDATE projects SET {', '.join(sets)} WHERE id = ?", vals)
     return get_project(pid)
+
+
+def set_project_archived(pid: str, archived: bool) -> Optional[Dict[str, Any]]:
+    project = update_project(pid, archived=archived)
+    if project is not None:
+        log_event(pid, "project-archived" if archived else "project-restored",
+                  "project archived" if archived else "project restored")
+    return project
 
 
 def delete_project(pid: str) -> bool:

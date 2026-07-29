@@ -2436,11 +2436,34 @@ def label_latin_languages(instances: List[InstText]) -> Optional[str]:
             and guess_latin_language([text]) is not None
         ):
             latin_insts.append(inst)
-    guess = guess_latin_language([i.text or "" for i in latin_insts])
+    texts = [i.text or "" for i in latin_insts]
+    guess = guess_latin_language(texts)
+    # A side-loaded language model can resolve evidence that is too short or
+    # too shared for diacritic/stopword heuristics (e.g. RÉPUBLIQUE).  It is
+    # advisory: absent/ambiguous models never turn unknown text into English.
+    try:
+        from tofu.layers.language_models import get_language_provider
+        model_evidence = get_language_provider().identify(texts)
+    except Exception:
+        model_evidence = None
+    if model_evidence and model_evidence.language:
+        if guess is None or model_evidence.confidence >= .86:
+            guess = model_evidence.language
     if not guess:
         return None
     for inst in latin_insts:
         inst.detected_language = guess
+        if model_evidence:
+            inst.ocr_provenance = {
+                **(inst.ocr_provenance or {}),
+                "language_identification": {
+                    "provider": model_evidence.provider,
+                    "model_version": model_evidence.model_version,
+                    "language": model_evidence.language,
+                    "confidence": model_evidence.confidence,
+                    "reason": model_evidence.reason,
+                },
+            }
     return guess
 
 
@@ -3831,7 +3854,10 @@ def assess_multi_candidate_ocr(
                 if not primary_script or not alternate_script
                 else primary_script == alternate_script
             ),
-            language_compatible=True,
+            # Let the arbitration policy compare declared and distributed
+            # engine languages.  Forcing True made a wrong verifier language
+            # impossible to detect.
+            language_compatible=None,
         )
         decision = arbitrate(primary, alternate, signals)
         reason_codes = [reason.value for reason in decision.reason_codes]

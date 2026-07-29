@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import InputAdornment from "@mui/material/InputAdornment";
 import TextField from "@mui/material/TextField";
 import {
   AlertTriangle, AlignCenter, AlignEndHorizontal, AlignEndVertical, AlignJustify, AlignLeft, AlignRight, AlignStartHorizontal, AlignStartVertical, ArrowLeft, ArrowLeftRight, ArrowUpFromLine, Baseline, Bold, BookmarkCheck, Box, Check, ChevronDown, Circle, CircleDashed, CircleDot, CircleOff, FileImage, FolderOpen, Hexagon, History, Home, Italic, Languages, Loader2,
-  Play, Plus, RotateCcw, ScanText, ShieldAlert, Sparkles, SquareStack, Subscript, Superscript, Trash2, Type, Underline, X,
+  Play, Plus, RotateCcw, ScanText, ShieldAlert, Sparkles, SquareStack, Subscript, Superscript, Trash2, Type, Underline, X, Cpu,
 } from "lucide-react";
 import {
   BBox, FontFamily, FontOption, FontWeight, ImportResult, InpaintPatch, InstText, LanguageOption, Project,
@@ -37,7 +37,7 @@ import SmartFillReview from "./SmartFillReview";
 import { langDisplayName, langFlag, LANGUAGE_REGIONS, REGION_ORDER } from "./languageData";
 import LanguageCombobox from "./LanguageCombobox";
 import FontCombobox, { loadFontPreview, fontNameForPath, weightLabel } from "./FontCombobox";
-import FontManager from "./FontManager";
+const FontManager = lazy(() => import("./FontManager"));
 import { RecentFont, mergeFamily, pushRecent, readRecent } from "./fontCatalog";
 import { fontIdentity } from "./doppelganger";
 import HexColorInput from "./HexColorInput";
@@ -51,7 +51,7 @@ import {
   parseQuad, quadFromPolygon,
 } from "./perspective";
 import RegionTable from "./RegionTable";
-import SemanticSubstitutionPanel from "./SemanticSubstitutionPanel";
+const SemanticSubstitutionPanel = lazy(() => import("./SemanticSubstitutionPanel"));
 import { attestedFromManifest } from "./targetGuard";
 import ExportPanel from "./ExportPanel";
 import ProjectGate from "./ProjectGate";
@@ -67,6 +67,7 @@ import ToastSystem, { useToasts, useNotifications, type ToastType, type ToastAct
 import NotificationBell from "./NotificationBell";
 import Stepper, { Step } from "./Stepper";
 import { logoSrc, useTheme } from "./theme";
+const SystemCapabilitiesPanel = lazy(() => import("./SystemCapabilitiesPanel"));
 
 const PROJECT_KEY = "tofu.projectId";
 
@@ -900,6 +901,7 @@ export default function App() {
   // project-first session management
   const [project, setProject] = useState<Project | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [showCapabilities, setShowCapabilities] = useState(false);
   const [historyLeaving, setHistoryLeaving] = useState(false);
   const [showMemory, setShowMemory] = useState(false);
   const [memoryLeaving, setMemoryLeaving] = useState(false);
@@ -3053,6 +3055,7 @@ export default function App() {
           </div>
         )}
         <NotificationBell notifications={notifications} onClear={clearNotifications} onDismiss={dismissNotification} />
+        <button onClick={() => setShowCapabilities(true)} title="System capabilities" className="bezier-card rounded-lg bg-white/60 p-2 text-zinc-600 hover:bg-zinc-100 dark:bg-zinc-900/60 dark:text-zinc-300 dark:hover:bg-zinc-800"><Cpu size={16} /></button>
         <div className="relative" ref={menuRef}>
           <button
             onClick={() => setMenuOpen((v) => !v)}
@@ -3835,7 +3838,7 @@ export default function App() {
                   </div>
                 </div>
               )}
-              <SemanticSubstitutionPanel
+              <Suspense fallback={<div className="p-3 text-xs text-zinc-500">Loading translation review…</div>}><SemanticSubstitutionPanel
                 units={semanticUnits}
                 drafts={semanticDrafts}
                 plans={semanticPlans}
@@ -3854,7 +3857,7 @@ export default function App() {
                 glossaryUploading={glossaryUploading}
                 glossaryUploadStep={glossaryUploadStep}
                 glossaryUploadError={glossaryUploadError}
-              />
+              /></Suspense>
               <RegionTable
                 mode="translate"
                 bboxColor={bboxColor}
@@ -5393,7 +5396,7 @@ export default function App() {
         />
       )}
 
-      <FontManager
+      <Suspense fallback={null}><FontManager
         open={showFontManager}
         onClose={() => setShowFontManager(false)}
         families={fullFamiliesByLang[styleTargetInst?.target_language ?? targLang] ?? []}
@@ -5403,7 +5406,9 @@ export default function App() {
         recent={recentFonts}
         onPick={onFontManagerPick}
         onLibraryChanged={onFontLibraryChanged}
-      />
+      /></Suspense>
+
+      {showCapabilities && <Suspense fallback={null}><SystemCapabilitiesPanel onClose={() => setShowCapabilities(false)} /></Suspense>}
 
       {showSettings && (
         <div className="title-confirm-backdrop" style={{ zIndex: 400 }} onClick={() => setShowSettings(false)}>

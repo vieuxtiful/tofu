@@ -523,6 +523,7 @@ def _verify_final_cleanse(
     if not plans or not policy.require_residual_verification:
         return
     from tofu.layers.ocr_verification import PaddleRegionVerifier
+    from tofu.layers.cleanse_verification import assess_residual
     verifier = PaddleRegionVerifier()
     active = [plan for plan in plans if (plan["inst"].text or "").strip()]
     if not active:
@@ -536,29 +537,18 @@ def _verify_final_cleanse(
         retry: List[Dict[str, Any]] = []
         for plan, result in zip(active, results):
             inst = plan["inst"]
-            evidence = result.evidence()
-            evidence["attempt"] = attempt
+            decision = assess_residual(result, attempt, attempt < policy.retry_budget)
             provenance = inst.repair_provenance or {}
             checks = provenance.setdefault("residual_checks", [])
-            checks.append(evidence)
-            source_like = (
-                result.state == "agree"
-                and result.confidence >= .50
-                and (result.similarity or 0.0) >= .30
-            )
-            hallucinated = result.state == "disagree" and result.confidence >= .70
-            unavailable = result.state in {"unavailable", "error"}
-            if source_like or hallucinated or unavailable:
+            checks.append(decision.evidence)
+            if decision.review_required:
                 provenance["auto_accepted"] = False
                 provenance["review_required"] = True
-                provenance["residual_verification"] = (
-                    "source_text" if source_like else
-                    "hallucinated_text" if hallucinated else result.state
-                )
+                provenance["residual_verification"] = decision.state
             else:
                 provenance["residual_verification"] = "passed"
             inst.repair_provenance = provenance
-            if (source_like or hallucinated) and attempt < policy.retry_budget:
+            if decision.retry:
                 retry.append(plan)
         if not retry:
             break
