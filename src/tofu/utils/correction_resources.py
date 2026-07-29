@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import unicodedata
 from dataclasses import dataclass
 from functools import lru_cache
 from importlib.resources import files
@@ -145,3 +146,45 @@ def variant_pairs(resource: CorrectionResource) -> dict[str, str]:
         raise CorrectionResourceError(
             f"{resource.resource_id}: variant entry lacks {exc.args[0]!r}"
         ) from exc
+
+
+def diacritic_entries(resource: CorrectionResource) -> list[dict[str, str]]:
+    """Validated stored-form entries for pixel-gated Latin mark repair.
+
+    ``folded`` is curated data rather than a runtime accent-stripping
+    transform.  That keeps lookup auditable and prevents this correction path
+    from becoming a broad, lossy normalization pass.
+    """
+    if resource.kind != "diacritic-forms":
+        raise CorrectionResourceError(f"{resource.resource_id}: expected diacritic-forms resource")
+    parsed: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for entry in resource.entries:
+        try:
+            folded, text, language = (str(entry["folded"]), str(entry["text"]), str(entry["language"]))
+        except KeyError as exc:
+            raise CorrectionResourceError(
+                f"{resource.resource_id}: diacritic entry lacks {exc.args[0]!r}"
+            ) from exc
+        if not folded or not text or not language:
+            raise CorrectionResourceError(f"{resource.resource_id}: diacritic entries cannot be empty")
+        expected_folded = "".join(
+            char for char in unicodedata.normalize("NFD", text).casefold()
+            if not unicodedata.combining(char)
+        )
+        if folded != expected_folded:
+            raise CorrectionResourceError(
+                f"{resource.resource_id}: folded form does not match canonical text for {text!r}"
+            )
+        if len(folded) != len(text):
+            raise CorrectionResourceError(
+                f"{resource.resource_id}: diacritic forms must preserve character length"
+            )
+        key = (folded, language)
+        if key in seen:
+            raise CorrectionResourceError(
+                f"{resource.resource_id}: duplicate folded/language entry {folded!r}/{language!r}"
+            )
+        seen.add(key)
+        parsed.append({"folded": folded, "text": text, "language": language})
+    return parsed

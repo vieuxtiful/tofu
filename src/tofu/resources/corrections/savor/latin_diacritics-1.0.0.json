@@ -1,0 +1,24 @@
+{
+  "id": "savor.latin-diacritics",
+  "kind": "diacritic-forms",
+  "locale": "mul",
+  "schema_version": "1",
+  "data_version": "1.0.0",
+  "checksum": "sha256:7c98a96e90c4d21609f03254ee54afa2e065a97286d92c27f674ac2aeff34c78",
+  "provenance": {
+    "maintainer": "ToFU",
+    "method": "curated from confirmed production OCR cases",
+    "source": "project correction corpus"
+  },
+  "license": "CC0-1.0",
+  "entries": [
+    {"folded": "republique", "text": "République", "language": "fr"},
+    {"folded": "cafe", "text": "Café", "language": "fr"},
+    {"folded": "eglise", "text": "Église", "language": "fr"},
+    {"folded": "theatre", "text": "Théâtre", "language": "fr"},
+    {"folded": "hotel", "text": "Hôtel", "language": "fr"},
+    {"folded": "gare", "text": "Gare", "language": "fr"},
+    {"folded": "allee", "text": "Allée", "language": "fr"},
+    {"folded": "aout", "text": "Août", "language": "fr"}
+  ]
+}
