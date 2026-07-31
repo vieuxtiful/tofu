@@ -156,11 +156,15 @@ def classify_asset_context(manifest: TextManifest) -> Dict[str, Any]:
     manifest.asset_classification = classification
     return classification
 
-# tofu language codes → easyocr language codes (identity where omitted)
+# tofu language codes → easyocr language codes (identity where omitted).
+# keys are lowercase: lookups go through _engine_lang(), which lowercases.
 EASYOCR_LANG_MAP: Dict[str, str] = {
     "zh-cn": "ch_sim", "zh-sg": "ch_sim",
     "zh-tw": "ch_tra", "zh-hk": "ch_tra", "zh-mo": "ch_tra",
     "sr-latn": "rs_latin", "sr-cyrl": "rs_cyrillic",
+    # easyocr has no bare 'sr'; Serbia's official script is Cyrillic, so an
+    # untagged Serbian resolves there rather than to a code easyocr rejects.
+    "sr": "rs_cyrillic",
 }
 
 # easyocr language codes → tofu language codes (identity where omitted)
@@ -173,8 +177,40 @@ EASYOCR_TO_TOFU: Dict[str, str] = {
 EASYOCR_EXCLUSIVE = {"ja", "ch_sim", "ch_tra", "ko", "th"}
 
 
+def lang_tag_prefixes(lang: str) -> List[str]:
+    """A language tag and its shorter forms, longest first, lowercased.
+
+    'sr-Latn-RS' → ['sr-latn-rs', 'sr-latn', 'sr'];  'ja-JP' → ['ja-jp', 'ja'].
+    """
+    parts = [p for p in lang.split("-") if p]
+    return ["-".join(parts[:n]).lower() for n in range(len(parts), 0, -1)]
+
+
+def base_lang(lang: str) -> str:
+    """The bare language subtag: 'ja-JP' → 'ja', 'ja' → 'ja'."""
+    return lang_tag_prefixes(lang)[-1] if lang else ""
+
+
+def _engine_lang(lang: str, table: Dict[str, str]) -> str:
+    """Resolve a language tag through an engine's code table.
+
+    The wizard emits full BCP-47 locales ('ja-JP', 'zh-CN', 'sr-Latn-RS')
+    while both engines name languages with shorter codes.  Longest prefix
+    wins, so a script subtag still decides ('sr-Latn-RS' → rs_latin) before
+    the tag degrades to its base language ('ja-JP' → 'ja').  An unmapped tag
+    falls back to that base rather than handing the reader a locale it has
+    never heard of -- easyocr and PaddleOCR both hard-error on one, which
+    is how a project created with a region-tagged source language used to
+    fail detection outright.
+    """
+    for key in lang_tag_prefixes(lang):
+        if key in table:
+            return table[key]
+    return base_lang(lang) if "-" in lang else lang
+
+
 def _to_easyocr_lang(lang: str) -> str:
-    return EASYOCR_LANG_MAP.get(lang, lang)
+    return _engine_lang(lang, EASYOCR_LANG_MAP)
 
 
 def _from_easyocr_lang(lang: str) -> str:
@@ -611,7 +647,7 @@ class PaddleOCRBackend(OCRBackend):
         "hi": "hi", "mr": "mr", "ne": "ne",
         "th": "th",
         "el": "el",
-        "sr-latn": "latin", "sr-cyrl": "cyrillic",
+        "sr-latn": "latin", "sr-cyrl": "cyrillic", "sr": "cyrillic",
     }
 
     PADDLE_TO_TOFU: Dict[str, str] = {
@@ -653,7 +689,7 @@ class PaddleOCRBackend(OCRBackend):
         det_box_thresh: Optional[float] = None,
         unclip_ratio: Optional[float] = None,
     ):
-        self.languages = tuple(self.PADDLE_LANG_MAP.get(l, l) for l in languages)
+        self.languages = tuple(_engine_lang(l, self.PADDLE_LANG_MAP) for l in languages)
         # PaddleOCR readers are one-language; use the primary language.
         # Mixed-script fallback is handled by the primary chosen from hints.
         self.lang = self.languages[0] if self.languages else "en"
@@ -3533,7 +3569,9 @@ def _needs_paddle_audit(inst: InstText) -> bool:
     """
     text = inst.text or ""
     lang = inst.detected_language or inst.language
-    cjk = lang in {"ja", "zh-cn", "zh-tw", "zh-hk", "zh-mo", "zh-sg", "ko"}
+    # tag-prefix membership, not equality: a region carrying the wizard's
+    # full locale ('ja-JP', 'zh-CN') is as CJK as one carrying the bare code.
+    cjk = bool(set(lang_tag_prefixes(lang or "")) & {"ja", "ko", "zh"})
     return cjk and bool(text) and text[-1:] in _TRAILING_ARTIFACTS
 
 

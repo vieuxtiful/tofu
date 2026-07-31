@@ -295,10 +295,12 @@ class TestExpansionFactorCoverage:
 
     def test_every_mapped_language_resolves_a_factor(self):
         from tofu.layers.tofu import expansion_factor
-        # en and en-US share the english baseline (1.00); every other
-        # mapped language must resolve a non-1.0 factor, named or via
-        # its script default, so nothing silently equals english.
-        english_baseline = {"en", "en-US"}
+        # every english variant (en, en-US, en-GB, …) shares the 1.00
+        # baseline; every other mapped language must resolve a non-1.0
+        # factor, named or via its script default, so nothing silently
+        # equals english.
+        english_baseline = {lang for lang in lang_to_script
+                            if lang.split("-")[0].lower() == "en"}
         unresolved = [
             lang for lang in lang_to_script
             if expansion_factor(lang) == 1.0 and lang not in english_baseline
