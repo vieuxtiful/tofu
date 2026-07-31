@@ -665,10 +665,16 @@ def score_hypothesis(
     reason_codes: List[str] = []
     if cross > 0:
         reason_codes.append("cross_backend_consensus")
-    if stability >= 0.8:
-        reason_codes.append("text_stable")
-    if geometry >= 0.5:
-        reason_codes.append("geometry_aligned")
+    # Corroboration codes need something to corroborate. A lone observation
+    # scores stability 1.0 from a single sample and inherits _geometry_score's
+    # 0.5 no-information default, so emitting these unconditionally claimed
+    # agreement that was never measured -- and made the single_observation
+    # fallback below unreachable for any non-errored single read.
+    if len(valid) > 1:
+        if stability >= 0.8:
+            reason_codes.append("text_stable")
+        if geometry >= 0.5:
+            reason_codes.append("geometry_aligned")
     if not reason_codes:
         reason_codes.append("single_observation")
 

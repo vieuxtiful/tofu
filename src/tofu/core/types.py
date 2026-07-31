@@ -142,6 +142,56 @@ class InpaintAssessmentPolicy:
     calibration_revision: str = "inpaint-v1"
 
 @dataclass
+class OCRObservation:
+    """One backend's reading of one candidate region, before arbitration.
+
+    Deliberately NOT frozen, unlike the policies above: scoring writes
+    `calibrated_confidence` back onto the observation once the backend's
+    calibration curve has been applied (ocr_arbitration.score_hypothesis).
+
+    Field order matters -- the first six are constructed positionally.
+    `bbox` sits ahead of the optional evidence because clustering
+    dereferences it on every pair; an observation without geometry cannot
+    join a region hypothesis at all.
+    """
+    observation_id: str
+    backend: str
+    backend_revision: str
+    pass_tag: str
+    text: str
+    raw_confidence: float
+    bbox: BBox
+    calibrated_confidence: Optional[float] = None
+    polygon: Optional[Polygon] = None
+    language_hint: Optional[str] = None
+    detected_script: Optional[str] = None
+    runtime_ms: Optional[int] = None
+    error: Optional[str] = None
+
+@dataclass
+class OCRHypothesisDecision:
+    """Arbitration outcome for one region hypothesis.
+
+    The scores and their per-signal breakdown travel with the decision so a
+    later reviewer can see WHY a reading was accepted, not just which one
+    won -- `score_breakdown` carries a None for every signal that had no
+    evidence, which is what distinguishes "scored zero" from "not measured".
+    """
+    region_id: str
+    member_observation_ids: List[str]
+    selected_observation_id: Optional[str]
+    selected_text: Optional[str]
+    geometry_score: float
+    transcription_score: float
+    verification_state: Literal["agree", "disagree", "no_text", "unavailable", "error"]
+    verification_observation_id: Optional[str]
+    auto_accepted: bool
+    review_required: bool
+    reason_codes: List[str]
+    score_breakdown: Dict[str, Optional[float]]
+    policy_revision: str = "ocr-v1"
+
+@dataclass
 class ReconstructionProfile:
     material_class: str = "unknown"
     material_confidence: float = 0.0
