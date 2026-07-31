@@ -25,7 +25,7 @@ FIXTURES_DIR = ROOT / "tests" / "fixtures"
 
 
 def _fixture_names() -> list[str]:
-    return sorted(gt.stem for gt in FIXTURES_DIR.glob("*.gt.json"))
+    return sorted(gt.name.removesuffix(".gt.json") for gt in FIXTURES_DIR.glob("*.gt.json"))
 
 
 def gen_cleanse() -> dict[str, dict[str, float]]:

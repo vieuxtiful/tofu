@@ -28,7 +28,10 @@ IOU_MATCH = 0.3
 def _fixture_names() -> list[str]:
     names = []
     for gt in sorted(FIXTURES_DIR.glob("*.gt.json")):
-        names.append(gt.stem)
+        # NOT gt.stem: Path only strips the LAST suffix, so "flat-sign.gt.json"
+        # yields "flat-sign.gt" and every image lookup below missed, skipping
+        # the whole suite silently.
+        names.append(gt.name.removesuffix(".gt.json"))
     return names
 
 

@@ -16,6 +16,25 @@ ROOT = Path(__file__).resolve().parents[2]
 BASELINE_PATH = ROOT / "tests" / "fixtures" / "regression" / "baseline_metrics.json"
 
 
+## Metrics where a SMALLER number is the better result.  Recording these as
+## "at_least" -- which is what every generated entry used to be -- inverts the
+## guard they exist to provide: textured-wall's mean_norm_ed baselined at 0.056
+## would FAIL if recognition improved to 0.0, and PASS if it degraded to 0.9.
+## Anything unrecognised keeps the higher-is-better default, so a new
+## score-like metric behaves as before and a new error-like one is a one-line
+## addition here.
+LOWER_IS_BETTER_SUFFIXES = ("_mae", "_ed", "_error", "_err", "_distance", "_loss")
+LOWER_IS_BETTER_NAMES = frozenset({"unresolved"})
+
+
+def direction_for(metric: str) -> str:
+    """Which way is 'better' for this metric name."""
+    name = metric.casefold()
+    if name in LOWER_IS_BETTER_NAMES or name.endswith(LOWER_IS_BETTER_SUFFIXES):
+        return "at_most"
+    return "at_least"
+
+
 @dataclass(frozen=True)
 class Tolerance:
     metric: str
@@ -130,15 +149,24 @@ def update_baseline(harness: str, results_by_fixture: Dict[str, Dict[str, float]
     for fixture, metrics in results_by_fixture.items():
         fixture_entry = existing.get(fixture, {})
         for metric, value in metrics.items():
-            if metric in fixture_entry and isinstance(fixture_entry[metric], dict):
-                fixture_entry[metric]["expected"] = round(float(value), 4)
-            else:
-                fixture_entry[metric] = {
-                    "expected": round(float(value), 4),
-                    "tolerance": 0.0,
-                    "direction": "at_least",
-                }
+            existing_metric = fixture_entry.get(metric)
+            # Tolerance is a POLICY knob the docstring invites you to widen by
+            # hand, so a re-generation preserves it.  Direction is not: it is a
+            # property of what the metric measures, so it is always refreshed.
+            tolerance = (
+                float(existing_metric.get("tolerance", 0.0))
+                if isinstance(existing_metric, dict) else 0.0
+            )
+            fixture_entry[metric] = {
+                "expected": round(float(value), 4),
+                "tolerance": tolerance,
+                "direction": direction_for(metric),
+            }
         existing[fixture] = fixture_entry
     harnesses[harness] = existing
     BASELINE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    BASELINE_PATH.write_text(json.dumps(data, indent=2, encoding="utf-8"), encoding="utf-8")
+    # json.dumps has no `encoding` parameter (it went away in Python 3), so
+    # every write raised TypeError and was swallowed by the generator's
+    # per-harness `except Exception` -- which is why the baseline file has
+    # sat with an empty `harnesses` object and guarded nothing.
+    BASELINE_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
