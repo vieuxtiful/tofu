@@ -1,4 +1,469 @@
 {
   "schema": 1,
-  "harnesses": {}
+  "harnesses": {
+    "detect": {
+      "cjk-horizontal": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "recall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "f1": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "cjk-vertical": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "recall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "f1": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "degraded-ink": {
+        "precision": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "recall": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "f1": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "dense-layout": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "recall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "f1": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "expansion-en": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "recall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "f1": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "flat-sign": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "recall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "f1": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "gradient-banner": {
+        "precision": {
+          "expected": 0.667,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "recall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "f1": {
+          "expected": 0.8,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "indic-shaping": {
+        "precision": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "recall": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "f1": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "low-confidence": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "recall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "f1": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "mixed-orientation": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "recall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "f1": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.5,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "mixed-script": {
+        "precision": {
+          "expected": 0.333,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "recall": {
+          "expected": 0.5,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "f1": {
+          "expected": 0.4,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "multicolour-text": {
+        "precision": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "recall": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "f1": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "perspective-sign": {
+        "precision": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "recall": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "f1": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "product-label": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "recall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "f1": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "rtl-sign": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "recall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "f1": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "serif-vs-sans": {
+        "precision": {
+          "expected": 0.667,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "recall": {
+          "expected": 0.667,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "f1": {
+          "expected": 0.667,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "shadow-effects": {
+        "precision": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "recall": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "f1": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "stylized-italic": {
+        "precision": {
+          "expected": 0.4,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "recall": {
+          "expected": 0.5,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "f1": {
+          "expected": 0.444,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "textured-wall": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "recall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "f1": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.056,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "tight-space": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "recall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "f1": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "ui-controls": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "recall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "f1": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      }
+    }
+  }
 }
