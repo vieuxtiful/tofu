@@ -130,6 +130,81 @@ class TestGuessLatinLanguage:
         assert [inst.detected_language for inst in instances] == ["fr", "fr"]
 
 
+class TestDeclaredSourceLanguageMargin:
+    """A declared source is evidence; a competing guess must be DECISIVE.
+
+    Measured on a multilingual medical-device label declared en-US, whose
+    product name repeats in five languages: the French/Italian/Spanish lines
+    contribute de/del/du and scored es=14 against en=10, which was enough to
+    stamp "es" on all 41 latin regions -- "Boston" and "300 Commercial Street"
+    included.
+    """
+
+    ENLABEL = [
+        "enLabel Total Knee Replacement System", "Make Complex Packaging",
+        "enLabel totale dU systeme de remplacement du genou",
+        "enLabel Insgesamt Knie Ersatz",
+        "enLabel soslituzione totale del ginocchio",
+        "enLabel sistema de reemplazo Total de rodilla",
+        "300 Commercial Street", "Boston", "Simple", "Compliant",
+        "Lot", "No.: J5322901", "Serial No.: EN1OOO", "60 of 100",
+    ]
+
+    def test_incidental_foreign_tokens_cannot_flip_a_declared_asset(self):
+        assert guess_latin_language(self.ENLABEL) == "es"      # undeclared: bare win
+        assert guess_latin_language(self.ENLABEL, "en-US") is None
+
+    def test_a_genuinely_foreign_asset_still_resolves(self):
+        # the declared language has no evidence at all here, so the guess is
+        # decisive by any margin -- a French plate in an en project is still French
+        assert guess_latin_language(["AVENUE", "de la REPUBLIQUE"], "en-GB") == "fr"
+
+    def test_non_latin_declaration_does_not_protect(self):
+        # a CJK source says nothing about which latin language a stray
+        # latin region is in, so the ordinary heuristic applies
+        assert guess_latin_language(["la calle mayor", "salida de la avenida"],
+                                    "ja-JP") == "es"
+
+    def test_declaration_is_stamped_verbatim_when_it_stands(self):
+        instances = [
+            InstText(id="r1", bounding_box=BBox(x=0, y=0, width=200, height=20),
+                     text=text, confidence=0.95)
+            for text in self.ENLABEL
+        ]
+        # "en-US", never "en" -- every catalog lookup resolves a bare "en" to en-GB
+        assert label_latin_languages(instances, "en-US") == "en-US"
+        assert {i.detected_language for i in instances} == {"en-US"}
+
+
+class TestLocalizableSymbols:
+    def test_confident_ampersand_survives_the_symbol_junk_floor(self):
+        # "Simple & Compliant": EasyOCR reads the "&" at 0.996 in a 12x16 box
+        # (192px2, under MIN_SYMBOL_JUNK_AREA), and it was being deleted --
+        # dropping a word that becomes "et"/"y"/"und" in the target.
+        instances = [
+            InstText(id="r1", bounding_box=BBox(x=126, y=188, width=12, height=16),
+                     text="&", confidence=0.996),
+        ]
+        assert [i.text for i in _prune_hallucinations(instances)] == ["&"]
+
+    def test_decorative_marks_are_still_junk(self):
+        instances = [
+            InstText(id="r1", bounding_box=BBox(x=0, y=0, width=20, height=22),
+                     text="‥", confidence=0.96),
+            InstText(id="r2", bounding_box=BBox(x=0, y=0, width=10, height=10),
+                     text="~", confidence=0.50),
+        ]
+        assert _prune_hallucinations(instances) == []
+
+    def test_a_low_confidence_symbol_is_still_junk(self):
+        # the exemption is for small CONFIDENT punctuation only
+        instances = [
+            InstText(id="r1", bounding_box=BBox(x=0, y=0, width=12, height=16),
+                     text="&", confidence=0.30),
+        ]
+        assert _prune_hallucinations(instances) == []
+
+
 class TestDetectionPassProvenance:
     class FakeBackend:
         languages = ("en",)

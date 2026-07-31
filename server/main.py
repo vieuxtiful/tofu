@@ -2258,7 +2258,9 @@ def detect_stream(
             # Re-evaluate Latin language from the final recognized text.
             # Savor/Wasabi/menu may have repaired the weak first-pass text;
             # cicerone.detect() performs this same final pass internally.
-            cicerone.label_latin_languages(manifest.instances)
+            cicerone.label_latin_languages(
+                manifest.instances, lang_hints[0] if lang_hints else None
+            )
             manifest.src_lang = _infer_src_lang(manifest)
 
             tm_matched = 0

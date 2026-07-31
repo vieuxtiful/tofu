@@ -1030,6 +1030,11 @@ ALL_LATIN_DIACRITICS = frozenset(
     ch for chars in LATIN_DIACRITICS.values() for ch in chars
 )
 
+## The latin languages this module can actually name. A declared source only
+## earns the margin protection below when it is one of these -- a CJK or RTL
+## declaration says nothing about which latin language a stray latin region is.
+LATIN_LANGS = frozenset(LATIN_STOPWORDS) | frozenset(LATIN_DIACRITICS)
+
 # a diacritic-bearing token shorter than this is likelier an OCR artifact
 # (a speck of noise read as an acute accent, a stray mark on a logo) than
 # a real accented word
@@ -1065,8 +1070,28 @@ def _diacritic_candidates(word: str) -> List[str]:
     )
 
 
-def guess_latin_language(texts: Sequence[str]) -> Optional[str]:
+## A declared source language is evidence in its own right -- a human named it,
+## and the upload guard already rejects assets that do not match it. So a
+## competing guess has to do more than edge ahead on stopword counting: it has
+## to be DECISIVE. Measured on a multilingual medical-device label declared
+## en-US, whose product name repeats in five languages: the French/Italian/
+## Spanish lines contribute de/del/du, scoring es=14 against en=10, and a bare
+## win was enough to stamp "es" on all 41 latin regions -- including "Boston"
+## and "300 Commercial Street". Doubling is the same standard the diacritic
+## branch already applies to shared accents: enough evidence that the runner-up
+## cannot explain it.
+DECLARED_LANGUAGE_MARGIN = 2.0
+
+
+def guess_latin_language(
+    texts: Sequence[str], declared: Optional[str] = None
+) -> Optional[str]:
     """guess the language of latin-script texts via stopwords + diacritics.
+
+    ``declared`` is the project's source language, when it has one. The guess
+    must then clear DECLARED_LANGUAGE_MARGIN against it instead of merely
+    outscoring it, so a genuinely foreign sign inside a declared-language scene
+    still resolves while incidental foreign tokens cannot flip the asset.
 
     returns a tofu language code, or None when the signal is too weak to
     override the default. english must be BEATEN, not tied, to switch --
@@ -1140,6 +1165,16 @@ def guess_latin_language(texts: Sequence[str]) -> Optional[str]:
     # tiebreak, so an ambiguous scene can never answer differently run to
     # run (dict iteration order used to decide these silently)
     ranked = sorted(langs, key=lambda k: (-scores[k], k))
+    # The declared source only gets this protection when it is one of the
+    # latin languages actually scored here; a CJK or RTL declaration says
+    # nothing about which latin language a stray latin region is in.
+    declared_base = base_lang(declared) if declared else ""
+    if declared_base in scores:
+        best = ranked[0]
+        if (best == declared_base or scores[best] < 2.0 or hits[best] < 2
+                or scores[best] < DECLARED_LANGUAGE_MARGIN * scores[declared_base]):
+            return None
+        return best
     if ranked[0] == "en" and accented_words:
         # english cannot carry diacritics: take the strongest non-english
         # candidate instead of defaulting to english, but hold it to the
@@ -2449,10 +2484,17 @@ def run_paddle_rescue(
     return merged if changed else None
 
 
-def label_latin_languages(instances: List[InstText]) -> Optional[str]:
+def label_latin_languages(
+    instances: List[InstText], declared: Optional[str] = None
+) -> Optional[str]:
     """name the language of the CONFIDENT latin-script reads and stamp the
     verdict on every one of them; returns that verdict, or None when the
     evidence was too weak to override the english default.
+
+    ``declared`` is the project's source language. Passing it raises the bar a
+    competing guess must clear (see DECLARED_LANGUAGE_MARGIN) -- this is a
+    whole-asset verdict stamped on every latin region, so on a multilingual
+    asset a bare stopword win relabels regions that were never in doubt.
 
     both engine paths carried this block verbatim. it is also the one
     language step that MUST run again at the end of detect(): every
@@ -2474,7 +2516,7 @@ def label_latin_languages(instances: List[InstText]) -> Optional[str]:
         ):
             latin_insts.append(inst)
     texts = [i.text or "" for i in latin_insts]
-    guess = guess_latin_language(texts)
+    guess = guess_latin_language(texts, declared)
     # A side-loaded language model can resolve evidence that is too short or
     # too shared for diacritic/stopword heuristics (e.g. RÉPUBLIQUE).  It is
     # advisory: absent/ambiguous models never turn unknown text into English.
@@ -2484,9 +2526,26 @@ def label_latin_languages(instances: List[InstText]) -> Optional[str]:
     except Exception:
         model_evidence = None
     if model_evidence and model_evidence.language:
-        if guess is None or model_evidence.confidence >= .86:
+        # With a declared source language, "no guess" means the declaration
+        # stands -- adopting the model's answer there would route around the
+        # margin the heuristic just enforced. The model still wins outright at
+        # its own high-confidence bar, which is the decisiveness test again.
+        decisive = model_evidence.confidence >= .86
+        if decisive or (guess is None and not base_lang(declared or "")):
             guess = model_evidence.language
     if not guess:
+        # No decisive evidence against the declaration means the declaration IS
+        # the verdict, and it has to be STAMPED, not merely left alone: an
+        # earlier pass over pre-correction text may already have written a
+        # label here, and returning None would leave that stale answer standing
+        # -- which is how the enLabel regions kept "es" all the way to the UI.
+        declared_base = base_lang(declared or "")
+        if declared_base in LATIN_LANGS:
+            # the declaration verbatim, not its base: "en-US" must not come
+            # back as "en", which every catalog lookup resolves to en-GB.
+            for inst in latin_insts:
+                inst.detected_language = declared
+            return declared
         return None
     for inst in latin_insts:
         inst.detected_language = guess
@@ -2509,6 +2568,7 @@ def _identify_languages(
     instances: List[InstText],
     engine: "EasyOCRBackend",
     max_extra_readers: int = 2,
+    declared: Optional[str] = None,
 ) -> None:
     """set detected_language per instance from the recognized text's script;
     re-recognize crops whose script the primary reader could not cover.
@@ -2567,7 +2627,7 @@ def _identify_languages(
 
     # latin-language disambiguation: script identity can't tell spanish
     # from english — classify the pooled latin text by stopwords/diacritics
-    label_latin_languages(instances)
+    label_latin_languages(instances, declared)
 
 
 def _identify_languages_paddle(
@@ -2575,6 +2635,7 @@ def _identify_languages_paddle(
     instances: List[InstText],
     engine: "PaddleOCRBackend",
     max_extra_readers: int = 2,
+    declared: Optional[str] = None,
 ) -> None:
     """set detected_language per instance from recognized text script.
 
@@ -2600,7 +2661,7 @@ def _identify_languages_paddle(
             inst.detected_language = _script_lang_for(script, (tofu_lang,))
 
     # latin-language disambiguation (same logic as EasyOCR path)
-    label_latin_languages(instances)
+    label_latin_languages(instances, declared)
 
 
 def refine_langset(
@@ -3110,6 +3171,12 @@ def detect(
     start = time.time()
     asset_info = asset_info or infer_asset_info(asset)
 
+    # `languages` IS the project's declared source (the server passes the
+    # locked source_lang through as the reader hint), so latin-language
+    # labelling can hold a competing guess to the declared-source margin
+    # instead of letting a bare stopword win relabel the whole asset.
+    declared = languages[0] if languages else None
+
     engine = backend
     if engine is None:
         if languages:
@@ -3142,6 +3209,7 @@ def detect(
         scene_filter=scene_filter,
         identify_languages=identify_languages,
         max_extra_readers=max_extra_readers,
+        declared=declared,
         prune_garbage=prune_garbage,
         start=start,
     )
@@ -3184,6 +3252,7 @@ def detect(
                 scene_filter=scene_filter,
                 identify_languages=identify_languages,
                 max_extra_readers=max_extra_readers,
+                declared=declared,
                 prune_garbage=prune_garbage,
                 start=start,
             )
@@ -3203,6 +3272,7 @@ def detect(
                 scene_filter=scene_filter,
                 identify_languages=identify_languages,
                 max_extra_readers=max_extra_readers,
+                declared=declared,
                 prune_garbage=prune_garbage,
                 start=start,
             )
@@ -3224,6 +3294,7 @@ def detect(
                 scene_filter=scene_filter,
                 identify_languages=identify_languages,
                 max_extra_readers=max_extra_readers,
+                declared=declared,
                 prune_garbage=prune_garbage,
                 start=start,
             )
@@ -3262,6 +3333,7 @@ def detect(
                         scene_filter=scene_filter,
                         identify_languages=identify_languages,
                         max_extra_readers=max_extra_readers,
+                        declared=declared,
                         prune_garbage=prune_garbage,
                         start=start,
                     )
@@ -3300,7 +3372,7 @@ def detect(
             # Latin correction resources are language-scoped.  Establish a
             # current label before Savor; the existing final pass re-runs it
             # after corrections have changed the text evidence.
-            label_latin_languages(manifest.instances)
+            label_latin_languages(manifest.instances, declared)
             from tofu.layers.savor import taste
             # the engine is handed over for Savor's clump course alone: it is
             # the only course that changes a read's character COUNT, and it
@@ -3348,7 +3420,7 @@ def detect(
     # the question again. this mirrors exactly why savor/wasabi/menu
     # themselves run last: the final text is the only text worth judging.
     if identify_languages and manifest.instances:
-        if label_latin_languages(manifest.instances):
+        if label_latin_languages(manifest.instances, declared):
             manifest.src_lang = taste_the_room(manifest.instances)
 
     return manifest
@@ -3438,6 +3510,20 @@ def _has_ink_support(asset: Any, bbox: BBox) -> bool:
     return mask is not None and bool(mask.any())
 
 
+## Symbols that carry linguistic content and get LOCALIZED -- an English "&"
+## becomes "et" in French and "y" in Spanish; a currency mark and a number sign
+## are read aloud as words. These are content, not decoration, which is what
+## separates them from the marks a misread emblem produces (~ ‥ ^ ·): those
+## stay subject to the symbol-junk area floor, these do not.
+LOCALIZABLE_SYMBOLS = frozenset("&%№©®$€£¥¢₩₹")
+
+
+def _is_localizable_symbol(text: str) -> bool:
+    """True when a read is nothing but localizable punctuation."""
+    stripped = "".join(text.split())
+    return bool(stripped) and all(ch in LOCALIZABLE_SYMBOLS for ch in stripped)
+
+
 def _prune_hallucinations(
     instances: List[InstText], asset: Any = None
 ) -> List[InstText]:
@@ -3517,7 +3603,16 @@ def _prune_hallucinations(
                 inst.bounding_box.width * inst.bounding_box.height
                 if inst.bounding_box else 0
             )
-            if (inst.confidence or 0) < 0.4 or area < MIN_SYMBOL_JUNK_AREA:
+            if (inst.confidence or 0) < 0.4:
+                continue
+            # The area floor is calibrated on street-scene emblems, where a
+            # tiny symbol read IS junk. Document typography sets real,
+            # localizable punctuation at glyph scale: the enLabel tagline's
+            # "&" -- "Simple & Compliant", read at 0.996 -- is 12x16 = 192px2
+            # and was being deleted, silently dropping a word that becomes
+            # "et"/"y"/"und" in the target. The confidence bar above still
+            # applies, so this exempts small CONFIDENT punctuation only.
+            if area < MIN_SYMBOL_JUNK_AREA and not _is_localizable_symbol(text):
                 continue
         # independent ink-support gate (Cluster 3): a moderately-low-
         # confidence read -- script OR not -- sitting on pixels with no
@@ -4045,6 +4140,7 @@ def build_manifest(
     prune_garbage: bool = True,
     merge_columns: bool = True,
     start: Optional[float] = None,
+    declared: Optional[str] = None,
 ) -> TextManifest:
     """assemble a TextManifest from raw detections.
 
@@ -4189,9 +4285,9 @@ def build_manifest(
                                     inst.text = composed.text
                                     inst.confidence = composed.confidence
                         engine = ja_backend
-            _identify_languages(asset, instances, engine, max_extra_readers)
+            _identify_languages(asset, instances, engine, max_extra_readers, declared)
         elif isinstance(engine, PaddleOCRBackend):
-            _identify_languages_paddle(asset, instances, engine, max_extra_readers)
+            _identify_languages_paddle(asset, instances, engine, max_extra_readers, declared)
 
         # Japanese vs Chinese disambiguation:
         # - if any instance contains kana, the scene is Japanese —
