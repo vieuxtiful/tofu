@@ -802,9 +802,16 @@ export default function App() {
     return order || manifest.indexOf(a) - manifest.indexOf(b);
   });
   const visibleManifest = orderedManifest.filter((i) => !i.excluded);
+  // UI-only dismissal of the per-region OCR review banner.  Does not mutate
+  // the manifest's ocr_quality — re-detection or a page refresh restores
+  // dismissed regions.  Cleared wholesale whenever a fresh scan completes.
+  // Declared here rather than with the other useState calls below because
+  // qualityReviewRegions reads it during render.
+  const [dismissedOcrReview, setDismissedOcrReview] = useState<Set<string>>(new Set());
   const qualityReviewRegions = visibleManifest.filter((inst) => {
     const state = inst.ocr_quality?.state;
-    return state === "review_required" || state === "unresolvable";
+    return (state === "review_required" || state === "unresolvable")
+      && !dismissedOcrReview.has(inst.id);
   });
   // Advisory only: usable text resolution is measured from detected crops,
   // never inferred solely from this whole-image dimension.
@@ -2086,8 +2093,8 @@ export default function App() {
   /** mismatch resolution: protect — the detection was wrong, keep asset */
   const onMismatchKeep = useCallback(() => {
     setScan((s) => (s ? { ...s, status: "passed" } : s));
-    addToast("info", "override applied — asset kept despite the language scan.");
-  }, [addToast]);
+    addToast("info", `language override applied: ${langDisplayName(scan?.projectSrc ?? "?")}.`);
+  }, [addToast, scan]);
 
   // streaming detection with live per-stage progress; when langs is given
   // the OCR reader charset is language-tuned, which materially improves
@@ -2103,6 +2110,10 @@ export default function App() {
     setDetectStage("scanning");
     setDetectProgress("analyzing surfaces…");
     cancelDetectRef.current = detectAssetStream(asset.asset_id, langs, (ev) => {
+      // ev.regions is SceneRegion[] for the scene stage and a number for the
+      // counting stages; normalise to a count for pluralisation.
+      const regionCount = typeof ev.regions === "number" ? ev.regions : 0;
+      const regionWord = (n: number) => n <= 1 ? "region" : "regions";
       if (ev.stage === "scene") {
         setDetectProgress(
           ev.status === "running"
@@ -2116,7 +2127,7 @@ export default function App() {
         setDetectProgress(
           ev.status === "running"
             ? `${label}… ${ev.pass}/3`
-            : `${ev.pass}/3: ${ev.regions} region(s)`
+            : `${ev.pass}/3: ${regionCount} ${regionWord(regionCount)}`
         );
       } else if (ev.stage === "finalize") {
         setDetectStage("lang");
@@ -2126,28 +2137,28 @@ export default function App() {
         setDetectProgress(
           ev.status === "running"
             ? `re-pressing with ${(ev.langset ?? []).map((l) => langDisplayName(l)).join("+")}-tuned recognition…`
-            : `refined: ${ev.regions} region(s)`
+            : `refined: ${regionCount} ${regionWord(regionCount)}`
         );
       } else if (ev.stage === "zoom") {
         setDetectStage("drawing");
         setDetectProgress(
           ev.status === "running"
             ? "inspecting surfaces" /* zooming into surfaces (fine-grain pass...) */
-            : `fine-grain: ${ev.regions} region(s)`
+            : `fine-grain: ${regionCount} ${regionWord(regionCount)}`
         );
       } else if (ev.stage === "paddle_rescue") {
         setDetectStage("drawing");
         setDetectProgress(
           ev.status === "running"
             ? "retasting to ensure flavor consistency…" /* previously: trying a second engine on weak/missed regions… */
-            : `rescue pass: ${ev.regions} region(s)`
+            : `rescue pass: ${regionCount} ${regionWord(regionCount)}`
         );
       } else if (ev.stage === "polish") {
         setDetectStage("lang");
         setDetectProgress(
           ev.status === "running"
             ? "second-look recognition on weak regions…"
-            : `polished ${ev.regions} region(s)`
+            : `polished ${regionCount} ${regionWord(regionCount)}`
         );
       } else if (ev.stage === "savor") {
         setDetectStage("lang");
@@ -2175,14 +2186,14 @@ export default function App() {
         setDetectProgress(
           ev.status === "running"
             ? "seasoning… (style & background analysis)"
-            : `enriched ${ev.regions} region(s)`
+            : `enriched ${regionCount} ${regionWord(regionCount)}`
         );
       } else if (ev.stage === "memory") {
         setDetectStage("lang");
         setDetectProgress(
           ev.status === "running"
             ? "checking translation memory…"
-            : (ev.matched ?? 0) > 0 ? `seen before: ${ev.matched} region(s)` : "no memory matches"
+            : (ev.matched ?? 0) > 0 ? `seen before: ${ev.matched} ${(ev.matched ?? 0) <= 1 ? "region" : "regions"}` : "no memory matches"
         );
       } else if (ev.stage === "complete" && ev.manifest) {
         const m = ev.manifest;
@@ -2190,6 +2201,7 @@ export default function App() {
         manifestSkipHistory.current = true;
         setManifest(m.instances);
         markRegionsNew(m.instances);
+        setDismissedOcrReview(new Set());
         setImgDim(m.img_dim);
         setSceneRegions(m.scene_regions ?? []);
         setSemanticUnits(m.semantic_units ?? []);
@@ -2209,9 +2221,9 @@ export default function App() {
             false
           );
         } else if (m.instances.length > 0) {
-          addToast("success", `detected ${m.instances.length} regions`);
+          addToast("success", `detected ${m.instances.length} ${m.instances.length <= 1 ? "region" : "regions"}`);
           if ((ev.tm_matched ?? 0) > 0) {
-            addToast("info", `seen before: ${ev.tm_matched} region(s) matched translation memory — suggestions ready in Translate.`);
+            addToast("info", `seen before: ${ev.tm_matched} ${(ev.tm_matched ?? 0) <= 1 ? "region" : "regions"} matched translation memory — suggestions ready in Translate.`);
           }
         } else {
           addToast("info", "no text regions detected. you can draw them manually.");
@@ -3481,15 +3493,25 @@ export default function App() {
 
           {qualityReviewRegions.length > 0 && (
             <div className="subtext rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
-              <button
-                type="button"
-                onClick={() => setOcrReviewOpen((v) => !v)}
-                className="flex w-full cursor-pointer items-center gap-2 font-medium"
-                aria-expanded={ocrReviewOpen}
-              >
-                <ShieldAlert size={14} className="shrink-0" />
-                {qualityReviewRegions.length} OCR region{qualityReviewRegions.length === 1 ? "" : "s"} need{qualityReviewRegions.length === 1 ? "s" : ""} attention
-              </button>
+              <div className="flex w-full items-center gap-2 font-medium">
+                <button
+                  type="button"
+                  onClick={() => setOcrReviewOpen((v) => !v)}
+                  className="flex flex-1 cursor-pointer items-center gap-2"
+                  aria-expanded={ocrReviewOpen}
+                >
+                  <ShieldAlert size={14} className="shrink-0" />
+                  {qualityReviewRegions.length} OCR region{qualityReviewRegions.length === 1 ? "" : "s"} need{qualityReviewRegions.length === 1 ? "s" : ""} attention
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDismissedOcrReview((prev) => new Set(qualityReviewRegions.map((r) => r.id).reduce((s, id) => s.add(id), new Set(prev))))}
+                  className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-normal opacity-80 hover:opacity-100"
+                  title="dismiss all review items"
+                >
+                  dismiss all
+                </button>
+              </div>
               <div className={`ocr-review-content${ocrReviewOpen ? " expanded" : ""}`}>
                 <div className="min-h-0">
                   <p className="mt-2 text-[11px] opacity-85">Detection is retained. Automatic OCR corrections were withheld where the crop cannot support them reliably.</p>
@@ -3502,6 +3524,13 @@ export default function App() {
                           <span className="max-w-[28rem] truncate">{quality.reasons.map((reason) => reason.replace(/_/g, " ")).join(" · ")}</span>
                           <button onClick={() => { setSelectedId(inst.id); void onOcr(inst.id); }} disabled={ocrLoading === inst.id} className="ml-auto rounded bg-amber-700 px-1.5 py-0.5 text-[10px] text-white hover:bg-amber-800 disabled:opacity-50">
                             {ocrLoading === inst.id ? "re-reading…" : "re-read"}
+                          </button>
+                          <button
+                            onClick={() => setDismissedOcrReview((prev) => new Set(prev).add(inst.id))}
+                            className="rounded p-0.5 opacity-60 hover:opacity-100"
+                            title={`dismiss ${inst.id}`}
+                          >
+                            <X size={12} />
                           </button>
                         </div>
                       );
