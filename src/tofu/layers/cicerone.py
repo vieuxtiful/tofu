@@ -3266,7 +3266,12 @@ def detect(
             # after corrections have changed the text evidence.
             label_latin_languages(manifest.instances)
             from tofu.layers.savor import taste
-            taste(asset, manifest.instances, font_registry=font_registry)
+            # the engine is handed over for Savor's clump course alone: it is
+            # the only course that changes a read's character COUNT, and it
+            # will not do so without an independent re-read of the disputed
+            # span (see savor.chew_clump).
+            taste(asset, manifest.instances, font_registry=font_registry,
+                  engine=None if isinstance(final_engine, NullBackend) else final_engine)
         except Exception:
             pass
 

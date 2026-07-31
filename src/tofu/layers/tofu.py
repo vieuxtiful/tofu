@@ -86,7 +86,15 @@ lang_to_script: Dict[str, str] = {
     "sl": "Latn", # slovenian
     "et": "Latn", # estonian
     "lv": "Latn", # latvian
-    "lt": "Latn" # lithuanian
+    "lt": "Latn", # lithuanian
+    # americas locale variants -- same scripts as their base languages;
+    # basil's _lang() strips the region subtag for typology, but the
+    # script map and font catalog need the full tag to resolve.
+    "en-US": "Latn", # american english
+    "es-MX": "Latn", # mexican spanish
+    "es-US": "Latn", # united states spanish
+    "pt-BR": "Latn", # brazilian portuguese
+    "fr-CA": "Latn"  # canadian french
 }
 
 # issue-code registry (the full set this layer can raise):
@@ -111,10 +119,14 @@ EXPANSION_FACTORS: Dict[str, float] = {
     "ar": 1.05, "hi": 1.05, "he": 0.95, "ko": 0.80,
     "ja": 0.60,
     "zh-cn": 0.60, "zh-sg": 0.60, "zh-tw": 0.60, "zh-hk": 0.60, "zh-mo": 0.60,
+    # americas variants inherit their base language's width profile:
+    # american english is the english baseline; mexican/US spanish and
+    # brazilian portuguese / canadian french match their european peers.
+    "en-US": 1.00, "es-MX": 1.25, "es-US": 1.25, "pt-BR": 1.20, "fr-CA": 1.20,
 }
 
 # per-script fallbacks for the languages EXPANSION_FACTORS does not name
-# individually. the table above covers 26 of the 63 languages in
+# individually. the table above covers 31 of the 68 languages in
 # lang_to_script; the other 37 used to fall through to a silent 1.0,
 # which asserts "this language is exactly as wide as english" for
 # everything from Amharic to Khmer. a script-level figure is still a

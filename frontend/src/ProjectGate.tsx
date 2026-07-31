@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Archive, ArchiveRestore, ArrowLeft, ArrowRight, History, Loader2, Plus, Search, Trash2, X } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowLeft, ArrowRight, History, Loader2, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import { MdMonochromePhotos } from "react-icons/md";
 import { AiFillVideoCamera } from "react-icons/ai";
 import { TbCubePlus } from "react-icons/tb";
@@ -54,6 +54,9 @@ export default function ProjectGate({ languages, onSelectProject, onClose, theme
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Project | null>(null);
+  const [pendingRename, setPendingRename] = useState<Project | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [renameBusy, setRenameBusy] = useState(false);
   const [wizardLeaving, setWizardLeaving] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
@@ -113,6 +116,28 @@ export default function ProjectGate({ languages, onSelectProject, onClose, theme
     } catch (e) {
       setError(String(e));
       setPendingDelete(null);
+    }
+  };
+
+  const onRename = (p: Project) => {
+    setPendingRename(p);
+    setRenameValue(p.name);
+  };
+
+  const confirmRename = async () => {
+    if (!pendingRename || !renameValue.trim()) return;
+    setRenameBusy(true);
+    try {
+      await updateProject(pendingRename.id, { name: renameValue.trim() });
+      setPendingRename(null);
+      setRenameValue("");
+      refresh();
+    } catch (e) {
+      setError(String(e));
+      setPendingRename(null);
+      setRenameValue("");
+    } finally {
+      setRenameBusy(false);
     }
   };
 
@@ -239,6 +264,13 @@ export default function ProjectGate({ languages, onSelectProject, onClose, theme
                       {" · "}{p.asset_count ?? 0} asset(s) · {p.snapshot_count ?? 0} save(s) · {timeAgo(p.updated_at)}
                     </p>
                   </div>
+                </button>
+                <button
+                  onClick={() => onRename(p)}
+                  title="Rename project"
+                  className="relative rounded-sm p-1.5 text-zinc-400 hover:bg-zinc-200 hover:text-cyan-600 dark:text-zinc-600 dark:hover:bg-zinc-700 dark:hover:text-cyan-400"
+                >
+                  <Pencil size={14} />
                 </button>
                 <button
                   onClick={() => onDelete(p)}
@@ -424,6 +456,48 @@ export default function ProjectGate({ languages, onSelectProject, onClose, theme
                   className="rounded-lg bg-red-500 px-4 py-2 text-xs font-medium text-white transition hover:bg-red-600"
                 >
                   Yes
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {pendingRename && (
+          <div className="title-confirm-backdrop" onClick={() => setPendingRename(null)}>
+            <div className="bezier-card title-confirm-card" style={{ maxWidth: "380px" }} onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between w-full mb-2">
+                <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">rename project</h3>
+                <button
+                  onClick={() => setPendingRename(null)}
+                  className="rounded-sm p-1 text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+              <div className="mb-5 w-full">
+                <input
+                  autoFocus
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && renameValue.trim()) confirmRename(); }}
+                  placeholder="new project name"
+                  className="w-full rounded-lg border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm text-zinc-800 outline-hidden focus:border-cyan-600 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200"
+                />
+              </div>
+              <div className="flex justify-end gap-3 w-full">
+                <button
+                  onClick={() => setPendingRename(null)}
+                  className="rounded-lg bg-zinc-200 px-4 py-2 text-xs text-zinc-600 transition hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmRename}
+                  disabled={renameBusy || !renameValue.trim()}
+                  className="flex items-center gap-2 rounded-lg bg-cyan-600 px-4 py-2 text-xs font-medium text-white transition hover:bg-cyan-500 disabled:opacity-40"
+                >
+                  {renameBusy ? <Loader2 size={12} className="animate-spin" /> : null}
+                  Save
                 </button>
               </div>
             </div>

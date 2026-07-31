@@ -11,12 +11,25 @@ import importlib.metadata
 import importlib.util
 import os
 import platform
+import shutil
 import sys
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, Optional
 
 
 CAPABILITIES_SCHEMA_VERSION = "1.0"
+
+
+def _video_status() -> Dict[str, Any]:
+    ffmpeg, ffprobe = shutil.which("ffmpeg"), shutil.which("ffprobe")
+    cv = _module_available("cv2")
+    ready = bool(ffmpeg and ffprobe and cv)
+    missing = [name for name, value in (("ffmpeg", ffmpeg), ("ffprobe", ffprobe), ("OpenCV", cv)) if not value]
+    return _entry("video_pipeline", ready, ready=ready,
+                  reason=None if ready else "missing required runtime: " + ", ".join(missing),
+                  project_creation_enabled=ready, ffmpeg=bool(ffmpeg), ffprobe=bool(ffprobe),
+                  decoding=bool(ffprobe and cv), tracking=cv, encoding=bool(ffmpeg),
+                  adaptive_ocr=True, resumable_jobs=True, export_container="mp4")
 
 
 def _version(distribution: str) -> Optional[str]:
@@ -228,9 +241,5 @@ def build_capabilities(
             ],
         },
         "fonts": _font_status(validator_factory),
-        "video": _entry(
-            "video_pipeline", False, ready=False,
-            reason="video localization is not implemented",
-            project_creation_enabled=False,
-        ),
+        "video": _video_status(),
     }

@@ -1,0 +1,16 @@
+{
+  "regions": [
+    {
+      "bbox": [
+        180,
+        191,
+        291,
+        45
+      ],
+      "text": "OLD SIGN",
+      "style": {
+        "degraded_ink": true
+      }
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "regions": [
+    {
+      "bbox": [
+        180,
+        210,
+        300,
+        64
+      ],
+      "text": "ABC",
+      "style": {
+        "multicolour": true,
+        "colours": [
+          "#ff5050",
+          "#50c878",
+          "#78a0ff"
+        ]
+      }
+    }
+  ]
+}

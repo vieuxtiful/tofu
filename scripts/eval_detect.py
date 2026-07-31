@@ -325,16 +325,22 @@ def main() -> None:
     regions = []
     garbage = 0
     lang_counts: Counter = Counter()
+    quality_states: Counter = Counter()
+    quality_reasons: Counter = Counter()
     for i in manifest.instances:
         script = sd.detect_script(i.text or "")
         if script is None:
             garbage += 1
         lang_counts[i.detected_language or "?"] += 1
+        quality = i.ocr_quality or {}
+        quality_states[quality.get("state", "unreported")] += 1
+        quality_reasons.update(quality.get("reasons") or [])
         b = i.bounding_box
         regions.append({
             "id": i.id, "text": i.text, "conf": round(i.confidence or 0, 3),
             "lang": i.detected_language, "script": script,
             "bbox": [b.x, b.y, b.width, b.height],
+            "ocr_quality": quality or None,
         })
 
     gt_path = Path(args.ground_truth) if args.ground_truth else None
@@ -347,6 +353,14 @@ def main() -> None:
         "scene_surfaces": len(scene_regions),
         "garbage_fraction": round(garbage / max(1, manifest.total_regions), 3),
         "lang_distribution": dict(lang_counts),
+        "ocr_quality": {
+            "states": dict(quality_states),
+            "reasons": dict(quality_reasons),
+            "review_rate": round(
+                (quality_states["review_required"] + quality_states["unresolvable"])
+                / max(1, manifest.total_regions), 3,
+            ),
+        },
         "inferred_src_lang": infer_src_lang(manifest),
         "timing_s": {"scene": round(t_scene, 1), "detect": round(t_detect, 1)},
         "metrics": metrics,
@@ -365,6 +379,7 @@ def main() -> None:
     print(f"regions: {report['region_count']}  |  surfaces: {report['scene_surfaces']}")
     print(f"garbage fraction: {report['garbage_fraction']}")
     print(f"lang distribution: {report['lang_distribution']}")
+    print(f"OCR quality: {report['ocr_quality']['states']}  review rate: {report['ocr_quality']['review_rate']}")
     print(f"inferred src_lang: {report['inferred_src_lang']}")
     print(f"precision: {metrics['precision']}  recall: {metrics['recall']}  f1: {metrics['f1']}")
     print(f"mean norm edit distance: {metrics['mean_norm_ed']}")

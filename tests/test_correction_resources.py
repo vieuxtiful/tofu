@@ -11,8 +11,49 @@ from tofu.utils.correction_resources import (
     gazetteer_entries,
     load_correction_file,
     load_correction_resource,
+    phrase_entries,
     variant_pairs,
 )
+
+
+def _resource(tmp_path, entries, kind="phrase-forms", name="phrases.json"):
+    data = {
+        "id": "test.phrases", "kind": kind, "locale": "mul", "schema_version": "1",
+        "data_version": "1.0.0", "checksum": _payload_checksum(entries),
+        "provenance": {}, "license": "CC0-1.0", "entries": entries,
+    }
+    path = tmp_path / name
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    return load_correction_file(path)
+
+
+class TestPhraseResource:
+    def test_packaged_french_phrases_expose_tokens_and_folded_anchors(self):
+        entries = phrase_entries(load_correction_resource("savor/latin_phrases-1.0.0.json"))
+        de_la = next(entry for entry in entries if entry["phrase"] == "de la")
+        assert de_la["tokens"] == ("de", "la") and de_la["language"] == "fr"
+        # The fold is comparison-only: the stored token keeps its accent.
+        a_la = next(entry for entry in entries if entry["phrase"] == "à la")
+        assert a_la["tokens"] == ("à", "la") and a_la["folded"] == ("a", "la")
+
+    def test_single_token_phrase_is_rejected_for_having_no_anchor(self, tmp_path):
+        with pytest.raises(CorrectionResourceError, match="at least two tokens"):
+            phrase_entries(_resource(tmp_path, [{"phrase": "la", "language": "fr"}]))
+
+    def test_duplicate_folded_phrase_is_rejected(self, tmp_path):
+        with pytest.raises(CorrectionResourceError, match="duplicate folded phrase"):
+            phrase_entries(_resource(tmp_path, [
+                {"phrase": "de la", "language": "fr"},
+                {"phrase": "DE LÀ", "language": "fr"},
+            ]))
+
+    def test_irregular_spacing_is_rejected(self, tmp_path):
+        with pytest.raises(CorrectionResourceError, match="single-space separated"):
+            phrase_entries(_resource(tmp_path, [{"phrase": "de  la", "language": "fr"}]))
+
+    def test_wrong_kind_is_rejected(self, tmp_path):
+        with pytest.raises(CorrectionResourceError, match="expected phrase-forms"):
+            phrase_entries(_resource(tmp_path, [{"text": "x", "language": "fr"}], kind="gazetteer"))
 
 
 def test_packaged_menu_resources_preserve_public_tables():

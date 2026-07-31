@@ -44,8 +44,11 @@ def test_capabilities_contract_is_complete_and_safe(monkeypatch):
         "compute", "ocr", "scene", "inpainting", "shaping", "semantics",
         "translation", "fonts", "video",
     } <= body.keys()
-    assert body["video"]["available"] is False
-    assert body["video"]["project_creation_enabled"] is False
+    assert body["video"]["available"] is body["video"]["project_creation_enabled"]
+    assert body["video"]["available"] is (
+        body["video"]["ffmpeg"] and body["video"]["ffprobe"]
+        and body["video"]["decoding"] and body["video"]["tracking"]
+    )
     assert {item["id"] for item in body["ocr"]["providers"]} == {
         "easyocr", "paddleocr",
     }

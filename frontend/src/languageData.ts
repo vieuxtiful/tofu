@@ -11,7 +11,7 @@ export interface Language {
 
 export const LANGUAGES: Language[] = [
   // Europe
-  { code: "en", name: "English", nativeName: "English", script: "Latin", rtl: false, flag: "🇺🇸", region: "Europe", popular: true },
+  { code: "en", name: "English", nativeName: "English", script: "Latin", rtl: false, flag: "��", region: "Europe", popular: true },
   { code: "es", name: "Spanish", nativeName: "Español", script: "Latin", rtl: false, flag: "🇪🇸", region: "Europe", popular: true },
   { code: "fr", name: "French", nativeName: "Français", script: "Latin", rtl: false, flag: "🇫🇷", region: "Europe", popular: true },
   { code: "de", name: "German", nativeName: "Deutsch", script: "Latin", rtl: false, flag: "🇩🇪", region: "Europe", popular: true },

@@ -148,6 +148,64 @@ def variant_pairs(resource: CorrectionResource) -> dict[str, str]:
         ) from exc
 
 
+def fold_text(text: str) -> str:
+    """Comparison-only case/accent fold.
+
+    Used to COMPARE two strings, never to rewrite one: a folded form is
+    lossy, so it may decide whether an anchor matches but must never become
+    the text a correction emits.
+    """
+    return "".join(
+        char for char in unicodedata.normalize("NFD", text).casefold()
+        if not unicodedata.combining(char)
+    )
+
+
+def phrase_entries(resource: CorrectionResource) -> list[dict[str, Any]]:
+    """Validated multi-token phrases for segmentation-gated token recovery.
+
+    A phrase needs at least two tokens because the course that consumes it
+    recovers exactly ONE token and requires every other token in the window
+    to match the OCR exactly.  A single-token phrase would carry no anchor
+    and would degenerate into an unconditional find-and-replace.
+    """
+    if resource.kind != "phrase-forms":
+        raise CorrectionResourceError(f"{resource.resource_id}: expected phrase-forms resource")
+    parsed: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for entry in resource.entries:
+        try:
+            phrase, language = str(entry["phrase"]), str(entry["language"])
+        except KeyError as exc:
+            raise CorrectionResourceError(
+                f"{resource.resource_id}: phrase entry lacks {exc.args[0]!r}"
+            ) from exc
+        if not phrase.strip() or not language:
+            raise CorrectionResourceError(f"{resource.resource_id}: phrase entries cannot be empty")
+        tokens = tuple(phrase.split())
+        if len(tokens) < 2:
+            raise CorrectionResourceError(
+                f"{resource.resource_id}: phrase {phrase!r} needs at least two tokens to anchor"
+            )
+        if " ".join(tokens) != phrase:
+            raise CorrectionResourceError(
+                f"{resource.resource_id}: phrase {phrase!r} must be single-space separated"
+            )
+        folded = tuple(fold_text(token) for token in tokens)
+        if any(not token for token in folded):
+            raise CorrectionResourceError(
+                f"{resource.resource_id}: phrase {phrase!r} has a token with no folded form"
+            )
+        key = (" ".join(folded), language)
+        if key in seen:
+            raise CorrectionResourceError(
+                f"{resource.resource_id}: duplicate folded phrase/language entry {key[0]!r}/{language!r}"
+            )
+        seen.add(key)
+        parsed.append({"phrase": phrase, "language": language, "tokens": tokens, "folded": folded})
+    return parsed
+
+
 def diacritic_entries(resource: CorrectionResource) -> list[dict[str, str]]:
     """Validated stored-form entries for pixel-gated Latin mark repair.
 
@@ -168,11 +226,7 @@ def diacritic_entries(resource: CorrectionResource) -> list[dict[str, str]]:
             ) from exc
         if not folded or not text or not language:
             raise CorrectionResourceError(f"{resource.resource_id}: diacritic entries cannot be empty")
-        expected_folded = "".join(
-            char for char in unicodedata.normalize("NFD", text).casefold()
-            if not unicodedata.combining(char)
-        )
-        if folded != expected_folded:
+        if folded != fold_text(text):
             raise CorrectionResourceError(
                 f"{resource.resource_id}: folded form does not match canonical text for {text!r}"
             )

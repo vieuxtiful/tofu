@@ -45,6 +45,83 @@ def make_inst(text, bbox, id="r1", confidence=0.95, detected_language=None):
                      detected_language=detected_language)
 
 
+class TestOcrQuality:
+    def _plate(self, components, clusters):
+        return np.ones((30, 80), dtype=bool), components, clusters
+
+    def test_reliable_geometry_records_observability_evidence(self):
+        inst = make_inst("AB", BBox(0, 0, 80, 30), detected_language="fr")
+        components = [
+            {"box": (5, 3, 20, 25), "area": 120},
+            {"box": (30, 3, 45, 25), "area": 120},
+        ]
+        quality = savor.assess_ocr_quality(
+            np.full((30, 80, 3), 200, dtype=np.uint8), inst,
+            self._plate(components, [item["box"] for item in components]), engine=object(),
+        )
+        assert quality["state"] == "reliable"
+        assert quality["source_dimensions"] == {"width": 80, "height": 30}
+        assert quality["estimated_glyph_height"] == 22.0
+
+    def test_component_surplus_without_reread_is_review_only(self):
+        inst = make_inst("J", BBox(0, 0, 80, 30), detected_language="fr")
+        components = [
+            {"box": (5, 3, 18, 25), "area": 100},
+            {"box": (25, 3, 38, 25), "area": 100},
+        ]
+        quality = savor.assess_ocr_quality(
+            np.full((30, 80, 3), 200, dtype=np.uint8), inst,
+            self._plate(components, [item["box"] for item in components]), engine=None,
+        )
+        assert quality["state"] == "review_required"
+        assert {"component_count_mismatch", "ambiguous_segmentation", "engine_unavailable"} <= set(quality["reasons"])
+
+    def test_high_confidence_unlocalizable_component_anomaly_stays_reliable(self):
+        inst = make_inst("QUAI", BBox(0, 0, 100, 30), confidence=.999, detected_language="fr")
+        # A detached Q-tail-like fragment makes two geometric groups, which
+        # cannot align with one recognized word.  It is telemetry, not a
+        # basis to send a certain correct word into review.
+        components = [
+            {"box": (0, 3, 10, 25), "area": 100},
+            {"box": (24, 3, 39, 25), "area": 120},
+            {"box": (43, 3, 58, 25), "area": 120},
+            {"box": (62, 3, 77, 25), "area": 120},
+            {"box": (81, 3, 96, 25), "area": 120},
+        ]
+        quality = savor.assess_ocr_quality(
+            np.full((30, 100, 3), 200, dtype=np.uint8), inst,
+            self._plate(components, [item["box"] for item in components]), engine=object(),
+        )
+        assert quality["state"] == "reliable"
+        assert quality["reasons"] == ["component_count_mismatch"]
+        assert quality["segmentation_evidence"]["state"] == "surplus_unlocalized"
+
+    def test_already_all_caps_skips_case_review(self, monkeypatch):
+        inst = make_inst("QUAI", BBox(0, 0, 80, 30), confidence=.999, detected_language="fr")
+        components = [
+            {"box": (5, 3, 20, 25), "area": 120},
+            {"box": (25, 3, 40, 25), "area": 120},
+            {"box": (45, 3, 60, 25), "area": 120},
+            {"box": (65, 3, 79, 25), "area": 120},
+        ]
+        plate = self._plate(components, [item["box"] for item in components])
+        monkeypatch.setattr(savor, "_plate_clusters", lambda *_args: plate)
+        monkeypatch.setattr(savor, "chew_case", lambda *_args, **_kwargs: pytest.fail("case course must be skipped"))
+        savor.taste(np.full((30, 80, 3), 200, dtype=np.uint8), [inst], engine=object())
+        assert inst.ocr_correction is None
+        assert inst.ocr_quality["state"] == "reliable"
+
+    def test_sub_mark_resolution_is_never_reported_reliable(self):
+        inst = make_inst("A", BBox(0, 0, 20, 8), detected_language="fr")
+        components = [{"box": (2, 2, 8, 4), "area": 12}]
+        quality = savor.assess_ocr_quality(
+            np.full((8, 20, 3), 200, dtype=np.uint8), inst,
+            self._plate(components, [item["box"] for item in components]), engine=object(),
+        )
+        assert quality["state"] == "unresolvable"
+        assert "below_mark_resolution" in quality["reasons"]
+
+
 def _font_registry():
     """real FontRegistry over the Windows system font directory -- skips
     on hosts without it (mirrors _font()'s arial.ttf skip pattern)."""
@@ -522,3 +599,225 @@ class TestLatinDiacriticCourse:
 
     def test_language_scope_never_consults_french_forms_for_english(self):
         assert savor._latin_diacritic_proposals("cafe", "en") == []
+
+
+## 🍢 Savor: sniff_clumps / chew_clump (course 0, the amuse-bouche)
+
+# The production plate this course exists for: the r2 region of
+# images/avenue-de-la-république.jpeg, whose recognizer emitted a single "J"
+# where the enamel carries "l" and "a".  Boxes are mask-local, measured from
+# the real crop, and the acute over the E is the 15th raw component.
+AVENUE_R2_BBOX = BBox(x=120, y=171, width=214, height=57)
+AVENUE_R2_COMPONENTS = [
+    {"box": (5, 11, 14, 46), "area": 189},    # d
+    {"box": (16, 24, 25, 46), "area": 137},   # e
+    {"box": (41, 11, 44, 46), "area": 104},   # l  ) the clump the recognizer
+    {"box": (47, 24, 55, 46), "area": 142},   # a  ) collapsed into one "J"
+    {"box": (71, 11, 83, 46), "area": 321},   # R
+    {"box": (87, 11, 97, 46), "area": 224},   # E
+    {"box": (91, 7, 95, 10), "area": 10},     # acute, detached above the E
+    {"box": (100, 11, 113, 46), "area": 246}, # P
+    {"box": (116, 11, 128, 46), "area": 302}, # U
+    {"box": (131, 11, 143, 46), "area": 329}, # B
+    {"box": (146, 11, 156, 46), "area": 162}, # L
+    {"box": (158, 12, 163, 46), "area": 152}, # I
+    {"box": (166, 12, 178, 50), "area": 309}, # Q
+    {"box": (181, 12, 193, 47), "area": 287}, # U
+    {"box": (196, 12, 206, 47), "area": 204}, # E
+]
+
+AVENUE_ASSET = Path("images/avenue-de-la-république.jpeg")
+
+
+def _avenue_plate(mask=None):
+    """A plate view over the real r2 geometry; only raw components matter to
+    sniff_clumps, so the mask/cluster slots stay unset unless a test needs
+    pixels."""
+    return (mask, AVENUE_R2_COMPONENTS, None)
+
+
+class StubEngine:
+    """Minimal OCRBackend surface chew_clump touches: one re-read per span."""
+
+    def __init__(self, text, confidence=0.5):
+        self.text, self.confidence, self.calls = text, confidence, []
+
+    def detect_in_regions(self, asset, regions, pad=4, polygons=None):
+        from tofu.layers.cicerone import RawDetection
+        self.calls.append((regions[0], pad))
+        if self.text is None:
+            return [[]]
+        box = regions[0]
+        polygon = [(box.x, box.y), (box.x + box.width, box.y),
+                   (box.x + box.width, box.y + box.height), (box.x, box.y + box.height)]
+        return [[RawDetection(polygon=polygon, text=self.text, confidence=self.confidence)]]
+
+
+class TestWordGroups:
+    def test_line_splits_at_gap_outliers_not_at_ordinary_tracking(self):
+        bases, _detached = savor._separate_marks(AVENUE_R2_COMPONENTS)
+        assert [len(group) for group in savor._word_groups(bases)] == [2, 2, 10]
+
+    def test_a_single_glyph_line_is_one_word(self):
+        assert len(savor._word_groups([{"box": (0, 0, 5, 20), "area": 50}])) == 1
+
+    def test_tightly_tracked_line_never_splits_on_sub_pixel_gaps(self):
+        # Glyphs 1px apart: the ratio alone would call a 2.5px gap a word
+        # break, which is exactly what WORD_GAP_MIN_PX exists to stop.
+        bases = [{"box": (index * 9, 0, index * 9 + 8, 20), "area": 80} for index in range(6)]
+        assert len(savor._word_groups(bases)) == 1
+
+
+class TestSniffClumps:
+    def test_production_clump_is_localized_and_named_from_a_stored_phrase(self):
+        morsels, evidence = savor.sniff_clumps("de J REPUBLIQUE", _avenue_plate(), "fr")
+        assert evidence["surplus"] == 1
+        assert evidence["observed_word_glyphs"] == [2, 2, 10]
+        assert evidence["claimed_word_glyphs"] == [2, 1, 10]
+        assert len(morsels) == 1
+        morsel = morsels[0]
+        assert (morsel.token_index, morsel.token_text, morsel.token_start) == (1, "J", 3)
+        assert morsel.recovered == "la" and morsel.phrase == "de la"
+        # The plate supplies the cardinality, and the boxes handed on are the
+        # real separate components -- not a re-split of one merged blob.
+        assert morsel.glyph_boxes == [(41, 11, 44, 46), (47, 24, 55, 46)]
+
+    def test_reconciled_line_proposes_nothing(self):
+        morsels, evidence = savor.sniff_clumps("de la REPUBLIQUE", _avenue_plate(), "fr")
+        assert morsels == [] and evidence["state"] == "reconciled"
+
+    def test_a_language_the_resource_does_not_cover_is_out_of_scope(self):
+        # Not merely "no phrase matched": the one-glyph-one-component premise
+        # is not asserted for scripts this course was never calibrated on, so
+        # it must not raise a surplus alarm on them either.
+        for language in ("en", "ja", None):
+            morsels, evidence = savor.sniff_clumps("de J REPUBLIQUE", _avenue_plate(), language)
+            assert morsels == []
+            assert evidence["reason"] == "language_out_of_course_scope"
+            assert "surplus" not in evidence
+
+    def test_unanchored_slot_is_never_recovered(self):
+        # Same geometry, but no stored phrase's anchor matches the neighbour,
+        # so nothing may be proposed for the disputed slot.
+        morsels, evidence = savor.sniff_clumps("xy J REPUBLIQUE", _avenue_plate(), "fr")
+        assert morsels == [] and evidence["reason"] == "no_stored_phrase_supports_the_slot"
+
+    def test_surplus_spread_across_two_tokens_is_not_localizable(self):
+        morsels, evidence = savor.sniff_clumps("de J REPUBLIQU", _avenue_plate(), "fr")
+        assert morsels == []
+        assert evidence["reason"] == "surplus_not_isolated_to_one_token"
+
+    def test_multi_character_clump_is_out_of_scope_for_v1(self):
+        morsels, evidence = savor.sniff_clumps("de JK REPUBLIQU", _avenue_plate(), "fr")
+        assert morsels == []
+        assert evidence["reason"] == "clump_is_not_a_single_emitted_character"
+
+    def test_vertical_regions_are_out_of_scope(self):
+        morsels, evidence = savor.sniff_clumps(
+            "de J REPUBLIQUE", _avenue_plate(), "fr", vertical=True
+        )
+        assert morsels == [] and evidence["reason"] == "no_horizontal_plate"
+
+    def test_all_cap_anchors_case_the_recovered_token(self):
+        morsels, _evidence = savor.sniff_clumps("DE J REPUBLIQUE", _avenue_plate(), "fr")
+        assert [morsel.recovered for morsel in morsels] == ["LA"]
+
+
+class TestChewClump:
+    def _real_plate(self):
+        if not AVENUE_ASSET.exists():
+            pytest.skip("production asset not present on this host")
+        from tofu.utils.imaging import load_rgb, text_mask
+        mask = text_mask(load_rgb(str(AVENUE_ASSET)), AVENUE_R2_BBOX, refine=True)
+        if mask is None:
+            pytest.skip("text_mask unavailable on this host")
+        return str(AVENUE_ASSET), _avenue_plate(mask)
+
+    def _morsel(self, plate):
+        return savor.sniff_clumps("de J REPUBLIQUE", plate, "fr")[0][0]
+
+    def test_production_case_splits_when_shape_and_reread_agree(self):
+        asset, plate = self._real_plate()
+        inst = make_inst("de J REPUBLIQUE", AVENUE_R2_BBOX, id="r2", detected_language="fr")
+        # "Io" is the measured real re-read of this crop: right count, and an
+        # I/l homoglyph confusion on identity.
+        engine = StubEngine("Io")
+        verdict, evidence = savor.chew_clump(asset, inst, self._morsel(plate), plate, engine=engine)
+        assert verdict is True and evidence["state"] == "split_confirmed"
+        # The split beats the merged reading; identity did NOT come from the
+        # re-read, which disagreed with it.
+        assert min(evidence["split_scores"]) >= evidence["merged_score"] + savor.BITE_MARGIN
+        assert evidence["reread_glyphs"] == 2
+        assert evidence["reread_matches_identity"] is False
+        # The re-read really did look at the clump alone, not the whole region.
+        span, _pad = engine.calls[0]
+        assert span.width < AVENUE_R2_BBOX.width // 4
+
+    def test_no_engine_can_detect_but_never_swallow(self):
+        asset, plate = self._real_plate()
+        inst = make_inst("de J REPUBLIQUE", AVENUE_R2_BBOX, id="r2", detected_language="fr")
+        verdict, evidence = savor.chew_clump(asset, inst, self._morsel(plate), plate, engine=None)
+        assert verdict is None and evidence["state"] == "reread_unavailable"
+
+    def test_reread_disagreeing_on_count_blocks_the_split(self):
+        asset, plate = self._real_plate()
+        inst = make_inst("de J REPUBLIQUE", AVENUE_R2_BBOX, id="r2", detected_language="fr")
+        verdict, evidence = savor.chew_clump(
+            asset, inst, self._morsel(plate), plate, engine=StubEngine("J")
+        )
+        assert verdict is None and evidence["state"] == "reread_disagrees_on_glyph_count"
+
+    def test_an_illegible_reread_never_stands_in_for_one(self):
+        asset, plate = self._real_plate()
+        inst = make_inst("de J REPUBLIQUE", AVENUE_R2_BBOX, id="r2", detected_language="fr")
+        verdict, _evidence = savor.chew_clump(
+            asset, inst, self._morsel(plate), plate, engine=StubEngine(None)
+        )
+        assert verdict is None
+
+
+class TestTasteClumpCourse:
+    def test_production_region_recovers_the_article_then_the_accent(self):
+        if not AVENUE_ASSET.exists():
+            pytest.skip("production asset not present on this host")
+        inst = make_inst("de J REPUBLIQUE", AVENUE_R2_BBOX, id="r2",
+                         confidence=0.866, detected_language="fr")
+        swallowed = savor.taste(str(AVENUE_ASSET), [inst], engine=StubEngine("Io"))
+        # Segmentation first, then the mark course it had been blocking.
+        assert inst.text == "de la RÉPUBLIQUE"
+        assert swallowed == 2
+        assert [step["course"] for step in inst.ocr_correction["steps"]] == [
+            "phrase_segmentation", "latin_diacritic",
+        ]
+        assert inst.ocr_correction["original_text"] == "de J REPUBLIQUE"
+        assert inst.ocr_correction["applied"] is True
+
+    def test_unresolved_surplus_is_surfaced_for_review_not_silently_dropped(self):
+        if not AVENUE_ASSET.exists():
+            pytest.skip("production asset not present on this host")
+        inst = make_inst("de J REPUBLIQUE", AVENUE_R2_BBOX, id="r2",
+                         confidence=0.866, detected_language="fr")
+        savor.taste(str(AVENUE_ASSET), [inst], engine=None)
+        assert inst.text == "de J REPUBLIQUE"
+        step = inst.ocr_correction["steps"][0]
+        assert step["course"] == "phrase_segmentation" and step["applied"] is False
+        assert step["clump_evidence"]["state"] == "reread_unavailable"
+
+
+class TestMarkZoneAddressing:
+    def test_mark_zone_is_addressed_by_glyph_not_by_text_offset(self):
+        # In "de la REPUBLIQUE" the acute belongs to the E at GLYPH index 5,
+        # while the proposal addresses TEXT offset 7.  Conflating the two
+        # inspects the U's zone instead and reports a mark that is not there.
+        assert savor._glyph_index("de la REPUBLIQUE", 7) == 5
+        inst = make_inst("de la REPUBLIQUE", AVENUE_R2_BBOX, id="r2", detected_language="fr")
+        proposal = savor._latin_diacritic_proposals(inst.text, "fr")[0]
+        assert proposal["positions"] == [(7, "́")]
+        assert savor.chew_accents(inst, _avenue_plate(), proposal["positions"]) == {7: True}
+        assert savor._compose_marks(inst.text, proposal["positions"]) == "de la RÉPUBLIQUE"
+
+    def test_a_glyph_without_its_mark_is_still_reported_absent(self):
+        stripped = [item for item in AVENUE_R2_COMPONENTS if item["area"] != 10]
+        inst = make_inst("de la REPUBLIQUE", AVENUE_R2_BBOX, id="r2", detected_language="fr")
+        proposal = savor._latin_diacritic_proposals(inst.text, "fr")[0]
+        assert savor.chew_accents(inst, (None, stripped, None), proposal["positions"]) == {7: False}

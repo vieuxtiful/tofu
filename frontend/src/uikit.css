@@ -1525,6 +1525,26 @@ html.light .penumbra-switch {
   transition: grid-template-rows 0.32s ease-in-out, opacity 0.22s ease-in 0.08s;
 }
 
+/* OCR review uses the same grid-template-rows animation as Smart Fill. */
+.ocr-review-content {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  pointer-events: none;
+  transition: grid-template-rows 0.28s ease-in-out, opacity 0.2s ease-out;
+}
+
+.ocr-review-content > div {
+  overflow: hidden;
+}
+
+.ocr-review-content.expanded {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  pointer-events: auto;
+  transition: grid-template-rows 0.32s ease-in-out, opacity 0.22s ease-in 0.08s;
+}
+
 /* Garnish uses a compact native checkbox toggle instead of the theme-switch
    wrapper.  Its purple knob stays darker than both the rail and its border. */
 .garnish-activation-toggle {
@@ -2107,3 +2127,5 @@ html.dark .basil-assign-id {
     transition-duration: 0.01ms;
   }
 }
+.video-overlays button.editable{cursor:move;touch-action:none}.video-track-inspector{display:grid;gap:.65rem;border:1px solid #71717a44;border-radius:.65rem;padding:.75rem;background:#71717a0d}.video-track-inspector header,.video-track-inspector footer{display:flex;align-items:center;justify-content:space-between;gap:.75rem}.video-track-inspector header>div{display:grid}.video-track-inspector small,.video-track-inspector footer span{color:#71717a;font-size:.68rem}.video-track-inspector label{display:grid;gap:.25rem;color:#71717a;font-size:.7rem}.video-track-inspector textarea{min-height:3.5rem;resize:vertical;border:1px solid #71717a55;border-radius:.45rem;padding:.5rem;background:transparent;color:inherit;font-size:.85rem}.video-track-inspector button{border:1px solid #71717a55;border-radius:.4rem;padding:.35rem .55rem}.video-track-inspector button:disabled{opacity:.4}
+.video-workspace{display:grid;gap:.65rem;min-width:0}.video-stage{position:relative;overflow:hidden;border-radius:.75rem;background:#09090b;aspect-ratio:16/9}.video-stage video{width:100%;height:100%;object-fit:contain}.video-overlays{position:absolute;pointer-events:none}.video-overlays button{position:absolute;min-width:4px;min-height:4px;border:2px solid #22d3ee;background:#22d3ee22;pointer-events:auto}.video-overlays button:focus-visible,.video-overlays button.selected{outline:2px solid #facc15;outline-offset:1px;border-color:#facc15;background:#facc1533}.video-controls{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem;font-size:.75rem}.video-controls button,.video-scope-dialog button{display:flex;align-items:center;justify-content:center;gap:.25rem;min-height:32px;border:1px solid #71717a55;border-radius:.4rem;padding:.3rem .55rem}.video-controls button:focus-visible,.video-timeline button:focus-visible,.video-scope-dialog button:focus-visible{outline:2px solid #06b6d4;outline-offset:2px}.video-controls button:disabled{opacity:.4}.video-timecode{font-variant-numeric:tabular-nums;margin-right:auto}.video-scrubber{width:100%;accent-color:#06b6d4}.video-timeline{position:relative;display:grid;gap:.3rem;max-height:18rem;overflow:auto}.video-timeline-loading{position:sticky;top:0;z-index:2;padding:.25rem .5rem;border-radius:.35rem;background:#18181be6;color:white;font-size:.7rem}.video-timeline>button{display:grid;grid-template-columns:minmax(8rem,14rem) 1fr;align-items:center;gap:.65rem;text-align:left;padding:.45rem .6rem;border-radius:.4rem;background:#71717a18}.video-timeline>button.selected{outline:1px solid #22d3ee}.video-track-label{display:grid;min-width:0}.video-track-label strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.video-track-label small{color:#71717a;font-size:.65rem}.video-track-rail{position:relative;height:12px;border-radius:999px;background:#71717a20}.video-track-rail i{position:absolute;top:2px;height:8px;border-radius:999px;background:#06b6d4}.video-track-rail b,.video-track-rail em{position:absolute;top:-2px;width:3px;height:16px;transform:translateX(-1px)}.video-track-rail b{background:#facc15}.video-track-rail em{background:#ef4444}.video-error,.video-job-state{display:flex;align-items:center;gap:.65rem;border:1px solid #f59e0b66;border-radius:.6rem;padding:.7rem;background:#f59e0b12;font-size:.8rem}.video-error span{flex:1}.video-job-state p{margin:0;color:#71717a}.video-job-actions{margin-left:auto}.video-job-actions button{display:flex;align-items:center;gap:.3rem}.video-job-spinner{width:18px;height:18px;border:2px solid #71717a55;border-top-color:#06b6d4;border-radius:50%;animation:spin 1s linear infinite}.video-scope-backdrop{position:fixed;inset:0;z-index:600;display:grid;place-items:center;padding:1rem;background:#0009}.video-scope-dialog{width:min(28rem,100%);border-radius:.8rem;padding:1rem;background:white;box-shadow:0 20px 60px #0006}.dark .video-scope-dialog{background:#18181b}.video-scope-dialog h3{font-weight:650}.video-scope-dialog p{margin:.25rem 0 .8rem;color:#71717a;font-size:.8rem}.video-scope-dialog>div{display:grid;gap:.4rem}.video-scope-dialog label{display:flex;gap:.5rem;align-items:center;border:1px solid #71717a33;border-radius:.5rem;padding:.55rem}.video-scope-dialog footer{display:flex;justify-content:flex-end;gap:.5rem;margin-top:1rem}@media(max-width:720px){.video-timeline>button{grid-template-columns:1fr}.video-timecode{width:100%;order:5}.video-controls button{min-height:40px}}@media(prefers-reduced-motion:reduce){.video-job-spinner{animation-duration:2s}}
