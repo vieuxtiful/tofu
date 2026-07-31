@@ -24,6 +24,7 @@ scene has two jobs:
    overwritten.
 """
 
+import statistics
 from abc import ABC, abstractmethod
 from pathlib import Path
 from threading import Lock
@@ -644,6 +645,11 @@ def _estimate_colors(img, bbox: BBox):
 BG_RESID_STD = 12.0   # max plane-fit residual std for flat/gradient
 BG_GRAD_SPAN = 12.0   # min luminance change across the crop to call gradient
 
+# Fraction of the crop width the MEDIAN horizontal line must cross before a
+# run of lines counts as mortar courses.  Measured: brick fixture 0.99;
+# QR code 0.31, circled pictogram 0.34, bordered text block 0.13.
+MIN_COURSE_SPAN_RATIO = 0.6
+
 
 def _classify_background(crop, mask) -> Tuple[Optional[str], Optional[List[str]]]:
     """classify a region's background from its non-glyph pixels.
@@ -727,18 +733,32 @@ def _describe_surface_material(crop, texture: Optional[str], semantic_label: Opt
             return "textured surface"
         horizontal = vertical = 0
         horizontal_y: List[float] = []
+        horizontal_span: List[int] = []
         for x0, y0, x1, y1 in np.asarray(lines).reshape(-1, 4):
             dx, dy = abs(int(x1) - int(x0)), abs(int(y1) - int(y0))
             if dx >= max(12, dy * 2):
                 horizontal += 1
                 horizontal_y.append((y0 + y1) / 2)
+                horizontal_span.append(dx)
             elif dy >= max(8, dx * 1.4):
                 vertical += 1
         # Brick courses repeat at several distinct y positions and include
         # perpendicular joints.  This is intentionally high precision: a
         # generic "textured surface" is preferable to a false brick label.
         distinct_courses = len({round(y / max(4, h * .08)) for y in horizontal_y})
-        if horizontal >= 3 and vertical >= 2 and distinct_courses >= 2:
+        # ...and a course is CONTINUOUS across the surface -- that is what makes
+        # it a course rather than a fragment.  Counting lines alone called every
+        # high-contrast graphic masonry: measured on a medical-device label,
+        # a QR code scored 29 horizontal lines over 13 courses and a circled
+        # pictogram 3 over 3, both comfortably clearing the counts above.  Their
+        # median course spans only 0.31 and 0.34 of the crop width, against 0.99
+        # for the brick fixture's mortar lines, so continuity separates a wall
+        # from a barcode where sheer line count cannot.
+        spans_the_surface = (
+            bool(horizontal_span)
+            and statistics.median(horizontal_span) >= MIN_COURSE_SPAN_RATIO * w
+        )
+        if horizontal >= 3 and vertical >= 2 and distinct_courses >= 2 and spans_the_surface:
             return "brick / masonry"
     except Exception:
         pass

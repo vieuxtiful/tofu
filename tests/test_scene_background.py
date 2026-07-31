@@ -1,6 +1,7 @@
 ## 🍢 background classification against fixture ground truth
 import json
 
+import cv2
 import numpy as np
 from PIL import Image
 
@@ -61,3 +62,23 @@ class TestClassifyBackground:
         crop[23:48, 72:75, :] = 55
         crop[51:76, 38:41, :] = 55
         assert _describe_surface_material(crop, "textured", "text_cluster") == "brick / masonry"
+
+    def test_a_matrix_barcode_is_not_masonry(self):
+        # Counting lines alone called every high-contrast graphic masonry: a QR
+        # code on a medical-device label scored 29 horizontal lines across 13
+        # distinct courses, clearing every count the brick test asks for. Its
+        # module rows are FRAGMENTS though -- median span 0.31 of the crop --
+        # where mortar courses run the full width of the wall.
+        rng = np.random.default_rng(7)
+        crop = np.repeat(np.repeat(
+            rng.integers(0, 2, size=(20, 20), dtype=np.uint8) * 255, 4, axis=0), 4, axis=1)
+        crop = np.dstack([crop] * 3)
+        assert _describe_surface_material(crop, "textured", "surface") == "textured surface"
+
+    def test_a_boxed_pictogram_is_not_masonry(self):
+        # the circled symbol on the same label's blue stripe: a few short
+        # strokes, 0.34 median span, previously labelled masonry
+        crop = np.full((65, 64, 3), (20, 70, 140), dtype=np.uint8)
+        cv2.circle(crop, (32, 32), 24, (255, 255, 255), 3)
+        cv2.line(crop, (14, 50), (50, 14), (255, 255, 255), 3)
+        assert _describe_surface_material(crop, "textured", "surface") == "textured surface"
