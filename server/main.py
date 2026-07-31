@@ -854,11 +854,26 @@ def _prepare_video_job(job_id: str, source: Path, *, operation_id: Optional[str]
             if operation_id and worker_id: db.heartbeat_video_operation(operation_id, worker_id)
         revision = int(current.get("dependency_revision", 1))
         fingerprint = video_source_fingerprint(source)
+        ## Source-language priority applies to video exactly as it does to
+        ## stills: the charset drives what the recognizer can read, and every
+        ## keyframe here goes through the same cicerone.detect() as an image.
+        ## Analysis ran language-blind until this was threaded through.
+        hints = _project_lang_hints(current["asset_id"])
+        language_params = list(hints) if hints else None
         state = None
+        resume_language_changed = False
         if mode == "resume":
             state = TrackerCheckpoint.from_dict(db.latest_video_checkpoint(
                 job_id, analyzer_revision=ANALYZER_REVISION, dependency_revision=revision,
                 source_fingerprint=fingerprint))
+            ## A different reader charset produces different text for the same
+            ## pixels, so resuming across a language change would stitch two
+            ## incompatible analyses into one timeline. Drop the checkpoint and
+            ## pay for a cold restart instead -- the same trade the
+            ## ResumeMismatch path already makes for decoder desynchronization.
+            if state is not None and (state.params or {}).get("languages") != language_params:
+                resume_language_changed = True
+                state = None
         ## Scoped when there is something to keep, total when there is not. The
         ## unconditional wipe that used to live here is what made every resume a
         ## restart from frame zero.
@@ -876,9 +891,16 @@ def _prepare_video_job(job_id: str, source: Path, *, operation_id: Optional[str]
         ## architecture makes; a resume whose outcome is not recorded cannot be
         ## audited when the export looks wrong.
         provenance: List[Dict[str, Any]] = []
+        if resume_language_changed:
+            provenance.append(
+                {"code": "resume_language_changed", "severity": "warning", "frame_index": 0,
+                 "detail": f"project source language is now {language_params or 'auto'}; "
+                           "the checkpoint was analyzed with a different reader charset, "
+                           "so analysis restarted from the first frame"})
         try:
             analyze_video(
-                str(source), vm, cancelled=cancelled, progress=report, checkpoint=checkpoint,
+                str(source), vm, languages=hints, cancelled=cancelled, progress=report,
+                checkpoint=checkpoint,
                 chunk_size=chunk_size, resume=state, job_id=job_id, fingerprint=fingerprint,
                 seek_mode=str((state.params or {}).get("seek_mode", "fast")) if state else "fast",
                 on_resume=lambda evidence: provenance.append(
@@ -894,7 +916,7 @@ def _prepare_video_job(job_id: str, source: Path, *, operation_id: Optional[str]
                            "frame_index": state.next_frame if state else 0,
                            "detail": f"{mismatch.reason}; reanalyzed from the start"}]
             db.reset_video_analysis(job_id, from_frame=0)
-            analyze_video(str(source), vm, cancelled=cancelled, progress=report,
+            analyze_video(str(source), vm, languages=hints, cancelled=cancelled, progress=report,
                           checkpoint=checkpoint, chunk_size=chunk_size,
                           job_id=job_id, fingerprint=fingerprint)
         ## Settle over the ROWS, not over whatever this process happens to hold:
