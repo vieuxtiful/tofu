@@ -289,15 +289,19 @@ class TestGlyphSegmentationEvidence:
 
 
 class TestExpansionFactorCoverage:
-    """EXPANSION_FACTORS names 26 of the 63 languages in lang_to_script.
+    """EXPANSION_FACTORS names 31 of the 68 languages in lang_to_script.
     The other 37 fell through to a silent 1.0 — asserting that Khmer,
     Amharic and Malayalam are all exactly as wide as English."""
 
     def test_every_mapped_language_resolves_a_factor(self):
         from tofu.layers.tofu import expansion_factor
+        # en and en-US share the english baseline (1.00); every other
+        # mapped language must resolve a non-1.0 factor, named or via
+        # its script default, so nothing silently equals english.
+        english_baseline = {"en", "en-US"}
         unresolved = [
             lang for lang in lang_to_script
-            if expansion_factor(lang) == 1.0 and lang != "en"
+            if expansion_factor(lang) == 1.0 and lang not in english_baseline
         ]
         assert unresolved == [], unresolved
 

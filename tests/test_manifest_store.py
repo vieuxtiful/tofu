@@ -30,6 +30,10 @@ def full_manifest() -> TextManifest:
             "requested_provider": "lama", "executed_provider": "telea_fallback",
             "confidence": .3, "review_required": True,
         },
+        ocr_quality={
+            "state": "review_required", "reasons": ["component_count_mismatch"],
+            "estimated_glyph_height": 7.0, "component_surplus": 1,
+        },
         font_match={
             "schema": 1, "provider": "local_glyph_retrieval", "status": "review",
             "confidence": .71, "margin": .04, "source_text": "å±…é…’å±‹",
@@ -69,6 +73,7 @@ class TestRoundTrip:
         assert i2.characteristics.font_style == "gothic-bold"
         assert i2.segmentation_mask.polygon == i.segmentation_mask.polygon
         assert i2.repair_provenance == i.repair_provenance
+        assert i2.ocr_quality == i.ocr_quality
         assert i2.font_match == i.font_match
         assert i2.bounding_box == BBox(x=10, y=20, width=100, height=40)
         assert i2.adjusted_bbox == BBox(x=18, y=13, width=100, height=40)

@@ -6,9 +6,9 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Protocol, Sequence
 
-from tofu.core.types import BBox
+from tofu.core.types import BBox, Polygon
 
 
 @dataclass
@@ -108,4 +108,24 @@ class PaddleRegionVerifier:
                 } for d in detections],
             ))
         return results
+
+
+@dataclass
+class RegionRequest:
+    """One region to verify: crop, geometry, and optional source text."""
+    crop: Any  # ndarray
+    bbox: BBox
+    polygon: Optional[Polygon] = None
+    language_hint: Optional[str] = None
+    source_text: Optional[str] = None  # for similarity comparison
+
+
+class OCRRegionVerifier(Protocol):
+    """Protocol for fresh, deduplicated OCR region verification."""
+
+    def verify_regions(
+        self,
+        asset: Any,
+        regions: Sequence[RegionRequest],
+    ) -> Sequence[OCRVerificationResult]: ...
 

@@ -1,0 +1,36 @@
+{
+  "id": "savor.latin-phrases",
+  "kind": "phrase-forms",
+  "locale": "mul",
+  "schema_version": "1",
+  "data_version": "1.0.0",
+  "checksum": "sha256:ac1234d1e45c606719d538f99c2f6fdb00755921fc1717b479f83e3f152a7523",
+  "provenance": {
+    "maintainer": "ToFU",
+    "method": "curated function-word phrases from confirmed production OCR clump cases",
+    "source": "project correction corpus"
+  },
+  "license": "CC0-1.0",
+  "entries": [
+    {
+      "phrase": "de la",
+      "language": "fr"
+    },
+    {
+      "phrase": "à la",
+      "language": "fr"
+    },
+    {
+      "phrase": "de la place",
+      "language": "fr"
+    },
+    {
+      "phrase": "rue de la",
+      "language": "fr"
+    },
+    {
+      "phrase": "avenue de la",
+      "language": "fr"
+    }
+  ]
+}

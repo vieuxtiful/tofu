@@ -1,0 +1,16 @@
+{
+  "regions": [
+    {
+      "bbox": [
+        200,
+        209,
+        166,
+        35
+      ],
+      "text": "FADED",
+      "style": {
+        "low_contrast": true
+      }
+    }
+  ]
+}

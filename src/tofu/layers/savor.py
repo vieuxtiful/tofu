@@ -22,8 +22,23 @@ chance, and re-reading with the same model on the same pixels reliably
 reproduces the same mistake anyway — a different SIGNAL is needed, not
 another pass of the same recognizer.
 
-THE MENU — three courses, deliberately kept separate so nothing gets
+THE MENU — courses deliberately kept separate so nothing gets
 swallowed on a guess:
+
+  0. AMUSE-BOUCHE (sniff_clumps/chew_clump): served before the menu
+     proper, because it repairs the one thing every later course depends
+     on — how many characters are actually there. A CTC decode can
+     collapse two narrow neighbouring glyphs into a single label ("la"
+     read as "J"), and from then on the plate carries more glyphs than
+     the text claims characters, so every glyph-indexed course is
+     addressing the wrong positions. The mark courses detect exactly
+     this and correctly refuse to decide anything, which is safe but
+     leaves the region permanently unrepairable. This course localizes
+     the clump geometrically (word-gap segmentation, no lexicon), names
+     the missing token from a stored phrase whose OTHER tokens match
+     exactly, and only swallows when glyph shape AND an isolated re-read
+     independently agree. See sniff_clumps/chew_clump for the split of
+     evidence and why identity is never inferred from geometry.
 
   1. SNIFF (sniff_out): a quick, cheap smell test — is there a WHOLE
      token shaped like something a digit was expected in (currently: an
@@ -65,7 +80,12 @@ from typing import Any, List, Optional
 
 from tofu.core.types import BBox, InstText
 from tofu.utils.imaging import load_rgb, text_mask
-from tofu.utils.correction_resources import diacritic_entries, load_correction_resource
+from tofu.utils.correction_resources import (
+    diacritic_entries,
+    fold_text,
+    load_correction_resource,
+    phrase_entries,
+)
 
 # glyph shapes a CRNN commonly confuses (letter <-> digit). bidirectional
 # so an already-correct digit is never treated as "a letter that could be
@@ -122,6 +142,34 @@ GLYPH_UPSCALE_FACTOR = 3
 
 LATIN_DIACRITIC_RESOURCE = load_correction_resource("savor/latin_diacritics-1.0.0.json")
 LATIN_DIACRITICS = diacritic_entries(LATIN_DIACRITIC_RESOURCE)
+
+LATIN_PHRASE_RESOURCE = load_correction_resource("savor/latin_phrases-1.0.0.json")
+LATIN_PHRASES = phrase_entries(LATIN_PHRASE_RESOURCE)
+# The clump course reasons from "one glyph, one connected component", which
+# holds for typeset Latin and NOT for CJK -- a single kanji is routinely
+# several components (see _cluster_to_n_glyphs), so a component surplus there
+# is normal rather than evidence of anything. Scoping the course to the
+# languages the phrase resource actually covers keeps it from raising a
+# permanent false alarm on every CJK region it cannot serve anyway.
+PHRASE_LANGUAGES = {entry["language"] for entry in LATIN_PHRASES}
+
+# course 0 (sniff_clumps/chew_clump) tuning. a word break is an outlier in
+# the line's own gap distribution, so the ratio is what carries the rule and
+# the pixel floor only guards a line whose glyphs nearly touch. the re-read
+# pad is small on purpose: the point of the isolated crop is that it shows
+# the clump WITHOUT its neighbours.
+WORD_GAP_RATIO = 2.5
+WORD_GAP_MIN_PX = 4
+CLUMP_REREAD_PAD = 2
+
+# OCR observability states are deliberately about evidence, not OCR
+# confidence.  A high-confidence CTC decode can still be untrustworthy when
+# its crop cannot resolve the marks or components that distinguish the read.
+OCR_QUALITY_RELIABLE = "reliable"
+OCR_QUALITY_REVIEW = "review_required"
+OCR_QUALITY_UNRESOLVABLE = "unresolvable"
+MARK_RESOLUTION_FLOOR = 3
+LOW_GLYPH_HEIGHT = 8
 
 # Case evidence is evaluated as a whole-token signature.  These are the
 # lower-case letters whose expected vertical extent is genuinely diagnostic;
@@ -228,15 +276,18 @@ def _raw_components(np, cv2, mask, vertical: bool = False) -> List[dict]:
     return components
 
 
-def _detached_mark_scan(raw_components: List[dict], text: str) -> Optional[dict]:
-    """Find excess detached above-base marks without consulting a lexicon.
+def _separate_marks(raw_components: List[dict]) -> tuple[List[dict], List[tuple[int, int]]]:
+    """Split raw components into base glyphs and detached above-base marks.
 
-    v1 is intentionally limited to detached marks above a Latin base glyph.
-    Attached marks such as cedilla need a below-baseline ink-profile course.
+    Deliberately takes no claimed character count: the segmentation course
+    exists precisely BECAUSE that count disagrees with the plate, so it needs
+    to see the same base/mark split that the mark courses use, without the
+    reconciliation gate that (correctly) makes those courses give up.
+    Returns ``(bases, detached)`` where ``detached`` is
+    [(mark raw index, base raw index)] into ``raw_components``.
     """
-    chars = [char for char in text if not char.isspace()]
-    if not chars or not raw_components:
-        return None
+    if not raw_components:
+        return [], []
     areas = [item["area"] for item in raw_components]
     # A dotted i or diaeresis can make small components the majority.  Use
     # the upper half as the body scale, otherwise the marks redefine the
@@ -259,6 +310,19 @@ def _detached_mark_scan(raw_components: List[dict], text: str) -> Optional[dict]
             detached.append((mark_index, max(candidates)[2]))
     mark_indices = {mark for mark, _base in detached}
     bases = [item for index, item in enumerate(raw_components) if index not in mark_indices]
+    return bases, detached
+
+
+def _detached_mark_scan(raw_components: List[dict], text: str) -> Optional[dict]:
+    """Find excess detached above-base marks without consulting a lexicon.
+
+    v1 is intentionally limited to detached marks above a Latin base glyph.
+    Attached marks such as cedilla need a below-baseline ink-profile course.
+    """
+    chars = [char for char in text if not char.isspace()]
+    if not chars or not raw_components:
+        return None
+    bases, detached = _separate_marks(raw_components)
     if len(bases) != len(chars):
         return None
     bases.sort(key=lambda item: item["box"][0])
@@ -326,6 +390,110 @@ def _plate_clusters(asset: Any, inst: InstText):
     return mask, raw_components, clusters
 
 
+def assess_ocr_quality(asset: Any, inst: InstText, plate=None,
+                       engine: Optional[Any] = None) -> dict:
+    """Produce a deterministic, per-region OCR observability record.
+
+    This is intentionally evaluated on the detected crop rather than on an
+    asset-wide pixel threshold: a large image may contain unreadably small
+    lettering, while a small but tightly cropped sign may be perfectly
+    usable.  The result never discards a region.  It tells the UI whether a
+    user needs to review it and tells Savor why an otherwise plausible repair
+    was withheld.
+    """
+    evidence: dict[str, Any] = {
+        "source_dimensions": None,
+        "region_dimensions": {"width": inst.bounding_box.width, "height": inst.bounding_box.height},
+        "estimated_glyph_height": None,
+        "contrast": None,
+        "sharpness": None,
+        "raw_component_count": 0,
+        "recognized_glyph_count": len([char for char in (inst.text or "") if not char.isspace()]),
+        "component_surplus": None,
+        "engine": getattr(engine, "name", "unavailable") if engine is not None else "unavailable",
+        "reread_available": engine is not None,
+    }
+    reasons: list[str] = []
+    image = load_rgb(asset)
+    if image is None:
+        return {"state": OCR_QUALITY_UNRESOLVABLE, "reasons": ["asset_unreadable"], **evidence}
+    image_h, image_w = image.shape[:2]
+    evidence["source_dimensions"] = {"width": int(image_w), "height": int(image_h)}
+    if inst.bounding_box.width < 3 or inst.bounding_box.height < 3:
+        return {"state": OCR_QUALITY_UNRESOLVABLE, "reasons": ["region_too_small"], **evidence}
+
+    # These two image statistics are diagnostic only; they are intentionally
+    # not standalone gates.  Geometry is the defensible decision signal.
+    try:
+        import cv2
+        import numpy as np
+        x0, y0 = max(0, inst.bounding_box.x), max(0, inst.bounding_box.y)
+        x1, y1 = min(image_w, inst.bounding_box.x + inst.bounding_box.width), min(image_h, inst.bounding_box.y + inst.bounding_box.height)
+        crop = image[y0:y1, x0:x1]
+        if crop.size:
+            gray = cv2.cvtColor(crop, cv2.COLOR_RGB2GRAY)
+            evidence["contrast"] = round(float(np.percentile(gray, 95) - np.percentile(gray, 5)), 2)
+            evidence["sharpness"] = round(float(cv2.Laplacian(gray, cv2.CV_64F).var()), 2)
+    except Exception:
+        pass
+
+    if plate is None:
+        return {"state": OCR_QUALITY_UNRESOLVABLE, "reasons": ["geometry_unavailable"], **evidence}
+    _mask, raw_components, clusters = plate
+    bases, _marks = _separate_marks(raw_components)
+    evidence["raw_component_count"] = len(raw_components)
+    evidence["base_component_count"] = len(bases)
+    claimed = evidence["recognized_glyph_count"]
+    surplus = len(bases) - claimed
+    evidence["component_surplus"] = surplus
+    heights = [max(1, box[3] - box[1]) for box in (clusters or [])]
+    if heights:
+        evidence["estimated_glyph_height"] = round(float(median(heights)), 2)
+        if evidence["estimated_glyph_height"] < MARK_RESOLUTION_FLOOR:
+            reasons.append("below_mark_resolution")
+        elif evidence["estimated_glyph_height"] < LOW_GLYPH_HEIGHT:
+            reasons.append("low_effective_glyph_height")
+    else:
+        reasons.append("geometry_unavailable")
+    if claimed and surplus != 0:
+        # Component disagreement is always useful provenance, but it is NOT
+        # automatically a review-worthy OCR error.  Serif terminals, a Q
+        # tail, and weathered/engraved strokes routinely produce extra
+        # connected components in an otherwise certain read.  Only a
+        # *localized* disagreement (or a weak read) becomes a review gate.
+        reasons.append("component_count_mismatch")
+        clump_evidence: dict[str, Any] = {}
+        if surplus > 0:
+            try:
+                _clumps, clump_evidence = sniff_clumps(
+                    inst.text or "", plate, inst.detected_language or inst.language,
+                    vertical=_is_vertical_instance(inst.bounding_box),
+                )
+            except Exception:
+                clump_evidence = {"state": "unavailable"}
+            evidence["segmentation_evidence"] = clump_evidence
+            localized = clump_evidence.get("state") == "clump_unresolved"
+            weak_read = (inst.confidence or 0.0) < 0.70
+            if localized or weak_read:
+                reasons.append("ambiguous_segmentation")
+                if engine is None:
+                    reasons.append("engine_unavailable")
+    elif not claimed:
+        reasons.append("no_recognized_glyphs")
+
+    if any(reason in {"below_mark_resolution", "geometry_unavailable", "no_recognized_glyphs"} for reason in reasons):
+        state = OCR_QUALITY_UNRESOLVABLE
+    # ``component_count_mismatch`` by itself is diagnostic provenance, not a
+    # gate: a high-confidence Q tail or fractured serif must not manufacture
+    # a review task.  Every other remaining reason carries independent risk.
+    elif any(reason != "component_count_mismatch" for reason in reasons):
+        state = OCR_QUALITY_REVIEW
+    else:
+        state = OCR_QUALITY_RELIABLE
+    # Preserve order while avoiding duplicate user-facing explanations.
+    return {"state": state, "reasons": list(dict.fromkeys(reasons)), **evidence}
+
+
 def chew_case(asset: Any, inst: InstText, plate=None) -> tuple[Optional[str], dict]:
     """Measure the physical case signature of one Latin token/region."""
     text = inst.text or ""
@@ -341,6 +509,291 @@ def chew_case(asset: Any, inst: InstText, plate=None) -> tuple[Optional[str], di
     # legacy clusters but never manufacture a mark decision.
     case_boxes = scan["base_components"] if scan is not None else clusters
     return case_signature_verdict(text, case_boxes)
+
+
+def _word_groups(bases: List[dict]) -> List[List[dict]]:
+    """Group base glyphs into words by inter-glyph gap.
+
+    External word segmentation of a text line: within a word the gaps cluster
+    tightly around the face's own tracking, and a word break is the outlier
+    above them (the classic gap-metric approach, Seni & Cohen 1994).  The
+    threshold is scaled from the line's OWN median gap rather than fixed in
+    pixels, so it holds at any point size; ``WORD_GAP_MIN_PX`` only stops a
+    line whose glyphs nearly touch from declaring every gap a word break.
+    """
+    ordered = sorted(bases, key=lambda item: item["box"][0])
+    if len(ordered) < 2:
+        return [list(ordered)] if ordered else []
+    gaps = [ordered[index + 1]["box"][0] - ordered[index]["box"][2]
+            for index in range(len(ordered) - 1)]
+    threshold = max(WORD_GAP_MIN_PX, WORD_GAP_RATIO * median(gaps))
+    groups: List[List[dict]] = [[ordered[0]]]
+    for gap, item in zip(gaps, ordered[1:]):
+        if gap >= threshold:
+            groups.append([])
+        groups[-1].append(item)
+    return groups
+
+
+class ClumpMorsel:
+    """one whitespace token the recognizer served as a single character
+    where the plate plainly carries several glyphs -- a clump it never
+    separated. unlike Morsel (one glyph, two candidate identities) the
+    CARDINALITY is what is wrong here, so this carries the observed glyph
+    boxes as well as the token the phrase resource proposes in its place."""
+    __slots__ = ("token_index", "token_start", "token_text", "glyph_boxes",
+                 "phrase", "recovered", "language")
+
+    def __init__(self, token_index: int, token_start: int, token_text: str,
+                 glyph_boxes: List[tuple], phrase: str, recovered: str,
+                 language: Optional[str]):
+        self.token_index = token_index      # index among the text's whitespace tokens
+        self.token_start = token_start      # offset of the token within the full text
+        self.token_text = token_text        # the single character the recognizer emitted, e.g. "J"
+        self.glyph_boxes = glyph_boxes      # observed base-glyph boxes in mask-local coords
+        self.phrase = phrase                # the stored phrase that supplied the anchor, e.g. "de la"
+        self.recovered = recovered          # the token proposed in place of the clump, e.g. "la"
+        self.language = language
+
+
+def sniff_clumps(text: str, plate, language: Optional[str],
+                 vertical: bool = False) -> tuple[List[ClumpMorsel], dict]:
+    """course 0 (amuse-bouche): is a whitespace token a CLUMP -- one emitted
+    character sitting on several separate glyphs?
+
+    Served before the tasting menu proper because every later course is
+    indexed by glyph position: while the plate carries more base glyphs than
+    the recognizer claimed characters, the mark courses cannot reconcile the
+    two and correctly refuse to decide anything (see ``_detached_mark_scan``).
+    Repairing the cardinality first is what lets those courses run at all.
+
+    Localization is purely geometric and needs no lexicon: split the line's
+    base glyphs into words by gap (``_word_groups``), align those groups
+    1:1 against the recognizer's OWN whitespace tokens, and require exactly
+    one token to disagree with its group's glyph count.  A disagreement
+    anywhere else means the line does not decompose cleanly and nothing is
+    proposed.
+
+    Identity is never inferred from geometry.  It comes only from a stored
+    phrase whose OTHER tokens match the recognized text exactly and whose
+    token in the disputed slot has exactly as many characters as the plate
+    shows glyphs.  Returns ``(morsels, evidence)``; the evidence is recorded
+    for review even when no correction is proposable, so a surplus never
+    disappears silently.
+    """
+    evidence: dict[str, Any] = {"state": "reconciled"}
+    if plate is None or vertical or not text.strip():
+        return [], {"state": "unresolvable", "reason": "no_horizontal_plate"}
+    if language not in PHRASE_LANGUAGES:
+        # Out of scope entirely: the glyph-per-component premise this course
+        # rests on does not hold for every script (see PHRASE_LANGUAGES).
+        return [], {"state": "unresolvable", "reason": "language_out_of_course_scope"}
+    _mask, raw_components, _clusters = plate
+    bases, _detached = _separate_marks(raw_components)
+    spans = [(match.start(), match.group()) for match in re.finditer(r"\S+", text)]
+    tokens = [token for _start, token in spans]
+    claimed = sum(len(token) for token in tokens)
+    surplus = len(bases) - claimed
+    if surplus <= 0:
+        return [], evidence
+    evidence = {"state": "surplus_unlocalized", "claimed_glyphs": claimed,
+                "observed_glyphs": len(bases), "surplus": surplus}
+
+    groups = _word_groups(bases)
+    if len(groups) != len(tokens):
+        evidence["reason"] = "word_groups_do_not_align_to_tokens"
+        return [], evidence
+    evidence["observed_word_glyphs"] = [len(group) for group in groups]
+    evidence["claimed_word_glyphs"] = [len(token) for token in tokens]
+    disputed = [index for index, (group, token) in enumerate(zip(groups, tokens))
+                if len(group) != len(token)]
+    if len(disputed) != 1:
+        evidence["reason"] = "surplus_not_isolated_to_one_token"
+        return [], evidence
+
+    index = disputed[0]
+    observed = len(groups[index])
+    evidence.update({"state": "clump_unresolved", "token_index": index,
+                     "token_text": tokens[index], "observed_token_glyphs": observed})
+    # v1 scope: one emitted character standing in for several glyphs -- the
+    # measured failure ("la" decoded as a single "J").  A clump spanning two
+    # or more emitted characters has no single span to re-read and no
+    # unambiguous claimed shape to argue against; that is a later course.
+    if len(tokens[index]) != 1 or observed < 2:
+        evidence["reason"] = "clump_is_not_a_single_emitted_character"
+        return [], evidence
+
+    recoveries: set[str] = set()
+    phrases: set[str] = set()
+    for entry in LATIN_PHRASES:
+        if entry["language"] != language:
+            continue
+        folded, width = entry["folded"], len(entry["folded"])
+        # Every window of the phrase that could cover the disputed token.
+        for start in range(max(0, index - width + 1), min(index, len(tokens) - width) + 1):
+            slot = index - start
+            # The plate decides how many characters the recovered token may
+            # have; the resource only decides WHICH characters those are.
+            if len(entry["tokens"][slot]) != observed:
+                continue
+            anchors = [tokens[start + offset] for offset in range(width) if offset != slot]
+            if any(fold_text(tokens[start + offset]) != folded[offset]
+                   for offset in range(width) if offset != slot):
+                continue
+            recovered = entry["tokens"][slot]
+            # Mirror the anchors' case: a stored lowercase article inserted
+            # into an all-cap plate would otherwise read "DE la RUE".
+            cased = [anchor for anchor in anchors if any(char.isalpha() for char in anchor)]
+            if cased and all(anchor.isupper() for anchor in cased):
+                recovered = recovered.upper()
+            recoveries.add(recovered)
+            phrases.add(entry["phrase"])
+    if len(recoveries) != 1:
+        # Zero matches: nothing stored supports this slot.  More than one:
+        # ambiguous, and this course never breaks a tie by preference.
+        evidence["reason"] = ("no_stored_phrase_supports_the_slot" if not recoveries
+                              else "stored_phrases_disagree_on_the_slot")
+        return [], evidence
+
+    recovered = recoveries.pop()
+    evidence.update({"candidate_token": recovered, "phrase": sorted(phrases)[0]})
+    morsel = ClumpMorsel(
+        token_index=index, token_start=spans[index][0], token_text=tokens[index],
+        glyph_boxes=[item["box"] for item in groups[index]],
+        phrase=sorted(phrases)[0], recovered=recovered, language=language,
+    )
+    return [morsel], evidence
+
+
+def _reread_span(asset: Any, engine: Any, bbox: BBox, span: tuple) -> Optional[str]:
+    """Re-read ONE clump's own pixels as an isolated crop.
+
+    The recognizer that produced the clump saw it inside a full line, where
+    a CTC decode can collapse two narrow glyphs into one label.  Handing it
+    the span alone, upscaled to the recognizer's operating height, is a
+    genuinely different view of the same pixels -- the same coarse-to-fine
+    argument ``second_look``/``zoom_detect`` already rest on.
+    """
+    if engine is None or bbox is None:
+        return None
+    try:
+        from tofu.layers.cicerone import _compose_crop_text
+        x0, y0, x1, y1 = span
+        # The span is mask-local, and ``text_mask`` crops from the bbox
+        # CLAMPED to the image.  Reproduce that same origin, or a region
+        # hanging off the top/left edge would re-read the wrong pixels.
+        crop_box = BBox(x=max(0, bbox.x) + x0, y=max(0, bbox.y) + y0,
+                        width=x1 - x0, height=y1 - y0)
+        composed = _compose_crop_text(engine.detect_in_regions(asset, [crop_box],
+                                                              pad=CLUMP_REREAD_PAD)[0])
+    except Exception:
+        return None
+    return (composed.text or "").strip() if composed else None
+
+
+def chew_clump(asset: Any, inst: InstText, morsel: ClumpMorsel, plate,
+               engine: Optional[Any] = None,
+               font_registry: Optional[Any] = None) -> tuple[Optional[bool], dict]:
+    """course 0's bite: does the clump really separate into the proposed
+    glyphs, or did the recognizer read one character correctly?
+
+    Two independent signals must agree, and neither alone may swallow:
+
+      SHAPE -- each observed glyph is compared against a reference render of
+      the character the phrase proposes for it AND against the character the
+      recognizer emitted, and the whole span is compared against that emitted
+      character as one glyph.  Every proposed glyph must beat the emitted one
+      on its own pixels, and the split reading must beat the single-glyph
+      reading over the span.  This is what makes a genuine one-character read
+      safe: a real "J" scores best as one glyph across the whole span.
+
+      CARDINALITY -- an isolated re-read of the span must independently agree
+      on HOW MANY characters are there.  It is deliberately not required to
+      agree on WHICH: measured on the production case, the isolated crop of
+      "la" re-reads as "Io", an I/l homoglyph confusion.  Demanding identity
+      from the same recognizer that produced the clump would veto every true
+      positive, while the count -- the thing actually in dispute -- is stable.
+
+    WHAT SETTLES IDENTITY, AND WHAT CANNOT.  The pixels prove the cardinality
+    and rule out the merged reading; the stored phrase names the token.  That
+    division is not laziness, it is the same limit ``chew_dakuten`` already
+    documents, re-measured here on the production plate -- three shape-based
+    identity tests were built and rejected:
+
+      * per-glyph IoU against the Latin alphabet, expecting the proposal to
+        rank first: the true "a" scored 0.697 for "a" but 0.802 for "l"/"I".
+      * aspect-ratio agreement, to recover what the shared 24x24 canvas
+        normalizes away: the plaque's face is condensed (caps 12x35), so the
+        observed proportions disagree with ANY reference font's by more than
+        the wrong candidates do.
+      * span-level IoU against the whole rendered candidate string, taking
+        the argmax over its single-substitution neighbourhood: on the true
+        plate "lJ" (0.636) outscored the true "la" (0.594).
+
+    At this resolution a stretched-mask IoU separates "one glyph here" from
+    "two glyphs here" decisively, and does not separate "la" from "lo".  So
+    identity is gated instead by the anchors: every OTHER token of the stored
+    phrase must match the recognized text exactly, in the right language.
+    A plate genuinely reading "de lo ..." would be mis-repaired; the ledger
+    records the resource identity and every score behind such a decision.
+    Do not re-attempt shape-based identity here without a different metric.
+
+    Returns ``(verdict, evidence)``.  ``None`` means unresolved and must
+    never be read as confirmation.
+    """
+    evidence: dict[str, Any] = {"phrase": morsel.phrase, "candidate_token": morsel.recovered}
+    if plate is None or len(morsel.recovered) != len(morsel.glyph_boxes):
+        return None, {**evidence, "state": "unresolvable", "reason": "no_plate"}
+    try:
+        import cv2
+        import numpy as np
+    except ImportError:
+        return None, {**evidence, "state": "unresolvable", "reason": "no_cv2"}
+    mask, _raw_components, _clusters = plate
+    claimed_char = morsel.token_text
+
+    span = (min(box[0] for box in morsel.glyph_boxes), min(box[1] for box in morsel.glyph_boxes),
+            max(box[2] for box in morsel.glyph_boxes), max(box[3] for box in morsel.glyph_boxes))
+    span_bite = mask[span[1]:span[3], span[0]:span[2]]
+    span_reference = _reference_bite(np, claimed_char, span[3] - span[1], font_registry, morsel.language)
+    if span_bite.size == 0 or not span_bite.any() or span_reference is None:
+        return None, {**evidence, "state": "unresolvable", "reason": "span_unreadable"}
+    merged_score = _flavor_match(np, cv2, span_bite, span_reference)
+
+    split_scores, rival_scores = [], []
+    for (x0, y0, x1, y1), char in zip(morsel.glyph_boxes, morsel.recovered):
+        bite = mask[y0:y1, x0:x1]
+        proposed = _reference_bite(np, char, y1 - y0, font_registry, morsel.language)
+        rival = _reference_bite(np, claimed_char, y1 - y0, font_registry, morsel.language)
+        if bite.size == 0 or not bite.any() or proposed is None or rival is None:
+            return None, {**evidence, "state": "unresolvable", "reason": "glyph_unreadable"}
+        split_scores.append(_flavor_match(np, cv2, bite, proposed))
+        rival_scores.append(_flavor_match(np, cv2, bite, rival))
+    evidence.update({
+        "merged_score": round(merged_score, 3),
+        "split_scores": [round(score, 3) for score in split_scores],
+        "rival_scores": [round(score, 3) for score in rival_scores],
+    })
+    shape_supports_split = (
+        all(split >= rival + BITE_MARGIN for split, rival in zip(split_scores, rival_scores))
+        and min(split_scores) >= merged_score + BITE_MARGIN
+    )
+    if not shape_supports_split:
+        # The emitted character holds up on its own pixels: spit the
+        # proposal out rather than leaving it as an open question.
+        if merged_score >= min(split_scores) + BITE_MARGIN:
+            return False, {**evidence, "state": "merged_reading_confirmed"}
+        return None, {**evidence, "state": "shape_evidence_inconclusive"}
+
+    reread = _reread_span(asset, engine, inst.bounding_box, span)
+    if not reread:
+        return None, {**evidence, "state": "reread_unavailable"}
+    reread_glyphs = len([char for char in reread if not char.isspace()])
+    evidence.update({"reread_text": reread, "reread_glyphs": reread_glyphs,
+                     "reread_matches_identity": fold_text(reread) == fold_text(morsel.recovered)})
+    if reread_glyphs != len(morsel.glyph_boxes):
+        return None, {**evidence, "state": "reread_disagrees_on_glyph_count"}
+    return True, {**evidence, "state": "split_confirmed"}
 
 
 def _latin_diacritic_proposals(text: str, language: Optional[str]) -> List[dict]:
@@ -379,13 +832,29 @@ def _latin_diacritic_proposals(text: str, language: Optional[str]) -> List[dict]
     return proposals
 
 
+def _glyph_index(text: str, position: int) -> int:
+    """Map a position in ``text`` to its index among non-space characters.
+
+    Proposals address ``text`` (spaces included) because that is what the
+    composed correction is written back into; every geometry structure here
+    is indexed by GLYPH, which spaces do not occupy.  Conflating the two
+    silently checks the wrong glyph's zone the moment a region holds more
+    than one word.
+    """
+    return sum(1 for char in text[:position] if not char.isspace())
+
+
 def chew_accents(inst: InstText, plate, positions: List[tuple[int, str]]) -> dict[int, Optional[bool]]:
     """Verify detached above-base marks only; attached marks are v2 scope."""
     if plate is None:
         return {position: None for position, _marks in positions}
     _mask, raw_components, _clusters = plate
-    scan = _detached_mark_scan(raw_components, inst.text or "")
-    return {position: _mark_zone_verdict(scan, position) for position, _marks in positions}
+    text = inst.text or ""
+    scan = _detached_mark_scan(raw_components, text)
+    return {
+        position: _mark_zone_verdict(scan, _glyph_index(text, position))
+        for position, _marks in positions
+    }
 
 
 def _compose_marks(text: str, positions: List[tuple[int, str]]) -> str:
@@ -886,7 +1355,8 @@ def chew_dakuten(asset: Any, inst: InstText, morsel: DakutenMorsel,
     return chew_swaps(asset, inst, morsel.positions, morsel.lang, font_registry)
 
 
-def taste(asset: Any, instances: List[InstText], font_registry: Optional[Any] = None) -> int:
+def taste(asset: Any, instances: List[InstText], font_registry: Optional[Any] = None,
+          engine: Optional[Any] = None) -> int:
     """the full tasting menu, all courses, run across every instance.
 
     this is Savor's one public entry point (called once by
@@ -895,6 +1365,12 @@ def taste(asset: Any, instances: List[InstText], font_registry: Optional[Any] = 
     font_registry is optional and only used by course 4 (dakuten) --
     every existing caller that omits it keeps behaving exactly as
     before (course 1-3, the digit/letter course, never needed it).
+
+    engine is optional and only used by course 0 (clumps), which needs a
+    genuinely independent look at a disputed span before it will change the
+    character COUNT of a read. without one, course 0 can still detect and
+    report a clump but can never apply a correction — the same fail-closed
+    contract every other course follows.
 
     returns the number of instances actually corrected (mirrors
     second_look()'s "count of regions improved" return contract, for
@@ -907,14 +1383,76 @@ def taste(asset: Any, instances: List[InstText], font_registry: Optional[Any] = 
     for inst in instances:
         text = inst.text or ""
         if not text:
+            inst.ocr_quality = {
+                "state": OCR_QUALITY_UNRESOLVABLE,
+                "reasons": ["no_recognized_glyphs"],
+                "recognized_glyph_count": 0,
+                "engine": getattr(engine, "name", "unavailable") if engine is not None else "unavailable",
+                "reread_available": engine is not None,
+            }
             continue
         plate = _plate_clusters(asset, inst)
         lang = inst.detected_language or inst.language
+        # Course 0 (amuse-bouche): segmentation before anything glyph-indexed.
+        # While the plate carries more glyphs than the recognizer claimed
+        # characters, every later course is reading the wrong positions --
+        # and the mark courses know it, which is why they return None here.
+        vertical = _is_vertical_instance(inst.bounding_box)
+        clumps, clump_evidence = sniff_clumps(inst.text or "", plate, lang, vertical=vertical)
+        clump_resolved = not clump_evidence.get("surplus")
+        for morsel in clumps:
+            verdict, clump_evidence = chew_clump(
+                asset, inst, morsel, plate, engine=engine, font_registry=font_registry
+            )
+            # A False verdict resolves the surplus too: the emitted character
+            # held up on its own pixels, so this token is not the clump.
+            clump_resolved = verdict is not None
+            if verdict is True:
+                original = inst.text or ""
+                corrected = (original[:morsel.token_start] + morsel.recovered
+                             + original[morsel.token_start + len(morsel.token_text):])
+                inst.text = corrected
+                _record_correction(
+                    inst, applied=True, original_text=original, corrected_text=corrected,
+                    reason="one emitted character stood on several glyphs; the stored phrase, "
+                           "glyph shapes and an isolated re-read all support the split",
+                    course="phrase_segmentation",
+                    correction_resource=LATIN_PHRASE_RESOURCE.audit_identity(),
+                    clump_evidence=clump_evidence,
+                )
+                swallowed += 1
+                text = corrected
+                # The claimed glyph count changed, so the plate's clusters
+                # no longer describe this text.  Re-plate before the courses
+                # that index by glyph position run on it.
+                plate = _plate_clusters(asset, inst)
+        # The cardinality course is itself a verified recovery.  Only after it
+        # has either repaired or failed to repair the plate can the ordinary
+        # glyph-indexed courses decide whether their automatic result is safe.
+        quality_before_courses = assess_ocr_quality(asset, inst, plate, engine)
+        can_auto_apply = quality_before_courses["state"] == OCR_QUALITY_RELIABLE
+        if not clump_resolved:
+            # A component-count surplus is never allowed to vanish.  Whether
+            # it went unlocalized, unnamed by any stored phrase, or simply
+            # unverified, the region is surfaced for a structured re-read
+            # rather than left looking like a clean read.
+            _record_correction(
+                inst, applied=False, original_text=inst.text or "",
+                reason="the plate carries more glyphs than the recognized text claims; "
+                       "region needs a structured re-read",
+                course="phrase_segmentation", clump_evidence=clump_evidence,
+            )
         # Course 5a: physical case evidence.  Run before lexical/diacritic
         # work so a confirmed all-cap plate supplies the correct base letters
         # (``Republique`` -> ``REPUBLIQUE``) for any later mark repair.
-        case_candidate, case_evidence = chew_case(asset, inst, plate=plate)
-        if case_candidate:
+        # An already all-cap read has no case repair to offer.  Fragmented
+        # serif/engraved components can make its height signature look odd,
+        # but a review record with an identical candidate is pure noise.
+        if (inst.text or "").upper() == (inst.text or ""):
+            case_candidate, case_evidence = None, {"state": "not_applicable", "reason": "already_all_caps"}
+        else:
+            case_candidate, case_evidence = chew_case(asset, inst, plate=plate)
+        if case_candidate and can_auto_apply:
             original = inst.text or ""
             inst.text = case_candidate
             _record_correction(
@@ -925,6 +1463,14 @@ def taste(asset: Any, instances: List[InstText], font_registry: Optional[Any] = 
             )
             swallowed += 1
             text = case_candidate
+        elif case_candidate:
+            _record_correction(
+                inst, applied=False, original_text=inst.text or "",
+                candidate_text=case_candidate,
+                reason="case evidence is present but the OCR quality gate requires review",
+                course="case_signature", case_evidence=case_evidence,
+                ocr_quality=quality_before_courses,
+            )
         elif case_evidence.get("state") == "review":
             # Preserve evidence for mixed/lowercase contradictions without
             # guessing a title-case or arbitrary per-character correction.
@@ -939,7 +1485,7 @@ def taste(asset: Any, instances: List[InstText], font_registry: Optional[Any] = 
         # exists.  No generic accent stripping or whole-glyph IoU participates.
         for proposal in _latin_diacritic_proposals(inst.text or "", lang):
             verdicts = chew_accents(inst, plate, proposal["positions"])
-            if all(verdicts.get(position) is True for position, _marks in proposal["positions"]):
+            if all(verdicts.get(position) is True for position, _marks in proposal["positions"]) and can_auto_apply:
                 original = inst.text or ""
                 corrected = _compose_marks(original, proposal["positions"])
                 inst.text = corrected
@@ -952,6 +1498,16 @@ def taste(asset: Any, instances: List[InstText], font_registry: Optional[Any] = 
                 )
                 swallowed += 1
                 text = inst.text or text
+            elif all(verdicts.get(position) is True for position, _marks in proposal["positions"]):
+                _record_correction(
+                    inst, applied=False, original_text=inst.text or "",
+                    candidate_text=proposal["canonical"],
+                    reason="diacritic evidence is present but the OCR quality gate requires review",
+                    course="latin_diacritic",
+                    correction_resource=LATIN_DIACRITIC_RESOURCE.audit_identity(),
+                    mark_verdicts={str(position): verdicts[position] for position, _marks in proposal["positions"]},
+                    ocr_quality=quality_before_courses,
+                )
             elif any(verdicts.get(position) is None for position, _marks in proposal["positions"]):
                 _record_correction(
                     inst, applied=False, original_text=inst.text or "",
@@ -963,31 +1519,37 @@ def taste(asset: Any, instances: List[InstText], font_registry: Optional[Any] = 
                 )
         for morsel in sniff_out(text):
             verdict = chew_on(asset, inst, morsel)
-            if verdict is True:
+            if verdict is True and can_auto_apply:
                 original = inst.text or text
                 corrected_text = (
                     text[:morsel.token_start] + morsel.corrected_token
                     + text[morsel.token_start + len(morsel.token_text):]
                 )
                 inst.text = corrected_text
-                inst.ocr_correction = {
-                    "applied": True,
-                    "original_text": original,
-                    "corrected_text": corrected_text,
-                    "reason": f"'{morsel.orig_char}'->'{morsel.digit_char}' in a digit-expected "
-                              f"context, confirmed by glyph shape",
-                }
+                _record_correction(
+                    inst, applied=True, original_text=original, corrected_text=corrected_text,
+                    reason=f"'{morsel.orig_char}'->'{morsel.digit_char}' in a digit-expected "
+                           f"context, confirmed by glyph shape",
+                    course="swap",
+                )
                 swallowed += 1
+            elif verdict is True:
+                _record_correction(
+                    inst, applied=False, original_text=inst.text or text,
+                    candidate_text=(text[:morsel.token_start] + morsel.corrected_token
+                                    + text[morsel.token_start + len(morsel.token_text):]),
+                    reason="glyph-shape evidence is present but the OCR quality gate requires review",
+                    course="swap", ocr_quality=quality_before_courses,
+                )
             elif verdict is None:
-                inst.ocr_correction = {
-                    "applied": False,
-                    "candidate_text": (
-                        text[:morsel.token_start] + morsel.corrected_token
-                        + text[morsel.token_start + len(morsel.token_text):]
-                    ),
-                    "reason": f"possible '{morsel.orig_char}'->'{morsel.digit_char}' misread in a "
-                              f"digit-expected context, but the pixel evidence was inconclusive",
-                }
+                _record_correction(
+                    inst, applied=False, original_text=inst.text or text,
+                    candidate_text=(text[:morsel.token_start] + morsel.corrected_token
+                                    + text[morsel.token_start + len(morsel.token_text):]),
+                    reason=f"possible '{morsel.orig_char}'->'{morsel.digit_char}' misread in a "
+                           f"digit-expected context, but the pixel evidence was inconclusive",
+                    course="swap",
+                )
             # verdict is False: spat out, original text stands, nothing recorded
 
         for dmorsel in sniff_dakuten(inst.text or "", lang):
@@ -995,14 +1557,23 @@ def taste(asset: Any, instances: List[InstText], font_registry: Optional[Any] = 
             confirmed = {p: b for p, a, b in dmorsel.positions if verdicts.get(p) is True}
             if not confirmed:
                 if any(verdicts.get(p) is None for p, a, b in dmorsel.positions):
-                    inst.ocr_correction = {
-                        "applied": False,
-                        "candidate_text": dmorsel.candidate_word,
-                        "reason": f"possible missing dakuten/handakuten vs known name "
-                                  f"'{dmorsel.candidate_word}' ({dmorsel.similarity:.2f} similarity), "
-                                  f"pixel evidence inconclusive",
-                    }
+                    _record_correction(
+                        inst, applied=False, original_text=inst.text or "",
+                        candidate_text=dmorsel.candidate_word,
+                        reason=f"possible missing dakuten/handakuten vs known name "
+                               f"'{dmorsel.candidate_word}' ({dmorsel.similarity:.2f} similarity), "
+                               f"pixel evidence inconclusive",
+                        course="dakuten",
+                    )
                 continue  # verdict False on every position: spat out, nothing recorded
+            if not can_auto_apply:
+                _record_correction(
+                    inst, applied=False, original_text=inst.text or "",
+                    candidate_text=dmorsel.candidate_word,
+                    reason="dakuten evidence is present but the OCR quality gate requires review",
+                    course="dakuten", ocr_quality=quality_before_courses,
+                )
+                continue
             original = inst.text or ""
             chars = list(original)
             for p, marked_char in confirmed.items():
@@ -1016,11 +1587,17 @@ def taste(asset: Any, instances: List[InstText], font_registry: Optional[Any] = 
             )
             if unresolved:
                 reason += f"; position(s) {unresolved} left unchanged, pixel evidence didn't support them"
-            inst.ocr_correction = {
-                "applied": True,
-                "original_text": original,
-                "corrected_text": corrected_text,
-                "reason": reason,
-            }
+            _record_correction(
+                inst, applied=True, original_text=original, corrected_text=corrected_text,
+                reason=reason, course="dakuten",
+            )
             swallowed += 1
+        # The final record reflects the text and plate the user will actually
+        # see.  Keep the pre-course result as provenance when a verified
+        # segmentation repair made an initially risky region observable.
+        final_plate = _plate_clusters(asset, inst)
+        final_quality = assess_ocr_quality(asset, inst, final_plate, engine)
+        if final_quality != quality_before_courses:
+            final_quality["pre_course"] = quality_before_courses
+        inst.ocr_quality = final_quality
     return swallowed

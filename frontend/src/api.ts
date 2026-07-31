@@ -29,6 +29,59 @@ export interface ProjectAsset {
 
 export type AssetKind = "image" | "video";
 
+export interface OcrCandidate { engine: string; text: string; confidence: number; pass_name: string; accepted: boolean; evidence?: Record<string, unknown> }
+export interface TrackObservation {
+  id: string; track_id: string; shot_id: string; frame_index: number; pts_seconds: number;
+  bbox: BBox; quad?: number[][] | null; visible: boolean; tracking_confidence: number;
+  sharpness?: number | null; ocr_trigger?: string | null; ocr_candidates: OcrCandidate[];
+}
+export interface TextTrack {
+  id: string; shot_id: string; start_frame: number; end_frame: number;
+  source_text?: string | null; target_text?: string | null; status: string;
+  consensus_confidence: number; observation_count: number; revision?: number;
+}
+export interface RenderKeyframe {
+  id?: string; track_id: string; frame_index: number; scope: "frame" | "range" | "track";
+  end_frame?: number | null; bbox?: BBox | null; quad?: number[][] | null; opacity?: number | null;
+  style?: Record<string, unknown> | null; effects?: Record<string, unknown> | null;
+  expected_job_revision?: number;
+}
+export interface VideoJob {
+  id: string; asset_id: string; project_id?: string | null; status: string; stage: string;
+  progress: number; error?: string | null; manifest: { width: number; height: number; duration: number; frame_count: number; fps?: number | null; frame_pts: number[] };
+  proxy_url?: string | null; preview_url?: string | null; export_url?: string | null;
+  pipeline_version?: string; upgrade_required?: number;
+  dependency_revision?: number;
+}
+export interface VideoTimeline { tracks: TextTrack[]; observations: TrackObservation[]; keyframes: RenderKeyframe[]; issues: Array<{ id: number; track_id?: string; frame_index?: number; code: string; severity: string; detail?: string }>; truncated?: boolean; next_cursor?: number | null }
+
+export async function createVideoJob(assetId: string, projectId?: string): Promise<VideoJob> {
+  return json(await fetch("/api/video/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ asset_id: assetId, project_id: projectId }) }));
+}
+export async function getVideoJob(jobId: string): Promise<VideoJob> { return json(await fetch(`/api/video/jobs/${jobId}`)); }
+export async function getLatestVideoJob(assetId: string): Promise<VideoJob> { return json(await fetch(`/api/video/assets/${assetId}/latest-job`)); }
+export async function cancelVideoJob(jobId: string): Promise<VideoJob> { return json(await fetch(`/api/video/jobs/${jobId}/cancel`, { method: "POST" })); }
+export async function resumeVideoJob(jobId: string): Promise<VideoJob> { return json(await fetch(`/api/video/jobs/${jobId}/resume`, { method: "POST" })); }
+export async function upgradeVideoJob(jobId: string): Promise<VideoJob> { return json(await fetch(`/api/video/jobs/${jobId}/upgrade`, { method: "POST" })); }
+export async function updateVideoTrack(jobId: string, trackId: string, changes: Partial<Pick<TextTrack, "source_text"|"target_text"|"status">> & { target_language?: string; style?: Record<string, unknown>; expected_revision?: number }): Promise<TextTrack> {
+  return json(await fetch(`/api/video/jobs/${jobId}/tracks/${trackId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(changes) }));
+}
+export async function renderVideoPreview(jobId: string, startFrame: number, endFrame: number): Promise<VideoJob> {
+  return json(await fetch(`/api/video/jobs/${jobId}/preview`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ start_frame: startFrame, end_frame: endFrame }) }));
+}
+export async function exportVideo(jobId: string): Promise<VideoJob> { return json(await fetch(`/api/video/jobs/${jobId}/export`, { method: "POST" })); }
+export function watchVideoJob(jobId: string, onUpdate: (job: Partial<VideoJob>) => void, onFailure: () => void) {
+  const source = new EventSource(`/api/video/jobs/${jobId}/events`);
+  const receive = (event: MessageEvent) => { try { onUpdate(JSON.parse(event.data) as Partial<VideoJob>); } catch { onFailure(); } };
+  source.addEventListener("progress", receive as EventListener); source.addEventListener("terminal", receive as EventListener);
+  source.onerror = () => { source.close(); onFailure(); };
+  return () => source.close();
+}
+export async function getVideoTimeline(jobId: string, start: number, end: number, cursor = 0): Promise<VideoTimeline> { return json(await fetch(`/api/video/jobs/${jobId}/timeline?start=${start}&end=${end}&cursor=${cursor}`)); }
+export async function putVideoKeyframe(jobId: string, keyframe: RenderKeyframe): Promise<RenderKeyframe> {
+  return json(await fetch(`/api/video/jobs/${jobId}/keyframes`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(keyframe) }));
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -166,6 +219,23 @@ export interface TMRecord {
   created_at: number;
 }
 
+export interface OcrQuality {
+  state: "reliable" | "review_required" | "unresolvable";
+  reasons: string[];
+  source_dimensions?: { width: number; height: number } | null;
+  region_dimensions?: { width: number; height: number };
+  estimated_glyph_height?: number | null;
+  contrast?: number | null;
+  sharpness?: number | null;
+  raw_component_count?: number;
+  base_component_count?: number;
+  recognized_glyph_count?: number;
+  component_surplus?: number | null;
+  engine?: string;
+  reread_available?: boolean;
+  pre_course?: OcrQuality;
+}
+
 export interface InstText {
   id: string;
   bounding_box: BBox;
@@ -184,6 +254,7 @@ export interface InstText {
   translation_decision?: TranslationDecision | null;
   translation_history?: TranslationDecision[];
   recognition_history?: Array<{ stage: string; engine: string; candidate_text?: string; candidate_confidence?: number; primary_text?: string; primary_confidence?: number; accepted: boolean; reason: string }> | null;
+  ocr_quality?: OcrQuality | null;
   repair_provenance?: {
     requested_provider: string;
     executed_provider?: string;

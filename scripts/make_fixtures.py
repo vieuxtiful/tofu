@@ -400,6 +400,127 @@ def cjk_horizontal() -> None:
     _save("cjk-horizontal", img, regions)
 
 
+def indic_shaping() -> None:
+    """Indic/SEA complex shaping: conjuncts and vowel signs that exercise
+    HarfBuzz + FreeType shaping in knead.py and scribe rendering."""
+    img = Image.new("RGB", CANVAS, (245, 240, 230))
+    draw = ImageDraw.Draw(img)
+    regions = []
+    cases = [
+        ("नमस्ते", (200, 120), 56, "regular"),
+        ("สวัสดี", (200, 260), 56, "regular"),
+        ("வணக்கம்", (200, 400), 48, "regular"),
+    ]
+    for text, pos, size, kind in cases:
+        font = _font(kind, size)
+        draw.text(pos, text, font=font, fill=(30, 30, 34))
+        regions.append({"bbox": _text_bbox(draw, pos, text, font), "text": text})
+    _save("indic-shaping", img, regions)
+
+
+def perspective_sign() -> None:
+    """Text rendered on a perspective-tilted plane: tests quad extraction
+    and perspective-aware reconstruction in Cleanse."""
+    img = Image.new("RGB", CANVAS, (230, 232, 238))
+    draw = ImageDraw.Draw(img)
+    regions = []
+    text = "CAFE"
+    font = _font("bold", 80)
+    quad = [(220, 140), (620, 100), (660, 260), (260, 320)]
+    draw.polygon(quad, fill=(42, 62, 88))
+    cx = sum(p[0] for p in quad) / 4
+    cy = sum(p[1] for p in quad) / 4
+    bbox_l = min(p[0] for p in quad)
+    bbox_t = min(p[1] for p in quad)
+    bbox_r = max(p[0] for p in quad)
+    bbox_b = max(p[1] for p in quad)
+    draw.text((cx - 80, cy - 30), text, font=font, fill=(255, 255, 255))
+    regions.append({
+        "bbox": [int(bbox_l), int(bbox_t), int(bbox_r - bbox_l), int(bbox_b - bbox_t)],
+        "text": text,
+        "quad": [[int(p[0]), int(p[1])] for p in quad],
+    })
+    _save("perspective-sign", img, regions)
+
+
+def multicolour_text() -> None:
+    """Multi-colour text on a single sign: exercises text_mask's
+    multi-colour binarization weakness identified in the readiness doc."""
+    img = Image.new("RGB", CANVAS, (240, 238, 242))
+    draw = ImageDraw.Draw(img)
+    draw.rounded_rectangle([120, 140, 840, 380], radius=16, fill=(28, 28, 32))
+    regions = []
+    font = _font("bold", 64)
+    colours = [(255, 80, 80), (80, 200, 120), (120, 160, 255)]
+    x = 180
+    for ch, colour in zip("ABC", colours):
+        pos = (x, 210)
+        draw.text(pos, ch, font=font, fill=colour)
+        x += 120
+    regions.append({
+        "bbox": [180, 210, 300, 64],
+        "text": "ABC",
+        "style": {"multicolour": True, "colours": ["#ff5050", "#50c878", "#78a0ff"]},
+    })
+    _save("multicolour-text", img, regions)
+
+
+def mixed_orientation() -> None:
+    """Horizontal and vertical text in the same frame: tests detection
+    of mixed orientation without false merges."""
+    img = Image.new("RGB", CANVAS, (236, 238, 230))
+    draw = ImageDraw.Draw(img)
+    regions = []
+    h_text = "OPEN"
+    h_font = _font("bold", 56)
+    h_pos = (140, 140)
+    draw.text(h_pos, h_text, font=h_font, fill=(30, 30, 34))
+    regions.append({"bbox": _text_bbox(draw, h_pos, h_text, h_font), "text": h_text})
+    v_text = "店"
+    v_font = _font("cjk", 56)
+    for i, ch in enumerate(v_text):
+        pos = (500, 120 + i * 80)
+        draw.text(pos, ch, font=v_font, fill=(180, 40, 40))
+    regions.append({"bbox": [500, 120, 56, 56], "text": v_text, "vertical": True})
+    _save("mixed-orientation", img, regions)
+
+
+def low_confidence() -> None:
+    """Low-contrast, blurred text that produces low OCR confidence:
+    exercises the confidence-decay OCR trigger and review-required
+    provenance path."""
+    img = Image.new("RGB", CANVAS, (232, 230, 224))
+    draw = ImageDraw.Draw(img)
+    regions = []
+    font = _font("bold", 48)
+    pos = (200, 200)
+    draw.text(pos, "FADED", font=font, fill=(200, 198, 192))
+    regions.append({"bbox": _text_bbox(draw, pos, "FADED", font), "text": "FADED",
+                    "style": {"low_contrast": True}})
+    _save("low-confidence", img, regions)
+
+
+def degraded_ink() -> None:
+    """Text with simulated degraded ink (partial erosion, broken strokes):
+    exercises text_mask's weakness with multicolour and degraded ink
+    identified in the readiness doc."""
+    img = Image.new("RGB", CANVAS, (234, 236, 228))
+    draw = ImageDraw.Draw(img)
+    regions = []
+    font = _font("bold", 60)
+    pos = (180, 180)
+    draw.text(pos, "OLD SIGN", font=font, fill=(60, 58, 52))
+    rng = np.random.default_rng(SEED + 99)
+    arr = np.asarray(img).astype(np.int16)
+    noise = rng.integers(0, 2, arr.shape[:2])
+    for c in range(3):
+        arr[..., c] = np.where(noise, arr[..., c] + rng.integers(-40, 40, arr.shape[:2]), arr[..., c])
+    img = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
+    regions.append({"bbox": _text_bbox(draw, pos, "OLD SIGN", font), "text": "OLD SIGN",
+                    "style": {"degraded_ink": True}})
+    _save("degraded-ink", img, regions)
+
+
 def main() -> None:
     print(f"writing fixtures to {OUT}")
     flat_sign()
@@ -417,6 +538,12 @@ def main() -> None:
     rtl_sign()
     mixed_script()
     cjk_horizontal()
+    indic_shaping()
+    perspective_sign()
+    multicolour_text()
+    mixed_orientation()
+    low_confidence()
+    degraded_ink()
     print("done.")
 
 

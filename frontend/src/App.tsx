@@ -4,16 +4,17 @@ import InputAdornment from "@mui/material/InputAdornment";
 import TextField from "@mui/material/TextField";
 import {
   AlertTriangle, AlignCenter, AlignEndHorizontal, AlignEndVertical, AlignJustify, AlignLeft, AlignRight, AlignStartHorizontal, AlignStartVertical, ArrowLeft, ArrowLeftRight, ArrowUpFromLine, Baseline, Bold, BookmarkCheck, Box, Check, ChevronDown, Circle, CircleDashed, CircleDot, CircleOff, FileImage, FolderOpen, Hexagon, History, Home, Italic, Languages, Loader2,
-  Play, Plus, RotateCcw, ScanText, ShieldAlert, Sparkles, SquareStack, Subscript, Superscript, Trash2, Type, Underline, X, Cpu,
+  Play, Plus, RotateCcw, ScanText, ShieldAlert, Sparkles, SquareStack, Subscript, Superscript, Trash2, Type, Underline, VectorSquare, X, Cpu,
 } from "lucide-react";
 import {
-  BBox, FontFamily, FontOption, FontWeight, ImportResult, InpaintPatch, InstText, LanguageOption, Project,
+  BBox, FontFamily, FontOption, FontWeight, ImportResult, InpaintPatch, InstText, LanguageOption, Project, VideoJob,
   RenderResult, RenderStreamEvent, SceneRegion, SemanticSubstitutionPlan, SemanticTextUnit, TextManifest, UploadResponse, ValidationReport, GlossaryStatus,
   addRegion, approveRender, checkDuplicateAsset, deleteProjectAsset, deleteRegion, detectAssetStream,
   fetchFonts, fetchLanguages, getManifest, getProject, importFile, matchFonts, ocrRegion, putManifest,
   applyRepairCandidate, captureLocalizedBaseline, createInpaintPatch, getLocalizedBaseline, getTreatment, previewCandidateLocalized, refineRegion, renderAsset, renderAssetStream, renderPreview, restoreTreatment, scanAssetLanguage, sha256File, snapshotAsset, undoInpaint,
-  semanticSubstitution, semanticRepair, updateProject, uploadAsset, validateAsset, fetchGlossaryStatus, uploadGlossary, deleteGlossary,
+  semanticSubstitution, semanticRepair, updateProject, uploadAsset, validateAsset, fetchGlossaryStatus, uploadGlossary, deleteGlossary, createVideoJob, getVideoJob, getLatestVideoJob, cancelVideoJob, resumeVideoJob, upgradeVideoJob, putVideoKeyframe, updateVideoTrack, watchVideoJob, renderVideoPreview, exportVideo,
 } from "./api";
+import VideoWorkspace from "./VideoWorkspace";
 import { FcCollapse } from "react-icons/fc";
 import { LiaSpellCheckSolid } from "react-icons/lia";
 import { RiCheckboxFill } from "react-icons/ri";
@@ -405,6 +406,7 @@ export default function App() {
   const stackTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const [asset, setAsset] = useState<UploadResponse | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [videoJob, setVideoJob] = useState<VideoJob | null>(null);
   const [preRenderUrl, setPreRenderUrl] = useState<string | null>(null);
   const [previewRenderError, setPreviewRenderError] = useState<string | null>(null);
   const [previewCacheKey, setPreviewCacheKey] = useState<string | null>(null);
@@ -800,6 +802,13 @@ export default function App() {
     return order || manifest.indexOf(a) - manifest.indexOf(b);
   });
   const visibleManifest = orderedManifest.filter((i) => !i.excluded);
+  const qualityReviewRegions = visibleManifest.filter((inst) => {
+    const state = inst.ocr_quality?.state;
+    return state === "review_required" || state === "unresolvable";
+  });
+  // Advisory only: usable text resolution is measured from detected crops,
+  // never inferred solely from this whole-image dimension.
+  const tinyUploadAdvisory = Boolean(imgSize && Math.min(imgSize.width, imgSize.height) < 360);
   const [imgDim, setImgDim] = useState<[number, number] | null>(null);
   useEffect(() => {
     const image = localizedImageRef.current;
@@ -850,6 +859,7 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [drawMode, setDrawMode] = useState(false);
   const [ocrLoading, setOcrLoading] = useState<string | null>(null);
+  const [ocrReviewOpen, setOcrReviewOpen] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
   const [srcLangLocked, setSrcLangLocked] = useState(true);
   const [importedHash, setImportedHash] = useState<string | null>(null);
@@ -1057,6 +1067,7 @@ export default function App() {
     }
     setAsset(null);
     setPreviewUrl(null);
+    setVideoJob(null);
     setPreRenderUrl(null);
     setPreviewRenderError(null);
     setPreviewCacheKey(null);
@@ -1133,6 +1144,15 @@ export default function App() {
       asset_url: active.asset_url,
     });
     setPreviewUrl(active.asset_url);
+    if (m.asset_type === "video") {
+      try {
+        const job = await getLatestVideoJob(active.asset_id);
+        setVideoJob(job);
+        if (job.proxy_url) setPreviewUrl(job.proxy_url);
+      } catch {
+        setError("This video has no resumable processing job. Re-upload it to begin analysis.");
+      }
+    }
     manifestUndoStack.current = [];
     manifestRedoStack.current = [];
     syncUndoRedo();
@@ -1972,13 +1992,26 @@ export default function App() {
       const uploaded = await uploadAsset(file, project.id);
       setAsset(uploaded);
       getProject(project.id).then(setProject).catch(() => {});
-      void runLanguageScan(uploaded, project.id);
+      if (uploaded.asset_info.asset_type === "video") {
+        const job = await createVideoJob(uploaded.asset_id, project.id);
+        setVideoJob(job);
+      } else {
+        void runLanguageScan(uploaded, project.id);
+      }
     } catch (e) {
       setErrorWithNotif(String(e));
     } finally {
       setBusy(null);
     }
   }, [project, asset, manifest.length, resetSession, rawAddToast, runLanguageScan]);
+
+  useEffect(() => {
+    if (!videoJob || ["ready", "completed", "failed", "cancelled"].includes(videoJob.status)) return;
+    return watchVideoJob(videoJob.id, update => {
+      setVideoJob(current => current && current.id === videoJob.id ? { ...current, ...update } : current);
+      if (["ready", "completed", "failed", "cancelled"].includes(update.status || "")) getVideoJob(videoJob.id).then(setVideoJob).catch(() => {});
+    }, () => getVideoJob(videoJob.id).then(setVideoJob).catch(() => {}));
+  }, [videoJob?.id, videoJob?.status]);
 
   const proceedWithFile = useCallback((file: File) => {
     if (!project) {
@@ -3112,10 +3145,10 @@ export default function App() {
         <Stepper
           current={step}
           onStep={setStep}
-          canCapture={!!asset && !scanBlocked}
-          canTranslate={!!asset && manifest.length > 0 && !scanBlocked}
-          canRender={translatedCount > 0 && !scanBlocked}
-          canVerify={!!renderResult && !scanBlocked}
+          canCapture={!!asset && asset.asset_info.asset_type !== "video" && !scanBlocked}
+          canTranslate={!!asset && asset.asset_info.asset_type !== "video" && manifest.length > 0 && !scanBlocked}
+          canRender={asset?.asset_info.asset_type !== "video" && translatedCount > 0 && !scanBlocked}
+          canVerify={asset?.asset_info.asset_type !== "video" && !!renderResult && !scanBlocked}
           theme={theme}
           flagStep={formerTargLang ? 2 : null}
         />
@@ -3128,11 +3161,29 @@ export default function App() {
       )}
 
       {/* STEP 0: Upload — asset intake + project overview */}
-      {step === 0 && (
+      {step === 0 && asset?.asset_info.asset_type === "video" && videoJob && previewUrl && (
+        <div key="video-workspace" className="step-fade">
+          <Section title="Video localization workspace" className={stackClass(0)}>
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div><p className="text-sm font-medium">{asset.filename}</p><p className="subtext text-xs">{videoJob.stage} · {Math.round(videoJob.progress * 100)}% · {videoJob.status}</p></div>
+              <button onClick={() => project && onDeleteAsset(asset.asset_id, asset.filename)} className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs dark:border-zinc-700">Replace video</button>
+            </div>
+            <VideoWorkspace job={videoJob} videoUrl={videoJob.proxy_url || previewUrl}
+              onCancel={async () => setVideoJob(await cancelVideoJob(videoJob.id))}
+              onResume={async () => setVideoJob(await resumeVideoJob(videoJob.id))}
+              onUpgrade={async () => setVideoJob(await upgradeVideoJob(videoJob.id))}
+              onTrackUpdate={async (trackId, changes) => { await updateVideoTrack(videoJob.id, trackId, changes); }}
+              onPreview={async (start, end) => setVideoJob(await renderVideoPreview(videoJob.id, start, end))}
+              onExport={async () => setVideoJob(await exportVideo(videoJob.id))}
+              onKeyframe={async (key) => { await putVideoKeyframe(videoJob.id, {...key, expected_job_revision: videoJob.dependency_revision}); setVideoJob(await getVideoJob(videoJob.id)); }} />
+          </Section>
+        </div>
+      )}
+      {step === 0 && asset?.asset_info.asset_type !== "video" && (
         <div key="step-0" className="step-fade grid gap-6 md:grid-cols-[minmax(0,1fr)_360px]">
           <Section title="Asset" className={stackClass(0)}>
             <label className="flex min-h-64 cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-zinc-400 p-4 text-zinc-500 transition hover:border-zinc-600 hover:text-zinc-700 dark:border-zinc-700 dark:hover:border-zinc-500 dark:hover:text-zinc-300">
-              {previewUrl ? (
+              {previewUrl && asset?.asset_info.asset_type !== "video" ? (
                 <img src={previewUrl} alt="preview" className="max-h-72 rounded-sm object-contain" />
               ) : (
                 <>
@@ -3143,7 +3194,7 @@ export default function App() {
               )}
               <input
                 type="file"
-                accept="image/*"
+                accept={project?.asset_kind === "video" ? "video/*,.mp4,.mov,.mkv,.webm,.m4v,.avi" : "image/*"}
                 className="hidden"
                 onChange={(e) => {
                   if (e.target.files?.[0]) onFile(e.target.files[0]);
@@ -3155,6 +3206,15 @@ export default function App() {
               <p className="subtext mt-2 text-[8px] text-zinc-500">
                 {asset.filename} · {asset.asset_info.asset_type}{asset.asset_info.asset_type === "video" && ` · frames=${asset.asset_info.frame_count}`}
               </p>
+            )}
+            {asset?.asset_info.asset_type === "video" && previewUrl && videoJob && (
+              <div className="mt-4">
+                <div className="subtext mb-2 text-xs">{videoJob.stage} · {Math.round(videoJob.progress * 100)}% · {videoJob.status}</div>
+                <VideoWorkspace job={videoJob} videoUrl={previewUrl} onKeyframe={async (key) => {
+                  await putVideoKeyframe(videoJob.id, key);
+                  setVideoJob(await getVideoJob(videoJob.id));
+                }} />
+              </div>
             )}
             {busy === "uploading" && (
               <p className="subtext mt-2 flex items-center gap-2 text-[10px] text-cyan-600 dark:text-cyan-400">
@@ -3409,6 +3469,46 @@ export default function App() {
           {drawMode && (
             <div className="subtext rounded-lg border border-cyan-300 bg-cyan-50 px-4 py-2 text-xs text-cyan-800 dark:border-cyan-800 dark:bg-cyan-950/30 dark:text-cyan-300">
               Draw mode active. Click and drag on the image to create a new bounding box. Press A or Esc to exit.
+            </div>
+          )}
+
+          {tinyUploadAdvisory && (
+            <div className="subtext flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+              <AlertTriangle size={14} className="shrink-0" />
+              Small source image: detection will continue, but fine marks and narrow glyphs may require review.
+            </div>
+          )}
+
+          {qualityReviewRegions.length > 0 && (
+            <div className="subtext rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+              <button
+                type="button"
+                onClick={() => setOcrReviewOpen((v) => !v)}
+                className="flex w-full cursor-pointer items-center gap-2 font-medium"
+                aria-expanded={ocrReviewOpen}
+              >
+                <ShieldAlert size={14} className="shrink-0" />
+                {qualityReviewRegions.length} OCR region{qualityReviewRegions.length === 1 ? "" : "s"} need{qualityReviewRegions.length === 1 ? "s" : ""} attention
+              </button>
+              <div className={`ocr-review-content${ocrReviewOpen ? " expanded" : ""}`}>
+                <div className="min-h-0">
+                  <p className="mt-2 text-[11px] opacity-85">Detection is retained. Automatic OCR corrections were withheld where the crop cannot support them reliably.</p>
+                  <div className="mt-2 space-y-1.5">
+                    {qualityReviewRegions.map((inst) => {
+                      const quality = inst.ocr_quality!;
+                      return (
+                        <div key={inst.id} className="flex flex-wrap items-center gap-2 rounded bg-white/50 px-2 py-1.5 dark:bg-black/15">
+                          <button onClick={() => { setSelectedId(inst.id); setStep(1); }} className="font-mono underline underline-offset-2 hover:no-underline">{inst.id}</button>
+                          <span className="max-w-[28rem] truncate">{quality.reasons.map((reason) => reason.replace(/_/g, " ")).join(" · ")}</span>
+                          <button onClick={() => { setSelectedId(inst.id); void onOcr(inst.id); }} disabled={ocrLoading === inst.id} className="ml-auto rounded bg-amber-700 px-1.5 py-0.5 text-[10px] text-white hover:bg-amber-800 disabled:opacity-50">
+                            {ocrLoading === inst.id ? "re-reading…" : "re-read"}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
@@ -5194,8 +5294,8 @@ export default function App() {
         <div className="title-confirm-backdrop" onClick={() => setShowCapturePrompt(false)}>
           <div className="bezier-card title-confirm-card" style={{ maxWidth: "420px" }} onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-2 mb-2">
-              <Sparkles size={18} className="text-cyan-500 dark:text-cyan-400" />
-              <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">begin bounding box capture</p>
+              <VectorSquare size={18} className="text-cyan-500 dark:text-cyan-400" />
+              <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">begin capture</p>
             </div>
             <p className="subtext text-sm text-zinc-600 dark:text-zinc-400 mb-4">
               how would you like to identify the text regions in{" "}

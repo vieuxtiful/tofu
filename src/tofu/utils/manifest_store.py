@@ -201,6 +201,7 @@ def _inst_to_dict(inst: InstText) -> dict:
         "ocr_correction": inst.ocr_correction,
         "recognition_history": inst.recognition_history,
         "ocr_provenance": inst.ocr_provenance,
+        "ocr_quality": inst.ocr_quality,
         "repair_provenance": inst.repair_provenance,
         "reconstruction_profile": (
             asdict(inst.reconstruction_profile)
@@ -382,6 +383,7 @@ def _dict_to_manifest(data: dict) -> TextManifest:
             ocr_correction=idict.get("ocr_correction"),
             recognition_history=idict.get("recognition_history"),
             ocr_provenance=idict.get("ocr_provenance"),
+            ocr_quality=idict.get("ocr_quality"),
             repair_provenance=idict.get("repair_provenance"),
             reconstruction_profile=(
                 ReconstructionProfile(**idict["reconstruction_profile"])
