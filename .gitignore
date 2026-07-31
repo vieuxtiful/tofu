@@ -29,6 +29,11 @@ Thumbs.db
 .env
 .env.local
 
+# Generated video fixtures: the clips are large and reproducible from
+# scripts/video_fixtures.py. The .gt.json ground truth stays tracked --
+# that is the part worth reading in a diff.
+tests/fixtures/video/*.mp4
+
 # Server runtime data
 server/uploads/
 server/outputs/

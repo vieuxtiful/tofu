@@ -185,6 +185,7 @@ class InstText:
     ocr_correction: Optional[Dict[str, Any]] = None  ## recognition_correct: {applied, original_text/candidate_text, corrected_text?, reason}
     recognition_history: Optional[List[Dict[str, Any]]] = None  ## immutable audit trail of engine candidates and accepted/rejected corrections
     ocr_provenance: Optional[Dict[str, Any]] = None  ## multi-provider observations, arbitration and independent verification
+    ocr_quality: Optional[Dict[str, Any]] = None  ## deterministic observability assessment; informs review-only OCR/Savor gating
     repair_provenance: Optional[Dict[str, Any]] = None  ## cleanse provider, confidence gate, fallback and review evidence
     reconstruction_profile: Optional[ReconstructionProfile] = None
     font_match: Optional[Dict[str, Any]] = None  ## evidence-gated visual font identification + installed/commercial alternatives; never silently overrides a user font choice
@@ -313,15 +314,9 @@ class RenderParams: ## static render spec consumed by scribe (time-agnostic)
     resolution: Optional[tuple[int, int]] = None
     rotation: Optional[float] = None      ## degrees
 
-@dataclass
-class CameraTrack: ## temporal wrapper animating a RenderParams per scene (video compositor)
-    render_params: RenderParams
-    anchor_track_id: Optional[str] = None     ## entity the text is anchored to (parallax control)
-    trajectory: Optional[List[tuple[int, BBox]]] = None  ## (frame_index, position) keyframes
-    start_frame: int = 0
-    end_frame: int = 0                        ## == start_frame for static (frames=1)
-    fps: Optional[float] = None
-    duration: Optional[float] = None          ## seconds; None for static
+## CameraTrack lived here: a RenderParams animated along a trajectory. it was
+## never used. the video compositor needs the opposite direction — "given this
+## frame, what do I draw" — which is tofu.video.plan.ResolvedFramePlan.
 
 @dataclass
 class VldtnClass:

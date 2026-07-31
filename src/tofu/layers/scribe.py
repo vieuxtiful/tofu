@@ -5,9 +5,10 @@ style-aware text regeneration layer.
 
 scribe renders target-language text onto the cleansed asset, matching
 the source styling captured by scene. scribe is deliberately
-time-ignorant: it consumes a static RenderParams per region. the
-future video compositor animates scribe's output by wrapping
-RenderParams in a CameraTrack (entity anchor, trajectory, duration).
+time-ignorant: it consumes a static RenderParams per region. the video
+compositor keeps it that way by resolving every temporal decision ahead
+of the render, into one ResolvedFramePlan per frame, and handing scribe
+the RenderParams that plan already settled on.
 
 implementation: Pillow-based renderer. per region it renders
 inst.target_text (untranslated regions are skipped), wrapped to fit the

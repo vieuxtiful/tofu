@@ -1,0 +1,28 @@
+{
+  "audio": null,
+  "cuts": [
+    30,
+    60,
+    90,
+    120
+  ],
+  "duration": 5.0,
+  "expect": {
+    "cut_frames": [
+      30,
+      60,
+      90,
+      120
+    ],
+    "cut_tolerance_frames": 1,
+    "max_false_positives": 0
+  },
+  "fps": 30,
+  "frame_count": 150,
+  "height": 360,
+  "kind": "hard-cuts",
+  "name": "hard-cuts",
+  "text": [],
+  "transitions": [],
+  "width": 640
+}
