@@ -94,7 +94,31 @@ lang_to_script: Dict[str, str] = {
     "es-MX": "Latn", # mexican spanish
     "es-US": "Latn", # united states spanish
     "pt-BR": "Latn", # brazilian portuguese
-    "fr-CA": "Latn"  # canadian french
+    "fr-CA": "Latn", # canadian french
+    # full bcp-47 locale tags for every base language above.  the bare
+    # codes (en, es, …) are kept for backward compat with stored projects
+    # and tests; the wizard now emits these full tags instead.  both
+    # resolve to the same script.
+    "en-GB": "Latn", "es-ES": "Latn", "fr-FR": "Latn", "de-DE": "Latn",
+    "it-IT": "Latn", "pt-PT": "Latn", "nl-NL": "Latn", "sv-SE": "Latn",
+    "no-NO": "Latn", "da-DK": "Latn", "fi-FI": "Latn", "is-IS": "Latn",
+    "pl-PL": "Latn", "cs-CZ": "Latn", "sk-SK": "Latn", "hu-HU": "Latn",
+    "ro-RO": "Latn", "bg-BG": "Cyrl", "sr-RS": "Cyrl",
+    "sr-Latn-RS": "Latn", "sr-Cyrl-RS": "Cyrl",
+    "hr-HR": "Latn", "sl-SI": "Latn", "et-EE": "Latn", "lv-LV": "Latn",
+    "lt-LT": "Latn", "el-GR": "Grek", "ru-RU": "Cyrl", "uk-UA": "Cyrl",
+    "tr-TR": "Latn",
+    "ja-JP": "Jpan", "ko-KR": "Kore",
+    "zh-CN": "Hans", "zh-SG": "Hans", "zh-TW": "Hant",
+    "zh-HK": "Hant", "zh-MO": "Hant", "mn-MN": "Cyrl",
+    "hi-IN": "Deva", "bn-BD": "Beng", "pa-IN": "Guru", "gu-IN": "Gujr",
+    "mr-IN": "Deva", "ta-IN": "Taml", "te-IN": "Telu", "kn-IN": "Knda",
+    "ml-IN": "Mlym", "si-LK": "Sinh", "am-ET": "Ethi", "ti-ER": "Ethi",
+    "vi-VN": "Latn", "th-TH": "Thai", "my-MM": "Mymr", "km-KH": "Khmr",
+    "lo-LA": "Laoo",
+    "ar-SA": "Arab", "fa-IR": "Arab", "he-IL": "Hebr",
+    "hy-AM": "Armn", "ka-GE": "Geor", "kk-KZ": "Cyrl",
+    "uz-UZ": "Latn", "az-AZ": "Latn",
 }
 
 # issue-code registry (the full set this layer can raise):
@@ -151,12 +175,18 @@ def expansion_factor(lang: Optional[str]) -> float:
 
     Falls back to the language's SCRIPT before falling back to 1.0, so an
     unlisted language inherits a plausible figure instead of silently
-    claiming english-equivalent width.
+    claiming english-equivalent width.  Locale-tagged codes (``en-US``,
+    ``es-ES``) that aren't named individually inherit their base language's
+    factor via subtag stripping before falling through to the script default.
     """
     if not lang:
         return 1.0
     if lang in EXPANSION_FACTORS:
         return EXPANSION_FACTORS[lang]
+    # try the base language (strip region/script subtag): en-US → en
+    base = lang.split("-")[0].lower() if "-" in lang else ""
+    if base and base in EXPANSION_FACTORS:
+        return EXPANSION_FACTORS[base]
     return SCRIPT_EXPANSION_FACTORS.get(lang_to_script.get(lang, ""), 1.0)
 
 # fit thresholds: predicted_width / bbox_width
