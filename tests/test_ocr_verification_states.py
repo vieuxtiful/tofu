@@ -54,8 +54,22 @@ class TestNormalize:
         assert normalize_for_ocr_agreement("HELLO", "en") == "hello"
 
     def test_no_casefold_cjk(self):
-        result = normalize_for_ocr_agreement("ＨＥＬＬＯ", "ja")
-        assert "Ｈ" in result  # fullwidth preserved
+        # Case carries no meaning in Japanese script, but the Latin runs inside
+        # Japanese text keep theirs -- a trademark read as "SONY" must not be
+        # folded to "sony" here.  (This used to assert on a FULLWIDTH string,
+        # which NFKC folds to ASCII before the casefold branch is ever reached,
+        # so it tested compatibility folding rather than the property it names.)
+        assert normalize_for_ocr_agreement("HELLO", "ja") == "HELLO"
+        assert normalize_for_ocr_agreement("HELLO", "zh-cn") == "HELLO"
+
+    def test_compatibility_forms_fold_for_every_language(self):
+        # Deliberate, and shared with verify._normalize and ocr_arbitration:
+        # this is a comparison key for AGREEMENT, never stored text.  Two
+        # engines reading one glyph as fullwidth and halfwidth agree about the
+        # content, and folding is what stops that becoming a false disagreement.
+        assert normalize_for_ocr_agreement("ＨＥＬＬＯ", "ja") == "HELLO"
+        assert normalize_for_ocr_agreement("ﾊﾛｰ", "ja") == "ハロー"
+        assert normalize_for_ocr_agreement("１２３", "ja") == "123"
 
 
 class TestVerificationStates:
