@@ -1,0 +1,16 @@
+{
+  "audio": null,
+  "cuts": [],
+  "duration": 3.0,
+  "expect": {
+    "rotation": 90
+  },
+  "fps": 30,
+  "frame_count": 90,
+  "height": 360,
+  "kind": "rotated-90",
+  "name": "rotated-90",
+  "text": [],
+  "transitions": [],
+  "width": 640
+}

@@ -1,0 +1,19 @@
+{
+  "audio": {
+    "offset_seconds": 0.25,
+    "streams": 1
+  },
+  "cuts": [],
+  "duration": 5.0,
+  "expect": {
+    "max_av_drift_seconds": 0.02
+  },
+  "fps": 30,
+  "frame_count": 150,
+  "height": 360,
+  "kind": "audio-delayed",
+  "name": "audio-delayed",
+  "text": [],
+  "transitions": [],
+  "width": 640
+}

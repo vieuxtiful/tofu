@@ -89,6 +89,63 @@ CREATE TABLE IF NOT EXISTS tm_records (
 CREATE INDEX IF NOT EXISTS idx_tm_project ON tm_records(project_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_tm_lookup ON tm_records(project_id, source_lang, target_lang);
 CREATE INDEX IF NOT EXISTS idx_tm_normalized ON tm_records(normalized_text);
+CREATE TABLE IF NOT EXISTS video_jobs (
+  id TEXT PRIMARY KEY, project_id TEXT, asset_id TEXT NOT NULL,
+  status TEXT NOT NULL, stage TEXT NOT NULL, progress REAL NOT NULL DEFAULT 0,
+  cancel_requested INTEGER NOT NULL DEFAULT 0, error TEXT,
+  manifest_json TEXT, dependency_revision INTEGER NOT NULL DEFAULT 1,
+  pipeline_version TEXT NOT NULL DEFAULT 'production-v2', upgrade_required INTEGER NOT NULL DEFAULT 0,
+  chunk_size INTEGER NOT NULL DEFAULT 240,
+  created_at REAL NOT NULL, updated_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_video_jobs_asset ON video_jobs(asset_id, updated_at DESC);
+CREATE TABLE IF NOT EXISTS video_chunks (
+  job_id TEXT NOT NULL REFERENCES video_jobs(id) ON DELETE CASCADE,
+  chunk_index INTEGER NOT NULL, start_frame INTEGER NOT NULL, end_frame INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending', stage TEXT, error TEXT, checksum TEXT,
+  dependency_revision INTEGER NOT NULL DEFAULT 1, attempts INTEGER NOT NULL DEFAULT 0,
+  completed_at REAL,
+  checkpoint_json TEXT, checkpoint_version INTEGER NOT NULL DEFAULT 0, analyzer_revision TEXT,
+  PRIMARY KEY(job_id, chunk_index)
+);
+CREATE INDEX IF NOT EXISTS idx_video_chunks_resume ON video_chunks(job_id, status, chunk_index DESC);
+CREATE TABLE IF NOT EXISTS video_tracks (
+  job_id TEXT NOT NULL REFERENCES video_jobs(id) ON DELETE CASCADE,
+  track_id TEXT NOT NULL, shot_id TEXT NOT NULL, start_frame INTEGER NOT NULL,
+  end_frame INTEGER NOT NULL, data_json TEXT NOT NULL, PRIMARY KEY(job_id, track_id)
+);
+CREATE TABLE IF NOT EXISTS video_observations (
+  job_id TEXT NOT NULL REFERENCES video_jobs(id) ON DELETE CASCADE,
+  observation_id TEXT NOT NULL, track_id TEXT NOT NULL, frame_index INTEGER NOT NULL,
+  pts_seconds REAL NOT NULL, data_json TEXT NOT NULL, PRIMARY KEY(job_id, observation_id)
+);
+CREATE INDEX IF NOT EXISTS idx_video_obs_range ON video_observations(job_id, frame_index);
+CREATE TABLE IF NOT EXISTS video_keyframes (
+  job_id TEXT NOT NULL REFERENCES video_jobs(id) ON DELETE CASCADE,
+  keyframe_id TEXT NOT NULL, track_id TEXT NOT NULL, frame_index INTEGER NOT NULL,
+  data_json TEXT NOT NULL, PRIMARY KEY(job_id, keyframe_id)
+);
+CREATE TABLE IF NOT EXISTS video_issues (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, job_id TEXT NOT NULL,
+  track_id TEXT, frame_index INTEGER, code TEXT NOT NULL, severity TEXT NOT NULL,
+  detail TEXT, resolved INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS video_artifacts (
+  id TEXT PRIMARY KEY, job_id TEXT NOT NULL, kind TEXT NOT NULL,
+  path TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'ready', created_at REAL NOT NULL,
+  verification_json TEXT
+);
+CREATE TABLE IF NOT EXISTS video_operations (
+  id TEXT PRIMARY KEY, job_id TEXT NOT NULL, kind TEXT NOT NULL,
+  start_frame INTEGER NOT NULL, end_frame INTEGER NOT NULL,
+  status TEXT NOT NULL, error TEXT, spec_json TEXT NOT NULL DEFAULT '{}',
+  lease_owner TEXT, lease_expires REAL, heartbeat_at REAL,
+  attempts INTEGER NOT NULL DEFAULT 0, max_attempts INTEGER NOT NULL DEFAULT 3,
+  cancellation_generation INTEGER NOT NULL DEFAULT 0,
+  dependency_revision INTEGER NOT NULL DEFAULT 1, dedupe_key TEXT,
+  created_at REAL NOT NULL, updated_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_video_operations_recovery ON video_operations(status, updated_at);
 """
 
 
@@ -127,6 +184,395 @@ def init_db() -> None:
         if "content_hash" not in asset_cols:
             con.execute("ALTER TABLE project_assets ADD COLUMN content_hash TEXT")
         con.execute("CREATE INDEX IF NOT EXISTS idx_assets_hash ON project_assets(content_hash)")
+        operation_cols = {r["name"] for r in con.execute("PRAGMA table_info(video_operations)")}
+        operation_additions = {
+            "spec_json": "TEXT NOT NULL DEFAULT '{}'", "lease_owner": "TEXT",
+            "lease_expires": "REAL", "heartbeat_at": "REAL",
+            "attempts": "INTEGER NOT NULL DEFAULT 0", "max_attempts": "INTEGER NOT NULL DEFAULT 3",
+            "cancellation_generation": "INTEGER NOT NULL DEFAULT 0",
+            "dependency_revision": "INTEGER NOT NULL DEFAULT 1", "dedupe_key": "TEXT",
+        }
+        for name, declaration in operation_additions.items():
+            if name not in operation_cols:
+                con.execute(f"ALTER TABLE video_operations ADD COLUMN {name} {declaration}")
+        con.execute("CREATE INDEX IF NOT EXISTS idx_video_operations_dedupe ON video_operations(job_id,kind,dedupe_key)")
+        job_cols = {r["name"] for r in con.execute("PRAGMA table_info(video_jobs)")}
+        if "dependency_revision" not in job_cols:
+            con.execute("ALTER TABLE video_jobs ADD COLUMN dependency_revision INTEGER NOT NULL DEFAULT 1")
+        if "pipeline_version" not in job_cols:
+            con.execute("ALTER TABLE video_jobs ADD COLUMN pipeline_version TEXT NOT NULL DEFAULT 'prototype-v1'")
+        if "upgrade_required" not in job_cols:
+            con.execute("ALTER TABLE video_jobs ADD COLUMN upgrade_required INTEGER NOT NULL DEFAULT 1")
+        # migration: chunk_size used to live only in the operation spec, so /resume and
+        # /upgrade guessed 240 while the chunk rows had been cut on a different stride.
+        if "chunk_size" not in job_cols:
+            con.execute("ALTER TABLE video_jobs ADD COLUMN chunk_size INTEGER NOT NULL DEFAULT 240")
+        artifact_cols = {r["name"] for r in con.execute("PRAGMA table_info(video_artifacts)")}
+        if "verification_json" not in artifact_cols:
+            con.execute("ALTER TABLE video_artifacts ADD COLUMN verification_json TEXT")
+        con.execute("UPDATE video_artifacts SET status='stale' WHERE job_id IN (SELECT id FROM video_jobs WHERE pipeline_version='prototype-v1') AND kind IN ('preview','export')")
+        con.execute("DELETE FROM video_observations WHERE job_id IN (SELECT id FROM video_jobs WHERE pipeline_version='prototype-v1')")
+        con.execute("DELETE FROM video_keyframes WHERE NOT EXISTS (SELECT 1 FROM video_tracks t WHERE t.job_id=video_keyframes.job_id AND t.track_id=video_keyframes.track_id)")
+        chunk_cols = {r["name"] for r in con.execute("PRAGMA table_info(video_chunks)")}
+        for name, declaration in {"checksum": "TEXT", "dependency_revision": "INTEGER NOT NULL DEFAULT 1",
+                                  "attempts": "INTEGER NOT NULL DEFAULT 0", "completed_at": "REAL",
+                                  "checkpoint_json": "TEXT",
+                                  "checkpoint_version": "INTEGER NOT NULL DEFAULT 0",
+                                  "analyzer_revision": "TEXT"}.items():
+            if name not in chunk_cols: con.execute(f"ALTER TABLE video_chunks ADD COLUMN {name} {declaration}")
+
+
+def create_video_job(asset_id: str, project_id: Optional[str], manifest: Dict[str, Any],
+                     chunk_size: int = 240) -> Dict[str, Any]:
+    job_id, now = uuid.uuid4().hex[:16], time.time()
+    frame_count = int(manifest.get("frame_count", 0))
+    with _conn() as con:
+        # chunk_size is persisted, not re-guessed: the video_chunks rows below are cut on
+        # this stride, and every later resume must address the very same rows.
+        con.execute("INSERT INTO video_jobs (id,project_id,asset_id,status,stage,manifest_json,pipeline_version,upgrade_required,chunk_size,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                    (job_id, project_id, asset_id, "queued", "ingest", json.dumps(manifest), "production-v2", 0, chunk_size, now, now))
+        for index, start in enumerate(range(0, frame_count, chunk_size)):
+            con.execute("INSERT INTO video_chunks (job_id,chunk_index,start_frame,end_frame,status) VALUES (?,?,?,?,?)",
+                        (job_id, index, start, min(frame_count - 1, start + chunk_size - 1), "pending"))
+    return get_video_job(job_id)  # type: ignore[return-value]
+
+
+def get_video_job(job_id: str) -> Optional[Dict[str, Any]]:
+    with _conn() as con:
+        row = con.execute("SELECT * FROM video_jobs WHERE id=?", (job_id,)).fetchone()
+        if not row:
+            return None
+        chunks = con.execute("SELECT * FROM video_chunks WHERE job_id=? ORDER BY chunk_index", (job_id,)).fetchall()
+    out = dict(row)
+    out["manifest"] = json.loads(out.pop("manifest_json") or "{}")
+    out["chunks"] = [dict(c) for c in chunks]
+    return out
+
+
+def latest_video_job(asset_id: str) -> Optional[Dict[str, Any]]:
+    with _conn() as con:
+        row = con.execute("SELECT id FROM video_jobs WHERE asset_id=? ORDER BY updated_at DESC LIMIT 1", (asset_id,)).fetchone()
+    return get_video_job(row["id"]) if row else None
+
+
+def video_artifact_url(job_id: str, kind: str) -> Optional[str]:
+    with _conn() as con:
+        row = con.execute("SELECT path FROM video_artifacts WHERE job_id=? AND kind=? AND status='ready' ORDER BY created_at DESC LIMIT 1",
+                          (job_id, kind)).fetchone()
+    if not row:
+        return None
+    try:
+        relative = Path(row["path"]).resolve().relative_to((Path(__file__).resolve().parents[1] / "server" / "outputs").resolve())
+    except ValueError:
+        return None
+    return "/outputs/" + relative.as_posix()
+
+
+def update_video_job(job_id: str, **fields: Any) -> Optional[Dict[str, Any]]:
+    allowed = {"status", "stage", "progress", "error", "cancel_requested", "manifest_json"}
+    values = {k: (json.dumps(v) if k == "manifest_json" and not isinstance(v, str) else v)
+              for k, v in fields.items() if k in allowed}
+    if values:
+        values["updated_at"] = time.time()
+        with _conn() as con:
+            con.execute("UPDATE video_jobs SET " + ",".join(f"{k}=?" for k in values) + " WHERE id=?",
+                        (*values.values(), job_id))
+    return get_video_job(job_id)
+
+
+def list_video_timeline(job_id: str, start: int, end: int, limit: int = 1000, cursor: int = 0) -> Dict[str, Any]:
+    with _conn() as con:
+        tracks = con.execute("SELECT data_json FROM video_tracks WHERE job_id=? ORDER BY start_frame", (job_id,)).fetchall()
+        obs = con.execute("SELECT data_json FROM video_observations WHERE job_id=? AND frame_index BETWEEN ? AND ? ORDER BY frame_index,observation_id LIMIT ? OFFSET ?",
+                          (job_id, start, end, limit + 1, cursor)).fetchall()
+        keys = con.execute("SELECT data_json FROM video_keyframes WHERE job_id=? AND frame_index BETWEEN ? AND ? ORDER BY frame_index",
+                           (job_id, start, end)).fetchall()
+        issues = con.execute("SELECT * FROM video_issues WHERE job_id=? AND (frame_index IS NULL OR frame_index BETWEEN ? AND ?) ORDER BY frame_index",
+                             (job_id, start, end)).fetchall()
+    truncated = len(obs) > limit; page = obs[:limit]
+    return {"tracks": [json.loads(r[0]) for r in tracks], "observations": [json.loads(r[0]) for r in page],
+            "keyframes": [json.loads(r[0]) for r in keys], "issues": [dict(r) for r in issues],
+            "truncated": truncated, "next_cursor": cursor + limit if truncated else None}
+
+
+def upsert_video_keyframe(job_id: str, data: Dict[str, Any]) -> None:
+    with _conn() as con:
+        con.execute("INSERT OR REPLACE INTO video_keyframes (job_id,keyframe_id,track_id,frame_index,data_json) VALUES (?,?,?,?,?)",
+                    (job_id, data["id"], data["track_id"], data["frame_index"], json.dumps(data)))
+        con.execute("UPDATE video_artifacts SET status='stale' WHERE job_id=? AND kind IN ('preview','export')", (job_id,))
+        con.execute("UPDATE video_jobs SET dependency_revision=dependency_revision+1,updated_at=? WHERE id=?", (time.time(), job_id))
+
+
+def reset_video_analysis(job_id: str, *, from_frame: int = 0) -> None:
+    """Clear analysis output at or after `from_frame`.
+
+    Scoped, because /resume calls this: wiping every chunk back to pending is
+    exactly what made a resume start over from frame zero. Tracks that straddle
+    the boundary are re-emitted by the analyzer -- they are in the checkpoint's
+    active set -- so their end_frame self-heals through INSERT OR REPLACE.
+    Tracks born after the boundary and absent from the checkpoint are orphans,
+    and deleting them is the point.
+    """
+    with _conn() as con:
+        con.execute("DELETE FROM video_observations WHERE job_id=? AND frame_index>=?", (job_id, from_frame))
+        con.execute("DELETE FROM video_tracks WHERE job_id=? AND start_frame>=?", (job_id, from_frame))
+        con.execute("DELETE FROM video_issues WHERE job_id=? AND (frame_index IS NULL OR frame_index>=?)",
+                    (job_id, from_frame))
+        con.execute("UPDATE video_chunks SET status='pending',stage=NULL,error=NULL,checksum=NULL,"
+                    "completed_at=NULL,checkpoint_json=NULL,checkpoint_version=0,analyzer_revision=NULL "
+                    "WHERE job_id=? AND start_frame>=?", (job_id, from_frame))
+
+
+def commit_video_analysis_chunk(job_id: str, chunk_index: int, tracks: List[Dict[str, Any]],
+                                observations: List[Dict[str, Any]], checksum: str,
+                                dependency_revision: int, *,
+                                checkpoint: Optional[Dict[str, Any]] = None,
+                                analyzer_revision: Optional[str] = None) -> None:
+    """Write a chunk's rows and the tracker state that describes them, atomically.
+
+    One transaction is load-bearing: a checkpoint that survived without its
+    observations would resume past work that was never persisted, and
+    observations without a checkpoint would be re-analyzed and duplicated.
+    """
+    now = time.time()
+    with _conn() as con:
+        con.executemany("INSERT OR REPLACE INTO video_tracks (job_id,track_id,shot_id,start_frame,end_frame,data_json) VALUES (?,?,?,?,?,?)",
+                        [(job_id, t["id"], t["shot_id"], t["start_frame"], t["end_frame"], json.dumps(t)) for t in tracks])
+        con.executemany("INSERT OR REPLACE INTO video_observations (job_id,observation_id,track_id,frame_index,pts_seconds,data_json) VALUES (?,?,?,?,?,?)",
+                        [(job_id, o["id"], o["track_id"], o["frame_index"], o["pts_seconds"], json.dumps(o)) for o in observations])
+        con.execute("UPDATE video_chunks SET status='completed',stage='analysis',checksum=?,dependency_revision=?,"
+                    "attempts=attempts+1,completed_at=?,checkpoint_json=?,checkpoint_version=?,analyzer_revision=? "
+                    "WHERE job_id=? AND chunk_index=?",
+                    (checksum, dependency_revision, now,
+                     json.dumps(checkpoint) if checkpoint is not None else None,
+                     int((checkpoint or {}).get("version", 0)), analyzer_revision,
+                     job_id, chunk_index))
+
+
+def latest_video_checkpoint(job_id: str, *, analyzer_revision: str, dependency_revision: int,
+                            source_fingerprint: str) -> Optional[Dict[str, Any]]:
+    """Newest usable checkpoint, or None to start over.
+
+    Every rejection here is a case where continuing would be worse than
+    redoing the work: a checkpoint written by different analyzer code, one
+    belonging to a superseded revision of the job, or one describing a
+    different source file.
+    """
+    with _conn() as con:
+        rows = con.execute(
+            "SELECT chunk_index,checkpoint_json,analyzer_revision,dependency_revision "
+            "FROM video_chunks WHERE job_id=? AND status='completed' AND checkpoint_json IS NOT NULL "
+            "ORDER BY chunk_index DESC", (job_id,)).fetchall()
+    for row in rows:
+        if row["analyzer_revision"] != analyzer_revision:
+            continue
+        if int(row["dependency_revision"]) != int(dependency_revision):
+            continue
+        try:
+            payload = json.loads(row["checkpoint_json"])
+        except (TypeError, ValueError):
+            continue
+        if payload.get("source_fingerprint") and payload["source_fingerprint"] != source_fingerprint:
+            continue
+        return payload
+    return None
+
+
+def record_video_issues(job_id: str, issues: List[Dict[str, Any]]) -> None:
+    """Append issues without disturbing what is already there.
+
+    finalize_video_analysis replaces the table wholesale; this does not. Resume
+    provenance is written while analysis is still running, so it has to survive
+    the finalization that follows it.
+    """
+    with _conn() as con:
+        con.executemany("INSERT INTO video_issues (job_id,track_id,frame_index,code,severity,detail) VALUES (?,?,?,?,?,?)",
+                        [(job_id, i.get("track_id"), i.get("frame_index"), i["code"],
+                          i.get("severity", "review"), i.get("detail")) for i in issues])
+
+
+def list_video_tracks(job_id: str) -> List[Dict[str, Any]]:
+    with _conn() as con:
+        rows = con.execute("SELECT data_json FROM video_tracks WHERE job_id=? ORDER BY start_frame",
+                           (job_id,)).fetchall()
+    return [json.loads(row["data_json"]) for row in rows]
+
+
+def video_analysis_progress(job_id: str) -> Dict[str, Any]:
+    """How much of the analysis is already durable."""
+    with _conn() as con:
+        row = con.execute(
+            "SELECT COUNT(*) AS total, SUM(status='completed') AS done, "
+            "MAX(CASE WHEN status='completed' THEN end_frame END) AS last_frame "
+            "FROM video_chunks WHERE job_id=?", (job_id,)).fetchone()
+    return {"chunks": int(row["total"] or 0), "completed_chunks": int(row["done"] or 0),
+            "last_completed_frame": row["last_frame"]}
+
+
+def finalize_video_analysis(job_id: str, tracks: List[Dict[str, Any]], issues: List[Dict[str, Any]]) -> None:
+    with _conn() as con:
+        con.executemany("INSERT OR REPLACE INTO video_tracks (job_id,track_id,shot_id,start_frame,end_frame,data_json) VALUES (?,?,?,?,?,?)",
+                        [(job_id, t["id"], t["shot_id"], t["start_frame"], t["end_frame"], json.dumps(t)) for t in tracks])
+        con.execute("DELETE FROM video_issues WHERE job_id=?", (job_id,))
+        con.executemany("INSERT INTO video_issues (job_id,track_id,frame_index,code,severity,detail) VALUES (?,?,?,?,?,?)",
+                        [(job_id, i.get("track_id"), i.get("frame_index"), i["code"], i.get("severity", "review"), i.get("detail")) for i in issues])
+
+
+def get_video_track(job_id: str, track_id: str) -> Optional[Dict[str, Any]]:
+    with _conn() as con:
+        row = con.execute("SELECT data_json FROM video_tracks WHERE job_id=? AND track_id=?", (job_id, track_id)).fetchone()
+    return json.loads(row["data_json"]) if row else None
+
+
+def update_video_track(job_id: str, track_id: str, changes: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    track = get_video_track(job_id, track_id)
+    if not track:
+        return None
+    track.update(changes)
+    track["revision"] = int(track.get("revision", 1)) + 1
+    with _conn() as con:
+        con.execute("UPDATE video_tracks SET data_json=? WHERE job_id=? AND track_id=?",
+                    (json.dumps(track), job_id, track_id))
+        con.execute("UPDATE video_artifacts SET status='stale' WHERE job_id=? AND kind IN ('preview','export')", (job_id,))
+        con.execute("UPDATE video_jobs SET dependency_revision=dependency_revision+1,updated_at=? WHERE id=?", (time.time(), job_id))
+    return track
+
+
+def video_frame_count(job_id: str) -> Optional[int]:
+    job = get_video_job(job_id)
+    return int(job["manifest"].get("frame_count", 0)) if job else None
+
+
+def mark_video_upgrade(job_id: str, *, completed: bool) -> None:
+    with _conn() as con:
+        con.execute("UPDATE video_jobs SET pipeline_version='production-v2',upgrade_required=?,updated_at=? WHERE id=?",
+                    (0 if completed else 1, time.time(), job_id))
+
+
+def video_composition_data(job_id: str, start: int, end: int) -> Dict[str, Any]:
+    with _conn() as con:
+        tracks = con.execute("SELECT data_json FROM video_tracks WHERE job_id=?", (job_id,)).fetchall()
+        observations = con.execute("SELECT data_json FROM video_observations WHERE job_id=? AND frame_index BETWEEN ? AND ? ORDER BY frame_index",
+                                   (job_id, start, end)).fetchall()
+        keyframes = con.execute("SELECT data_json FROM video_keyframes WHERE job_id=? ORDER BY frame_index", (job_id,)).fetchall()
+    return {"tracks": [json.loads(row[0]) for row in tracks],
+            "observations": [json.loads(row[0]) for row in observations],
+            "keyframes": [json.loads(row[0]) for row in keyframes]}
+
+
+def save_video_artifact(job_id: str, kind: str, path: str,
+                        verification: Optional[Dict[str, Any]] = None) -> str:
+    artifact_id = uuid.uuid4().hex[:16]
+    with _conn() as con:
+        con.execute("UPDATE video_artifacts SET status='stale' WHERE job_id=? AND kind=?", (job_id, kind))
+        con.execute("INSERT INTO video_artifacts (id,job_id,kind,path,status,created_at,verification_json) VALUES (?,?,?,?,?,?,?)",
+                    (artifact_id, job_id, kind, path, "ready", time.time(),
+                     json.dumps(verification) if verification is not None else None))
+    return artifact_id
+
+
+def prune_video_artifact_records(job_id: str, kind: str, keep: int) -> List[str]:
+    with _conn() as con:
+        rows = con.execute("SELECT id,path FROM video_artifacts WHERE job_id=? AND kind=? ORDER BY created_at DESC", (job_id, kind)).fetchall()
+        removed = rows[max(0, keep):]
+        if removed: con.executemany("DELETE FROM video_artifacts WHERE id=?", [(row["id"],) for row in removed])
+    return [str(row["path"]) for row in removed]
+
+
+def create_video_operation(job_id: str, kind: str, start: int, end: int, *,
+                           spec: Optional[Dict[str, Any]] = None, dependency_revision: int = 1,
+                           dedupe_key: Optional[str] = None, max_attempts: int = 3) -> str:
+    operation_id, now = uuid.uuid4().hex[:16], time.time()
+    with _conn() as con:
+        if dedupe_key:
+            existing = con.execute("SELECT id FROM video_operations WHERE job_id=? AND kind=? AND dedupe_key=? AND status IN ('queued','running','completed') ORDER BY created_at DESC LIMIT 1",
+                                   (job_id, kind, dedupe_key)).fetchone()
+            if existing: return str(existing["id"])
+        if kind == "preview":
+            con.execute("UPDATE video_operations SET status='superseded',updated_at=? WHERE job_id=? AND kind='preview' AND status='queued'", (now, job_id))
+        con.execute("INSERT INTO video_operations (id,job_id,kind,start_frame,end_frame,status,spec_json,max_attempts,dependency_revision,dedupe_key,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (operation_id, job_id, kind, start, end, "queued", json.dumps(spec or {}), max_attempts,
+                     dependency_revision, dedupe_key, now, now))
+    return operation_id
+
+
+def update_video_operation(operation_id: str, status: str, error: Optional[str] = None) -> None:
+    with _conn() as con:
+        con.execute("UPDATE video_operations SET status=?,error=?,updated_at=? WHERE id=?",
+                    (status, error, time.time(), operation_id))
+
+
+def claim_video_operation(worker_id: str, lease_seconds: int = 30) -> Optional[Dict[str, Any]]:
+    now = time.time()
+    with _conn() as con:
+        con.execute("BEGIN IMMEDIATE")
+        # The lease alone is exclusive per operation, which does not stop two workers from
+        # picking up two *different* operations of the same kind for one job and racing over
+        # the same rows.  The NOT EXISTS guard makes exclusion a property of the claim itself,
+        # so it holds whether or not the caller remembered a dedupe key.
+        row = con.execute(
+            "SELECT * FROM video_operations o WHERE (o.status='queued' OR (o.status='running' AND o.lease_expires<?))"
+            " AND o.attempts<o.max_attempts"
+            " AND NOT EXISTS (SELECT 1 FROM video_operations b WHERE b.job_id=o.job_id AND b.kind=o.kind"
+            "                 AND b.status='running' AND b.lease_expires>=? AND b.id<>o.id)"
+            " ORDER BY o.created_at LIMIT 1",
+            (now, now),
+        ).fetchone()
+        if not row: return None
+        expires = now + lease_seconds
+        changed = con.execute(
+            "UPDATE video_operations SET status='running',lease_owner=?,lease_expires=?,heartbeat_at=?,attempts=attempts+1,updated_at=? WHERE id=? AND (status='queued' OR lease_expires<?)",
+            (worker_id, expires, now, now, row["id"], now),
+        ).rowcount
+        if not changed: return None
+        claimed = con.execute("SELECT * FROM video_operations WHERE id=?", (row["id"],)).fetchone()
+    out = dict(claimed); out["spec"] = json.loads(out.pop("spec_json") or "{}"); return out
+
+
+def heartbeat_video_operation(operation_id: str, worker_id: str, lease_seconds: int = 30) -> bool:
+    now = time.time()
+    with _conn() as con:
+        changed = con.execute("UPDATE video_operations SET heartbeat_at=?,lease_expires=?,updated_at=? WHERE id=? AND status='running' AND lease_owner=?",
+                              (now, now + lease_seconds, now, operation_id, worker_id)).rowcount
+    return bool(changed)
+
+
+def finish_video_operation(operation_id: str, worker_id: str, status: str, error: Optional[str] = None) -> bool:
+    with _conn() as con:
+        changed = con.execute("UPDATE video_operations SET status=?,error=?,lease_owner=NULL,lease_expires=NULL,updated_at=? WHERE id=? AND lease_owner=?",
+                              (status, error, time.time(), operation_id, worker_id)).rowcount
+    return bool(changed)
+
+
+def cancel_video_operations(job_id: str) -> None:
+    with _conn() as con:
+        con.execute("UPDATE video_operations SET cancellation_generation=cancellation_generation+1,status=CASE WHEN status='queued' THEN 'cancelled' ELSE status END,updated_at=? WHERE job_id=? AND status IN ('queued','running')",
+                    (time.time(), job_id))
+
+
+def video_operation_cancelled(operation_id: str, generation: int) -> bool:
+    with _conn() as con:
+        row = con.execute("SELECT status,cancellation_generation FROM video_operations WHERE id=?", (operation_id,)).fetchone()
+    return not row or row["status"] == "cancelled" or int(row["cancellation_generation"]) != generation
+
+
+def requeue_abandoned_video_operations() -> int:
+    """Return operations whose worker died mid-lease to the queue.
+
+    A crashed worker leaves rows 'running' with a lease nobody will ever renew.
+    claim_video_operation can already steal an expired lease, but only while
+    attempts<max_attempts -- so an operation killed on its final attempt would
+    otherwise sit 'running' forever.  Startup is the one moment we know no
+    lease of ours is live, so expiring them here is safe and unblocks recovery.
+    """
+    now = time.time()
+    with _conn() as con:
+        changed = con.execute(
+            "UPDATE video_operations SET status='queued',lease_owner=NULL,lease_expires=NULL,updated_at=?"
+            " WHERE status='running' AND (lease_expires IS NULL OR lease_expires<?)",
+            (now, now),
+        ).rowcount
+    return int(changed)
 
 
 # --- projects ---

@@ -28,10 +28,13 @@ import dataclasses
 import hashlib
 import io
 import json
+import math
 import os
 import re
 import shutil
 import sys
+import tempfile
+import threading
 import time
 import uuid
 from datetime import datetime
@@ -42,9 +45,9 @@ from typing import Any, Dict, List, Optional, Tuple
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse, Response
+from fastapi.responses import RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -64,6 +67,14 @@ from tofu.layers.cicerone import _to_easyocr_lang
 from tofu.utils.manifest_store import save_manifest, load_manifest, _dict_to_manifest
 from tofu.utils import interchange
 from tofu.utils import glossary as glossary_utils
+from tofu.video.media import MediaError, available as video_media_available, encode_vfr_sequence, make_proxy, mux_preview_audio, mux_rendered_video, probe, verify_output
+from tofu.video.analysis import ANALYZER_REVISION, analyze as analyze_video
+from tofu.video.checkpoint import (ResumeMismatch, TrackerCheckpoint,
+                                   source_fingerprint as video_source_fingerprint)
+from tofu.video.compositor import compose as compose_video
+from tofu.video.plan import plan_inputs as video_plan_inputs
+from tofu.video.temporal import settle as settle_tracks
+from tofu.video.types import VideoManifest
 
 import db
 
@@ -76,6 +87,8 @@ TM_THUMB_DIR.mkdir(parents=True, exist_ok=True)
 GLOSSARY_DIR = UPLOAD_DIR / "glossaries"
 GLOSSARY_DIR.mkdir(parents=True, exist_ok=True)
 db.init_db()
+VIDEO_WORKER_STOP = threading.Event()
+VIDEO_WORKER_THREAD: Optional[threading.Thread] = None
 
 
 def _font_dir() -> Optional[str]:
@@ -437,10 +450,30 @@ LANGUAGE_NAMES: Dict[str, str] = {
     "sk": "Slovak", "hu": "Hungarian", "ro": "Romanian", "bg": "Bulgarian",
     "sr": "Serbian", "hr": "Croatian", "sl": "Slovenian", "et": "Estonian",
     "lv": "Latvian", "lt": "Lithuanian",
+    "en-US": "English (US)", "es-MX": "Spanish (Mexico)",
+    "es-US": "Spanish (US)", "pt-BR": "Portuguese (Brazil)",
+    "fr-CA": "French (Canada)",
 }
 
 
-app = FastAPI(title="ToFU", version="0.2.0")
+@contextlib.asynccontextmanager
+async def app_lifespan(_: FastAPI):
+    global VIDEO_WORKER_THREAD
+    VIDEO_WORKER_STOP.clear()
+    # Nothing of ours holds a lease yet, so any row still marked 'running' belongs to a
+    # worker that died.  Requeue before starting ours, or a crash on the final attempt
+    # would strand the operation as permanently 'running'.
+    db.requeue_abandoned_video_operations()
+    worker_id = f"desktop-{os.getpid()}-{uuid.uuid4().hex[:8]}"
+    VIDEO_WORKER_THREAD = threading.Thread(target=_video_worker_loop, args=(worker_id,), daemon=True, name="tofu-video-worker")
+    VIDEO_WORKER_THREAD.start()
+    try: yield
+    finally:
+        VIDEO_WORKER_STOP.set()
+        if VIDEO_WORKER_THREAD: VIDEO_WORKER_THREAD.join(timeout=5)
+
+
+app = FastAPI(title="ToFU", version="0.2.0", lifespan=app_lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173"],
@@ -660,16 +693,63 @@ class TranslationDecisionRequest(BaseModel):
     decisions: List[TranslationDecisionItem]
 
 
+class VideoJobCreate(BaseModel):
+    asset_id: str
+    project_id: Optional[str] = None
+    chunk_size: int = 240
+
+
+class VideoKeyframeRequest(BaseModel):
+    id: Optional[str] = None
+    track_id: str
+    frame_index: int
+    scope: str = "frame"
+    end_frame: Optional[int] = None
+    bbox: Optional[Dict[str, float]] = None
+    quad: Optional[List[List[float]]] = None
+    opacity: Optional[float] = None
+    style: Optional[Dict[str, Any]] = None
+    effects: Optional[Dict[str, Any]] = None
+    mask_path: Optional[str] = None
+    expected_job_revision: Optional[int] = None
+
+
+class VideoTrackUpdate(BaseModel):
+    source_text: Optional[str] = None
+    target_text: Optional[str] = None
+    target_language: Optional[str] = None
+    status: Optional[str] = None
+    style: Optional[Dict[str, Any]] = None
+    expected_revision: Optional[int] = None
+
+
+class VideoRenderRequest(BaseModel):
+    start_frame: Optional[int] = None
+    end_frame: Optional[int] = None
+
+
 # --- upload + languages + fonts ---
 
 @app.post("/api/assets")
 async def upload_asset(file: UploadFile = File(...), project_id: Optional[str] = None):
+    if project_id and db.get_project(project_id) is None:
+        raise HTTPException(404, f"project '{project_id}' not found")
     suffix = Path(file.filename or "upload.png").suffix.lower() or ".png"
     asset_id = uuid.uuid4().hex[:12]
     dest = UPLOAD_DIR / f"{asset_id}{suffix}"
-    data = await file.read()
-    dest.write_bytes(data)
-    content_hash = hashlib.sha256(data).hexdigest()
+    hasher = hashlib.sha256(); uploaded_bytes = 0
+    max_upload = int(os.environ.get("TOFU_MAX_UPLOAD_BYTES", str(100 * 1024**3)))
+    try:
+        with dest.open("wb") as output:
+            while chunk := await file.read(1024 * 1024):
+                uploaded_bytes += len(chunk)
+                if uploaded_bytes > max_upload:
+                    raise HTTPException(413, f"asset exceeds configured upload limit ({max_upload} bytes)")
+                hasher.update(chunk); output.write(chunk)
+    except Exception:
+        dest.unlink(missing_ok=True)
+        raise
+    content_hash = hasher.hexdigest()
     info = infer_asset_info(str(dest))
 
     # persist an empty manifest immediately so GET /api/manifest never 404s
@@ -694,8 +774,6 @@ async def upload_asset(file: UploadFile = File(...), project_id: Optional[str] =
     save_manifest(UPLOAD_DIR, asset_id, empty)
 
     if project_id:
-        if db.get_project(project_id) is None:
-            raise HTTPException(404, f"project '{project_id}' not found")
         db.link_asset(project_id, asset_id, file.filename, content_hash)
         db.log_event(project_id, "asset-uploaded",
                      f"uploaded '{file.filename}' ({asset_id})")
@@ -704,6 +782,398 @@ async def upload_asset(file: UploadFile = File(...), project_id: Optional[str] =
         "asset_info": jsonable(info),
         "asset_url": f"/uploads/{asset_id}{suffix}",
     }
+
+
+def _prepare_video_job(job_id: str, source: Path, *, operation_id: Optional[str] = None,
+                       worker_id: Optional[str] = None, cancellation_generation: int = 0,
+                       chunk_size: int = 240, mode: str = "restart") -> None:
+    """Background ingest stage; state is durable across client disconnects."""
+    try:
+        job = db.update_video_job(job_id, status="running", stage="proxy", progress=0.05)
+        if not job or job.get("cancel_requested"):
+            db.update_video_job(job_id, status="cancelled", stage="cancelled")
+            return
+        artifact_dir = OUTPUT_DIR / "video" / job_id
+        proxy = artifact_dir / "proxy.mp4"
+        ## Re-encoding the whole clip on every resume would cost more than the
+        ## analysis a resume exists to save. The proxy depends only on the
+        ## source, so an existing one is still correct.
+        if not (mode == "resume" and proxy.is_file()):
+            make_proxy(source, proxy)
+        now = time.time()
+        with db._conn() as con:
+            con.execute("INSERT OR REPLACE INTO video_artifacts (id,job_id,kind,path,status,created_at) VALUES (?,?,?,?,?,?)",
+                        (f"{job_id}-proxy", job_id, "proxy", str(proxy), "ready", now))
+        current = db.get_video_job(job_id)
+        if not current or current.get("cancel_requested"):
+            db.update_video_job(job_id, status="cancelled", stage="cancelled")
+            return
+        db.update_video_job(job_id, status="running", stage="analysis", progress=0.15)
+        vm = VideoManifest(**current["manifest"])
+        def cancelled() -> bool:
+            job_cancelled = bool((db.get_video_job(job_id) or {}).get("cancel_requested"))
+            operation_cancelled = bool(operation_id and db.video_operation_cancelled(operation_id, cancellation_generation))
+            return job_cancelled or operation_cancelled or VIDEO_WORKER_STOP.is_set()
+        def report(value: float) -> None:
+            db.update_video_job(job_id, progress=.15 + .7 * value)
+            if operation_id and worker_id: db.heartbeat_video_operation(operation_id, worker_id)
+        revision = int(current.get("dependency_revision", 1))
+        fingerprint = video_source_fingerprint(source)
+        state = None
+        if mode == "resume":
+            state = TrackerCheckpoint.from_dict(db.latest_video_checkpoint(
+                job_id, analyzer_revision=ANALYZER_REVISION, dependency_revision=revision,
+                source_fingerprint=fingerprint))
+        ## Scoped when there is something to keep, total when there is not. The
+        ## unconditional wipe that used to live here is what made every resume a
+        ## restart from frame zero.
+        db.reset_video_analysis(job_id, from_frame=state.next_frame if state else 0)
+
+        def checkpoint(chunk_index: int, end_frame: int, chunk_tracks: List[Dict[str, Any]],
+                       chunk_observations: List[Dict[str, Any]], tracker: TrackerCheckpoint) -> None:
+            digest = hashlib.sha256(json.dumps(chunk_observations, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+            db.commit_video_analysis_chunk(job_id, chunk_index, chunk_tracks, chunk_observations,
+                                           digest, revision, checkpoint=tracker.to_dict(),
+                                           analyzer_revision=ANALYZER_REVISION)
+            if operation_id and worker_id: db.heartbeat_video_operation(operation_id, worker_id)
+
+        ## Every resume leaves a trace either way. Determinism is the claim this
+        ## architecture makes; a resume whose outcome is not recorded cannot be
+        ## audited when the export looks wrong.
+        provenance: List[Dict[str, Any]] = []
+        try:
+            analyze_video(
+                str(source), vm, cancelled=cancelled, progress=report, checkpoint=checkpoint,
+                chunk_size=chunk_size, resume=state, job_id=job_id, fingerprint=fingerprint,
+                seek_mode=str((state.params or {}).get("seek_mode", "fast")) if state else "fast",
+                on_resume=lambda evidence: provenance.append(
+                    {"code": "resume_reconciled", "severity": "info",
+                     "frame_index": state.next_frame if state else 0,
+                     "detail": json.dumps(evidence, default=str)[:500]}),
+            )
+        except ResumeMismatch as mismatch:
+            ## Never continue on a mismatch. A silently degraded resume produces
+            ## track-identity churn, which reaches the viewer as duplicated or
+            ## flickering subtitles -- far worse than redoing the work.
+            provenance = [{"code": "resume_cold_restart", "severity": "warning",
+                           "frame_index": state.next_frame if state else 0,
+                           "detail": f"{mismatch.reason}; reanalyzed from the start"}]
+            db.reset_video_analysis(job_id, from_frame=0)
+            analyze_video(str(source), vm, cancelled=cancelled, progress=report,
+                          checkpoint=checkpoint, chunk_size=chunk_size,
+                          job_id=job_id, fingerprint=fingerprint)
+        ## Settle over the ROWS, not over whatever this process happens to hold:
+        ## after a resume the earlier chunks' tracks were never in this memory.
+        settled, issues = settle_tracks(db.list_video_tracks(job_id))
+        db.finalize_video_analysis(job_id, settled, issues + provenance)
+        db.mark_video_upgrade(job_id, completed=True)
+        db.update_video_job(job_id, status="ready", stage="review", progress=1.0)
+    except InterruptedError:
+        db.update_video_job(job_id, status="cancelled", stage="cancelled")
+    except Exception as exc:
+        db.update_video_job(job_id, status="failed", stage="ingest", error=f"{type(exc).__name__}: {exc}")
+        raise
+
+
+def _require_video_disk(source: Path, multiplier: float, label: str) -> Dict[str, int]:
+    source_bytes = source.stat().st_size
+    required = max(512 * 1024**2, int(source_bytes * multiplier))
+    free = shutil.disk_usage(OUTPUT_DIR).free
+    if free < required:
+        raise HTTPException(507, f"insufficient disk for {label}: requires about {required} bytes, {free} available")
+    return {"source_bytes": source_bytes, "estimated_required_bytes": required, "available_bytes": free}
+
+
+@app.post("/api/video/jobs")
+def create_video_job(req: VideoJobCreate):
+    path = _asset_path(req.asset_id)
+    if infer_asset_info(str(path)).asset_type.value != "video":
+        raise HTTPException(400, "asset is not a supported video")
+    if not video_media_available():
+        raise HTTPException(503, "video ingest requires ffmpeg and ffprobe on PATH")
+    try:
+        manifest = probe(path, req.asset_id).to_dict()
+    except MediaError as exc:
+        raise HTTPException(415, str(exc)) from exc
+    estimate = _require_video_disk(path, 2.5, "video analysis")
+    manifest["storage_estimate"] = estimate
+    job = db.create_video_job(req.asset_id, req.project_id, manifest, max(1, min(req.chunk_size, 1000)))
+    revision = int(job.get("dependency_revision", 1))
+    db.create_video_operation(job["id"], "analysis", 0, max(0, manifest["frame_count"] - 1),
+                              spec={"asset_id": req.asset_id, "chunk_size": max(1, min(req.chunk_size, 1000))}, dependency_revision=revision,
+                              dedupe_key=f"analysis:{revision}")
+    return job
+
+
+@app.get("/api/video/jobs/{job_id}")
+def get_video_job(job_id: str):
+    job = db.get_video_job(job_id)
+    if not job:
+        raise HTTPException(404, "video job not found")
+    job["proxy_url"] = db.video_artifact_url(job_id, "proxy")
+    job["preview_url"] = db.video_artifact_url(job_id, "preview")
+    job["export_url"] = db.video_artifact_url(job_id, "export")
+    return job
+
+
+@app.get("/api/video/assets/{asset_id}/latest-job")
+def get_latest_video_job(asset_id: str):
+    job = db.latest_video_job(asset_id)
+    if not job:
+        raise HTTPException(404, "video job not found")
+    job["proxy_url"] = db.video_artifact_url(job["id"], "proxy")
+    job["preview_url"] = db.video_artifact_url(job["id"], "preview")
+    job["export_url"] = db.video_artifact_url(job["id"], "export")
+    return job
+
+
+@app.get("/api/video/jobs/{job_id}/events")
+def stream_video_job(job_id: str):
+    if not db.get_video_job(job_id):
+        raise HTTPException(404, "video job not found")
+    def events():
+        last = None
+        while True:
+            job = db.get_video_job(job_id)
+            if not job:
+                yield "event: error\ndata: {\"detail\":\"job removed\"}\n\n"
+                return
+            snapshot = {k: job.get(k) for k in ("id", "status", "stage", "progress", "error", "updated_at")}
+            encoded = json.dumps(snapshot)
+            if encoded != last:
+                yield f"event: progress\ndata: {encoded}\n\n"
+                last = encoded
+            if job["status"] in {"ready", "completed", "failed", "cancelled"}:
+                yield f"event: terminal\ndata: {encoded}\n\n"
+                return
+            time.sleep(.5)
+    return StreamingResponse(events(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.post("/api/video/jobs/{job_id}/cancel")
+def cancel_video_job(job_id: str):
+    if not db.get_video_job(job_id):
+        raise HTTPException(404, "video job not found")
+    db.cancel_video_operations(job_id)
+    return db.update_video_job(job_id, cancel_requested=1, status="cancelling", stage="cancelling")
+
+
+@app.post("/api/video/jobs/{job_id}/resume")
+def resume_video_job(job_id: str):
+    job = db.get_video_job(job_id)
+    if not job:
+        raise HTTPException(404, "video job not found")
+    if job["status"] == "running":
+        raise HTTPException(409, "video job is already running")
+    revision = int(job.get("dependency_revision", 1))
+    chunk_size = int(job.get("chunk_size") or 240)
+    state = db.latest_video_checkpoint(
+        job_id, analyzer_revision=ANALYZER_REVISION, dependency_revision=revision,
+        source_fingerprint=video_source_fingerprint(_asset_path(job["asset_id"])))
+    resume_from = int(state.get("next_frame", 0)) if state else 0
+    db.update_video_job(job_id, cancel_requested=0, status="queued", error=None)
+    ## Without a dedupe key two clicks queued two analysis operations for one job.
+    operation = db.create_video_operation(
+        job_id, "analysis", resume_from, max(0, int(job["manifest"].get("frame_count", 0)) - 1),
+        spec={"asset_id": job["asset_id"], "chunk_size": chunk_size, "mode": "resume"},
+        dependency_revision=revision,
+        dedupe_key=f"analysis:{revision}:resume:{state.get('chunk_index', -1) if state else -1}")
+    return {**(db.get_video_job(job_id) or {}), "operation_id": operation,
+            "resumed_from_frame": resume_from, **db.video_analysis_progress(job_id)}
+
+
+@app.post("/api/video/jobs/{job_id}/upgrade")
+def upgrade_video_job(job_id: str):
+    job = db.get_video_job(job_id)
+    if not job: raise HTTPException(404, "video job not found")
+    db.mark_video_upgrade(job_id, completed=False)
+    revision = int(job.get("dependency_revision", 1)) + 1
+    db.update_video_job(job_id, cancel_requested=0, status="queued", stage="analysis_upgrade", error=None)
+    db.create_video_operation(job_id, "analysis", 0, max(0, int(job["manifest"].get("frame_count", 0))-1),
+                              spec={"asset_id": job["asset_id"], "chunk_size": int(job.get("chunk_size") or 240), "upgrade": True},
+                              dependency_revision=revision)
+    return db.get_video_job(job_id)
+
+
+@app.get("/api/video/jobs/{job_id}/timeline")
+def get_video_timeline(job_id: str, start: int = 0, end: int = 300, limit: int = 1000, cursor: int = 0):
+    if not db.get_video_job(job_id):
+        raise HTTPException(404, "video job not found")
+    if start < 0 or end < start:
+        raise HTTPException(400, "invalid frame range")
+    if cursor < 0: raise HTTPException(400, "invalid timeline cursor")
+    return db.list_video_timeline(job_id, start, end, max(1, min(limit, 5000)), cursor)
+
+
+@app.put("/api/video/jobs/{job_id}/keyframes")
+def put_video_keyframe(job_id: str, req: VideoKeyframeRequest):
+    if req.scope not in {"frame", "range", "track"}:
+        raise HTTPException(400, "scope must be frame, range, or track")
+    if req.scope == "range" and (req.end_frame is None or req.end_frame < req.frame_index):
+        raise HTTPException(400, "range scope requires a valid end_frame")
+    frame_count = db.video_frame_count(job_id)
+    if frame_count is None:
+        raise HTTPException(404, "video job not found")
+    track = db.get_video_track(job_id, req.track_id)
+    if not track:
+        raise HTTPException(404, "video track not found")
+    job = db.get_video_job(job_id)
+    if req.expected_job_revision is not None and job and int(job.get("dependency_revision", 1)) != req.expected_job_revision:
+        raise HTTPException(409, {"code": "stale_video_revision", "current_revision": job.get("dependency_revision")})
+    end = req.end_frame if req.end_frame is not None else req.frame_index
+    if req.frame_index < 0 or end >= frame_count:
+        raise HTTPException(400, "keyframe range is outside the video")
+    if req.scope != "track" and (req.frame_index < track["start_frame"] or end > track["end_frame"]):
+        raise HTTPException(400, "keyframe range is outside the track")
+    if req.bbox is not None:
+        values = (req.bbox.get("x"), req.bbox.get("y"), req.bbox.get("width"), req.bbox.get("height"))
+        if any(not isinstance(value, (int, float)) or not math.isfinite(value) for value in values) or values[2] <= 0 or values[3] <= 0:
+            raise HTTPException(400, "bbox must contain finite positive geometry")
+    if req.mask_path:
+        candidate = Path(req.mask_path).resolve(); owned = (OUTPUT_DIR / "video" / job_id).resolve()
+        try: candidate.relative_to(owned)
+        except ValueError as exc: raise HTTPException(400, "mask must be an artifact owned by this video job") from exc
+        if not candidate.is_file(): raise HTTPException(400, "mask artifact does not exist")
+    data = req.model_dump(exclude={"expected_job_revision"})
+    data["id"] = data["id"] or uuid.uuid4().hex[:16]
+    data["created_at"] = time.time()
+    db.upsert_video_keyframe(job_id, data)
+    return data
+
+
+@app.patch("/api/video/jobs/{job_id}/tracks/{track_id}")
+def patch_video_track(job_id: str, track_id: str, req: VideoTrackUpdate):
+    track_before = db.get_video_track(job_id, track_id)
+    if not track_before: raise HTTPException(404, "video track not found")
+    if req.expected_revision is not None and int(track_before.get("revision", 1)) != req.expected_revision:
+        raise HTTPException(409, {"code": "stale_track_revision", "current_revision": track_before.get("revision")})
+    changes = req.model_dump(exclude_unset=True, exclude={"expected_revision"})
+    if "status" in changes and changes["status"] not in {"recognized", "review_required", "translated", "approved", "excluded"}:
+        raise HTTPException(400, "invalid track status")
+    font = (changes.get("style") or {}).get("font_family") if isinstance(changes.get("style"), dict) else None
+    if font and Path(font).is_absolute() and not _is_served_font(Path(font)):
+        raise HTTPException(400, "font path is outside the served font library")
+    track = db.update_video_track(job_id, track_id, changes)
+    if not track:
+        raise HTTPException(404, "video track not found")
+    return track
+
+
+def _render_video_artifact(job_id: str, kind: str, start: int, end: int, operation_id: Optional[str] = None,
+                           worker_id: Optional[str] = None, cancellation_generation: int = 0) -> None:
+    temp: Optional[Path] = None
+    try:
+        if operation_id: db.update_video_operation(operation_id, "running")
+        job = db.get_video_job(job_id)
+        if not job: return
+        source = _asset_path(job["asset_id"]); data = db.video_composition_data(job_id, start, end)
+        folder = OUTPUT_DIR / "video" / job_id; folder.mkdir(parents=True, exist_ok=True)
+        ## The artifact is named for the PLAN, not just the job revision. The
+        ## plan hashes everything the render is a function of -- track edits,
+        ## keyframes, analyzer and renderer revisions, the font library -- so a
+        ## filename can no longer promise output the inputs no longer produce.
+        inputs = video_plan_inputs(job, data["tracks"], data["keyframes"],
+                                   analyzer_revision=ANALYZER_REVISION,
+                                   font_registry=get_validator().font_registry)
+        revision = inputs.revision; artifact_token = operation_id or uuid.uuid4().hex[:12]
+        temp = folder / f"{kind}-r{revision}-{artifact_token}-intermediate.mp4"
+        destination = folder / f"{kind}-r{revision}-{artifact_token}.mp4"
+        db.update_video_job(job_id, stage=f"{kind}_render", progress=0.0, error=None)
+        with tempfile.TemporaryDirectory(prefix=f"tofu-{kind}-frames-", dir=folder) as frame_temp:
+            frame_dir = Path(frame_temp)
+            compose_video(source, temp, job["manifest"], data["tracks"], data["observations"], data["keyframes"],
+                          start_frame=start, end_frame=end, frame_dir=frame_dir, inputs=inputs,
+                          progress=lambda value: (db.update_video_job(job_id, progress=.75*value),
+                                                  operation_id and worker_id and db.heartbeat_video_operation(operation_id, worker_id)),
+                          cancelled=lambda: bool((db.get_video_job(job_id) or {}).get("cancel_requested")) or
+                              bool(operation_id and db.video_operation_cancelled(operation_id, cancellation_generation)) or VIDEO_WORKER_STOP.is_set())
+            db.update_video_job(job_id, stage=f"{kind}_encode", progress=.8)
+            pts = job["manifest"].get("frame_pts") or []
+            segment_pts = pts[start:end+1] if pts else [i/(job["manifest"].get("fps") or 30) for i in range(end-start+1)]
+            encode_vfr_sequence(frame_dir, segment_pts, temp)
+        if kind == "export": mux_rendered_video(temp, source, destination,
+                                                 color=job["manifest"].get("color"),
+                                                 rotation=int(job["manifest"].get("rotation") or 0))
+        else:
+            pts = job["manifest"].get("frame_pts") or []
+            start_seconds = pts[start] if start < len(pts) else start/(job["manifest"].get("fps") or 30)
+            end_seconds = pts[end] if end < len(pts) else end/(job["manifest"].get("fps") or 30)
+            last_delta = (pts[end]-pts[end-1]) if pts and 0 < end < len(pts) else 1/(job["manifest"].get("fps") or 30)
+            mux_preview_audio(temp, source, destination, start_seconds, max(.001,end_seconds-start_seconds+last_delta))
+        pts = job["manifest"].get("frame_pts") or []
+        last_delta = (pts[end]-pts[end-1]) if pts and 0 < end < len(pts) else 1/(job["manifest"].get("fps") or 30)
+        expected_duration = ((pts[end]-pts[start]+last_delta) if pts and end < len(pts) else (end-start+1)/(job["manifest"].get("fps") or 30))
+        verification = verify_output(destination, expected_width=int(job["manifest"]["width"]),
+                                     expected_height=int(job["manifest"]["height"]),
+                                     expected_duration=max(.001, expected_duration), max_drift=.02)
+        db.save_video_artifact(job_id, kind, str(destination), verification)
+        for obsolete in db.prune_video_artifact_records(job_id, kind, 2 if kind == "export" else 1):
+            candidate = Path(obsolete)
+            try: candidate.resolve().relative_to((OUTPUT_DIR / "video" / job_id).resolve())
+            except ValueError: continue
+            candidate.unlink(missing_ok=True)
+        db.update_video_job(job_id, status="ready", stage="review", progress=1.0)
+        if operation_id: db.update_video_operation(operation_id, "completed")
+    except InterruptedError:
+        db.update_video_job(job_id, status="cancelled", stage="cancelled")
+        if operation_id: db.update_video_operation(operation_id, "cancelled")
+    except Exception as exc:
+        db.update_video_job(job_id, status="ready", stage="review", error=f"{kind} failed: {type(exc).__name__}: {exc}")
+        if operation_id: db.update_video_operation(operation_id, "failed", f"{type(exc).__name__}: {exc}")
+        raise
+    finally:
+        if temp: temp.unlink(missing_ok=True)
+
+
+@app.post("/api/video/jobs/{job_id}/preview")
+def render_video_preview(job_id: str, req: VideoRenderRequest):
+    count = db.video_frame_count(job_id)
+    if count is None: raise HTTPException(404, "video job not found")
+    start = max(0, req.start_frame or 0); end = min(count-1, req.end_frame if req.end_frame is not None else start+150)
+    if end < start: raise HTTPException(400, "invalid preview range")
+    job = db.get_video_job(job_id)
+    if job: _require_video_disk(_asset_path(job["asset_id"]), .4, "video preview")
+    job = db.get_video_job(job_id); revision = int(job.get("dependency_revision", 1)) if job else 1
+    db.create_video_operation(job_id, "preview", start, end, spec={"start": start, "end": end}, dependency_revision=revision)
+    return db.update_video_job(job_id, status="rendering", stage="preview_queued", progress=0.0)
+
+
+@app.post("/api/video/jobs/{job_id}/export")
+def export_video(job_id: str):
+    count = db.video_frame_count(job_id)
+    if count is None: raise HTTPException(404, "video job not found")
+    job = db.get_video_job(job_id)
+    if job: _require_video_disk(_asset_path(job["asset_id"]), 1.75, "video export")
+    job = db.get_video_job(job_id); revision = int(job.get("dependency_revision", 1)) if job else 1
+    db.create_video_operation(job_id, "export", 0, count-1, spec={"container": "mp4", "codec": "h264"},
+                              dependency_revision=revision, dedupe_key=f"export:{revision}:mp4:h264")
+    return db.update_video_job(job_id, status="rendering", stage="export_queued", progress=0.0)
+
+
+def _video_worker_loop(worker_id: str) -> None:
+    while not VIDEO_WORKER_STOP.is_set():
+        operation = db.claim_video_operation(worker_id)
+        if not operation:
+            VIDEO_WORKER_STOP.wait(.5); continue
+        op_id = operation["id"]; generation = int(operation.get("cancellation_generation", 0))
+        try:
+            if operation["kind"] == "analysis":
+                job = db.get_video_job(operation["job_id"])
+                if not job: raise RuntimeError("video job disappeared")
+                _prepare_video_job(job["id"], _asset_path(job["asset_id"]), operation_id=op_id,
+                                   worker_id=worker_id, cancellation_generation=generation,
+                                   chunk_size=int(operation.get("spec", {}).get("chunk_size")
+                                                  or job.get("chunk_size") or 240),
+                                   mode=str(operation.get("spec", {}).get("mode", "restart")))
+            elif operation["kind"] in {"preview", "export"}:
+                _render_video_artifact(operation["job_id"], operation["kind"], operation["start_frame"], operation["end_frame"],
+                                       operation_id=op_id, worker_id=worker_id, cancellation_generation=generation)
+            else: raise RuntimeError(f"unknown video operation kind {operation['kind']}")
+            status = "cancelled" if db.video_operation_cancelled(op_id, generation) else "completed"
+            db.finish_video_operation(op_id, worker_id, status)
+        except Exception as exc:
+            db.finish_video_operation(op_id, worker_id, "failed", f"{type(exc).__name__}: {exc}")
 
 
 @app.get("/api/assets/check-duplicate")
@@ -1087,9 +1557,8 @@ def create_project(req: ProjectCreate):
     if req.asset_kind not in ("image", "video"):
         raise HTTPException(400, f"unknown asset kind '{req.asset_kind}'")
     if req.asset_kind == "video":
-        # Keep the server contract aligned with /api/capabilities.  Accepting
-        # an unrenderable project here would strand users after the wizard.
-        raise HTTPException(409, "video localization is not implemented")
+        if not video_media_available():
+            raise HTTPException(409, "video localization requires ffmpeg and ffprobe on PATH")
     return db.create_project(name, req.target_lang, req.asset_kind)
 
 
@@ -1670,7 +2139,14 @@ def detect_stream(
             if manifest.instances:
                 yield event({"stage": "savor", "status": "running"})
                 from tofu.layers.savor import taste
-                swallowed = taste(str(path), manifest.instances, font_registry=get_validator().font_registry)
+                # Keep SSE parity with cicerone.detect(): course 0 may only
+                # recover a clumped token when its isolated re-read has a
+                # real engine behind it.  Passing no engine would turn every
+                # otherwise healthy SSE clump into a review-only false alarm.
+                swallowed = taste(
+                    str(path), manifest.instances, font_registry=get_validator().font_registry,
+                    engine=None if isinstance(backend, cicerone.NullBackend) else backend,
+                )
                 yield event({"stage": "savor", "status": "complete", "corrected": swallowed})
 
             # gazetteer correction on whatever text Savor left behind --
