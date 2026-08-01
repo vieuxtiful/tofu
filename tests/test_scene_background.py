@@ -82,3 +82,39 @@ class TestClassifyBackground:
         cv2.circle(crop, (32, 32), 24, (255, 255, 255), 3)
         cv2.line(crop, (14, 50), (50, 14), (255, 255, 255), 3)
         assert _describe_surface_material(crop, "textured", "surface") == "textured surface"
+
+
+class TestTextClusterHasNoMaterialWithoutEvidence:
+    """A person is not a texture.
+
+    ``text_cluster`` is the MSER detector's own label for an edge-dense blob.
+    It fires on a coat, foliage and pavement as readily as on a sign: measured
+    on rue-des-martyrs, 14 of 16 proposals are text_clusters blanketing the
+    blurred street and the foreground pedestrian, and each was being named
+    "textured surface" in the editor. Positive evidence still names a material;
+    absent any, the honest answer is none.
+    """
+
+    @staticmethod
+    def _noisy():
+        rng = np.random.default_rng(3)
+        return rng.integers(60, 200, size=(80, 80, 3), dtype=np.uint8)
+
+    def test_evidence_free_text_cluster_is_unnamed(self):
+        assert _describe_surface_material(self._noisy(), "textured", "text_cluster") is None
+
+    def test_a_real_surface_is_still_named(self):
+        assert _describe_surface_material(self._noisy(), "textured", "surface") == "textured surface"
+
+    def test_planar_evidence_still_names_a_text_cluster(self):
+        assert _describe_surface_material(self._noisy(), "flat", "text_cluster") == "flat painted surface"
+
+    def test_mortar_courses_still_name_a_text_cluster(self):
+        crop = np.full((90, 120, 3), 180, dtype=np.uint8)
+        crop[20:23, :, :] = 55
+        crop[48:51, :, :] = 55
+        crop[76:79, :, :] = 55
+        crop[3:20, 30:33, :] = 55
+        crop[23:48, 72:75, :] = 55
+        crop[51:76, 38:41, :] = 55
+        assert _describe_surface_material(crop, "textured", "text_cluster") == "brick / masonry"
