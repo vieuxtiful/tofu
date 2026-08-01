@@ -714,12 +714,28 @@ def _describe_surface_material(crop, texture: Optional[str], semantic_label: Opt
         return "smooth shaded surface"
     if texture != "textured" or crop is None:
         return None
+
+    # A bare ``text_cluster`` is the DETECTOR's edge-density heuristic, not a
+    # finding about the world: it fires on a coat, foliage or pavement as
+    # readily as on a sign. Measured on rue-des-martyrs, 14 of 16 proposals are
+    # text_clusters blanketing the blurred street and the foreground
+    # pedestrian, and every one of them was being handed the name "textured
+    # surface" in the editor -- which is how a person came to be described as a
+    # texture. Positive evidence still names a material (a panel border above,
+    # a planar fit above, mortar courses below); absent any, the honest answer
+    # for a text_cluster is no answer at all.
+    #
+    # This is the same standard the masonry test already holds itself to: a
+    # generic label is preferable to a false one, and no label is preferable to
+    # a generic one asserted about something that was never shown to be a
+    # surface.
+    unnamed = None if semantic_label == "text_cluster" else "textured surface"
     try:
         import cv2
         import numpy as np
         h, w = crop.shape[:2]
         if min(h, w) < 28:
-            return "textured surface"
+            return unnamed
         gray = cv2.cvtColor(np.asarray(crop, dtype=np.uint8), cv2.COLOR_RGB2GRAY)
         edges = cv2.Canny(gray, 55, 140)
         lines = cv2.HoughLinesP(
@@ -730,7 +746,7 @@ def _describe_surface_material(crop, texture: Optional[str], semantic_label: Opt
             minLineLength=max(10, min(w, h) // 7), maxLineGap=max(3, min(w, h) // 12),
         )
         if lines is None:
-            return "textured surface"
+            return unnamed
         horizontal = vertical = 0
         horizontal_y: List[float] = []
         horizontal_span: List[int] = []
@@ -762,7 +778,7 @@ def _describe_surface_material(crop, texture: Optional[str], semantic_label: Opt
             return "brick / masonry"
     except Exception:
         pass
-    return "textured surface"
+    return unnamed
 
 
 def _analyze_garnish_profile(crop, glyph_mask=None) -> GarnishProfile:
