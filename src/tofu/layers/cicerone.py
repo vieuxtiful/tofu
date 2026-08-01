@@ -3545,6 +3545,20 @@ def detect(
         except Exception:
             pass
 
+    # ordinal/administrative abbreviations, offered for REVIEW only. Runs after
+    # every text-rewriting stage for the same reason they run last: the final
+    # text is the only text worth judging. It proposes and never applies, so
+    # unlike the courses above it cannot change what any later stage sees.
+    if manifest.instances:
+        try:
+            from tofu.layers.ordinal import propose as propose_ordinals
+            propose_ordinals(
+                asset, manifest.instances,
+                language=(languages[0] if languages else manifest.src_lang),
+            )
+        except Exception:
+            pass
+
     # latin language identification, FINAL pass -- on the text that
     # actually survived. the verdict used to be taken once, early, inside
     # the first build_manifest(), and then never revisited even though
