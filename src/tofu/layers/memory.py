@@ -194,3 +194,151 @@ def lookup(
             results[inst.id] = best
 
     return results
+
+
+# --- OCR correction memory ---------------------------------------------------
+#
+# The translation memory above remembers what a region MEANT. This remembers
+# what it SAID -- the source text a human had to fix because OCR got it wrong.
+#
+# The two are deliberately separate. A TM record is gated on QA of a finished
+# localization; a correction record is evidence about recognition itself, and
+# is worth keeping even when the translation was never rendered. Keying on the
+# normalized MISREAD (not the corrected text) is what makes it useful: the same
+# plate, re-detected, produces the same misread, and that is the lookup key.
+#
+# Scope, stated plainly so this is not mistaken for the calibration work: this
+# helps a REPEAT encounter with text already corrected once. It does nothing on
+# a first encounter, and it is not a substitute for fixing recognition.
+
+# A recalled correction is only offered when the stored misread is recognizably
+# the text in hand. Reuses the TM's own fuzzy floor rather than inventing a
+# second notion of "close enough".
+CORRECTION_VISUAL_THRESHOLD = VISUAL_MATCH_THRESHOLD
+
+
+def _earliest_ocr_text(inst: InstText) -> Optional[str]:
+    """What the recognizer FIRST said, before any course or human touched it.
+
+    Savor's ledger preserves this: ``ocr_correction.original_text`` at the top
+    level, and ``steps[0].original_text`` once several courses have co-fired on
+    one region. Falls back to the first recognition_history entry carrying a
+    text, so a region corrected without any course still yields its origin.
+    """
+    correction = inst.ocr_correction or {}
+    steps = correction.get("steps") or []
+    if steps and steps[0].get("original_text"):
+        return str(steps[0]["original_text"])
+    if correction.get("original_text"):
+        return str(correction["original_text"])
+    for entry in inst.recognition_history or []:
+        if entry.get("text"):
+            return str(entry["text"])
+    return None
+
+
+def remember_corrections(
+    text_manifest: TextManifest,
+    source_asset: Any = None,
+) -> List[Dict[str, Any]]:
+    """Draft records for regions whose text was corrected away from the OCR read.
+
+    Storage-agnostic, exactly like ``update``: returns drafts and lets the
+    caller persist them. A record is emitted only when the region's CURRENT
+    text differs from what the recognizer first produced -- that difference is
+    the correction, whoever made it.
+
+    Each dict has: asset_id, region_id, ocr_text, normalized_ocr_text,
+    corrected_text, language, style_fingerprint, phash, thumb_crop.
+    """
+    drafts: List[Dict[str, Any]] = []
+    for inst in text_manifest.instances:
+        current = (inst.text or "").strip()
+        original = (_earliest_ocr_text(inst) or "").strip()
+        if not current or not original or current == original:
+            continue
+        crop = crop_region(source_asset, inst.bounding_box) if source_asset is not None else None
+        drafts.append({
+            "asset_id": text_manifest.asset_id,
+            "region_id": inst.id,
+            "ocr_text": original,
+            "normalized_ocr_text": textmatch.normalize_text(original),
+            "corrected_text": current,
+            "language": inst.detected_language or text_manifest.src_lang,
+            "style_fingerprint": _style_fingerprint(inst),
+            "phash": phash_mod.phash(crop) if crop is not None else None,
+            "thumb_crop": crop,
+        })
+    return drafts
+
+
+def recall_corrections(
+    text_manifest: TextManifest,
+    candidates: List[Dict[str, Any]],
+    source_asset: Any = None,
+) -> Dict[str, Dict[str, Any]]:
+    """Offer previously-confirmed corrections for regions that misread again.
+
+    Same tiering as ``lookup``: exact normalized misread, then fuzzy, then
+    perceptual hash of the crop when text matching finds nothing. Returns
+    {region_id: {corrected_text, score, method, source_asset_id, record_id}}.
+
+    Deliberately returns PROPOSALS and applies nothing. A correction confirmed
+    on one plate is strong evidence about the same plate re-detected, and much
+    weaker evidence about a different sign that happens to misread alike --
+    only the caller knows which case it is holding.
+    """
+    results: Dict[str, Dict[str, Any]] = {}
+    if not candidates:
+        return results
+
+    def offer(record: Dict[str, Any], score: float, method: str) -> Dict[str, Any]:
+        return {
+            "corrected_text": record["corrected_text"],
+            "score": round(score, 4),
+            "method": method,
+            "source_asset_id": record.get("asset_id"),
+            "record_id": record.get("id"),
+        }
+
+    for inst in text_manifest.instances:
+        if inst.dnt or not (inst.text or "").strip():
+            continue
+        text = inst.text.strip()
+        normalized = textmatch.normalize_text(text)
+        best: Optional[Dict[str, Any]] = None
+
+        exact = [c for c in candidates if c.get("normalized_ocr_text") == normalized]
+        if exact:
+            best = offer(exact[0], 1.0, "exact")
+
+        if best is None:
+            scored = [
+                (textmatch.fuzzy_similarity(text, c.get("ocr_text", "")), c)
+                for c in candidates
+            ]
+            scored = [(s, c) for s, c in scored if s >= textmatch.FUZZY_MATCH_THRESHOLD]
+            if scored:
+                top_score, top_record = max(scored, key=lambda pair: pair[0])
+                best = offer(top_record, top_score, "fuzzy")
+
+        if best is None and source_asset is not None and inst.bounding_box is not None:
+            crop = crop_region(source_asset, inst.bounding_box)
+            region_hash = phash_mod.phash(crop) if crop is not None else None
+            if region_hash:
+                visual = [
+                    (phash_mod.visual_similarity(region_hash, c.get("phash")), c)
+                    for c in candidates
+                ]
+                visual = [
+                    (s, c) for s, c in visual
+                    if s is not None and s >= CORRECTION_VISUAL_THRESHOLD
+                ]
+                if visual:
+                    top_score, top_record = max(visual, key=lambda pair: pair[0])
+                    best = offer(top_record, top_score, "visual")
+
+        # A record that would re-propose the text already in hand is noise.
+        if best is not None and best["corrected_text"].strip() != text:
+            results[inst.id] = best
+    return results
