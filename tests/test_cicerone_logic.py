@@ -30,6 +30,7 @@ from tofu.layers.cicerone import (
     expand_langset,
     zoom_detect,
     _dedup_zoom_detections,
+    rescue_clipped_edge_glyphs,
 )
 
 
@@ -1072,3 +1073,65 @@ class TestSourceLanguageVote:
             identify_languages=False, prune_garbage=False,
         )
         assert m.src_lang is None
+
+
+# -- clipped edge-glyph rescue -------------------------------------------------
+
+class _StubEngine:
+    """Returns a canned re-read for every widened crop."""
+
+    def __init__(self, text, conf=0.9):
+        self._text, self._conf = text, conf
+        self.seen = []
+
+    def detect_in_regions(self, asset, boxes, pad=0, polygons=None):
+        self.seen = list(boxes)
+        return [[det(b.x, b.y, b.width, b.height, self._text, self._conf)] for b in boxes]
+
+
+def _edge_inst(text, conf=0.995, box=(493, 111, 39, 39)):
+    x, y, w, h = box
+    return InstText(id="r1", bounding_box=BBox(x=x, y=y, width=w, height=h),
+                    text=text, confidence=conf)
+
+
+class TestRescueClippedEdgeGlyphs:
+    def test_recovers_a_clipped_leading_glyph(self):
+        # rue-des-martyrs: the box stops ~2px inside the 'D' and the recognizer
+        # reads 'ES' at 0.995 -- confidently, so nothing downstream catches it.
+        inst = _edge_inst("ES")
+        assert rescue_clipped_edge_glyphs(None, [inst], _StubEngine("DES", 0.98)) == 1
+        assert inst.text == "DES"
+        assert inst.recognition_history[-1]["stage"] == "edge_rescue"
+
+    def test_recovers_a_clipped_trailing_glyph(self):
+        inst = _edge_inst("RUE")
+        assert rescue_clipped_edge_glyphs(None, [inst], _StubEngine("RUES", 0.98)) == 1
+        assert inst.text == "RUES"
+
+    def test_rejects_an_unrelated_reread(self):
+        # a wider crop that reads something else entirely is a different
+        # answer, not a recovered glyph -- this is what stops the pass from
+        # absorbing a neighbouring region's text.
+        inst = _edge_inst("ES")
+        assert rescue_clipped_edge_glyphs(None, [inst], _StubEngine("MARTYRS", 0.99)) == 0
+        assert inst.text == "ES"
+
+    def test_rejects_an_infix_change(self):
+        # the old text must survive WHOLE at one end; 'DESK' contains 'ES'
+        # only in the middle, so the original read did not merely lose an edge
+        inst = _edge_inst("ES")
+        assert rescue_clipped_edge_glyphs(None, [inst], _StubEngine("DESK", 0.99)) == 0
+        assert inst.text == "ES"
+
+    def test_rejects_a_much_less_confident_read(self):
+        inst = _edge_inst("ES", conf=0.99)
+        assert rescue_clipped_edge_glyphs(None, [inst], _StubEngine("DES", 0.40)) == 0
+        assert inst.text == "ES"
+
+    def test_widens_the_box_it_probes(self):
+        inst = _edge_inst("ES")
+        engine = _StubEngine("DES", 0.98)
+        rescue_clipped_edge_glyphs(None, [inst], engine)
+        probed = engine.seen[0]
+        assert probed.x < 493 and probed.width > 39

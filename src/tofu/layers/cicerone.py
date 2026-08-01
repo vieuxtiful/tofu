@@ -3019,6 +3019,84 @@ def _second_look_decision(incumbent: str, candidate: str, confidence_gain: float
     return confidence_gain >= .10, "reread requires confidence margin for different text"
 
 
+# How far to widen a box when testing for a clipped edge glyph, as a fraction
+# of its height, and the confidence the widened read may give up.
+#
+# CRAFT boxes routinely stop a pixel or two inside the first stroke of a word,
+# and the recognizer then reads the word without it -- CONFIDENTLY. Measured on
+# rue-des-martyrs: the box at (493,111,39,39) reads 'ES' at 0.995 while the same
+# box widened two pixels to the left reads 'DES' at 0.981. Nothing downstream
+# can catch that, because 0.995 outranks almost everything.
+#
+# Widening the DETECTOR's own margin instead (add_margin 0.04 -> 0.10) was
+# measured across the project corpus and rejected: it did not fix this region
+# at all, and it merged 'AVENUE' with 'de la RÉPUBLIQUE' on
+# avenue-de-la-republique, halving recall there. The fix has to be per region
+# and evidence-gated, which is what this is.
+EDGE_RESCUE_PAD_RATIO = 0.16
+EDGE_RESCUE_CONF_SLACK = 0.10
+
+
+def rescue_clipped_edge_glyphs(
+    asset: Any,
+    instances: List[InstText],
+    engine: OCRBackend,
+    max_regions: int = 24,
+) -> int:
+    """Recover a leading/trailing glyph the region's box cut off.
+
+    Re-reads each region from a slightly WIDER crop and accepts the result only
+    when it strictly extends the existing text: the old string must survive
+    intact as a prefix or a suffix. That is the signature of a clipped edge
+    glyph ('ES' -> 'DES', 'os' -> 'nos') and it is what makes this safe -- an
+    unrelated re-read, a merged neighbour, or a differently-spelled word all
+    fail the containment test and are discarded.
+
+    Returns the number of regions extended.
+    """
+    if not hasattr(engine, "detect_in_regions"):
+        return 0
+    targets = [i for i in instances if i.bounding_box is not None and (i.text or "").strip()]
+    targets = targets[:max_regions]
+    if not targets:
+        return 0
+
+    widened = []
+    for inst in targets:
+        b = inst.bounding_box
+        pad = max(2, int(round(EDGE_RESCUE_PAD_RATIO * b.height)))
+        widened.append(BBox(max(0, b.x - pad), b.y, b.width + 2 * pad, b.height))
+
+    try:
+        per_region = engine.detect_in_regions(asset, widened, pad=0)
+    except Exception:
+        return 0
+
+    rescued = 0
+    for inst, dets in zip(targets, per_region):
+        composed = _compose_crop_text(dets)
+        if composed is None:
+            continue
+        old = (inst.text or "").strip()
+        new = (composed.text or "").strip()
+        if len(new) <= len(old):
+            continue
+        # the old read must survive WHOLE at one end; anything else is a
+        # different answer, not a recovered glyph
+        if not (new.endswith(old) or new.startswith(old)):
+            continue
+        if composed.confidence < (inst.confidence or 0) - EDGE_RESCUE_CONF_SLACK:
+            continue
+        _history(inst, {
+            "stage": "edge_rescue", "kept": True, "from": old, "to": new,
+            "confidence": composed.confidence,
+        })
+        inst.text = new
+        inst.confidence = composed.confidence
+        rescued += 1
+    return rescued
+
+
 def second_look(
     asset: Any,
     instances: List[InstText],
@@ -3403,6 +3481,10 @@ def detect(
     # second-look recognition on the surviving weak regions
     if polish and manifest.instances and not isinstance(final_engine, NullBackend):
         second_look(asset, manifest.instances, final_engine)
+        # ...then the clipped-edge pass. It runs AFTER second_look because it
+        # tests whether the settled text is missing a glyph its box cut off,
+        # and second_look is what settles that text.
+        rescue_clipped_edge_glyphs(asset, manifest.instances, final_engine)
 
     # General risk-based cross-provider assessment happens after proposal
     # generation has settled and before any correction stage mutates text.
