@@ -1,0 +1,23 @@
+{
+  "partial": true,
+  "note": "PARTIAL GT: 466x657 poster. Annotated 2026-07-31; word boxes measured by connected-component segmentation of the crop (white-on-black body text at threshold 140, red-on-black headline at 30 and 45 -- both thresholds agree to within 1px). Annotated at WORD level, not line level, because the detector splits these widely-spaced lines into words and a line-level box cannot reach IoU 0.5 against a single word detection. The two red horizontal rules under the headline (54,100,373,4) and (110,167,261,5) are graphics, not text, and are deliberately absent. Marked partial: the photograph in the middle contains a small blue-bordered notice around (78,285)-(138,313) whose text is below transcribable resolution. Current failures this asset pins: the headline is detected TWICE (a spurious 'D' at (30,51,54,55) inside the full 'Décolonisons'); 'nos' reads as 'os' because the detection box starts at x101 while the glyphs start at x96; '!' reads as '4'; and most of the two body lines is missed entirely -- only 'Pour une', 'les' and 'esclavagistes' are found.",
+  "regions": [
+    { "bbox": [35, 51, 413, 47], "text": "Décolonisons", "lang": "fr" },
+    { "bbox": [96, 132, 104, 33], "text": "nos", "lang": "fr" },
+    { "bbox": [227, 132, 133, 33], "text": "rues", "lang": "fr" },
+    { "bbox": [390, 123, 10, 41], "text": "!", "lang": "fr" },
+    { "bbox": [60, 500, 40, 12], "text": "Pour", "lang": "fr" },
+    { "bbox": [106, 503, 31, 9], "text": "une", "lang": "fr" },
+    { "bbox": [145, 503, 75, 9], "text": "mémoire", "lang": "fr" },
+    { "bbox": [227, 499, 30, 13], "text": "des", "lang": "fr" },
+    { "bbox": [264, 499, 50, 13], "text": "luttes", "lang": "fr" },
+    { "bbox": [321, 500, 56, 12], "text": "contre", "lang": "fr" },
+    { "bbox": [384, 500, 23, 12], "text": "les", "lang": "fr" },
+    { "bbox": [85, 521, 57, 9], "text": "crimes", "lang": "fr" },
+    { "bbox": [149, 518, 83, 12], "text": "coloniaux", "lang": "fr" },
+    { "bbox": [240, 519, 17, 11], "text": "et", "lang": "fr" },
+    { "bbox": [263, 518, 118, 15], "text": "esclavagistes", "lang": "fr" },
+    { "bbox": [45, 585, 40, 12], "text": "Texte :", "lang": "fr" },
+    { "bbox": [89, 585, 119, 12], "text": "Naïké Desquesnes", "lang": "fr" }
+  ]
+}

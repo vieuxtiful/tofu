@@ -1,0 +1,9 @@
+{
+  "partial": true,
+  "note": "PARTIAL GT: 408x230 billboard photo. Annotated 2026-07-31 by 4x crop verification against a pixel grid. Two red Cyrillic slogan lines plus a Latin photographer watermark. This is the reference asset for the language-discovery defect: the project's source was auto-overwritten to 'en' by the language scan, so detection ran an English reader over Cyrillic and produced 'ЦЕЕ' / 'IECTE' / 'C PC' -- fragments of these two lines. Recall and edit distance here should improve sharply once the scan can discover Cyrillic (PROBE_LANGSETS is CJK-only today). Marked partial because the lower half (Red Square crowd, black letterbox bar) was not exhaustively verified for small text.",
+  "regions": [
+    { "bbox": [84, 63, 117, 15], "text": "В БУДУЩЕЕ", "lang": "ru" },
+    { "bbox": [84, 85, 211, 16], "text": "ВМЕСТЕ С РОССИЕЙ!", "lang": "ru" },
+    { "bbox": [294, 214, 69, 13], "text": "Valentina Ursu", "lang": "en" }
+  ]
+}

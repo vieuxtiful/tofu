@@ -464,6 +464,160 @@
           "direction": "at_most"
         }
       }
+    },
+    "projects": {
+      "avenue-de-la-r\u00e9publique": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "recall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "f1": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "china-street": {
+        "recall": {
+          "expected": 0.875,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.067,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "decolonisons-nos-rues": {
+        "recall": {
+          "expected": 0.471,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.202,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "gemini-street": {
+        "recall": {
+          "expected": 0.333,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.267,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "japan-street": {
+        "recall": {
+          "expected": 0.571,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.396,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "la-bastille-1789": {
+        "recall": {
+          "expected": 0.111,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.5,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "la-rue-sans-nom-example": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "recall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "f1": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "quai-des-orfevres": {
+        "recall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.062,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "rue-des-martyrs": {
+        "recall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.111,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "russian-billboard": {
+        "recall": {
+          "expected": 0.545,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.083,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "russian-billboard-2": {
+        "recall": {
+          "expected": 0.333,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.357,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      }
     }
   }
 }

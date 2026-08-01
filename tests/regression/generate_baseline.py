@@ -90,6 +90,27 @@ def gen_detect() -> dict[str, dict[str, float]]:
     return results
 
 
+def gen_projects() -> dict[str, dict[str, float]]:
+    """Baseline over the REAL project corpus in images/.
+
+    Reuses the harness itself rather than duplicating the run logic, so the
+    numbers recorded here are produced by exactly the code the test asserts on.
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from test_projects_regression import _fixture_names as project_fixtures, _project_metrics
+
+    results = {}
+    for fixture in project_fixtures():
+        try:
+            entry = _project_metrics(fixture)
+        except Exception as exc:  # a missing image skips in pytest; here it is data
+            print(f"  projects/{fixture}: SKIPPED ({type(exc).__name__}: {exc})")
+            continue
+        results[fixture] = entry
+        print(f"  projects/{fixture}: {entry}")
+    return results
+
+
 def gen_savor() -> dict[str, dict[str, float]]:
     from tofu.core.types import AssetInfo, AssetType
     from tofu.layers import cicerone
@@ -382,6 +403,7 @@ def gen_memory() -> dict[str, dict[str, float]]:
 HARNESS_MAP = {
     "cleanse_providers": gen_cleanse,
     "detect": gen_detect,
+    "projects": gen_projects,
     "savor": gen_savor,
     "tofu": gen_tofu,
     "render": gen_render,

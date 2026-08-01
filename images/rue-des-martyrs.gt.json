@@ -1,0 +1,21 @@
+{
+  "partial": true,
+  "note": "PARTIAL GT: 742x413 photo, Paris. One legible text surface: the blue enamel 'RUE DES MARTYRS' plaque on limestone at the right edge, rotated ~-8deg. The blurred background (shopfronts and two small street signs around x150-350,y150-230) carries real but bokeh-illegible text, which is why this is partial -- detections there are neither credited nor penalised. Annotated 2026-07-31 by 12x crop verification against a pixel grid. Boxes are at DETECTOR scale (glyph extent plus the margin the recognizer needs), not tight to the glyphs: a box tight to the 'DES' glyph extent (491,120,32,21) reads as 'IE<' at 0.303, so tight boxes are not the ground truth the recognizer is scored against. The DES box is the one correction to current output -- see below. Also the reference asset for surface-detection false positives: the foreground woman (roughly 215,235 to 330,413) is a person, not a text-bearing surface.",
+  "regions": [
+    {
+      "bbox": [530, 62, 61, 45],
+      "text": "RUE",
+      "lang": "fr"
+    },
+    {
+      "bbox": [489, 111, 43, 39],
+      "text": "DES",
+      "lang": "fr"
+    },
+    {
+      "bbox": [527, 89, 129, 59],
+      "text": "MARTYRS",
+      "lang": "fr"
+    }
+  ]
+}

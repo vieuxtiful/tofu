@@ -1,0 +1,17 @@
+{
+  "partial": true,
+  "note": "PARTIAL GT: 654x469 winter street photo, Russian billboard. Annotated 2026-07-31 by 4x crop verification against a pixel grid. The slogan lines read 'Za ПОБЕДУ!' / 'Za НАШИХ!' / 'Za ПРАВДУ!' where 'Za' is genuinely LATIN (the Russian war symbol) set against Cyrillic -- so a Latin read of those three tokens is CORRECT, not a homoglyph error. The three Za are staggered, not stacked: their glyph left edges sit at x354, x393 and x368. Boxes are at DETECTOR scale (glyph extent plus the margin the recognizer needs), NOT tight to the glyphs: an earlier version of this file used measured glyph extents and scored recall 0.182 because e.g. a 22px-tall box for 'ПОБЕДУ!' only reaches IoU 0.45 against the detector's 46px-tall box -- that measured the annotation, not the detection. The Za boxes for lines 1 and 3 are glyph extent padded to match the line-2 Za box the detector gets right. Marked partial because the blurred city background carries real distant signage that cannot be transcribed; the low-confidence 'Fpg' read at (127,352) lives there and is a genuine false positive, tracked via garbage fraction rather than precision. The three sub-resolution regions (two hashtags at ~6px cap height and the billboard's 'M 0397 A' plate) carry null text: the boxes are certain, the glyph case is not, so they credit recall without being scored for edit distance. Current failure this asset pins: the line-1 and line-3 Za are merged into a single 47x77 column region by merge_vertical_columns, a CJK stacked-signage heuristic firing on Latin.",
+  "regions": [
+    { "bbox": [466, 33, 66, 46], "text": "23", "lang": "ru" },
+    { "bbox": [468, 80, 63, 14], "text": "ФЕВРАЛЯ", "lang": "ru" },
+    { "bbox": [347, 109, 35, 26], "text": "Za", "lang": "en" },
+    { "bbox": [385, 92, 129, 46], "text": "ПОБЕДУ!", "lang": "ru" },
+    { "bbox": [391, 133, 35, 26], "text": "Za", "lang": "en" },
+    { "bbox": [427, 115, 108, 41], "text": "НАШИХ!", "lang": "ru" },
+    { "bbox": [361, 153, 37, 29], "text": "Za", "lang": "en" },
+    { "bbox": [399, 144, 114, 41], "text": "ПРАВДУ!", "lang": "ru" },
+    { "bbox": [390, 185, 53, 14], "text": null, "lang": "ru" },
+    { "bbox": [445, 185, 88, 14], "text": null, "lang": "ru" },
+    { "bbox": [348, 200, 39, 14], "text": null, "lang": "ru" }
+  ]
+}
