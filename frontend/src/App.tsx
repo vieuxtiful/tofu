@@ -1957,11 +1957,15 @@ export default function App() {
           assetId: uploaded.asset_id, status: "mismatch",
           detected: r.detected_lang, projectSrc: r.project_source_lang,
         });
+        // State what was observed and what was chosen; nothing else. The
+        // remediation lives in the mismatch card below, which offers both
+        // options -- a toast that says only "change project source language"
+        // presents one of them as the sole way forward, and it is wrong
+        // whenever the scan is the thing that got it wrong.
         addToast(
           "error",
-          `language mismatch: "${uploaded.filename}" is ${langDisplayName(r.detected_lang ?? "?")}, ` +
-          `but the project source is ${langDisplayName(r.project_source_lang ?? "?")}. ` +
-          "change project source language to proceed.",
+          `ToFU detected "${uploaded.filename}" is in ${langDisplayName(r.detected_lang ?? "?")}. ` +
+          `You selected ${langDisplayName(r.project_source_lang ?? "?")} as the source language.`,
           false
         );
       } else {

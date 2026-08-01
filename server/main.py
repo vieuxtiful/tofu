@@ -1742,6 +1742,31 @@ def restore_snapshot(sid: int):
     return jsonable(manifest)
 
 
+def _scan_named_a_language(manifest) -> bool:
+    """Did the scan FIND a language, or merely fall back to the latin default?
+
+    The scan runs unhinted on purpose -- it is an upload guard, and feeding it
+    the project's own answer would make it agree with itself. But an English
+    charset cannot emit Cyrillic, Greek, Arabic or Devanagari, so on such an
+    asset it returns confident-looking latin garbage, which _script_lang_for
+    then labels 'en' because that is the reader's own language. That 'en' is a
+    DEFAULT, not a finding, and reporting it as a detection is what told a user
+    their Russian billboard was English and overwrote a correct project source.
+
+    Two things count as actually naming a language: a non-latin script was
+    emitted (only a reader that covers it can do that), or the latin heuristic
+    positively identified one. Note the heuristic can never answer "en" -- it
+    only reports a language that BEATS the english default -- so a genuinely
+    English asset abstains here rather than auto-locking. That is the intended
+    trade: no verdict is better than a confident wrong one.
+    """
+    detector = cicerone.ScriptDetector()
+    texts = [i.text or "" for i in manifest.instances]
+    if any(detector.detect_script(t) not in (None, "latin") for t in texts):
+        return True
+    return cicerone.guess_latin_language(texts) is not None
+
+
 @app.post("/api/assets/{asset_id}/scan-language")
 def scan_language(asset_id: str):
     """background language scan (lexiq-parity upload guard): detect the
@@ -1770,6 +1795,8 @@ def scan_language(asset_id: str):
     except Exception as exc:
         raise HTTPException(422, f"language scan could not read the asset: {exc}")
     detected = _infer_src_lang(manifest) if manifest.instances else None
+    if detected and not _scan_named_a_language(manifest):
+        detected = None
 
     locked = False
     match: Optional[bool] = None
