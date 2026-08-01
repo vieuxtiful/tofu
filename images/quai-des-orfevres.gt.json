@@ -1,0 +1,26 @@
+{
+  "partial": true,
+  "note": "PARTIAL GT: 447x447 photo, Paris enamel street plaque on rough masonry, rotated ~-16.6deg with light italic lettering. Four text regions, all on the plaque. Annotated 2026-07-31 by 3x crop verification against a pixel grid; the plaque reads '1er Arr' with a RAISED terminal t, '1er' carrying a superscript 'er'. Boxes are at DETECTOR scale (glyph extent plus recognizer margin), not tight. Marked partial because only the plaque was verified, not the surrounding masonry margins -- promote to complete once those are checked, since false positives on masonry cracks are a real failure mode for this asset class (cf. avenue-de-la-republique). Region r1 is the reference case for the ordinal/abbreviation course: it currently reads 'ferArr !' at 0.535, where the italic serifed '1' is read as 'f', the word boundary is lost, and the raised 't' becomes '!'. An ASCII-only '1er Arrt' is a defensible reading of the same plaque and will still score a small edit distance against this entry -- that is intended, the raised terminal is part of the truth.",
+  "regions": [
+    {
+      "bbox": [239, 162, 75, 47],
+      "text": "1er Arrᵗ",
+      "lang": "fr"
+    },
+    {
+      "bbox": [214, 219, 113, 69],
+      "text": "QUAI",
+      "lang": "fr"
+    },
+    {
+      "bbox": [236, 278, 50, 33],
+      "text": "DES",
+      "lang": "fr"
+    },
+    {
+      "bbox": [156, 291, 225, 83],
+      "text": "ORFÈVRES",
+      "lang": "fr"
+    }
+  ]
+}
