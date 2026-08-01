@@ -1416,6 +1416,20 @@ COLUMN_MAX_GAP = 0.8      # vertical gap tolerance, fraction of max width
 # lighting variance across one real sign's own characters never trips it.
 COLUMN_COLOR_MAX_DIST = 90.0
 
+# A latin read this confident, and at least this long, is a WORD -- not a
+# per-character fragment of a stacked CJK column. The merge deliberately
+# trusts geometry over text, because per-character CJK reads are unreliable
+# and that is the whole reason it re-recognizes the merged crop. But that
+# licence let three Latin "Za" tokens on a Russian billboard -- sitting in
+# roughly the same x slot on three different lines -- merge into a single
+# 47x77 "column", swallowing one of them entirely.
+#
+# Two characters is the floor because a SINGLE confident latin character is
+# the classic shape of a CJK misread (a kanji read as 'H'), which is exactly
+# the case the merge must stay free to fix.
+COLUMN_LATIN_MIN_CONF = 0.5
+COLUMN_LATIN_MIN_LEN = 2
+
 
 def _mean_rgb(img, b: BBox):
     x0, y0 = max(0, b.x), max(0, b.y)
@@ -1472,9 +1486,26 @@ def merge_vertical_columns(detections: List[RawDetection], asset: Any = None) ->
             return True  # fail-open: no signal, don't block the merge
         return float(((ci - cj) ** 2).sum() ** 0.5) <= COLUMN_COLOR_MAX_DIST
 
+    _column_script = ScriptDetector()
+
+    def latin_word(i: int) -> bool:
+        """Is this member a confident latin WORD rather than a column fragment?"""
+        text = (detections[i].text or "").strip()
+        if len(text) < COLUMN_LATIN_MIN_LEN:
+            return False
+        if (detections[i].confidence or 0) < COLUMN_LATIN_MIN_CONF:
+            return False
+        return _column_script.detect_script(text) == "latin"
+
     def same_column(i: int, j: int) -> bool:
         a, b = boxes[i], boxes[j]
         if not (char_like(a) and char_like(b)):
+            return False
+        # Two latin words stacked in one x slot are two LINES of a latin
+        # layout, not one vertical sign. Geometry cannot tell them apart --
+        # both are char-like, x-aligned and closely spaced -- but the
+        # recognizer's own confident latin reads can.
+        if latin_word(i) and latin_word(j):
             return False
         wmax = max(a.width, b.width)
         if abs((a.x + a.width / 2) - (b.x + b.width / 2)) > COLUMN_X_ALIGN * wmax:

@@ -596,12 +596,12 @@
       },
       "russian-billboard": {
         "recall": {
-          "expected": 0.545,
+          "expected": 0.727,
           "tolerance": 0.0,
           "direction": "at_least"
         },
         "mean_norm_ed": {
-          "expected": 0.083,
+          "expected": 0.188,
           "tolerance": 0.0,
           "direction": "at_most"
         }

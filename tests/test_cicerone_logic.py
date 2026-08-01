@@ -286,6 +286,31 @@ class TestMergeVerticalColumns:
         b = det(300, 190, 64, 64)  # far right of a's column
         assert len(merge_vertical_columns([a, b])) == 2
 
+    def test_confident_latin_words_are_lines_not_a_column(self):
+        # regression guard for russian-billboard: the slogan sets 'Za' at the
+        # head of three DIFFERENT lines, roughly in one x slot. Every geometric
+        # gate passes -- the boxes are char-like, x-aligned and closely spaced
+        # -- so two of them merged into a single 47x77 "column" that swallowed
+        # one Za entirely. Confident multi-character latin reads are words.
+        za = [det(347, 109, 35, 26, text="Za", conf=1.0),
+              det(361, 153, 37, 29, text="Za", conf=1.0)]
+        assert len(merge_vertical_columns(za)) == 2
+
+    def test_single_latin_char_is_still_a_cjk_misread(self):
+        # the guard must not close the door the merge exists to open: ONE
+        # confident latin character is the classic shape of a misread kanji,
+        # and those fragments still have to be able to form a column.
+        frags = [det(100, 100, 30, 32, text="H", conf=0.9),
+                 det(100, 134, 30, 32, text="E", conf=0.9)]
+        assert len(merge_vertical_columns(frags)) == 1
+
+    def test_low_confidence_latin_still_merges(self):
+        # per-character CJK reads come back as unreliable latin all the time;
+        # only a read the recognizer is SURE about counts as a word.
+        frags = [det(100, 100, 30, 32, text="ab", conf=0.2),
+                 det(100, 134, 30, 32, text="cd", conf=0.2)]
+        assert len(merge_vertical_columns(frags)) == 1
+
     def test_duplicate_tail_fragment_not_concatenated(self):
         # regression guard for china-street's 茂昌眼镜公司镜司 bug: a
         # stray leftover fragment covering the same physical tail
