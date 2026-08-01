@@ -873,6 +873,10 @@ export default function App() {
   const [hasEditsAfterImport, setHasEditsAfterImport] = useState(false);
   const [importLoading, setImportLoading] = useState(false);
   const [dragOverTranslate, setDragOverTranslate] = useState(false);
+  // The asset dropzone promised "drop or click" but only click was ever wired:
+  // it is a <label> around a display:none input, and a hidden input cannot
+  // receive a drop. This drives the drop affordance the copy already claims.
+  const [dragOverAsset, setDragOverAsset] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // push history state on screen transitions so browser back works
@@ -3198,13 +3202,42 @@ export default function App() {
       {step === 0 && asset?.asset_info.asset_type !== "video" && (
         <div key="step-0" className="step-fade grid gap-6 md:grid-cols-[minmax(0,1fr)_360px]">
           <Section title="Asset" className={stackClass(0)}>
-            <label className="flex min-h-64 cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-zinc-400 p-4 text-zinc-500 transition hover:border-zinc-600 hover:text-zinc-700 dark:border-zinc-700 dark:hover:border-zinc-500 dark:hover:text-zinc-300">
+            <label
+              onDragOver={(e) => { e.preventDefault(); setDragOverAsset(true); }}
+              onDragEnter={(e) => { e.preventDefault(); setDragOverAsset(true); }}
+              // only leave when the pointer left the ZONE, not when it crossed
+              // onto the preview image or the caption inside it
+              onDragLeave={(e) => { if (e.currentTarget === e.target) setDragOverAsset(false); }}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOverAsset(false);
+                const file = e.dataTransfer.files?.[0];
+                if (!file) return;
+                const wantsVideo = project?.asset_kind === "video";
+                const isVideo = file.type.startsWith("video/");
+                // The click path filters by `accept`; a drop bypasses it
+                // entirely, so the same rule has to be enforced here or a
+                // video lands in an image project and fails downstream.
+                if (wantsVideo !== isVideo) {
+                  addToast("error", `this project takes ${wantsVideo ? "video" : "image"} assets; "${file.name}" is ${isVideo ? "a video" : "not a video"}.`);
+                  return;
+                }
+                onFile(file);
+              }}
+              className={`flex min-h-64 cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-4 transition dark:hover:border-zinc-500 dark:hover:text-zinc-300 ${
+                dragOverAsset
+                  ? "border-cyan-500 bg-cyan-50 text-cyan-700 dark:bg-cyan-950/30 dark:text-cyan-300"
+                  : "border-zinc-400 text-zinc-500 hover:border-zinc-600 hover:text-zinc-700 dark:border-zinc-700"
+              }`}
+            >
               {previewUrl && asset?.asset_info.asset_type !== "video" ? (
                 <img src={previewUrl} alt="preview" className="max-h-72 rounded-sm object-contain" />
               ) : (
                 <>
                   <ArrowUpFromLine size={28} />
-                  <span className="text-sm">drop or click to upload asset</span>
+                  <span className="text-sm">
+                    {dragOverAsset ? "release to upload" : "drop or click to upload asset"}
+                  </span>
                   {/* <span className="subtext text-xs text-zinc-500 dark:text-zinc-600">uploading a new image starts a fresh capture session</span> */}
                 </>
               )}
