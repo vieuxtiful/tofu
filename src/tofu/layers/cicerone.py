@@ -1860,9 +1860,30 @@ PASS_THRESHOLDS: Tuple[Tuple[float, float], ...] = (
 
 
 # candidate language sets the auto-probe tries when an unhinted pass
-# produced garbage (charsets the default english reader cannot express)
+# produced garbage (charsets the default english reader cannot express).
+# CJK is the first tier because its charsets are the ones an English reader
+# fails most spectacularly on, and because probe_uncovered_surfaces (stacked
+# vertical signage) is a CJK-specific path that consumes this list directly.
 PROBE_LANGSETS: Tuple[Tuple[str, ...], ...] = (
     ("ja", "en"), ("ko", "en"), ("ch_sim", "en"),
+)
+
+# Second tier: every other script EASYOCR_LANG_SCRIPTS can already score.
+#
+# Discovery used to be CJK-ONLY, which made it structurally incapable of
+# naming any other non-latin script. An English reader cannot EMIT Cyrillic,
+# so the script-driven rescue (SCRIPT_TO_EASYOCR_SET, which has always
+# contained 'cyrillic') never fires either -- it keys off the script of
+# already-recognized text. A Russian billboard was therefore reported as
+# English, and one project's source language was silently overwritten to 'en'
+# on that basis.
+#
+# Tried only when the CJK tier produces NO winner, so behaviour on CJK assets
+# is bit-identical and a scene that is genuinely Japanese never pays for six
+# more reader inits (~15-20s CPU each, cached per process).
+PROBE_LANGSETS_EXTENDED: Tuple[Tuple[str, ...], ...] = (
+    ("ru", "en"), ("ar", "en"), ("hi", "en"),
+    ("el", "en"), ("he", "en"), ("th", "en"),
 )
 
 # minimum count of real CJK-script (han/japanese/hangul) instances
@@ -1979,40 +2000,47 @@ def _auto_probe_language(
     bboxes = [i.bounding_box for i in top]
 
     winners: List[Tuple[int, float, EasyOCRBackend]] = []
-    for langset in PROBE_LANGSETS:
-        try:
-            candidate = EasyOCRBackend(languages=langset, gpu=engine.gpu)
-            per_region = candidate.detect_in_regions(asset, bboxes)
-        except Exception:
-            continue
-        target_scripts = EASYOCR_LANG_SCRIPTS.get(langset[0], set()) - {"latin"}
-        confs = sorted(
-            (
-                max(
-                    (_script_bearing_conf(d, target_scripts) for d in dets),
-                    default=0.0,
-                )
-                for dets in per_region
-            ),
-            reverse=True,
-        )
-        # top-2 evidence, not the mean: probe crops are the WORST regions
-        # by construction, and one decisive script-bearing hit (e.g. a
-        # storefront sign at conf 1.0) must not be diluted by crops that
-        # are unreadable under every charset
-        top2 = confs[:2]
-        score = sum(top2) / len(top2) if top2 else 0.0
-        # breadth beats depth: a single high-confidence-but-implausible
-        # read (e.g. Korean's hangul plausibly-shaped-but-wrong on
-        # Japanese kanji) must not outrank a correctly-scripted reader
-        # whose crops are merely HARDER — measured: Korean beat Japanese
-        # this way on japan-street, where the ja reader read real kanji
-        # at conf 0.015-0.235 (genuinely low, not implausible). count of
-        # independently-corroborating regions ranks first; confidence
-        # only breaks ties within that.
-        hits = sum(1 for c in confs if c > 0)
-        if score >= min_evidence:
-            winners.append((hits, score, candidate))
+    for tier in (PROBE_LANGSETS, PROBE_LANGSETS_EXTENDED):
+        # Only reach for the second tier when the first found nothing. Ranking
+        # WITHIN a tier is untouched, so a mixed ja/ko street still compares
+        # both CJK winners against each other exactly as it always did, and a
+        # genuinely Japanese scene never pays for six more reader inits.
+        if winners:
+            break
+        for langset in tier:
+            try:
+                candidate = EasyOCRBackend(languages=langset, gpu=engine.gpu)
+                per_region = candidate.detect_in_regions(asset, bboxes)
+            except Exception:
+                continue
+            target_scripts = EASYOCR_LANG_SCRIPTS.get(langset[0], set()) - {"latin"}
+            confs = sorted(
+                (
+                    max(
+                        (_script_bearing_conf(d, target_scripts) for d in dets),
+                        default=0.0,
+                    )
+                    for dets in per_region
+                ),
+                reverse=True,
+            )
+            # top-2 evidence, not the mean: probe crops are the WORST regions
+            # by construction, and one decisive script-bearing hit (e.g. a
+            # storefront sign at conf 1.0) must not be diluted by crops that
+            # are unreadable under every charset
+            top2 = confs[:2]
+            score = sum(top2) / len(top2) if top2 else 0.0
+            # breadth beats depth: a single high-confidence-but-implausible
+            # read (e.g. Korean's hangul plausibly-shaped-but-wrong on
+            # Japanese kanji) must not outrank a correctly-scripted reader
+            # whose crops are merely HARDER — measured: Korean beat Japanese
+            # this way on japan-street, where the ja reader read real kanji
+            # at conf 0.015-0.235 (genuinely low, not implausible). count of
+            # independently-corroborating regions ranks first; confidence
+            # only breaks ties within that.
+            hits = sum(1 for c in confs if c > 0)
+            if score >= min_evidence:
+                winners.append((hits, score, candidate))
     winners.sort(key=lambda w: (-w[0], -w[1]))
     return [backend for _, _, backend in winners[:max_winners]]
 
