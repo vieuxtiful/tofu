@@ -507,7 +507,7 @@
           "direction": "at_least"
         },
         "mean_norm_ed": {
-          "expected": 0.202,
+          "expected": 0.161,
           "tolerance": 0.0,
           "direction": "at_most"
         }
@@ -589,7 +589,7 @@
           "direction": "at_least"
         },
         "mean_norm_ed": {
-          "expected": 0.111,
+          "expected": 0.0,
           "tolerance": 0.0,
           "direction": "at_most"
         }
