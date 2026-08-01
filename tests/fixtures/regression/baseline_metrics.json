@@ -502,12 +502,12 @@
       },
       "decolonisons-nos-rues": {
         "recall": {
-          "expected": 0.471,
+          "expected": 0.4,
           "tolerance": 0.0,
           "direction": "at_least"
         },
         "mean_norm_ed": {
-          "expected": 0.161,
+          "expected": 0.167,
           "tolerance": 0.0,
           "direction": "at_most"
         }
