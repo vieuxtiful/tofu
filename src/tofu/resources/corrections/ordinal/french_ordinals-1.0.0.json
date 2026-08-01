@@ -1,0 +1,79 @@
+{
+  "id": "ordinal.french-administrative",
+  "kind": "ordinal-abbreviation",
+  "locale": "fr",
+  "schema_version": "1",
+  "data_version": "1.0.0",
+  "checksum": "sha256:2afe0f76dbc6735c862c60e5ae40b1599ffd37f1a35ccc4d26a6e08ef27cfe1e",
+  "provenance": {
+    "maintainer": "ToFU",
+    "method": "curated from Paris enamel street-plate typography; the raised terminal letter is the plate convention for Arrondissement",
+    "source": "project correction corpus (quai-des-orfevres)"
+  },
+  "license": "CC0-1.0",
+  "entries": [
+    {
+      "language": "fr",
+      "ordinal": "1er",
+      "stem": "Arr",
+      "terminal": "t",
+      "canonical": "1er Arrᵗ",
+      "expansion": "premier arrondissement",
+      "leading_confusions": [
+        "f",
+        "J",
+        "I",
+        "l",
+        "t"
+      ],
+      "terminal_confusions": [
+        "!",
+        "1",
+        "'",
+        "’",
+        "´",
+        "i"
+      ]
+    },
+    {
+      "language": "fr",
+      "ordinal": "2e",
+      "stem": "Arr",
+      "terminal": "t",
+      "canonical": "2e Arrᵗ",
+      "expansion": "deuxième arrondissement",
+      "leading_confusions": [
+        "Z",
+        "z"
+      ],
+      "terminal_confusions": [
+        "!",
+        "1",
+        "'",
+        "’",
+        "´",
+        "i"
+      ]
+    },
+    {
+      "language": "fr",
+      "ordinal": "3e",
+      "stem": "Arr",
+      "terminal": "t",
+      "canonical": "3e Arrᵗ",
+      "expansion": "troisième arrondissement",
+      "leading_confusions": [
+        "B",
+        "8"
+      ],
+      "terminal_confusions": [
+        "!",
+        "1",
+        "'",
+        "’",
+        "´",
+        "i"
+      ]
+    }
+  ]
+}
