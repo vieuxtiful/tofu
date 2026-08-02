@@ -35,9 +35,29 @@ class TestOrdinalProposals:
         assert ordinal.propose(None, [i], language="fr") == 1
         assert steps(i)[0]["candidate_text"] == "1er Arr\u1d57"
 
-    def test_never_mutates_the_text(self):
+    def test_an_unassessed_region_is_proposal_only(self):
+        # Savor runs first and can be switched off entirely; a region it
+        # never assessed has no reliability verdict to lean on, and the
+        # conservative direction to fail in is "propose".
         i = inst("ferArr !")
         ordinal.propose(None, [i], language="fr")
+        assert i.text == "ferArr !"
+        assert steps(i)[0]["applied"] is False
+
+    def test_a_reliable_region_is_corrected(self):
+        i = inst("ferArr !")
+        i.ocr_quality = {"state": "reliable"}
+        assert ordinal.propose(None, [i], language="fr") == 1
+        assert i.text == "1er Arrᵗ"
+        step = steps(i)[0]
+        assert step["applied"] is True
+        assert step["corrected_text"] == "1er Arrᵗ"
+        assert step["ordinal_evidence"]["ocr_quality_state"] == "reliable"
+
+    def test_a_region_needing_review_is_not_corrected(self):
+        i = inst("ferArr !")
+        i.ocr_quality = {"state": "review_required"}
+        assert ordinal.propose(None, [i], language="fr") == 1
         assert i.text == "ferArr !"
         assert steps(i)[0]["applied"] is False
 

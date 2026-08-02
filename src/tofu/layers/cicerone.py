@@ -2777,8 +2777,182 @@ def refine_langset(
     return None
 
 
+## a coarse box holds its ground against the zoom pass only when the zoom
+## reads sitting inside it are demonstrably PIECES of what it read.  0.8
+## rather than ZOOM_FRAGMENT_CONTAINMENT's 0.9: a zoom box is mapped back
+## from an upscaled crop, so its edges land a pixel or two wide of the
+## coarse box's, and at 0.9 that rounding is enough to disown a genuine
+## crumb of the very line it came from.
+LOAF_CONTAINMENT = 0.8
+
+## a zoom read this weak is not evidence of anything.  decolonisons' zoom
+## pass emits 'n' at 0.019 and 'sue' at 0.002 across the same line the
+## coarse pass read whole as 'mémoire des luttes contre' at 0.902; such
+## reads neither earn a place as crumbs nor get a vote against the loaf.
+##
+## confidence is the whole test on purpose -- an earlier version also
+## required two characters, which silently exempted every single-glyph CJK
+## read from vetoing anything.  One han character is a whole word, and
+## china-street's '娘' at 0.689 sitting inside a garbage column read is
+## precisely the several-signs case this rule must lose.
+LOAF_CRUMB_MIN_CONFIDENCE = 0.3
+
+## how much of the coarse read a contained zoom read has to look like
+## before it counts as a piece of it -- the same floor _dedup_zoom_
+## detections uses for its own similarity test, and for the same reason.
+LOAF_SPAN_SIMILARITY = 0.6
+
+## above this, two overlapping reads are not a whole and a part but the
+## same text read twice, once per pass.  the only question left is which
+## pass localized it better, and there confidence IS comparable: the two
+## sides read the identical string, so no charset is being adjudicated.
+LOAF_DUPLICATE_SIMILARITY = 0.9
+
+## ...but the fine box is usually the TIGHTER one, so handing the region
+## back to the coarse pass costs IoU, and is worth it only when the fine
+## read is about to be thrown away regardless.  0.5 is scene_filter's own
+## global bypass: below it a detection survives only on geometry, and on
+## la-bastille the fine '7789' at 0.202 was duly deleted while the coarse
+## read of the identical string sat at 0.772.  Above the floor both reads
+## would survive, the fine box is tighter, and it keeps the region --
+## measured on the ui-controls fixture, where taking the coarse box for a
+## confidence gain instead cost precision and recall 1.0 -> 0.667.
+LOAF_DUPLICATE_RESCUE_CEILING = 0.5
+
+
+def _crumbs_of_the_same_loaf(
+    whole: RawDetection,
+    pieces: Sequence[RawDetection],
+    skip: Optional[set] = None,
+) -> Optional[Tuple[List[int], float]]:
+    """Indices of ``pieces`` that are fragments of ``whole``, or None.
+
+    The zoom pass exists to break a coarse box that spans several signs
+    into one box per sign, and union_prefer_primary enforces that by
+    letting any fine box evict whatever coarse box contains it.  On dense
+    CJK signage that is exactly right: the coarse read of a six-character
+    vertical column is garbage and the per-character zoom reads are the
+    real text.
+
+    On a poster it is exactly wrong.  There the coarse pass reads a whole
+    line correctly -- 'crimes coloniaux et esclavagistes' at 0.919 -- and
+    the zoom pass returns one word of it, which then evicts the line.  The
+    line and the word are not competing readings of different pixels; the
+    word is a crumb off the same loaf.
+
+    Confidence cannot tell those two cases apart (measured: preferring the
+    more confident side recovered the poster lines but cost china-street
+    0.875->0.750 and gemini-street 0.333->0.278).  Text can.  A coarse read
+    that is the WHOLE of which the fine reads are PARTS literally contains
+    them; a coarse read that spans several signs contains nothing of what
+    the zoom pass found there.  So:
+
+    * the coarse text must be strictly longer than every crumb, OR read
+      the same string as it -- see the duplicate case below;
+    * every crumb worth listening to must read like a span of the coarse
+      text, compared on the pared skeleton so a half-Latin Cyrillic read
+      still matches the Cyrillic fragment of the same pixels.
+
+    A single credible crumb that is NOT a span of the coarse text vetoes
+    the whole thing: that is the several-signs case, and the zoom pass
+    keeps its authority there.
+
+    Only well-contained fine boxes are crumbs.  One that merely OVERLAPS
+    the coarse box is not evidence either way and is left standing beside
+    it -- decolonisons' zoom read of 'esclavagistes' sits 0.754 inside the
+    line 'crimes coloniaux et esclavagistes', and both survive, the line
+    matching its ground truth and the word answering to the ordinary
+    filters downstream.
+
+    The duplicate case is the pair reading the SAME text -- china-street's
+    '华 联店' and la-bastille's '7789' are each found by both passes.  The
+    fine box is normally the tighter of the two and keeps the region; the
+    coarse box takes it over only when the fine read sits below the scene
+    filter's confidence floor and the coarse read does not, which is the
+    narrow case where deferring to the fine box means losing the region
+    altogether (la-bastille's '7789': 0.202 against 0.772).
+
+    Returns the crumb indices together with the best confidence among the
+    crumbs that CORROBORATED the coarse read -- each one is the same text
+    re-read at higher resolution, so a coarse read they agree with is
+    better evidenced than its own raw confidence says.  Without carrying
+    that forward the fix defeats itself: on russian-billboard-2 the whole
+    slogan line reads at 0.454 while the fragments it replaces read at
+    0.961, and the scene filter's confidence floor deletes the line the
+    moment it wins.
+    """
+    from tofu.utils.textmatch import best_span_similarity, pared_similarity
+
+    whole_text = (whole.text or "").strip()
+    if not whole_text:
+        return None
+    skip = skip or set()
+    whole_box = _polygon_bbox(whole.polygon)
+    whole_conf = whole.confidence or 0.0
+    crumbs: List[int] = []
+    for index, piece in enumerate(pieces):
+        if index in skip:
+            continue
+        if _containment_frac(_polygon_bbox(piece.polygon), whole_box) >= LOAF_CONTAINMENT:
+            crumbs.append(index)
+    if not crumbs:
+        return None
+    corroboration = 0.0
+    for index in crumbs:
+        piece = pieces[index]
+        piece_text = (piece.text or "").strip()
+        piece_conf = piece.confidence or 0.0
+        credible = bool(piece_text) and piece_conf >= LOAF_CRUMB_MIN_CONFIDENCE
+        if len(piece_text) >= len(whole_text):
+            same_read = pared_similarity(piece_text, whole_text) >= LOAF_DUPLICATE_SIMILARITY
+            rescues = (
+                piece_conf < LOAF_DUPLICATE_RESCUE_CEILING
+                and whole_conf >= LOAF_DUPLICATE_RESCUE_CEILING
+            )
+            if not (same_read and rescues):
+                return None
+            continue
+        if credible:
+            if best_span_similarity(piece_text, whole_text) < LOAF_SPAN_SIMILARITY:
+                return None
+            corroboration = max(corroboration, piece_conf)
+    return crumbs, corroboration
+
+
+def _corroborated(
+    det: RawDetection, crumbs: List[int], corroboration: float
+) -> RawDetection:
+    """Raise a loaf's confidence to that of the crumbs that agreed with it.
+
+    Left at its raw value the coarse read is scored as if nothing had
+    confirmed it, and the scene filter's confidence floor then deletes the
+    very region this rule just rescued.  The raw figure is preserved in
+    provenance so the promotion is auditable rather than laundered.
+    """
+    if corroboration <= (det.confidence or 0.0):
+        return det
+    entry: Dict[str, Any] = {
+        "stage": "zoom_union",
+        "rule": "keep_the_loaf",
+        "raw_confidence": round(float(det.confidence or 0.0), 6),
+        "corroborating_crumbs": len(crumbs),
+        "corroborated_confidence": round(float(corroboration), 6),
+        "selected": True,
+    }
+    return RawDetection(
+        polygon=det.polygon,
+        text=det.text,
+        confidence=corroboration,
+        language=det.language,
+        provenance=[*(det.provenance or []), entry],
+    )
+
+
 def union_prefer_primary(
-    primary: List[RawDetection], secondary: List[RawDetection]
+    primary: List[RawDetection],
+    secondary: List[RawDetection],
+    *,
+    keep_the_loaf: bool = False,
 ) -> List[RawDetection]:
     """union of two detection sets where PRIMARY is authoritative on
     overlaps regardless of confidence.
@@ -2787,15 +2961,36 @@ def union_prefer_primary(
     wrong across charsets: an english reader recognizes a Korean glyph as
     '4' at conf 0.95, beating the tuned reader's correct '사' at 0.8.
     confidence is only comparable within one charset.
+
+    ``keep_the_loaf`` narrows that authority in the one place it is known
+    to destroy correct text: a secondary whose contained primaries are
+    demonstrably crumbs of it wins, and takes those crumbs off the table.
+    See _crumbs_of_the_same_loaf for what "demonstrably" is doing there.
+    Off by default -- the callers unioning per-surface panel reads over a
+    full-frame sweep have a different contract and are not affected.
     """
     out = list(primary)
     kept_boxes = [_polygon_bbox(d.polygon) for d in out]
+    dropped: set = set()
+    extra: List[RawDetection] = []
     for det in secondary:
         db = _polygon_bbox(det.polygon)
-        if not any(_overlap_frac(db, kb) > 0.5 for kb in kept_boxes):
-            out.append(det)
+        loaf = (
+            _crumbs_of_the_same_loaf(det, out, dropped) if keep_the_loaf else None
+        )
+        if loaf is not None:
+            crumbs, corroboration = loaf
+            dropped.update(crumbs)
+            extra.append(_corroborated(det, crumbs, corroboration))
             kept_boxes.append(db)
-    return out
+            continue
+        if not any(
+            _overlap_frac(db, kb) > 0.5
+            for index, kb in enumerate(kept_boxes) if index not in dropped
+        ):
+            extra.append(det)
+            kept_boxes.append(db)
+    return [d for index, d in enumerate(out) if index not in dropped] + extra
 
 
 def iter_multipass(
@@ -3397,10 +3592,13 @@ def detect(
     # coarse-to-fine zoom pass with the final engine: fine boxes are
     # authoritative — a coarse frame-scale box that spans several signs is
     # replaced by its per-sign zoom boxes. runs for any non-null backend.
+    # keep_the_loaf carves out the one case where "spans several signs" is
+    # false: a coarse box the zoom pass merely broke into pieces of its own
+    # correct reading keeps its ground, and the pieces go.
     if zoom and scene_regions and not isinstance(final_engine, NullBackend):
         fine = zoom_detect(final_engine, asset, scene_regions)
         if fine:
-            detections = union_prefer_primary(fine, detections)
+            detections = union_prefer_primary(fine, detections, keep_the_loaf=True)
             manifest = build_manifest(
                 asset, detections,
                 asset_info=asset_info,

@@ -1,6 +1,10 @@
 ## 🍢 wasabi: Japanese/simplified-Chinese glyph normalization (pure-logic)
 from tofu.core.types import BBox, InstText
-from tofu.layers.wasabi import normalize_japanese_kanji, season
+from tofu.layers.wasabi import (
+    normalize_japanese_kanji,
+    restore_cyrillic_homoglyphs,
+    season,
+)
 
 
 def _inst(text, lang="ja", confidence=0.9, id="r1"):
@@ -67,3 +71,44 @@ class TestSeason:
     def test_empty_text_skipped(self):
         inst = _inst("")
         assert season([inst]) == 0
+
+    def test_cyrillic_repair_is_not_gated_on_a_language_label(self):
+        # the defect makes a Cyrillic region LOOK latin, so by the time this
+        # runs the region is routinely labelled 'en'. gating the course on
+        # the label would exempt exactly the regions that need it.
+        inst = _inst("BMЕСTЕ С РОССИЕЙ!", lang="en")
+        assert season([inst]) == 1
+        assert inst.text == "ВМЕСТЕ С РОССИЕЙ!"
+        assert inst.ocr_correction["course"] == "cyrillic_homoglyph"
+        assert inst.ocr_correction["applied"] is True
+
+
+class TestRestoreCyrillicHomoglyphs:
+    def test_latin_lookalikes_inside_a_cyrillic_word_are_restored(self):
+        # russian-billboard-2: a joint (ru, en) charset decodes В, М and Т as
+        # latin B, M and T, and nothing downstream can tell.
+        assert restore_cyrillic_homoglyphs("BMЕСTЕ С РОССИЕЙ!") == "ВМЕСТЕ С РОССИЕЙ!"
+
+    def test_a_wholly_latin_word_survives_a_cyrillic_region(self):
+        # russian-billboard's 'Za' -- the war symbol, genuinely latin, set
+        # against Cyrillic slogans. its ground truth says a latin read there
+        # is CORRECT, so the repair must not reach it.
+        assert restore_cyrillic_homoglyphs("Za ПОБЕДУ!") == "Za ПОБЕДУ!"
+        assert restore_cyrillic_homoglyphs("Za") == "Za"
+
+    def test_evidence_free_words_are_decided_by_their_region(self):
+        # every character of 'ПOБEДY' below is a shared letterform except
+        # П, Б and Д -- those three settle the script for the whole word.
+        assert restore_cyrillic_homoglyphs("ПOБEДY!") == "ПОБЕДУ!"
+
+    def test_a_region_with_no_unambiguous_cyrillic_is_left_alone(self):
+        # 'BMECTE' spelled entirely in latin lookalikes is genuinely
+        # undecidable on its own, and guessing would corrupt latin text.
+        assert restore_cyrillic_homoglyphs("BMECTE") == "BMECTE"
+
+    def test_latin_and_cjk_regions_untouched(self):
+        for text in ("Valentina Ursu (RFE/RL)", "OPTICAL", "MING 上海", "23"):
+            assert restore_cyrillic_homoglyphs(text) == text
+
+    def test_correct_cyrillic_passes_through(self):
+        assert restore_cyrillic_homoglyphs("В БУДУЩЕЕ") == "В БУДУЩЕЕ"

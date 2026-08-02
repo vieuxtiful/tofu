@@ -224,17 +224,17 @@
       },
       "mixed-script": {
         "precision": {
-          "expected": 0.333,
+          "expected": 1.0,
           "tolerance": 0.0,
           "direction": "at_least"
         },
         "recall": {
-          "expected": 0.5,
+          "expected": 1.0,
           "tolerance": 0.0,
           "direction": "at_least"
         },
         "f1": {
-          "expected": 0.4,
+          "expected": 1.0,
           "tolerance": 0.0,
           "direction": "at_least"
         },
@@ -246,22 +246,22 @@
       },
       "multicolour-text": {
         "precision": {
-          "expected": 0.0,
+          "expected": 0.333,
           "tolerance": 0.0,
           "direction": "at_least"
         },
         "recall": {
-          "expected": 0.0,
+          "expected": 1.0,
           "tolerance": 0.0,
           "direction": "at_least"
         },
         "f1": {
-          "expected": 0.0,
+          "expected": 0.5,
           "tolerance": 0.0,
           "direction": "at_least"
         },
         "mean_norm_ed": {
-          "expected": 0.0,
+          "expected": 0.667,
           "tolerance": 0.0,
           "direction": "at_most"
         }
@@ -334,17 +334,17 @@
       },
       "serif-vs-sans": {
         "precision": {
-          "expected": 0.667,
+          "expected": 0.714,
           "tolerance": 0.0,
           "direction": "at_least"
         },
         "recall": {
-          "expected": 0.667,
+          "expected": 0.833,
           "tolerance": 0.0,
           "direction": "at_least"
         },
         "f1": {
-          "expected": 0.667,
+          "expected": 0.769,
           "tolerance": 0.0,
           "direction": "at_least"
         },
@@ -356,17 +356,17 @@
       },
       "shadow-effects": {
         "precision": {
-          "expected": 0.0,
+          "expected": 0.333,
           "tolerance": 0.0,
           "direction": "at_least"
         },
         "recall": {
-          "expected": 0.0,
+          "expected": 0.5,
           "tolerance": 0.0,
           "direction": "at_least"
         },
         "f1": {
-          "expected": 0.0,
+          "expected": 0.4,
           "tolerance": 0.0,
           "direction": "at_least"
         },
@@ -378,22 +378,22 @@
       },
       "stylized-italic": {
         "precision": {
-          "expected": 0.4,
+          "expected": 1.0,
           "tolerance": 0.0,
           "direction": "at_least"
         },
         "recall": {
-          "expected": 0.5,
+          "expected": 1.0,
           "tolerance": 0.0,
           "direction": "at_least"
         },
         "f1": {
-          "expected": 0.444,
+          "expected": 1.0,
           "tolerance": 0.0,
           "direction": "at_least"
         },
         "mean_norm_ed": {
-          "expected": 0.0,
+          "expected": 0.067,
           "tolerance": 0.0,
           "direction": "at_most"
         }
@@ -502,12 +502,12 @@
       },
       "decolonisons-nos-rues": {
         "recall": {
-          "expected": 0.4,
+          "expected": 0.8,
           "tolerance": 0.0,
           "direction": "at_least"
         },
         "mean_norm_ed": {
-          "expected": 0.167,
+          "expected": 0.169,
           "tolerance": 0.0,
           "direction": "at_most"
         }
@@ -538,12 +538,12 @@
       },
       "la-bastille-1789": {
         "recall": {
-          "expected": 0.111,
+          "expected": 0.333,
           "tolerance": 0.0,
           "direction": "at_least"
         },
         "mean_norm_ed": {
-          "expected": 0.5,
+          "expected": 0.553,
           "tolerance": 0.0,
           "direction": "at_most"
         }
@@ -577,7 +577,7 @@
           "direction": "at_least"
         },
         "mean_norm_ed": {
-          "expected": 0.062,
+          "expected": 0.0,
           "tolerance": 0.0,
           "direction": "at_most"
         }
@@ -608,12 +608,12 @@
       },
       "russian-billboard-2": {
         "recall": {
-          "expected": 0.333,
+          "expected": 1.0,
           "tolerance": 0.0,
           "direction": "at_least"
         },
         "mean_norm_ed": {
-          "expected": 0.357,
+          "expected": 0.014,
           "tolerance": 0.0,
           "direction": "at_most"
         }

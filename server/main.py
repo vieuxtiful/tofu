@@ -2126,12 +2126,17 @@ def detect_stream(
                     })
 
             # coarse-to-fine zoom pass: re-detect scene surfaces at 2x —
-            # fine boxes replace coarse multi-sign boxes they overlap
+            # fine boxes replace coarse multi-sign boxes they overlap, unless
+            # those fine boxes are pieces of what the coarse box already read
+            # whole (keep_the_loaf).  kept in step with cicerone.detect's own
+            # zoom stage; the streaming endpoint must not diverge from it.
             if not isinstance(backend, cicerone.NullBackend) and regions:
                 yield event({"stage": "zoom", "status": "running"})
                 fine = cicerone.zoom_detect(backend, str(path), regions)
                 if fine:
-                    detections = cicerone.union_prefer_primary(fine, detections)
+                    detections = cicerone.union_prefer_primary(
+                        fine, detections, keep_the_loaf=True
+                    )
                     manifest = cicerone.build_manifest(
                         str(path), detections,
                         asset_info=info, engine=backend,

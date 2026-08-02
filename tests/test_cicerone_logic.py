@@ -417,6 +417,100 @@ class TestMerging:
         assert len(union_prefer_primary(primary, secondary)) == 2
 
 
+# -- whole-over-fragments at the zoom union (keep_the_loaf) ------------------
+# the zoom pass exists to break a coarse box that spans several signs into
+# one box per sign, and the fine boxes evict whatever contains them.  On a
+# poster that is backwards: the coarse pass read a whole LINE correctly and
+# the zoom pass hands back one word of it.  These guard the discriminator
+# between the two -- whether the coarse read contains the fine ones as text.
+
+class TestKeepTheLoaf:
+    def test_a_correct_line_is_not_evicted_by_its_own_words(self):
+        # la-bastille: the coarse pass reads the display line at 0.529 and
+        # the zoom pass shatters it into two pieces, either of which was
+        # enough to evict it.  Boxes are the ones actually measured.
+        fine = [det(64, 12, 132, 63, "IBas", 0.392),
+                det(270, 16, 65, 57, "Le", 0.342)]
+        coarse = [det(26, 11, 309, 63, "la Bastille", 0.529)]
+        out = union_prefer_primary(fine, coarse, keep_the_loaf=True)
+        assert [d.text for d in out] == ["la Bastille"]
+
+    def test_off_by_default(self):
+        fine = [det(64, 12, 132, 63, "IBas", 0.392)]
+        coarse = [det(26, 11, 309, 63, "la Bastille", 0.529)]
+        assert [d.text for d in union_prefer_primary(fine, coarse)] == ["IBas"]
+
+    def test_a_merely_overlapping_word_is_not_a_crumb(self):
+        # decolonisons' 'esclavagistes' sits 0.754 inside the line it ends,
+        # short of the containment bar.  It is not evidence that the line
+        # spans two signs, and it is not claimed as part of it either --
+        # both stand, and the line is the one that matches ground truth.
+        fine = [det(260, 513, 124, 25, "esclavagistes", 1.0),
+                det(254, 520, 4, 11, "1", 0.026)]
+        coarse = [det(83, 515, 300, 19, "crimes coloniaux et esclavagistes", 0.919)]
+        out = union_prefer_primary(fine, coarse, keep_the_loaf=True)
+        assert sorted(d.text for d in out) == [
+            "crimes coloniaux et esclavagistes", "esclavagistes",
+        ]
+
+    def test_a_coarse_box_spanning_several_signs_still_loses(self):
+        # china-street: the coarse read of a six-character vertical column is
+        # garbage and the per-character zoom reads are the real text.  None
+        # of them is a span of it, so the zoom pass keeps its authority.
+        fine = [det(408, 559, 64, 61, "娘", 0.689),
+                det(407, 501, 63, 58, "夫", 0.53)]
+        coarse = [det(410, 504, 61, 232, "矗:", 0.014)]
+        out = union_prefer_primary(fine, coarse, keep_the_loaf=True)
+        assert sorted(d.text for d in out) == ["夫", "娘"]
+
+    def test_junk_fragments_neither_qualify_nor_veto(self):
+        # decolonisons again: the zoom pass emits 'n' at 0.019 and 'sue' at
+        # 0.002 across the line the coarse pass read whole at 0.902.  Reads
+        # that weak are not evidence that the coarse box spans two signs.
+        fine = [det(263, 508, 52, 5, "n", 0.019), det(320, 508, 60, 6, "sue", 0.002)]
+        coarse = [det(144, 498, 234, 16, "mémoire des luttes contre", 0.902)]
+        out = union_prefer_primary(fine, coarse, keep_the_loaf=True)
+        assert [d.text for d in out] == ["mémoire des luttes contre"]
+
+    def test_a_corroborated_loaf_carries_its_crumbs_confidence(self):
+        # russian-billboard-2: the whole slogan line reads at 0.454 while the
+        # fragments it replaces read at 0.961.  Left at its raw confidence
+        # the rescued line is deleted by the scene filter's floor.
+        fine = [det(107, 84, 57, 21, "IECTE", 0.961)]
+        coarse = [det(78, 74, 220, 35, "BMЕСTЕ С РОССИЕЙ!", 0.454)]
+        out = union_prefer_primary(fine, coarse, keep_the_loaf=True)
+        assert len(out) == 1
+        assert out[0].confidence == pytest.approx(0.961)
+        assert out[0].provenance[-1]["rule"] == "keep_the_loaf"
+        assert out[0].provenance[-1]["raw_confidence"] == pytest.approx(0.454)
+
+    def test_the_same_text_read_twice_leaves_the_region_to_the_tighter_box(self):
+        # china-street's '华 联店' is found by both passes.  The fine box is
+        # the tighter one and both reads clear the scene filter, so handing
+        # the region back to the coarse pass would only cost IoU.
+        fine = [det(356, 242, 125, 41, "华 联店", 0.270)]
+        coarse = [det(354, 240, 130, 44, "华 联店", 0.202)]
+        out = union_prefer_primary(fine, coarse, keep_the_loaf=True)
+        assert out[0].confidence == pytest.approx(0.270)
+
+    def test_a_duplicate_below_the_filters_floor_is_rescued_by_the_coarse_read(self):
+        # la-bastille's '7789': the fine read at 0.202 is deleted outright by
+        # the scene filter, so deferring to it loses the region entirely.
+        fine = [det(334, 76, 85, 64, "7789", 0.202)]
+        coarse = [det(332, 72, 90, 74, "7789", 0.772)]
+        out = union_prefer_primary(fine, coarse, keep_the_loaf=True)
+        assert len(out) == 1
+        assert out[0].confidence == pytest.approx(0.772)
+
+    def test_a_cyrillic_fragment_matches_a_half_latin_line_read(self):
+        # the span test compares pared skeletons, or a Cyrillic crumb and a
+        # part-latin read of the same pixels would look unrelated.
+        fine = [det(161, 59, 43, 25, "ЦЕЕ", 1.0)]
+        coarse = [det(80, 55, 126, 34, "В БУДУЩЕЕ", 0.928)]
+        out = union_prefer_primary(fine, coarse, keep_the_loaf=True)
+        assert [d.text for d in out] == ["В БУДУЩЕЕ"]
+
+
 # -- zoom-pass internal dedup (repeat-detect duplicate follow-up) ------------
 # overlapping scene surfaces (e.g. an MSER text_cluster and a contour-rescue
 # bordered_region both covering the same sign) each get re-detected

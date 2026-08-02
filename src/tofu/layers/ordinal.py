@@ -131,11 +131,22 @@ def propose(
     instances: List[InstText],
     language: Optional[str] = None,
 ) -> int:
-    """Offer ordinal/abbreviation readings for review. Returns the count.
+    """Offer ordinal/abbreviation readings, applying only where the region
+    is measurably reliable. Returns the count of proposals made.
 
-    Never mutates ``inst.text``. Each proposal is recorded through the same
-    audit ledger Savor writes, so one region carrying several courses' opinions
-    reads as one ordered history rather than competing top-level fields.
+    A structural match plus non-contradicting geometry is good evidence but
+    it is not, on its own, licence to rewrite a region: the same pattern
+    fires on a genuinely unreadable smear as on a crisp plate. So the
+    canonical form is APPLIED only when Savor's own quality assessment
+    already called the region reliable -- the same ``can_auto_apply`` gate
+    every one of Savor's courses answers to -- and otherwise recorded for
+    review exactly as before. Regions Savor never assessed (it can be
+    switched off, and it runs first) have no verdict to lean on and are
+    proposal-only, which is the conservative direction to fail in.
+
+    Each decision is recorded through the same audit ledger Savor writes, so
+    one region carrying several courses' opinions reads as one ordered
+    history rather than competing top-level fields.
     """
     if language and not str(language).lower().startswith("fr"):
         return 0
@@ -143,7 +154,7 @@ def propose(
     if resource is None or not instances:
         return 0
 
-    from tofu.layers.savor import _record_correction
+    from tofu.layers.savor import OCR_QUALITY_RELIABLE, _record_correction
 
     patterns = [(entry, _pattern_for(entry)) for entry in resource.entries]
     proposed = 0
@@ -163,19 +174,27 @@ def propose(
             canonical = str(entry["canonical"])
             if canonical == text:
                 break
+            quality = inst.ocr_quality or {}
+            apply = quality.get("state") == OCR_QUALITY_RELIABLE
+            explanation = (
+                f"structural match for a French administrative abbreviation "
+                f"({entry['expansion']}): ordinal + '{entry['stem']}' + raised "
+                f"terminal. The leading '{match.group('lead')}' reads as an "
+                f"ordinal digit, the word boundary is missing, and the raised "
+                f"'{entry['terminal']}' was recognized as "
+                f"'{match.group('term') or 'nothing'}'."
+            )
             _record_correction(
                 inst,
-                applied=False,
+                applied=apply,
                 original_text=text,
-                candidate_text=canonical,
+                corrected_text=canonical if apply else None,
+                candidate_text=None if apply else canonical,
                 reason=(
-                    f"structural match for a French administrative abbreviation "
-                    f"({entry['expansion']}): ordinal + '{entry['stem']}' + raised "
-                    f"terminal. The leading '{match.group('lead')}' reads as an "
-                    f"ordinal digit, the word boundary is missing, and the raised "
-                    f"'{entry['terminal']}' was recognized as "
-                    f"'{match.group('term') or 'nothing'}'. Proposal only -- "
-                    f"confirm against the plate."
+                    f"{explanation} Applied: the region reads reliably."
+                    if apply else
+                    f"{explanation} Proposal only -- the region is not "
+                    f"assessed reliable; confirm against the plate."
                 ),
                 course="ordinal_abbreviation",
                 ordinal_evidence={
@@ -184,9 +203,12 @@ def propose(
                     "leading_glyph": match.group("lead"),
                     "terminal_glyph": match.group("term"),
                     "geometry": geometry,
+                    "ocr_quality_state": quality.get("state"),
                     "resource": resource.audit_identity(),
                 },
             )
+            if apply:
+                inst.text = canonical
             proposed += 1
             break
     return proposed
