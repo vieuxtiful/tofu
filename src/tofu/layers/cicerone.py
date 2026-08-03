@@ -4377,20 +4377,36 @@ def reread_merged_region(
         found = engine.detect_in_regions(asset, [box])
     except Exception:
         return joined, None, "joined"
-    composed = _compose_crop_text(found[0]) if found else None
-    if composed is None or not (composed.text or "").strip():
+    inner = [d for d in (found[0] if found else []) if (d.text or "").strip()]
+    if not inner:
         return joined, None, "joined"
+    # Compose by READING ORDER, not by _compose_crop_text's centroid
+    # heuristic. That heuristic sorts a horizontal crop purely by x, which
+    # is right within one line and interleaves the words of two: merging
+    # decolonisons' two body lines produced 'Pour crimes coloniaux et
+    # esclavagistes une memoire des luttes contre les'. A merged region is
+    # the one place a crop is EXPECTED to span several lines.
+    inner_boxes = [_polygon_bbox(d.polygon) for d in inner]
+    order = _fragment_reading_order(inner_boxes)
+    text = " ".join(inner[i].text.strip() for i in order)
+    confidence = min(inner[i].confidence or 0.0 for i in order)
+
+    from tofu.utils.textmatch import best_span_similarity
     # the re-read has to still contain what each part said; a confident
     # read that simply lost a fragment is worse than the join, however
     # good it looks on its own.
-    from tofu.utils.textmatch import best_span_similarity
     kept = all(
-        best_span_similarity(piece.strip(), composed.text) >= LOAF_SPAN_SIMILARITY
+        best_span_similarity(piece.strip(), text) >= LOAF_SPAN_SIMILARITY
         for piece in pieces if piece and piece.strip()
     )
     if not kept:
         return joined, None, "joined"
-    return composed.text, composed.confidence, "reread"
+    # A re-read that says the same words with fewer marks is not better --
+    # it is the same read with information missing. Crops differ, and the
+    # parts were recognized from tighter ones ('mémoire' -> 'memoire').
+    if _accent_fold(text) == _accent_fold(joined) and _mark_count(text) < _mark_count(joined):
+        return joined, None, "joined"
+    return text, confidence, "reread"
 
 
 _TRAILING_ARTIFACTS = "-‐‑‒–—―"

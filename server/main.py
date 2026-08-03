@@ -2173,6 +2173,27 @@ def detect_stream(
                     "regions": len(manifest.instances),
                 })
 
+            # horizontal line assembly: the mirror of the split above, and
+            # the same parity obligation. Without it this endpoint returned
+            # the words of a poster line as separate regions while the
+            # library returned the line -- the app was measurably worse than
+            # the harness, which is the failure mode this whole block of
+            # explicit per-stage mirrors exists to prevent.
+            if isinstance(backend, cicerone.EasyOCRBackend):
+                yield event({"stage": "line_assembly", "status": "running"})
+                joined = cicerone.merge_baseline_runs(str(path), backend, detections)
+                if joined is not None:
+                    detections = joined
+                    manifest = cicerone.build_manifest(
+                        str(path), detections,
+                        asset_info=info, engine=backend,
+                        scene_regions=regions, start=start,
+                    )
+                yield event({
+                    "stage": "line_assembly", "status": "complete",
+                    "regions": len(manifest.instances),
+                })
+
             # PaddleOCR rescue: a second, differently-architected engine
             # for whatever EasyOCR's own passes above still leave weak or
             # entirely undetected on a CJK-dominant scene -- self-gating

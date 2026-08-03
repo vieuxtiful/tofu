@@ -21,6 +21,7 @@ from tofu.layers.cicerone import (
     build_manifest,
     guess_latin_language,
     label_latin_languages,
+    assemble_fragments as cicerone_assemble,
     merge_baseline_runs,
     merge_detections,
     merge_vertical_columns,
@@ -33,6 +34,7 @@ from tofu.layers.cicerone import (
     zoom_detect,
     _dedup_zoom_detections,
     rescue_clipped_edge_glyphs,
+    reread_merged_region,
 )
 
 
@@ -567,6 +569,68 @@ class TestPruneContainedFragments:
         blank = InstText(id="r1", bounding_box=None, text="anything", confidence=0.5)
         kept = _prune_contained_fragments([blank, _frag_inst("r2", (0, 0, 10, 10), "")])
         assert len(kept) == 2
+
+
+# -- user-driven region merge -----------------------------------------------
+
+class TestAssembleFragments:
+    def test_fragments_are_ordered_by_reading_order_not_by_argument_order(self):
+        texts = ["les", "Pour une", "mémoire des luttes contre"]
+        boxes = [BBox(x=382, y=498, width=28, height=16),
+                 BBox(x=58, y=498, width=82, height=16),
+                 BBox(x=144, y=498, width=234, height=16)]
+        assert (cicerone_assemble(texts, boxes, "fr")
+                == "Pour une mémoire des luttes contre les")
+
+    def test_lines_are_read_top_to_bottom_then_left_to_right(self):
+        texts = ["de la RÉPUBLIQUE", "AVENUE"]
+        boxes = [BBox(x=120, y=171, width=214, height=57),
+                 BBox(x=150, y=122, width=155, height=51)]
+        assert cicerone_assemble(texts, boxes, "fr") == "AVENUE de la RÉPUBLIQUE"
+
+    def test_a_single_fragment_is_returned_as_is(self):
+        assert cicerone_assemble(["QUAI"], [BBox(x=0, y=0, width=10, height=10)], "fr") == "QUAI"
+
+
+class TestRereadMergedRegion:
+    def test_without_an_engine_it_joins(self):
+        text, conf, source = reread_merged_region(
+            None, BBox(x=0, y=0, width=200, height=40), ["Texte", "Naïké"],
+            [BBox(x=44, y=584, width=34, height=11), BBox(x=86, y=582, width=124, height=15)],
+        )
+        assert (text, conf, source) == ("Texte Naïké", None, "joined")
+
+    def test_a_re_read_that_dropped_a_fragment_loses_to_the_join(self):
+        engine = _LineStubEngine(reread=("Pour une", 0.99))
+        text, _conf, source = reread_merged_region(
+            "asset", BBox(x=0, y=0, width=400, height=40),
+            ["Pour une", "esclavagistes"],
+            [BBox(x=0, y=0, width=100, height=40), BBox(x=150, y=0, width=200, height=40)],
+            engine=engine,
+        )
+        assert source == "joined" and text == "Pour une esclavagistes"
+
+    def test_a_re_read_that_lost_accents_loses_to_the_join(self):
+        # measured: re-reading decolonisons' two body lines as one crop
+        # returns 'une memoire' -- the same words with information missing,
+        # because the parts were recognized from tighter crops.
+        engine = _LineStubEngine(reread=("Pour une memoire", 0.99))
+        text, _conf, source = reread_merged_region(
+            "asset", BBox(x=0, y=0, width=400, height=40),
+            ["Pour une", "mémoire"],
+            [BBox(x=0, y=0, width=100, height=40), BBox(x=150, y=0, width=200, height=40)],
+            engine=engine,
+        )
+        assert source == "joined" and text == "Pour une mémoire"
+
+    def test_a_genuinely_better_re_read_wins(self):
+        engine = _LineStubEngine(reread=("nos rues !", 0.95))
+        text, conf, source = reread_merged_region(
+            "asset", BBox(x=0, y=0, width=400, height=60), ["nos", "rues"],
+            [BBox(x=0, y=0, width=100, height=60), BBox(x=150, y=0, width=200, height=60)],
+            engine=engine,
+        )
+        assert source == "reread" and text == "nos rues !" and conf == pytest.approx(0.95)
 
 
 # -- horizontal line assembly (merge_baseline_runs) -------------------------
