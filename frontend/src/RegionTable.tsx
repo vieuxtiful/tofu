@@ -71,6 +71,35 @@ function confColor(conf: number | null): string {
   return "text-red-400";
 }
 
+/** Where arbitration would have read this region differently.
+ *
+ * Arbitration scores every observation of a region -- each detection pass
+ * plus the independent verifier -- while the text actually shown comes from
+ * the older pairwise decision. When the two disagree the region keeps the
+ * pairwise reading, deliberately: every regression baseline is calibrated
+ * against it. The disagreement was being recorded and read by nobody, so
+ * there was no way to see whether promoting the hypothesis would help. This
+ * puts it in front of whoever is checking the capture, which is the evidence
+ * that decision needs.
+ *
+ * Returns null when there is nothing to report, so the caller can use it as
+ * the render condition.
+ */
+export function hypothesisDissent(inst: InstText): string | null {
+  const hypothesis = inst.ocr_provenance?.hypothesis;
+  if (!hypothesis || hypothesis.agrees_with_pairwise !== false) return null;
+  const signals = Object.entries(hypothesis.score_breakdown ?? {})
+    .filter(([, value]) => value !== null && value !== undefined)
+    .map(([name, value]) => `${name} ${(value as number).toFixed(2)}`);
+  return [
+    `arbitration read this as "${hypothesis.selected_text ?? ""}"`,
+    `shown: "${inst.text ?? ""}" (pairwise decision, kept)`,
+    `scored ${hypothesis.observations_scored} observations`,
+    hypothesis.verified ? "corroborated by the verifier" : "not verified",
+    signals.length ? `signals: ${signals.join(", ")}` : null,
+  ].filter(Boolean).join("\n");
+}
+
 // column model: label collapses to `short` below `narrowAt` px
 interface Col {
   key: string;
@@ -514,6 +543,11 @@ export default function RegionTable({
                         {inst.tm_suggestion && (
                           <span title={`seen before (${inst.tm_suggestion.method} match, ${(inst.tm_suggestion.score * 100).toFixed(0)}%)`}>
                             <BookmarkCheck size={11} className="shrink-0 text-cyan-600 dark:text-cyan-400" />
+                          </span>
+                        )}
+                        {hypothesisDissent(inst) && (
+                          <span title={hypothesisDissent(inst)!}>
+                            <ScanText size={11} className="shrink-0 text-amber-600 dark:text-amber-400" />
                           </span>
                         )}
                       </span>

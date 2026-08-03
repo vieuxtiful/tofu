@@ -678,8 +678,12 @@ class RegionCreate(BaseModel):
     target_text: Optional[str] = None
 
 class RegionMerge(BaseModel):
+    # No `reread` switch. It defaulted to True and no client ever sent it, so
+    # the join-only branch was unreachable -- untested surface that read as a
+    # supported option. cicerone.reread_merged_region already falls back to
+    # joining the parts whenever the whole-region read fails to beat them, so
+    # the choice this exposed was never the caller's to make.
     region_ids: List[str]
-    reread: bool = True
 
 class RegionUpdate(BaseModel):
     x: Optional[int] = None
@@ -2574,12 +2578,10 @@ def merge_regions(asset_id: str, req: RegionMerge):
         height=max(b.y + b.height for b in boxes) - min(b.y for b in boxes),
     )
     lang = members[0].detected_language or members[0].language or manifest.src_lang
-    engine = None
-    if req.reread:
-        try:
-            engine = cicerone.EasyOCRBackend(cicerone.expand_langset([lang] if lang else ["en"]))
-        except Exception:
-            engine = None
+    try:
+        engine = cicerone.EasyOCRBackend(cicerone.expand_langset([lang] if lang else ["en"]))
+    except Exception:
+        engine = None
     text, confidence, source = cicerone.reread_merged_region(
         str(_asset_path(asset_id)), union,
         [i.text or "" for i in members], boxes, engine=engine,

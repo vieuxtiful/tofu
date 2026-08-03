@@ -254,6 +254,25 @@ export interface InstText {
   translation_decision?: TranslationDecision | null;
   translation_history?: TranslationDecision[];
   recognition_history?: Array<{ stage: string; engine: string; candidate_text?: string; candidate_confidence?: number; primary_text?: string; primary_confidence?: number; accepted: boolean; reason: string }> | null;
+  // Arbitration's own reading of the region, scored across every observation
+  // rather than the last two. `agrees_with_pairwise` is false when it would
+  // have chosen differently from the text actually shown -- the region is
+  // still the pairwise decision's, because every baseline is calibrated
+  // against that, so this is offered for review rather than applied.
+  ocr_provenance?: {
+    hypothesis?: {
+      verified: boolean;
+      observations_scored: number;
+      selected_text: string | null;
+      transcription_score?: number | null;
+      geometry_score?: number | null;
+      auto_accepted: boolean;
+      review_required: boolean;
+      reason_codes?: string[];
+      score_breakdown?: Record<string, number | null>;
+      agrees_with_pairwise: boolean;
+    } | null;
+  } | null;
   ocr_quality?: OcrQuality | null;
   repair_provenance?: {
     requested_provider: string;

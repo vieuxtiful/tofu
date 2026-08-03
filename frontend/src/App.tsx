@@ -4109,6 +4109,11 @@ export default function App() {
                 glossaryUploadStep={glossaryUploadStep}
                 glossaryUploadError={glossaryUploadError}
               /></Suspense>
+              {/* No merge handlers here. RegionTable renders that control
+                  under mode === "capture" only, so passing them to the
+                  translate instance only made them look wired -- and merging
+                  is a capture-stage correction anyway: by this point a region
+                  carries target text that folding it away would discard. */}
               <RegionTable
                 mode="translate"
                 bboxColor={bboxColor}
@@ -4127,8 +4132,6 @@ export default function App() {
                 onSrcLangChange={onSrcLangChange}
                 onFontChange={onFontChange}
                 onApplyTargetLang={onApplyTargetLang}
-                onMergeRegions={onMergeRegions}
-                mergeLoading={mergeLoading}
                 ocrLoading={ocrLoading}
                 languages={languages}
                 defaultTargLang={targLang}
