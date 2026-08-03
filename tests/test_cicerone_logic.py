@@ -20,6 +20,7 @@ from tofu.layers.cicerone import (
     build_manifest,
     guess_latin_language,
     label_latin_languages,
+    merge_baseline_runs,
     merge_detections,
     merge_vertical_columns,
     iter_multipass,
@@ -509,6 +510,104 @@ class TestKeepTheLoaf:
         coarse = [det(80, 55, 126, 34, "В БУДУЩЕЕ", 0.928)]
         out = union_prefer_primary(fine, coarse, keep_the_loaf=True)
         assert [d.text for d in out] == ["В БУДУЩЕЕ"]
+
+
+# -- horizontal line assembly (merge_baseline_runs) -------------------------
+# the mirror of merge_vertical_columns. CRAFT links horizontally, but
+# width_ths was tightened 0.5 -> 0.3 to stop adjacent SIGNS chaining, which
+# leaves the words of one poster line as separate detections.
+
+class _LineStubEngine:
+    """Minimal EasyOCRBackend stand-in: one canned re-read per call."""
+
+    def __init__(self, languages=("fr", "en"), reread=None):
+        self.languages = tuple(languages)
+        self.reread = reread
+        self.regions_seen = []
+
+    def detect_in_regions(self, asset, boxes):
+        self.regions_seen.extend(boxes)
+        if self.reread is None:
+            return [[] for _ in boxes]
+        text, conf = self.reread
+        return [[det(b.x, b.y, b.width, b.height, text, conf)] for b in boxes]
+
+
+class TestMergeBaselineRuns:
+    def test_words_on_one_baseline_become_a_line_and_are_re_read(self):
+        # decolonisons' credit line, measured: 'Texte' + 'Naïké Desquesnes'
+        # re-read whole as 'Texte Naïké Desquesnes' at 0.907.
+        parts = [det(44, 584, 34, 11, "Texte", 1.0),
+                 det(86, 582, 124, 15, "Naïké Desquesnes", 0.875)]
+        engine = _LineStubEngine(reread=("Texte Naïké Desquesnes", 0.907))
+        out = merge_baseline_runs(None, engine, parts)
+        assert out is not None
+        assert [d.text for d in out] == ["Texte Naïké Desquesnes"]
+        assert _polygon_bbox(out[0].polygon).width == 166
+
+    def test_cjk_primaries_are_skipped_entirely(self):
+        # no word spaces to reassemble, and chaining adjacent signs is the
+        # failure width_ths was tightened to prevent.
+        parts = [det(100, 100, 40, 40, "美", 0.9), det(150, 100, 40, 40, "珠", 0.9)]
+        for lang in ("ja", "ch_sim", "ch_tra", "ko"):
+            engine = _LineStubEngine(languages=(lang, "en"), reread=("美珠", 0.99))
+            assert merge_baseline_runs(None, engine, parts) is None
+
+    def test_different_baselines_do_not_join(self):
+        # avenue-de-la-republique: 'AVENUE' over 'de la RÉPUBLIQUE' are two
+        # LINES, and merging them halved recall when add_margin was raised.
+        parts = [det(150, 122, 155, 51, "AVENUE", 1.0),
+                 det(120, 171, 214, 57, "de la RÉPUBLIQUE", 0.854)]
+        engine = _LineStubEngine(reread=("AVENUE de la RÉPUBLIQUE", 0.99))
+        assert merge_baseline_runs(None, engine, parts) is None
+
+    def test_overlapping_boxes_are_a_duplicate_not_a_line(self):
+        parts = [det(30, 51, 54, 55, "D", 1.0),
+                 det(45, 43, 410, 63, "Décolonisons", 0.989)]
+        engine = _LineStubEngine(reread=("D Décolonisons", 0.99))
+        assert merge_baseline_runs(None, engine, parts) is None
+
+    def test_a_re_read_weaker_than_its_worst_part_is_refused(self):
+        parts = [det(0, 0, 100, 40, "Pour une", 0.9),
+                 det(110, 0, 100, 40, "les", 0.8)]
+        engine = _LineStubEngine(reread=("Pour une les", 0.7))
+        assert merge_baseline_runs(None, engine, parts) is None
+
+    def test_a_re_read_the_scene_filter_would_delete_is_refused(self):
+        # la-bastille: 'la Bastille' + 'ETLA' re-read as 'la Babtille BT la'
+        # at 0.433, which clears its weakest raw member (0.387) and is then
+        # deleted downstream, costing both regions.
+        parts = [det(26, 11, 309, 63, "la Bastille", 0.529),
+                 det(346, 26, 105, 43, "ETLA", 0.387)]
+        engine = _LineStubEngine(reread=("la Babtille BT la", 0.433))
+        assert merge_baseline_runs(None, engine, parts) is None
+
+    def test_a_re_read_that_lost_a_word_is_refused(self):
+        parts = [det(0, 0, 100, 40, "Pour une", 0.9),
+                 det(110, 0, 100, 40, "esclavagistes", 0.9)]
+        engine = _LineStubEngine(reread=("Pour une", 0.99))
+        assert merge_baseline_runs(None, engine, parts) is None
+
+    def test_a_column_gutter_is_not_a_word_space(self):
+        # serif-vs-sans sets the same specimen twice, side by side. Both
+        # SANS-NOM boxes sit on one baseline with a 52px gutter against a
+        # 76px height (0.68); merging them cost recall 0.833 -> 0.667.
+        parts = [det(82, 188, 356, 76, "SANS-NOM", 1.0),
+                 det(490, 188, 364, 76, "SANS-NOM", 0.867)]
+        engine = _LineStubEngine(reread=("SANS-NOM SANS-NOM", 0.972))
+        assert merge_baseline_runs(None, engine, parts) is None
+
+    def test_words_of_one_line_still_join_across_a_normal_space(self):
+        # the same fixture's right-hand column, where 'La' and 'rue' are a
+        # genuine word pair at 0.21 of box height.
+        parts = [det(502, 88, 74, 58, "La", 1.0), det(588, 94, 96, 48, "rue", 1.0)]
+        engine = _LineStubEngine(reread=("La rue", 1.0))
+        out = merge_baseline_runs(None, engine, parts)
+        assert out is not None and [d.text for d in out] == ["La rue"]
+
+    def test_a_lone_detection_is_left_alone(self):
+        engine = _LineStubEngine(reread=("anything", 0.99))
+        assert merge_baseline_runs(None, engine, [det(0, 0, 100, 40, "solo", 0.9)]) is None
 
 
 # -- zoom-pass internal dedup (repeat-detect duplicate follow-up) ------------

@@ -1777,6 +1777,197 @@ def _split_tall_detections(
     return out if changed else None
 
 
+# Horizontal line assembly: the mirror of merge_vertical_columns, and the
+# half this file never had.  CRAFT links characters horizontally, which is
+# why the vertical repair was the one worth building -- but width_ths was
+# tightened 0.5 -> 0.3 to stop adjacent SIGNS chaining into one box, and
+# that same tightening leaves the words of one poster LINE as separate
+# detections.  A line-level ground truth then scores every one of them a
+# miss.
+ROW_BASELINE_ALIGN = 0.5   # y-center offset tolerance, fraction of max height
+ROW_HEIGHT_RATIO = 1.7     # max height disparity between members
+
+# Horizontal gap tolerance, as a fraction of box height. This separates a
+# word space from a COLUMN GUTTER, and nothing else can: scene surfaces do
+# not model columns (serif-vs-sans yields one 46x50 surface covering
+# neither of its two), and normalizing by mean glyph width instead of
+# height gives the two cases the identical 1.18 figure.
+#
+# Typographically a word space is 1/4 to 1/3 em against a cap height of
+# ~0.7 em, so 0.36-0.48 box heights before the detector's own margin on
+# each side shrinks it further; a gutter is a layout decision an em or
+# more wide. Measured on this corpus, accepted word gaps run 0.21, 0.25,
+# 0.27, 0.31 and 0.53 (the last is 'Texte : Naïké', where the gap spans a
+# colon), and serif-vs-sans's two-column gutter sits at 0.68 -- merging
+# its two SANS-NOM specimens into one 772px box and costing recall 0.833
+# -> 0.667. The margin either side of 0.6 is ~13%, which is narrow; a
+# layout with tighter columns or looser word spacing than anything here
+# would defeat it.
+ROW_MAX_GAP = 0.6
+ROW_MIN_MEMBERS = 2
+
+# A merge trades several surviving regions for one. If that one lands
+# below the scene filter's own global bypass it is deleted downstream and
+# the trade costs everything -- measured on la-bastille, where 'la
+# Bastille' and 'ETLA' re-read as 'la Babtille BT la' at 0.433, cleared
+# the weakest-member test (its members are raw detections at 0.529 and
+# 0.387, not the instance confidences they later become) and then took
+# both regions with it, recall 0.333 -> 0.111.
+ROW_MERGE_MIN_CONFIDENCE = 0.5
+
+# Scripts written without word spaces, and routinely set vertically, have
+# nothing for this pass to assemble and everything to lose from it -- the
+# separate-signs chaining width_ths was tightened to prevent is a CJK
+# signage failure. Scoped out entirely rather than guarded case by case.
+ROW_EXCLUDED_LANGS = {"ja", "ch_sim", "ch_tra", "ko"}
+
+
+def merge_baseline_runs(
+    asset: Any, engine: "EasyOCRBackend", detections: List[RawDetection],
+) -> Optional[List[RawDetection]]:
+    """Assemble same-baseline word fragments into one line, and re-read it.
+
+    Two detections belong to the same line when their y-centers align,
+    their heights are comparable, the horizontal gap between them is
+    smaller than a character height, and their crops share a colour --
+    the same five tests merge_vertical_columns applies with the axes
+    swapped.
+
+    The merged box is then RE-RECOGNIZED rather than having its members'
+    text concatenated. Concatenation would preserve each fragment's own
+    errors and invent the spacing between them; a re-read of the whole
+    line gets the recognizer's language model working across the join,
+    which is where the gain actually is (measured on decolonisons: the
+    fragments 'Pour une' + 'mémoire des luttes contre' + 'les' re-read as
+    the full line).
+
+    Two conditions gate the commit, and both are needed:
+
+    * the re-read must be at least as confident as the WEAKEST member,
+      which is what stops a merge that spans a real gap -- la-bastille's
+      'la Bastille' and 'ETLA' pass every geometric test and re-read as
+      'la Babtille BT la' at 0.433, under its weakest member's 0.529.
+      The weakest member rather than the mean, because the mean is raised
+      by short confident fragments that say nothing about the line: on
+      decolonisons the exact re-read 'Pour une mémoire des luttes contre
+      les' at 0.893 loses to a mean of 0.919, and 'Texte Naïké
+      Desquesnes' at 0.907 to a mean of 0.938 that a five-letter 'Texte'
+      at 1.000 put there. A read no worse than its worst part has not
+      degraded anything;
+    * the re-read must still contain what each member said, so a
+      confident re-read that simply LOST a fragment cannot pass.
+
+    Returns None when nothing merged, so the caller can skip a manifest
+    rebuild, or the full replacement list otherwise.
+    """
+    from tofu.utils.textmatch import best_span_similarity
+
+    primary = (engine.languages or ("en",))[0]
+    if primary in ROW_EXCLUDED_LANGS:
+        return None
+    n = len(detections)
+    if n < ROW_MIN_MEMBERS:
+        return None
+    boxes = [_polygon_bbox(d.polygon) for d in detections]
+
+    img = None
+    if asset is not None:
+        try:
+            from tofu.layers.scene import _load_rgb
+            img = _load_rgb(asset)
+        except Exception:
+            img = None
+    colors = [_mean_rgb(img, b) if img is not None else None for b in boxes]
+
+    def same_color(i: int, j: int) -> bool:
+        ci, cj = colors[i], colors[j]
+        if ci is None or cj is None:
+            return True  # fail-open, as the column merge does
+        return float(((ci - cj) ** 2).sum() ** 0.5) <= COLUMN_COLOR_MAX_DIST
+
+    def same_line(i: int, j: int) -> bool:
+        a, b = boxes[i], boxes[j]
+        if a.height <= 0 or b.height <= 0:
+            return False
+        hmax = max(a.height, b.height)
+        if abs((a.y + a.height / 2) - (b.y + b.height / 2)) > ROW_BASELINE_ALIGN * hmax:
+            return False
+        if hmax > ROW_HEIGHT_RATIO * max(1, min(a.height, b.height)):
+            return False
+        gap = max(a.x, b.x) - min(a.x + a.width, b.x + b.width)
+        # Overlapping boxes are a duplicate read of one word, not two words
+        # of a line; the zoom union already arbitrates those.
+        if gap < 0 or gap > ROW_MAX_GAP * hmax:
+            return False
+        return same_color(i, j)
+
+    parent = list(range(n))
+
+    def find(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    for i in range(n):
+        for j in range(i + 1, n):
+            if same_line(i, j):
+                ri, rj = find(i), find(j)
+                if ri != rj:
+                    parent[max(ri, rj)] = min(ri, rj)
+
+    groups: Dict[int, List[int]] = {}
+    for i in range(n):
+        groups.setdefault(find(i), []).append(i)
+
+    out: List[RawDetection] = []
+    changed = False
+    for root, members in sorted(groups.items()):
+        if len(members) < ROW_MIN_MEMBERS:
+            out.extend(detections[i] for i in members)
+            continue
+        members.sort(key=lambda i: boxes[i].x)
+        x0 = min(boxes[i].x for i in members)
+        y0 = min(boxes[i].y for i in members)
+        x1 = max(boxes[i].x + boxes[i].width for i in members)
+        y1 = max(boxes[i].y + boxes[i].height for i in members)
+        line_box = BBox(x=x0, y=y0, width=x1 - x0, height=y1 - y0)
+        try:
+            per_line = engine.detect_in_regions(asset, [line_box])
+        except Exception:
+            out.extend(detections[i] for i in members)
+            continue
+        composed = _compose_crop_text(per_line[0]) if per_line else None
+        if composed is None or not (composed.text or "").strip():
+            out.extend(detections[i] for i in members)
+            continue
+        weakest = min(detections[i].confidence or 0.0 for i in members)
+        if (composed.confidence or 0.0) < max(weakest, ROW_MERGE_MIN_CONFIDENCE):
+            out.extend(detections[i] for i in members)
+            continue
+        kept_everything = all(
+            best_span_similarity((detections[i].text or "").strip(), composed.text)
+            >= LOAF_SPAN_SIMILARITY
+            for i in members if (detections[i].text or "").strip()
+        )
+        if not kept_everything:
+            out.extend(detections[i] for i in members)
+            continue
+        changed = True
+        out.append(RawDetection(
+            polygon=[
+                (line_box.x, line_box.y),
+                (line_box.x + line_box.width, line_box.y),
+                (line_box.x + line_box.width, line_box.y + line_box.height),
+                (line_box.x, line_box.y + line_box.height),
+            ],
+            text=composed.text,
+            confidence=composed.confidence,
+            language=detections[members[0]].language,
+        ))
+    return out if changed else None
+
+
 def _compose_crop_text(
     dets: List[RawDetection], min_conf: float = 0.2
 ) -> Optional[RawDetection]:
@@ -3404,6 +3595,7 @@ def detect(
     adaptive: bool = True,
     zoom: bool = True,
     vertical_split: bool = True,
+    line_assembly: bool = True,
     paddle_rescue: bool = True,
     polish: bool = True,
     ocr_assessment_policy: Optional[OCRAssessmentPolicy] = None,
@@ -3456,6 +3648,11 @@ def detect(
             and re-recognize each individually; the resulting fragments
             flow through the normal merge_vertical_columns() reassembly.
             see `_split_tall_detections`.
+        line_assembly: join same-baseline word fragments into one line
+            box and re-recognize it, recovering poster/body lines that
+            CRAFT's deliberately tightened horizontal linking leaves as
+            separate words. skipped for CJK primaries, which have no word
+            spaces to reassemble. see `merge_baseline_runs`.
         paddle_rescue: on a CJK-dominant scene where EasyOCR's own
             passes above still leave low confidence or entirely
             undetected scene surfaces, try PaddleOCR (an isolated
@@ -3621,6 +3818,27 @@ def detect(
         split = _split_tall_detections(asset, final_engine, detections)
         if split is not None:
             detections = split
+            manifest = build_manifest(
+                asset, detections,
+                asset_info=asset_info,
+                engine=final_engine,
+                scene_regions=scene_regions,
+                scene_filter=scene_filter,
+                identify_languages=identify_languages,
+                max_extra_readers=max_extra_readers,
+                declared=declared,
+                prune_garbage=prune_garbage,
+                start=start,
+            )
+
+    # horizontal line assembly: the mirror of the split above, and it runs
+    # after it for the same reason -- against whatever every earlier stage
+    # settled on. the two cannot fight: one only ever splits a tall box,
+    # the other only ever joins boxes that already sit on one baseline.
+    if line_assembly and isinstance(final_engine, EasyOCRBackend):
+        joined = merge_baseline_runs(asset, final_engine, detections)
+        if joined is not None:
+            detections = joined
             manifest = build_manifest(
                 asset, detections,
                 asset_info=asset_info,
