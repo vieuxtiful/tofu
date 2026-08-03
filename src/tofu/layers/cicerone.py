@@ -4620,18 +4620,24 @@ def hybrid_audit(asset: Any, instances: List[InstText]) -> int:
 def _score_region_hypothesis(
     inst: InstText,
     primary: "OCRCandidate",
-    alternate: "OCRCandidate",
-    result: Any,
-    primary_script: Optional[str],
-    alternate_script: Optional[str],
+    alternate: Optional["OCRCandidate"] = None,
+    verification_state: str = "unavailable",
+    primary_script: Optional[str] = None,
+    alternate_script: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """Run the hypothesis scorer over every recorded reading of one region.
 
     The observations are assembled from `recognition_history` -- one per
-    detection pass -- plus the settled primary and the independent
-    verifier. They all share the instance's box, so clustering resolves
-    them into the single hypothesis they are: competing readings of the
-    same pixels, which is the case score_hypothesis exists to weigh.
+    detection pass -- plus the settled primary and, where one exists, the
+    independent verifier. They all share the instance's box, so clustering
+    resolves them into the single hypothesis they are: competing readings
+    of the same pixels, which is the case score_hypothesis exists to weigh.
+
+    The verifier is optional on purpose. Paddle verification is a
+    subprocess round trip and is rightly rationed; weighing readings the
+    pipeline already produced costs nothing, so it must not inherit that
+    budget. Without a verifier the cross-backend signal simply has nothing
+    to say and auto-acceptance is withheld, which is the honest outcome.
 
     Returns None (rather than raising) whenever the machinery cannot run,
     because this is evidence-gathering: it must never be able to fail a
@@ -4670,7 +4676,8 @@ def _score_region_hypothesis(
             text=primary.text, raw_confidence=primary.raw_confidence,
             bbox=box, detected_script=primary_script,
         ))
-        if (alternate.text or "").strip():
+        has_verifier = alternate is not None and (alternate.text or "").strip()
+        if has_verifier:
             observations.append(OCRObservation(
                 observation_id=f"{inst.id}-verifier",
                 backend=alternate.engine, backend_revision=alternate.engine_version,
@@ -4678,16 +4685,17 @@ def _score_region_hypothesis(
                 text=alternate.text, raw_confidence=alternate.raw_confidence,
                 bbox=box, detected_script=alternate_script,
             ))
-        if len(observations) < 2:
+        if not observations:
             return None
         hypotheses = form_region_hypotheses(observations)
         if not hypotheses:
             return None
-        verifier_id = f"{inst.id}-verifier" if (alternate.text or "").strip() else None
+        verifier_id = f"{inst.id}-verifier" if has_verifier else None
         verdict = build_hypothesis_decision(
-            hypotheses[0], getattr(result, "state", "unavailable"), verifier_id,
+            hypotheses[0], verification_state, verifier_id,
         )
         return {
+            "verified": bool(has_verifier),
             "observations_scored": len(observations),
             "selected_observation_id": verdict.selected_observation_id,
             "selected_text": verdict.selected_text,
@@ -4770,6 +4778,9 @@ def assess_multi_candidate_ocr(
         })
     selected = [record[2] for record in selected_records]
     if not selected:
+        # No region earned a verifier round trip. Every one of them still
+        # gets weighed on the readings already in hand.
+        _grade_ungraded_regions(instances)
         return 0
 
     risk_by_instance = {id(record[2]): record[3] for record in selected_records}
@@ -4949,7 +4960,8 @@ def assess_multi_candidate_ocr(
         # same evidence concludes, and where the two disagree is where the
         # weights should be examined before anything is promoted.
         hypothesis_record = _score_region_hypothesis(
-            inst, primary, alternate, result, primary_script, alternate_script,
+            inst, primary, alternate, getattr(result, "state", "unavailable"),
+            primary_script, alternate_script,
         )
         inst.ocr_provenance = {
             "schema": 2,
@@ -5004,7 +5016,53 @@ def assess_multi_candidate_ocr(
                 "calibration_registry_version": decision.calibration_registry_version,
             }
             changed += 1
+
+    _grade_ungraded_regions(instances)
     return changed
+
+
+def _grade_ungraded_regions(instances: List[InstText]) -> int:
+    """Score a hypothesis for every region the verification budget skipped.
+
+    Two filters upstream keep regions away from the verifier, and both are
+    right about PADDLE: a region with no risk flags does not need a
+    subprocess round trip, and neither does the ninth-riskiest region on a
+    crowded frame. Neither is a reason to leave the readings the pipeline
+    already produced unweighed -- that work is pure Python over data
+    sitting in recognition_history, and skipping it bought nothing.
+
+    So every region gets graded; only verification stays rationed. Regions
+    scored without a verifier carry ``verified: false`` and cannot
+    auto-accept (build_hypothesis_decision withholds that when the
+    verification state is 'unavailable'), which keeps the distinction
+    between "corroborated by a second engine" and "consistent with itself"
+    visible rather than collapsing them.
+    """
+    from tofu.layers.ocr_arbitration import OCRCandidate
+
+    graded = 0
+    detector = ScriptDetector()
+    for inst in instances:
+        provenance = inst.ocr_provenance or {}
+        if provenance.get("hypothesis"):
+            continue
+        if inst.bounding_box is None or not (inst.text or "").strip():
+            continue
+        script = detector.detect_script(inst.text or "")
+        primary = OCRCandidate(
+            engine="easyocr", engine_version="unknown",
+            text=inst.text or "",
+            raw_confidence=max(0.0, min(1.0, float(inst.confidence or 0.0))),
+            languages=((inst.detected_language or inst.language or "en"),),
+            script=script,
+            provenance={"region_id": inst.id, "role": "primary"},
+        )
+        record = _score_region_hypothesis(inst, primary, primary_script=script)
+        if record is None:
+            continue
+        inst.ocr_provenance = {**provenance, "hypothesis": record}
+        graded += 1
+    return graded
 
 
 def build_manifest(

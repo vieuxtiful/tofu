@@ -206,9 +206,20 @@ def test_risk_based_assessment_only_spends_alternate_reads_on_risky_regions(
     # Consensus is verified evidence but does not count as a source-text
     # mutation; the return value deliberately reports replacements only.
     assert verified == 0
-    assert clean.ocr_provenance is None
+    # The budget rations VERIFIER round trips -- the clean region costs none,
+    # which is what the assertion above pins. It does not ration weighing the
+    # readings the pipeline already produced: that is pure Python over
+    # recognition_history, so the clean region is graded too, and carries
+    # `verified: false` to keep "corroborated by a second engine" distinct
+    # from "consistent with itself".
+    assert clean.ocr_provenance["hypothesis"]["verified"] is False
+    assert "review_required" not in clean.ocr_provenance
     assert all(
         inst.ocr_provenance and not inst.ocr_provenance["review_required"]
+        for inst in (weak, textured, vertical)
+    )
+    assert all(
+        inst.ocr_provenance["hypothesis"]["verified"] is True
         for inst in (weak, textured, vertical)
     )
 
