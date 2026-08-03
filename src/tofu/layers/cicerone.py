@@ -4369,67 +4369,35 @@ def _fragment_reading_order(boxes: List[BBox]) -> List[int]:
     return out
 
 
-def _junction_score(pieces: Sequence[str], lang: Optional[str]) -> float:
-    """How plausible is this ORDER of fragments, lexically?
-
-    Used only to break a tie geometry cannot: two fragments sharing a
-    baseline AND an x-range, where left-to-right says nothing. It is a
-    function-word junction test over LATIN_STOPWORDS, not a language
-    model -- this project has no LM dependency, and the one optional NLP
-    package (stanza, gated behind TOFU_BASIL_STANZA_DIR and never
-    auto-downloaded) is a Basil observation tool, not something detection
-    may assume is present.
-
-    A function word wants a word after it: 'de', 'les', 'et' mid-string
-    is ordinary French, the same word alone at the END of the assembled
-    string is less likely -- though not impossible, which is why this
-    only ever breaks ties. decolonisons' body line genuinely ends 'contre
-    les' because the sentence continues on the line below.
-    """
-    stops = LATIN_STOPWORDS.get(base_lang(lang) or "", set())
-    if not stops:
-        return 0.0
-    tokens = [t for piece in pieces for t in re.split(r"\s+", piece.strip()) if t]
-    if len(tokens) < 2:
-        return 0.0
-    score = 0.0
-    for index, token in enumerate(tokens):
-        if token.casefold() not in stops:
-            continue
-        score += 1.0 if index < len(tokens) - 1 else -1.0
-    return score
-
-
-def assemble_fragments(
-    texts: Sequence[str], boxes: List[BBox], lang: Optional[str] = None,
-) -> str:
+def assemble_fragments(texts: Sequence[str], boxes: List[BBox]) -> str:
     """Join fragment texts in the order they should be read.
 
-    Geometry decides: fragments are ordered by line and then left to
-    right, which is right for every ordinary case and is what the user
-    sees on the image. Lexical evidence is consulted only when geometry
-    genuinely cannot separate two fragments -- same baseline AND
-    overlapping x -- where swapping them is otherwise a coin flip.
+    Geometry decides, alone: fragments are ordered by line and then left
+    to right, which is right for every ordinary case and is what the user
+    sees on the image.
+
+    A lexical tie-break used to sit here for the case geometry cannot
+    separate -- two fragments sharing a baseline AND an x-range -- scoring
+    each order by whether function words ('de', 'les', 'et') landed
+    mid-string rather than at the end. It was removed rather than fixed.
+    It swapped the first two fragments regardless of which pair had
+    actually been ambiguous, and indexed a text-filtered list with
+    unfiltered indices, so a single blank fragment misaligned it; no test
+    ever asserted a swap happened, and no measured case on the corpus
+    needed one. An untested tie-break that can reorder text is worse than
+    no tie-break. If a real case turns up, note that decolonisons' body
+    line genuinely ends 'contre les' -- the sentence continues on the line
+    below -- so ending on a function word is not by itself evidence of
+    misordering.
     """
     order = _fragment_reading_order(boxes)
     ordered = [texts[i].strip() for i in order if (texts[i] or "").strip()]
-    if len(ordered) < 2:
-        return " ".join(ordered)
-    ambiguous = any(
-        boxes[a].x < boxes[b].x + boxes[b].width and boxes[b].x < boxes[a].x + boxes[a].width
-        for a, b in zip(order, order[1:])
-    )
-    if ambiguous:
-        swapped = list(ordered)
-        swapped[0], swapped[1] = swapped[1], swapped[0]
-        if _junction_score(swapped, lang) > _junction_score(ordered, lang):
-            ordered = swapped
     return " ".join(ordered)
 
 
 def reread_merged_region(
     asset: Any, box: BBox, pieces: Sequence[str], piece_boxes: List[BBox],
-    engine: Optional["OCRBackend"] = None, lang: Optional[str] = None,
+    engine: Optional["OCRBackend"] = None,
 ) -> Tuple[str, Optional[float], str]:
     """Read a user-merged region whole, or fall back to joining its parts.
 
@@ -4443,7 +4411,7 @@ def reread_merged_region(
     Returns ``(text, confidence, source)`` where source is 'reread' or
     'joined', so the caller can tell the user which they got.
     """
-    joined = assemble_fragments(list(pieces), list(piece_boxes), lang)
+    joined = assemble_fragments(list(pieces), list(piece_boxes))
     if engine is None or asset is None:
         return joined, None, "joined"
     try:
@@ -4838,7 +4806,15 @@ def assess_multi_candidate_ocr(
         if count:
             ranked.append((count, (inst.confidence or 0.0), inst, flags))
     ranked.sort(key=lambda item: (-item[0], item[1], item[2].reading_order))
-    limit = max(0, int(policy.max_region_proposals))
+    # 'exhaustive' means what it says: every region carrying any risk flag
+    # earns a verifier round trip, with no proposal budget. The mode used to
+    # only append a risk flag while still truncating here, so a caller who
+    # asked for exhaustive got risk_based with a different label on it --
+    # regions past the eighth still recorded "budget exhausted" verbatim.
+    limit = (
+        len(ranked) if policy.mode == "exhaustive"
+        else max(0, int(policy.max_region_proposals))
+    )
     selected_records = ranked[:limit] if limit else []
     for _, _, inst, flags in ranked[limit:]:
         _history(inst, {

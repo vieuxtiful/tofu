@@ -283,3 +283,50 @@ def test_assessment_no_text_alternate_never_deletes_primary(monkeypatch):
     assert inst.text == "VISIBLE"
     assert inst.ocr_provenance["decision"] == "reject"
     assert "alternate_empty" in inst.ocr_provenance["reason_codes"]
+
+
+def test_exhaustive_mode_lifts_the_proposal_budget(monkeypatch):
+    """'exhaustive' has to mean no budget, not a different label on one.
+
+    The mode used to append a risk flag and then truncate anyway, so the
+    ninth risky region recorded "risk-based verification budget exhausted"
+    under a policy that had asked for the opposite. Nine regions because
+    max_region_proposals defaults to eight -- the ninth is the one that can
+    tell the two modes apart.
+    """
+    def risky(index):
+        return InstText(
+            f"r{index}", BBox(0, index * 25, 80, 20), text=f"WORD{index}",
+            confidence=0.20, detected_language="en", reading_order=index,
+        )
+
+    monkeypatch.setattr(
+        PaddleRegionVerifier,
+        "verify_regions",
+        lambda _self, _asset, regions, expected_texts, language=None: [
+            OCRVerificationResult("agree", text=text, confidence=0.9, similarity=1.0)
+            for text in expected_texts
+        ],
+    )
+
+    def budget_exhausted(inst):
+        return any(
+            entry.get("reason") == "risk-based verification budget exhausted"
+            for entry in (inst.recognition_history or [])
+        )
+
+    rationed = [risky(i) for i in range(9)]
+    assess_multi_candidate_ocr(
+        "asset", rationed, policy=OCRAssessmentPolicy(mode="risk_based")
+    )
+    assert sum(budget_exhausted(inst) for inst in rationed) == 1
+
+    unrationed = [risky(i) for i in range(9)]
+    assess_multi_candidate_ocr(
+        "asset", unrationed, policy=OCRAssessmentPolicy(mode="exhaustive")
+    )
+    assert not any(budget_exhausted(inst) for inst in unrationed)
+    assert all(
+        inst.ocr_provenance["hypothesis"]["verified"] is True
+        for inst in unrationed
+    )

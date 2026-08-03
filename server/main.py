@@ -2582,7 +2582,7 @@ def merge_regions(asset_id: str, req: RegionMerge):
             engine = None
     text, confidence, source = cicerone.reread_merged_region(
         str(_asset_path(asset_id)), union,
-        [i.text or "" for i in members], boxes, engine=engine, lang=lang,
+        [i.text or "" for i in members], boxes, engine=engine,
     )
 
     survivor = members[0]

@@ -579,17 +579,17 @@ class TestAssembleFragments:
         boxes = [BBox(x=382, y=498, width=28, height=16),
                  BBox(x=58, y=498, width=82, height=16),
                  BBox(x=144, y=498, width=234, height=16)]
-        assert (cicerone_assemble(texts, boxes, "fr")
+        assert (cicerone_assemble(texts, boxes)
                 == "Pour une mémoire des luttes contre les")
 
     def test_lines_are_read_top_to_bottom_then_left_to_right(self):
         texts = ["de la RÉPUBLIQUE", "AVENUE"]
         boxes = [BBox(x=120, y=171, width=214, height=57),
                  BBox(x=150, y=122, width=155, height=51)]
-        assert cicerone_assemble(texts, boxes, "fr") == "AVENUE de la RÉPUBLIQUE"
+        assert cicerone_assemble(texts, boxes) == "AVENUE de la RÉPUBLIQUE"
 
     def test_a_single_fragment_is_returned_as_is(self):
-        assert cicerone_assemble(["QUAI"], [BBox(x=0, y=0, width=10, height=10)], "fr") == "QUAI"
+        assert cicerone_assemble(["QUAI"], [BBox(x=0, y=0, width=10, height=10)]) == "QUAI"
 
 
 class TestRereadMergedRegion:
