@@ -9,7 +9,7 @@ import {
 import {
   BBox, FontFamily, FontOption, FontWeight, ImportResult, InpaintPatch, InstText, LanguageOption, Project, VideoJob,
   RenderResult, RenderStreamEvent, SceneRegion, SemanticSubstitutionPlan, SemanticTextUnit, TextManifest, UploadResponse, ValidationReport, GlossaryStatus,
-  addRegion, approveRender, checkDuplicateAsset, deleteProjectAsset, deleteRegion, detectAssetStream,
+  addRegion, approveRender, checkDuplicateAsset, deleteProjectAsset, deleteRegion, detectAssetStream, mergeRegions,
   fetchFonts, fetchLanguages, getManifest, getProject, importFile, matchFonts, ocrRegion, putManifest,
   applyRepairCandidate, captureLocalizedBaseline, createInpaintPatch, getLocalizedBaseline, getTreatment, previewCandidateLocalized, refineRegion, renderAsset, renderAssetStream, renderPreview, restoreTreatment, scanAssetLanguage, sha256File, snapshotAsset, undoInpaint,
   semanticSubstitution, semanticRepair, updateProject, uploadAsset, validateAsset, fetchGlossaryStatus, uploadGlossary, deleteGlossary, createVideoJob, getVideoJob, getLatestVideoJob, cancelVideoJob, resumeVideoJob, upgradeVideoJob, putVideoKeyframe, updateVideoTrack, watchVideoJob, renderVideoPreview, exportVideo,
@@ -866,6 +866,7 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [drawMode, setDrawMode] = useState(false);
   const [ocrLoading, setOcrLoading] = useState<string | null>(null);
+  const [mergeLoading, setMergeLoading] = useState(false);
   const [ocrReviewOpen, setOcrReviewOpen] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
   const [srcLangLocked, setSrcLangLocked] = useState(true);
@@ -2360,6 +2361,35 @@ export default function App() {
     }
   }, [asset, selectedId, autoSave]);
 
+  const onMergeRegions = useCallback(async (ids: string[]) => {
+    if (!asset || ids.length < 2) return;
+    setMergeLoading(true);
+    try {
+      const res = await mergeRegions(asset.asset_id, ids);
+      // Same shape as onDeleteRegion: the absorbed regions stay in the
+      // array marked excluded rather than being spliced out, or the next
+      // autosave PUT would undo the excluded flag the server just wrote.
+      setManifest((prev) => {
+        const merged = new Set(res.merged_ids);
+        const next = prev.map((i) =>
+          i.id === res.region.id ? { ...i, ...res.region }
+          : merged.has(i.id) ? { ...i, excluded: true }
+          : i
+        );
+        autoSave(next);
+        return next;
+      });
+      setSelectedId(res.region.id);
+      addToast("success", res.source === "reread"
+        ? `Merged ${ids.length} regions and re-read them as one`
+        : `Merged ${ids.length} regions — kept the existing text, the re-read did not improve on it`);
+    } catch (e) {
+      setErrorWithNotif(String(e));
+    } finally {
+      setMergeLoading(false);
+    }
+  }, [asset, autoSave, addToast, setErrorWithNotif]);
+
   const onReorder = useCallback((fromId: string, toId: string) => {
     // Always start from the list the user can currently see.  A cached manual
     // list may predate detection, exclusion, or an imported manifest and omit
@@ -3634,6 +3664,8 @@ export default function App() {
               onSrcLangChange={onSrcLangChange}
               onFontChange={onFontChange}
               onApplyTargetLang={onApplyTargetLang}
+              onMergeRegions={onMergeRegions}
+              mergeLoading={mergeLoading}
               ocrLoading={ocrLoading}
               languages={languages}
               defaultTargLang={targLang}
@@ -4042,6 +4074,8 @@ export default function App() {
                 onSrcLangChange={onSrcLangChange}
                 onFontChange={onFontChange}
                 onApplyTargetLang={onApplyTargetLang}
+                onMergeRegions={onMergeRegions}
+                mergeLoading={mergeLoading}
                 ocrLoading={ocrLoading}
                 languages={languages}
                 defaultTargLang={targLang}

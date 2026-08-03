@@ -676,6 +676,10 @@ class RegionCreate(BaseModel):
     text: Optional[str] = None
     target_text: Optional[str] = None
 
+class RegionMerge(BaseModel):
+    region_ids: List[str]
+    reread: bool = True
+
 class RegionUpdate(BaseModel):
     x: Optional[int] = None
     y: Optional[int] = None
@@ -2700,6 +2704,76 @@ def add_region(asset_id: str, req: RegionCreate):
     manifest.total_regions = len(manifest.instances)
     save_manifest(UPLOAD_DIR, asset_id, manifest)
     return jsonable(new_inst)
+
+
+@app.post("/api/manifest/{asset_id}/regions/merge")
+def merge_regions(asset_id: str, req: RegionMerge):
+    """Fold several regions into one, re-reading the union where it helps.
+
+    merge_baseline_runs already joins the words of a line automatically,
+    and declines wherever the geometry is ambiguous -- across a column
+    gutter, over a gap wider than a word space. This is the manual door
+    for those, and for any grouping only a person knows is one unit.
+
+    The survivor is the FIRST member in reading order, which keeps its id
+    and its correction/provenance history; the rest are marked excluded
+    exactly as delete_region marks them, so cleanse() still erases their
+    pixels even though the merged box already covers them.
+    """
+    if len(req.region_ids) < 2:
+        raise HTTPException(422, "merging needs at least two regions")
+    manifest = load_manifest(UPLOAD_DIR, asset_id)
+    if manifest is None:
+        raise HTTPException(404, f"no manifest for asset '{asset_id}'")
+    by_id = {i.id: i for i in manifest.instances}
+    members = []
+    for rid in req.region_ids:
+        inst = by_id.get(rid)
+        if inst is None:
+            raise HTTPException(404, f"region '{rid}' not found")
+        if inst.bounding_box is None:
+            raise HTTPException(422, f"region '{rid}' has no bounding box")
+        members.append(inst)
+
+    boxes = [i.bounding_box for i in members]
+    order = cicerone._fragment_reading_order(boxes)
+    members = [members[i] for i in order]
+    boxes = [i.bounding_box for i in members]
+    union = BBox(
+        x=min(b.x for b in boxes), y=min(b.y for b in boxes),
+        width=max(b.x + b.width for b in boxes) - min(b.x for b in boxes),
+        height=max(b.y + b.height for b in boxes) - min(b.y for b in boxes),
+    )
+    lang = members[0].detected_language or members[0].language or manifest.src_lang
+    engine = None
+    if req.reread:
+        try:
+            engine = cicerone.EasyOCRBackend(cicerone.expand_langset([lang] if lang else ["en"]))
+        except Exception:
+            engine = None
+    text, confidence, source = cicerone.reread_merged_region(
+        str(_asset_path(asset_id)), union,
+        [i.text or "" for i in members], boxes, engine=engine, lang=lang,
+    )
+
+    survivor = members[0]
+    survivor.bounding_box = union
+    survivor.text = text
+    if confidence is not None:
+        survivor.confidence = confidence
+    for spare in members[1:]:
+        spare.excluded = True
+    manifest.total_regions = sum(1 for i in manifest.instances if not i.excluded)
+    save_manifest(UPLOAD_DIR, asset_id, manifest)
+    pid = db.project_for_asset(asset_id)
+    if pid:
+        db.log_event(pid, "region-merge",
+                     f"merged {len(members)} regions into {survivor.id} ({source})")
+    return {
+        "ok": True, "region": jsonable(survivor), "source": source,
+        "merged_ids": [i.id for i in members[1:]],
+        "total_regions": manifest.total_regions,
+    }
 
 
 @app.delete("/api/manifest/{asset_id}/regions/{rid}")

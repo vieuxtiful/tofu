@@ -4270,6 +4270,129 @@ def _prune_contained_fragments(instances: List[InstText]) -> List[InstText]:
     return survivors
 
 
+def _fragment_reading_order(boxes: List[BBox]) -> List[int]:
+    """Indices of ``boxes`` in reading order: by line, then left to right.
+
+    The line bucket is the same tolerant baseline test
+    _reading_order_detections uses on raw detections, restated here
+    because a user merging regions is working with settled instances.
+    """
+    if not boxes:
+        return []
+    heights = sorted(b.height for b in boxes)
+    median_h = heights[len(heights) // 2] or 1
+    tolerance = max(4.0, median_h * 0.42)
+    order = sorted(range(len(boxes)), key=lambda i: boxes[i].y + boxes[i].height / 2)
+    lines: List[List[int]] = []
+    for i in order:
+        centre = boxes[i].y + boxes[i].height / 2
+        if lines and abs(centre - (boxes[lines[-1][0]].y + boxes[lines[-1][0]].height / 2)) <= tolerance:
+            lines[-1].append(i)
+        else:
+            lines.append([i])
+    out: List[int] = []
+    for line in lines:
+        out.extend(sorted(line, key=lambda i: boxes[i].x))
+    return out
+
+
+def _junction_score(pieces: Sequence[str], lang: Optional[str]) -> float:
+    """How plausible is this ORDER of fragments, lexically?
+
+    Used only to break a tie geometry cannot: two fragments sharing a
+    baseline AND an x-range, where left-to-right says nothing. It is a
+    function-word junction test over LATIN_STOPWORDS, not a language
+    model -- this project has no LM dependency, and the one optional NLP
+    package (stanza, gated behind TOFU_BASIL_STANZA_DIR and never
+    auto-downloaded) is a Basil observation tool, not something detection
+    may assume is present.
+
+    A function word wants a word after it: 'de', 'les', 'et' mid-string
+    is ordinary French, the same word alone at the END of the assembled
+    string is less likely -- though not impossible, which is why this
+    only ever breaks ties. decolonisons' body line genuinely ends 'contre
+    les' because the sentence continues on the line below.
+    """
+    stops = LATIN_STOPWORDS.get(base_lang(lang) or "", set())
+    if not stops:
+        return 0.0
+    tokens = [t for piece in pieces for t in re.split(r"\s+", piece.strip()) if t]
+    if len(tokens) < 2:
+        return 0.0
+    score = 0.0
+    for index, token in enumerate(tokens):
+        if token.casefold() not in stops:
+            continue
+        score += 1.0 if index < len(tokens) - 1 else -1.0
+    return score
+
+
+def assemble_fragments(
+    texts: Sequence[str], boxes: List[BBox], lang: Optional[str] = None,
+) -> str:
+    """Join fragment texts in the order they should be read.
+
+    Geometry decides: fragments are ordered by line and then left to
+    right, which is right for every ordinary case and is what the user
+    sees on the image. Lexical evidence is consulted only when geometry
+    genuinely cannot separate two fragments -- same baseline AND
+    overlapping x -- where swapping them is otherwise a coin flip.
+    """
+    order = _fragment_reading_order(boxes)
+    ordered = [texts[i].strip() for i in order if (texts[i] or "").strip()]
+    if len(ordered) < 2:
+        return " ".join(ordered)
+    ambiguous = any(
+        boxes[a].x < boxes[b].x + boxes[b].width and boxes[b].x < boxes[a].x + boxes[a].width
+        for a, b in zip(order, order[1:])
+    )
+    if ambiguous:
+        swapped = list(ordered)
+        swapped[0], swapped[1] = swapped[1], swapped[0]
+        if _junction_score(swapped, lang) > _junction_score(ordered, lang):
+            ordered = swapped
+    return " ".join(ordered)
+
+
+def reread_merged_region(
+    asset: Any, box: BBox, pieces: Sequence[str], piece_boxes: List[BBox],
+    engine: Optional["OCRBackend"] = None, lang: Optional[str] = None,
+) -> Tuple[str, Optional[float], str]:
+    """Read a user-merged region whole, or fall back to joining its parts.
+
+    Same trade merge_baseline_runs makes automatically, offered to a user
+    for the groupings that pass declines -- across a column gutter, over a
+    gap too wide for the automatic rule, or any unit only a person knows
+    is one. The gates are looser here on purpose: the user has asserted
+    these regions belong together, so the re-read has to beat the parts on
+    text, not re-litigate whether they are one region.
+
+    Returns ``(text, confidence, source)`` where source is 'reread' or
+    'joined', so the caller can tell the user which they got.
+    """
+    joined = assemble_fragments(list(pieces), list(piece_boxes), lang)
+    if engine is None or asset is None:
+        return joined, None, "joined"
+    try:
+        found = engine.detect_in_regions(asset, [box])
+    except Exception:
+        return joined, None, "joined"
+    composed = _compose_crop_text(found[0]) if found else None
+    if composed is None or not (composed.text or "").strip():
+        return joined, None, "joined"
+    # the re-read has to still contain what each part said; a confident
+    # read that simply lost a fragment is worse than the join, however
+    # good it looks on its own.
+    from tofu.utils.textmatch import best_span_similarity
+    kept = all(
+        best_span_similarity(piece.strip(), composed.text) >= LOAF_SPAN_SIMILARITY
+        for piece in pieces if piece and piece.strip()
+    )
+    if not kept:
+        return joined, None, "joined"
+    return composed.text, composed.confidence, "reread"
+
+
 _TRAILING_ARTIFACTS = "-‐‑‒–—―"
 
 

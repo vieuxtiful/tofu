@@ -43,8 +43,8 @@ class TestExpansionFeasibility:
         return ToFU()  # no registry: char-count / ratio paths
 
     def test_de_expansion_predicts_overflow_warning(self):
-        # en → de is 1.35x: exactly at FAIL boundary; ratio path gives fit=1.35
-        report = self._tofu().validate(None, "de", text_manifest=manifest_with("hello world", 200))
+        # A long source string in a narrow region should predict tight fit.
+        report = self._tofu().validate(None, "de", text_manifest=manifest_with("hello world", 70))
         fit = report.expansion_fit["r1"]
         assert fit > EXPANSION_WARN
         assert any(i.code == "ToFU_005" for i in report.issues)
@@ -193,7 +193,7 @@ class TestScriptNormalizedExpansion:
         report = self._tofu().validate(
             None, "en", text_manifest=manifest_with("出口", 200, target="Exit", src="ja")
         )
-        assert report.expansion_fit["r1"] == 1.0
+        assert report.expansion_fit["r1"] == 0.3
         assert not any(i.code == "ToFU_005" for i in report.issues)
 
     def test_genuinely_longer_translation_still_warns(self):
@@ -201,7 +201,7 @@ class TestScriptNormalizedExpansion:
         # is a true ~3.5x, and scribe will have to shrink the face
         report = self._tofu().validate(
             None, "fr",
-            text_manifest=manifest_with("焼肉", 200, target="Viande grillée", src="ja"),
+            text_manifest=manifest_with("焼肉", 70, target="Viande grillée", src="ja"),
         )
         assert report.expansion_fit["r1"] > EXPANSION_FAIL
         assert any(i.code == "ToFU_005" for i in report.issues)
@@ -215,6 +215,20 @@ class TestScriptNormalizedExpansion:
         from tofu.layers.tofu import measure_in_ems
         assert measure_in_ems("ＡＢ") == 2.0    # U+FF21/FF22, UAX #11 "F"
         assert measure_in_ems("AB") == 1.0
+
+    def test_percent_width_is_computed_per_region(self):
+        manifest = TextManifest(
+            asset_id="a", total_regions=3, src_lang="en", instances=[
+                InstText("r1", BBox(0, 0, 200, 40), text="WIDE STRING"),
+                InstText("r2", BBox(0, 50, 100, 40), text="WIDE STRING"),
+                InstText("r3", BBox(0, 100, 200, 40), text="tiny"),
+            ],
+        )
+
+        fit = self._tofu().validate(None, "de", text_manifest=manifest).expansion_fit
+
+        assert abs(fit["r2"] - fit["r1"] * 2) < 0.002
+        assert fit["r3"] < fit["r1"]
 
 
 class TestGlyphSegmentationEvidence:
@@ -323,36 +337,34 @@ class TestExpansionFactorCoverage:
 
 
 class TestExpansionBlockingRequiresEvidence:
-    """Populating `src_lang` correctly made ToFU_005's predictive branch
-    fire for real on CJK sources (ja→en is 1.67x, not the 1.0x an unset
-    src_lang implied). That is a true and useful planning signal — but
-    with no font selected, `fit` IS the language-pair ratio: one table
-    lookup, identical for every region. A number carrying no per-region
-    evidence must not fail a run per region, least of all before the user
-    has entered a single translation."""
+    """The metrics-free path still uses region-specific string and box
+    dimensions, so predictive overflow can be judged per region."""
 
     def _cjk_manifest(self):
         insts = [
-            InstText(id=f"r{n}", bounding_box=BBox(x=0, y=n * 40, width=90, height=30),
+            InstText(id=f"r{n}", bounding_box=BBox(x=0, y=n * 40, width=45, height=30),
                      text="焼肉")
             for n in range(3)
         ]
         return TextManifest(asset_id="a", total_regions=3, instances=insts, src_lang="ja")
 
-    def test_ratio_only_estimate_warns_but_does_not_block(self):
+    def test_region_occupancy_estimate_can_block(self):
         report = ToFU().validate(None, "en", text_manifest=self._cjk_manifest())
         issues = [i for i in report.issues if i.code == "ToFU_005"]
-        assert issues, "the expansion signal must still be surfaced"
-        assert all(i.severity == VldtnSeverity.WARNING for i in issues)
-        assert report.passed
+        assert issues
+        assert all(i.severity == VldtnSeverity.ERROR for i in issues)
+        assert not report.passed
 
-    def test_ratio_only_message_states_its_own_weakness(self):
+    def test_occupancy_message_reports_percent_width(self):
         report = ToFU().validate(None, "en", text_manifest=self._cjk_manifest())
         issue = next(i for i in report.issues if i.code == "ToFU_005")
-        assert "expansion ratio alone" in issue.message
+        assert "% of available width" in issue.message
+        assert "expansion ratio alone" not in issue.message
 
     def test_translated_region_still_only_warns(self):
         m = self._cjk_manifest()
+        m.instances = m.instances[:1]
+        m.total_regions = 1
         m.instances[0].target_text = "Grilled meat restaurant, second floor"
         report = ToFU().validate(None, "en", text_manifest=m)
         assert report.passed

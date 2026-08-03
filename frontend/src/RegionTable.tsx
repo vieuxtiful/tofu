@@ -10,6 +10,7 @@ import { loadFontPreview, weightLabel } from "./FontCombobox";
 import { fontIdentity } from "./doppelganger";
 import { HiLockClosed, HiLockOpen } from "react-icons/hi";
 import { FaSearch } from "react-icons/fa";
+import { PiArrowsMergeBold } from "react-icons/pi";
 import "./bbox.css";
 
 /** capture: bbox/string registry (source text, source lang, OCR, delete).
@@ -33,6 +34,10 @@ interface RegionTableProps {
   onSrcLangChange: (id: string, lang: string) => void;
   onFontChange: (id: string, font: string) => void;
   onApplyTargetLang: (ids: string[], lang: string) => void;
+  /** fold several regions into one. cicerone re-reads the union box and
+   * falls back to joining the parts in reading order. */
+  onMergeRegions?: (ids: string[]) => void;
+  mergeLoading?: boolean;
   ocrLoading: string | null;
   languages: LanguageOption[];
   defaultTargLang: string;
@@ -99,7 +104,7 @@ const MODE_COLS: Record<TableMode, string[]> = {
 export default function RegionTable({
   mode, regions, selectedId, hoveredId, onSelect, onHover, onTextChange, onTargetChange,
   onDelete, onOcr, onToggleDnt, onTargetLangChange, onSrcLangChange, onFontChange,
-  onApplyTargetLang, ocrLoading, languages, defaultTargLang, defaultSrcLang, fontsByLang, familiesByLang, onNeedFonts,
+  onApplyTargetLang, onMergeRegions, mergeLoading, ocrLoading, languages, defaultTargLang, defaultSrcLang, fontsByLang, familiesByLang, onNeedFonts,
   lockedLangs, onToggleLangLock, onOrientationToggle, onWordOrderToggle, onFontMatch, fontMatchingId, formerTargLang, targLang, footer, onReorder, onBatchBegin, onBatchEnd, bboxColor, hideRegionCounter,
 }: RegionTableProps) {
   const COLS = ALL_COLS.filter((c) => MODE_COLS[mode].includes(c.key));
@@ -255,6 +260,27 @@ export default function RegionTable({
       {mode === "capture" && (
         <div className="subtext flex items-center justify-between border-b border-zinc-300 px-3 py-2 text-xs text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
           <span>regions: {regions.length}</span>
+          {/* Detection already joins the words of a line on its own and
+            * declines where the geometry is ambiguous (across a column
+            * gutter, over a gap wider than a word space). This is the
+            * manual door for those, and for groupings only a person knows
+            * are one unit. Two is the minimum that means anything. */}
+          {onMergeRegions && checked.size >= 2 && (
+            <button
+              onClick={() => {
+                onMergeRegions([...checked]);
+                setChecked(new Set());
+              }}
+              disabled={!!mergeLoading}
+              title={`Merge ${checked.size} regions into one and re-read it`}
+              className="flex items-center gap-1.5 rounded-sm bg-cyan-700 px-2 py-1 font-medium text-white hover:bg-cyan-600 disabled:opacity-60"
+            >
+              {mergeLoading
+                ? <Loader2 size={13} className="animate-spin" />
+                : <PiArrowsMergeBold size={13} />}
+              Merge {checked.size}
+            </button>
+          )}
         </div>
       )}
 

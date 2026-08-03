@@ -377,7 +377,7 @@ export default function TitleScreen({ onEnter, onSelectProject, onCreateProject,
                             <button
                               onClick={(e) => startRename(e, p)}
                               className="shrink-0 rounded-sm p-1 text-zinc-400 transition hover:bg-zinc-200 hover:text-cyan-600 dark:text-zinc-500 dark:hover:bg-zinc-700 dark:hover:text-cyan-400"
-                              title="rename project"
+                              title="rename"
                             >
                               <CgRename size={14} />
                             </button>

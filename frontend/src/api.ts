@@ -1105,6 +1105,26 @@ export async function deleteRegion(assetId: string, regionId: string): Promise<{
   );
 }
 
+/** Fold several regions into one. The first in reading order survives and
+ *  keeps its id; the rest are excluded the same way deleteRegion excludes
+ *  a region, so cleanse still erases their pixels. `source` reports
+ *  whether the text came from re-reading the union box or from joining
+ *  the parts. */
+export async function mergeRegions(
+  assetId: string, regionIds: string[],
+): Promise<{
+  ok: boolean; region: InstText; source: "reread" | "joined";
+  merged_ids: string[]; total_regions: number;
+}> {
+  return json(
+    await fetch(`/api/manifest/${assetId}/regions/merge`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ region_ids: regionIds }),
+    })
+  );
+}
+
 export async function updateRegion(
   assetId: string,
   regionId: string,
