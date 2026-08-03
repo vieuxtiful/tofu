@@ -39,6 +39,52 @@ class TestTextMask:
         assert text_mask(img, BBox(x=10, y=10, width=60, height=60)) is None
 
 
+class TestWeightAcrossTypefaces:
+    """serif-vs-sans is the fixture that catches a typeface-confounded weight.
+
+    stylized-italic sets everything in one family, so a weight estimator can
+    pass it while being wrong about what it is measuring. serif-vs-sans sets
+    Times against Arial, regular against bold, and mixes strings that have
+    descenders with strings that do not -- which is what exposed the
+    estimator dividing stroke width by the full ink extent: 'Handgloves' in
+    Times BOLD measured 0.1001 against 'SANS-NOM' in Arial REGULAR at
+    0.1139, and every bold region on the fixture was called regular.
+    """
+
+    @pytest.fixture(scope="class")
+    @classmethod
+    def analyzed(cls):
+        img, regions = fixture_regions("serif-vs-sans")
+        return [(r, analyze_region(img, padded_bbox(r))) for r in regions]
+
+    def test_every_region_is_analyzable(self, analyzed):
+        assert all(p is not None for _, p in analyzed)
+
+    def test_weight_matches_ground_truth(self, analyzed):
+        wrong = [
+            f"{r['text']!r} ({r['style']['font_file']}): "
+            f"{p.weight} != {r['style']['weight']} at ratio {p.stroke_ratio}"
+            for r, p in analyzed if p.weight != r["style"]["weight"]
+        ]
+        assert not wrong, "\n".join(wrong)
+
+    def test_a_descender_does_not_make_lettering_look_lighter(self, analyzed):
+        """The bug this fixture caught, pinned directly.
+
+        'Handgloves' has an ascender and a descender; 'SANS-NOM' has
+        neither. Measuring against total ink extent made the first look
+        thinner than the second even when it was the bolder of the two.
+        """
+        by_text = {r["text"]: (r, p) for r, p in analyzed}
+        bold_desc = by_text["Handgloves"][1]
+        regular_caps = [
+            p for r, p in analyzed
+            if r["text"] == "SANS-NOM" and r["style"]["weight"] == "regular"
+        ]
+        assert regular_caps
+        assert bold_desc.stroke_ratio > max(p.stroke_ratio for p in regular_caps)
+
+
 class TestWeightAndItalic:
     """stylized-italic fixture carries exact style ground truth."""
 

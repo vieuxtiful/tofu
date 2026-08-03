@@ -31,7 +31,21 @@ from tofu.utils.imaging import text_mask
 
 # weight thresholds on stroke_width / text_height (calibrated on the
 # stylized-italic fixture: Arial 44px regular ≈ 0.11, bold ≈ 0.15)
-BOLD_RATIO = 0.135
+# Stroke width as a share of CAP HEIGHT (see _cap_height -- it used to be a
+# share of the full ink extent, which made the answer depend on whether the
+# string happened to contain a descender).
+#
+# Re-calibrated against every region in this repo carrying weight ground
+# truth (serif-vs-sans and stylized-italic, ten regions, measured through
+# the same padded boxes the tests use): regular runs 0.0887 to 0.1162, bold
+# 0.1323 to 0.1702. 0.125 sits between them with about 7% clearance either
+# side -- narrow, and narrow for a real reason. Stem weight relative to cap
+# height is genuinely typeface-dependent: Times Regular measures 0.089 and
+# Arial Regular 0.116, so a light serif and a heavy sans are further apart
+# than a sans is from its own bold. A universal threshold cannot do better
+# than this without knowing the family, which is what font_matching is
+# trying to work out from the same evidence.
+BOLD_RATIO = 0.125
 HEAVY_RATIO = 0.190
 LIGHT_RATIO = 0.065
 
@@ -98,6 +112,36 @@ def _stroke_width(np, cv2, mask) -> Optional[float]:
         return None
     core = 2.0 * float(np.percentile(vals, 75))
     return min(ribbon, core)
+
+
+def _cap_height(np, mask) -> Optional[int]:
+    """Ink top to BASELINE, which is the reference a stroke width means
+    something against.
+
+    Weight was measured against the full ink extent, and that extent
+    depends on which letters happen to be in the string rather than on the
+    lettering itself: a word with a descender is a third taller than an
+    all-capital one set in the same face at the same size. So the same
+    stroke divided by it reported a thinner face. Measured on the
+    serif-vs-sans fixture, that inverted the answer outright -- 'Handgloves'
+    in Times BOLD scored 0.1001 while 'SANS-NOM' in Arial REGULAR scored
+    0.1139, and every bold region on the fixture was classified regular.
+
+    The baseline is the last row still carrying the bulk of the ink:
+    descenders are a few letters, so their rows fall far below the rows
+    where every letter contributes. Above it, ink top is the cap or
+    ascender line -- within a few percent of each other in text faces, and
+    identical for the all-capital case.
+    """
+    rowsum = mask.sum(axis=1).astype(float)
+    if rowsum.max() <= 0:
+        return None
+    inked = np.where(rowsum >= max(1.0, 0.05 * rowsum.max()))[0]
+    core = np.where(rowsum >= 0.5 * rowsum.max())[0]
+    if len(inked) == 0 or len(core) == 0:
+        return None
+    height = int(core[-1]) - int(inked[0]) + 1
+    return height if height > 0 else None
 
 
 def _slant(np, cv2, mask) -> Optional[float]:
@@ -179,8 +223,12 @@ def analyze_region(
         profile.font_px = rows[1] - rows[0] + 1
 
     stroke = _stroke_width(np, cv2, mask)
-    if stroke is not None and profile.font_px and profile.font_px >= 8:
-        ratio = stroke / profile.font_px
+    # font_px stays the full ink extent -- scene/tofu size rendered text from
+    # it and that is what they should measure. Weight is a different question
+    # and needs a reference that does not move with the string's descenders.
+    cap_px = _cap_height(np, mask) or profile.font_px
+    if stroke is not None and cap_px and cap_px >= 8:
+        ratio = stroke / cap_px
         profile.stroke_ratio = round(ratio, 4)
         if ratio >= HEAVY_RATIO:
             profile.weight = "heavy"
