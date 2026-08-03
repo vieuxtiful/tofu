@@ -41,6 +41,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from tofu.core.types import InpaintAssessmentPolicy, TextManifest
 from tofu.utils.imaging import text_mask as _text_mask
+from tofu.utils.geometry import quad_is_usable
 from tofu.layers import inpaint_providers
 
 DILATE_ITER = 3        # glyph-mask growth to catch anti-aliased edges (~3px)
@@ -462,6 +463,19 @@ def _perspective_repair_context(cv2, np, image, mask, inst):
                 return image, mask, None, {"applied": False, "reason": "identity_quad"}
             points[:, 0] = bbox.x + points[:, 0] * bbox.width
             points[:, 1] = bbox.y + points[:, 1] * bbox.height
+        # Convexity, before any size test. The size guards below cannot see
+        # collinearity: a quad with three corners on one line still reports
+        # the area and side lengths of the triangle it collapses to, so
+        # `perspective-degenerate-falls-back` passed every one of them and
+        # went on to a singular getPerspectiveTransform. That solve does not
+        # raise -- it returns a matrix whose sampled coordinates run away,
+        # and the warp then never finishes. Scribe has always refused these
+        # quads; sharing its predicate is what makes render and erase fall
+        # back to the bbox path together, which is what that case is for.
+        if not quad_is_usable([(float(px), float(py)) for px, py in points]):
+            return image, mask, None, {
+                "applied": False, "reason": "degenerate_quad",
+            }
         area = abs(float(cv2.contourArea(points)))
         top = float(np.linalg.norm(points[1] - points[0]))
         bottom = float(np.linalg.norm(points[2] - points[3]))
@@ -489,10 +503,26 @@ def _perspective_repair_context(cv2, np, image, mask, inst):
             raise ValueError("empty rectified mask")
 
         def restore(candidate):
+            # BORDER_REPLICATE, not BORDER_REFLECT_101, and the difference is
+            # not cosmetic: this warp covers the WHOLE image, so most of its
+            # destination lies outside the quad, and a homography sends those
+            # pixels arbitrarily far outside the rectified source. Reflection
+            # resolves an out-of-range coordinate by folding it back into the
+            # source repeatedly, one source-width at a time, so a coordinate
+            # far enough out costs proportionally many iterations PER PIXEL.
+            # Measured on cjk-horizontal: 0.001s replicating, 0.017s
+            # reflecting for a well-formed quad, and no return at all in
+            # eight minutes for perspective-outward-corners, whose corners sit
+            # outside the source box. That is what hung the verification
+            # corpus and left its harness unbaselined.
+            #
+            # Nothing is lost by replicating: only `restored[mask]` is read,
+            # the mask lies inside the quad, and those pixels sample from
+            # within the rectified candidate either way.
             restored = cv2.warpPerspective(
                 np.asarray(candidate, dtype=np.uint8), inverse,
                 (image.shape[1], image.shape[0]), flags=cv2.INTER_LINEAR,
-                borderMode=cv2.BORDER_REFLECT_101,
+                borderMode=cv2.BORDER_REPLICATE,
             )
             composed = np.asarray(image, dtype=np.uint8).copy()
             composed[mask] = restored[mask]

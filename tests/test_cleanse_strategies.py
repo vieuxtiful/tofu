@@ -285,3 +285,62 @@ class TestSceneIntegration:
         # cleanse must not crash consuming a REAL scene-enriched manifest
         out = cleanse.erase(img, manifest)
         assert out is not None
+
+
+class TestPerspectiveRestoreStaysBounded:
+    """The inverse warp must not be priced by how far the quad reaches.
+
+    `restore` warps a rectified candidate back across the WHOLE image, so
+    most of its destination lies outside the quad and a homography sends
+    those pixels arbitrarily far outside the rectified source. Under
+    BORDER_REFLECT_101 an out-of-range coordinate is resolved by folding it
+    back one source-width at a time, so pixels far enough out cost
+    proportionally many iterations each. It did not merely slow down: two
+    verification-corpus cases never returned, which is why that harness
+    stood unbaselined and was written off as CPU contention.
+    """
+
+    def _restore_for(self, quad):
+        import cv2
+        from tofu.core.types import StyleProfil
+
+        image = np.zeros((640, 960, 3), dtype=np.uint8)
+        mask = np.zeros((640, 960), dtype=bool)
+        mask[161:220, 220:563] = True
+        inst = InstText(
+            "r1", BBox(x=220, y=161, width=343, height=59), text="City Library",
+            style_profile=StyleProfil(transform={"quad": quad}),
+        )
+        return cleanse._perspective_repair_context(cv2, np, image, mask, inst)
+
+    def test_corners_outside_the_source_box_still_restore_promptly(self):
+        import time
+
+        # perspective-outward-corners: the top corners sit a quarter of the
+        # region's width beyond each edge.
+        quad = [[-0.25, 0.0], [1.25, 0.0], [1.0, 1.0], [0.0, 1.0]]
+        rectified, rect_mask, restore, evidence = self._restore_for(quad)
+
+        assert evidence["applied"] is True
+        assert restore is not None
+        candidate = np.zeros(rectified.shape, dtype=np.uint8)
+        candidate[:] = 200
+
+        start = time.time()
+        composed = restore(candidate)
+        elapsed = time.time() - start
+
+        # The bad path took over eight minutes here; the good one is
+        # milliseconds. Ten seconds cannot flake and cannot pass a fold loop.
+        assert elapsed < 10.0, f"inverse warp took {elapsed:.1f}s"
+        assert composed.shape == (640, 960, 3)
+
+    def test_a_collinear_quad_is_refused_rather_than_warped(self):
+        # perspective-degenerate-falls-back: three corners on one line have
+        # no invertible homography, so this must fail open to the bbox path
+        # rather than produce a transform Scribe would not have drawn.
+        quad = [[0.0, 0.0], [0.5, 0.0], [1.0, 0.0], [0.0, 1.0]]
+        image, mask, restore, evidence = self._restore_for(quad)
+
+        assert evidence["applied"] is False
+        assert restore is None
