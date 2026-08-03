@@ -1584,6 +1584,46 @@ html.light .penumbra-switch {
   animation: text-warp-step-pulse 150ms ease-out;
 }
 
+/* ── Text Warp default markers ──
+   Every warp slider resets to a default on double-click, and the defaults are
+   not uniform: 0 for skew, offset and rotation, 1 for the two scales. That was
+   discoverable only by hovering for a tooltip, and once a slider had been
+   moved there was nothing on the track saying where it had come from.
+
+   The tick is drawn by a wrapper rather than on the input itself, because the
+   thing that would otherwise paint it -- the input's own background -- sits
+   behind a native runnable track whose appearance differs per browser, and
+   making it show would mean restyling the track everywhere.
+
+   --warp-default is the default's position along the track, 0 to 1, set
+   inline by the caller from that slider's own min/max. */
+.warp-slider {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.warp-slider::before {
+  content: "";
+  position: absolute;
+  /* The thumb has width, so the travel of its CENTRE is inset by half a thumb
+     at each end. 1rem is Chrome's default thumb (measured: 16px tall, and
+     square); Firefox's is a little wider. That difference only matters for an
+     OFF-CENTRE default, because at 0.5 the inset cancels exactly --
+     0.5rem + 0.5 * (100% - 1rem) is 50% whatever the thumb measures. Six of
+     the seven warp sliders are symmetric and land there; only the preset
+     `amount` (default 12 on a -25..25 range) sits off centre and can drift a
+     pixel or two in a browser whose thumb is not 16px. */
+  left: calc(0.5rem + var(--warp-default, 0.5) * (100% - 1rem));
+  top: 50%;
+  width: 1px;
+  height: 0.5rem;
+  transform: translate(-0.5px, -50%);
+  background: currentColor;
+  opacity: 0.35;
+  pointer-events: none;
+}
+
 .garnish-activation-toggle:checked {
   border-color: #8b5cf6;
   background: #a78bfa;
