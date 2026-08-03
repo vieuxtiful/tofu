@@ -4209,6 +4209,67 @@ def _prune_hallucinations(
     return kept
 
 
+## how much of a region has to sit inside another before the two are
+## competing for the same ink rather than neighbouring it.  Measured on
+## decolonisons, where the survivors sat at 0.72 ('D' against
+## 'Décolonisons', whose box starts 15px to its right) and 0.754
+## ('esclavagistes' against the line that ends with it) -- both plainly the
+## same ink, neither reaching the 0.8 the zoom union asks for.  Separate
+## neighbouring regions do not reach half.
+FRAGMENT_OVERLAP = 0.5
+
+
+def _prune_contained_fragments(instances: List[InstText]) -> List[InstText]:
+    """Drop a region whose text is already inside a longer region's text.
+
+    The zoom union's keep_the_loaf rule resolves a coarse read against the
+    fine reads it CONTAINS, and deliberately leaves a merely-overlapping
+    fragment standing on the reasoning that ordinary filtering would deal
+    with it. Nothing did. decolonisons shipped 'D' beside 'Décolonisons'
+    and 'esclavagistes' beside 'crimes coloniaux et esclavagistes' -- the
+    same ink boxed twice, so a user sees a duplicate region and a
+    translator is billed for a fragment of a line they already have.
+
+    Two conditions, and both are needed. The text must be a PROPER
+    substring of the other, normalized, so a fragment is only ever dropped
+    into a region that already says everything it said -- no information
+    is lost, which is what makes this safe to do without review. And the
+    boxes must overlap by more than half the smaller one, which is what
+    separates a fragment of one word from a neighbouring region that
+    happens to share a common short string.
+
+    Strict length ordering means two regions can never eliminate each
+    other, so no group is ever emptied.
+    """
+    from tofu.utils.textmatch import normalize_text
+
+    keyed = [
+        (inst, normalize_text(inst.text), inst.bounding_box)
+        for inst in instances
+    ]
+    survivors: List[InstText] = []
+    for inst, text, box in keyed:
+        if not text or box is None:
+            survivors.append(inst)
+            continue
+        swallowed = any(
+            other is not inst
+            and other_box is not None
+            and len(other_text) > len(text)
+            and text in other_text
+            and _overlap_frac(box, other_box) > FRAGMENT_OVERLAP
+            for other, other_text, other_box in keyed
+        )
+        if not swallowed:
+            survivors.append(inst)
+    if len(survivors) == len(instances):
+        return instances
+    for order, inst in enumerate(survivors):
+        inst.id = f"r{order + 1}"
+        inst.reading_order = order
+    return survivors
+
+
 _TRAILING_ARTIFACTS = "-‐‑‒–—―"
 
 
@@ -4925,6 +4986,7 @@ def build_manifest(
     # that were salvageable got their chance first
     if prune_garbage:
         instances = _prune_hallucinations(instances, asset)
+        instances = _prune_contained_fragments(instances)
 
     manifest = TextManifest(
         # the scene's own language, voted from the regions that survived

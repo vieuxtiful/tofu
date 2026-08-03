@@ -14,6 +14,7 @@ from tofu.layers.cicerone import (
     _disambiguate_ja_zh,
     _has_ink_support,
     _polygon_bbox,
+    _prune_contained_fragments,
     _prune_hallucinations,
     _segment_vertical_bands,
     _split_tall_detections,
@@ -510,6 +511,62 @@ class TestKeepTheLoaf:
         coarse = [det(80, 55, 126, 34, "В БУДУЩЕЕ", 0.928)]
         out = union_prefer_primary(fine, coarse, keep_the_loaf=True)
         assert [d.text for d in out] == ["В БУДУЩЕЕ"]
+
+
+# -- contained-fragment pruning ---------------------------------------------
+# the zoom union resolves a coarse read against the fine reads it CONTAINS,
+# and leaves a merely-overlapping fragment standing. Nothing downstream was
+# dealing with those, so decolonisons shipped the same ink boxed twice.
+
+def _frag_inst(rid, box, text, conf=0.9):
+    x, y, w, h = box
+    return InstText(id=rid, bounding_box=BBox(x=x, y=y, width=w, height=h),
+                    text=text, confidence=conf)
+
+
+class TestPruneContainedFragments:
+    def test_a_single_letter_inside_its_own_word_goes(self):
+        # measured: the 'D' box starts 15px LEFT of the 'Décolonisons' box,
+        # so it is only 0.72 contained -- under what the zoom union asks for.
+        kept = _prune_contained_fragments([
+            _frag_inst("r1", (30, 51, 54, 55), "D", 1.0),
+            _frag_inst("r2", (45, 43, 410, 63), "Décolonisons", 0.989),
+        ])
+        assert [i.text for i in kept] == ["Décolonisons"]
+        assert kept[0].id == "r1"  # ids are renumbered over the survivors
+
+    def test_a_word_inside_the_line_that_ends_with_it_goes(self):
+        kept = _prune_contained_fragments([
+            _frag_inst("r1", (83, 515, 300, 19), "crimes coloniaux et esclavagistes", 0.919),
+            _frag_inst("r2", (260, 513, 124, 25), "esclavagistes", 1.0),
+        ])
+        assert [i.text for i in kept] == ["crimes coloniaux et esclavagistes"]
+
+    def test_a_neighbour_sharing_a_short_string_survives(self):
+        # 'ET' is a substring of 'CACHOTSETTOURS' but sits elsewhere on the
+        # poster; overlap, not text, is what separates them.
+        kept = _prune_contained_fragments([
+            _frag_inst("r1", (226, 496, 130, 20), "CACHOTSETTOURS", 1.0),
+            _frag_inst("r2", (346, 26, 57, 42), "ET", 1.0),
+        ])
+        assert len(kept) == 2
+
+    def test_equal_text_never_eliminates_both(self):
+        kept = _prune_contained_fragments([
+            _frag_inst("r1", (0, 0, 100, 40), "OPTICAL", 0.9),
+            _frag_inst("r2", (2, 2, 100, 40), "OPTICAL", 0.8),
+        ])
+        assert len(kept) == 2
+
+    def test_untouched_lists_are_returned_unchanged(self):
+        instances = [_frag_inst("r1", (0, 0, 100, 40), "QUAI"),
+                     _frag_inst("r2", (0, 60, 100, 40), "DES")]
+        assert _prune_contained_fragments(instances) is instances
+
+    def test_regions_without_text_or_box_are_left_alone(self):
+        blank = InstText(id="r1", bounding_box=None, text="anything", confidence=0.5)
+        kept = _prune_contained_fragments([blank, _frag_inst("r2", (0, 0, 10, 10), "")])
+        assert len(kept) == 2
 
 
 # -- horizontal line assembly (merge_baseline_runs) -------------------------
