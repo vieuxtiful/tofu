@@ -61,12 +61,24 @@ from tofu.layers.fonts import faces_of
 from tofu.utils.imaging import text_mask
 
 
-MAX_LOCAL_FACES = 72
+# How many families reach the silhouette stage.  Raised 72 -> 100 after the
+# serif-vs-sans harness started reporting real numbers: Arial sat at position
+# 81 of the weight/aspect-ordered pool for "SANS-NOM" and was cut off two
+# places short of being scored at all, while ranking 1st the moment it was
+# admitted.  It is free -- the pool is ordered by advance metrics the registry
+# already read, and the silhouette stage is not what this layer spends its
+# time on (measured over the six-region fixture: 5.3s at 72, 5.0s at 100,
+# 5.4s at 128).  128 admits nothing further on this corpus.
+MAX_LOCAL_FACES = 100
 # How many of the silhouette-ranked pool get the expensive typographic
 # reading.  Generous on purpose: on all-capital lettering the silhouette
 # stage ranks the correct serif far down (measured on "SANS-NOM": Centaur
 # 192nd of 206 covering families), so a tight shortlist would discard the
 # answer before the terms that can recognise it ever run.
+# Raising this was measured and rejected: 32 -> 64 -> 100 changed no rank on
+# serif-vs-sans and cost 5.7s -> 8.7s -> 12.3s over six regions. The all-caps
+# regions this was meant to help are not losing because the shortlist is too
+# short; see the bold/all-caps notes on MAX_LOCAL_FACES.
 PROFILE_CANDIDATES = 32
 TOP_CANDIDATES = 5
 MIN_GLYPH_PIXELS = 45

@@ -84,5 +84,6 @@
         "font_file": "arialbd.ttf"
       }
     }
-  ]
+  ],
+  "font_retrieval_note": "Font retrieval measured 2026-08-03, the first time this harness produced numbers at all (test_font_match_regression called load_manifest with a PNG path and font_matching.match, which has never existed; a bare except hid the second behind the first). Ranks are the position of the TRUE face in the candidate list: r1 1, r2 6, r3 1, r4 1, r5 6, r6 6, where 6 means not retrieved. r4 was fixed by raising MAX_LOCAL_FACES 72 -> 100 (Arial sat at pool position 81 for 'SANS-NOM'). The three that remain have a known cause each. r5/r6 are BOLD, and stroke_ratio cannot see it here: the six regions measure 0.0889/0.0915/0.1124/0.1139/0.1001/0.1102 against BOLD_RATIO 0.135, so the bold Times (0.1001) reads LOWER than the regular Arial (0.1124) and _weight_target returns 400 for bold text -- which then penalises the true face by 300 and lets its regular sibling take the family slot. That is a typography-layer defect, not a matcher one. r2 is all-caps Times: its face IS in the pool (position 54) and simply scores below five others, which is the limitation the module docstring already records for capital lettering. MEASURED AND REJECTED, do not retry: gating weight_distance on a labelled weight (2/6 -> 1/6), keying the family collapse per (family, weight bucket) (2/6 -> 1/6, it pushes true faces past the cap), and raising PROFILE_CANDIDATES 32 -> 64 -> 100 (no rank changed, 5.7s -> 12.3s)."
 }
