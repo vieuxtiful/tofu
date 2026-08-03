@@ -21,7 +21,7 @@ import { RiCheckboxFill } from "react-icons/ri";
 import { TbCubePlus, TbPhoto, TbPhotoEdit, TbPhotoScan, TbScanCube, TbCircleDashedPlus, TbCircleDashedMinus } from "react-icons/tb";
 import { FaBoxOpen, FaLink, FaUnlink, FaEyeDropper } from "react-icons/fa";
 import { FaFileImport } from "react-icons/fa6";
-import { PiWarningCircleFill, PiHandGrabbingFill, PiHandGrabbingBold } from "react-icons/pi";
+import { PiWarningCircleFill, PiHandGrabbingFill, PiHandGrabbingBold, PiArrowsMergeBold } from "react-icons/pi";
 import { MdFontDownload, MdOutlineCompare, MdOutlineFontDownload, MdTipsAndUpdates } from "react-icons/md";
 import { BiAbacus, BiSolidErrorCircle } from "react-icons/bi";
 import { TiWarning } from "react-icons/ti";
@@ -1929,6 +1929,57 @@ export default function App() {
     updateSelectedStyle({ transform: { ...transform, preset, amount: transform.amount && transform.amount !== 0 ? transform.amount : 12 } });
   }, [renderSelId, prevSelId, manifest, updateSelectedStyle]);
 
+  /** Push the selected region's transform onto every other live region.
+   *
+   *  Regions on one sign share a plane: the same rotation, the same skew,
+   *  the same stretch. Dialling that in per region is the tedious part of
+   *  this step, and it was the only way to do it.
+   *
+   *  The perspective QUAD is deliberately not copied. Its corners describe
+   *  one region's own outline, so pushing them onto a region of a different
+   *  shape distorts it rather than matching it — the affine values are the
+   *  ones that describe a shared plane. Each target's own locked fields are
+   *  honoured, which is what the lock is for. */
+  const applyTransformToAllRegions = useCallback(() => {
+    const selected = renderSelId ?? prevSelId;
+    if (!selected) return;
+    const source = manifest.find((inst) => inst.id === selected)?.style_profile?.transform;
+    if (!source) return;
+    const { locked_fields: _locks, quad: _quad, ...shared } = source;
+    let applied = 0;
+    const next = manifest.map((inst): InstText => {
+      if (inst.id === selected || inst.excluded) return inst;
+      const current = inst.style_profile?.transform ?? {};
+      const locked = new Set(current.locked_fields ?? []);
+      const merged: Record<string, unknown> = { ...current };
+      let touched = false;
+      for (const [key, value] of Object.entries(shared)) {
+        if (locked.has(key)) continue;
+        merged[key] = value;
+        touched = true;
+      }
+      if (!touched) return inst;
+      applied += 1;
+      return {
+        ...inst,
+        style_profile: {
+          ...(inst.style_profile ?? {}),
+          transform: merged,
+        } as NonNullable<InstText["style_profile"]>,
+      };
+    });
+    if (!applied) {
+      addToast("info", "No other region could take this transform — they are all locked or excluded");
+      return;
+    }
+    recordLocalizedChange();
+    setManifest(next);
+    queueLocalizedPreview(next, "style");
+    autoSave(next);
+    addToast("success", `Transform applied to ${applied} other region${applied === 1 ? "" : "s"}`);
+  }, [renderSelId, prevSelId, manifest, recordLocalizedChange, setManifest,
+      queueLocalizedPreview, autoSave, addToast]);
+
   const undoLastInpaint = useCallback(async () => {
     if (!asset || !inpaintPatchIds.length) return;
     try {
@@ -3098,6 +3149,8 @@ export default function App() {
             onCreateProject={() => goPantry("create")}
             theme={theme}
             onToggleTheme={toggleTheme}
+            currentProjectId={project?.id ?? null}
+            onProjectRenamed={setProject}
           />
         </div>
       </>
@@ -4851,12 +4904,41 @@ export default function App() {
                     ? quadFromPolygon(selectedRenderInst.segmentation_mask?.polygon, selectedRenderInst.bounding_box)
                     : null;
                   const allTransformLocksActive = LOCKABLE_TRANSFORM_KEYS.every((key) => isTransformLocked(key));
+                  // Nine numeric controls wrap into one row, so "has this
+                  // region been transformed at all, and how much of it is
+                  // mine?" was not answerable without reading every value.
+                  const changedCount = ([
+                    ["skew_x", 0], ["skew_y", 0], ["scale_x", 1], ["scale_y", 1],
+                    ["offset_x", 0], ["offset_y", 0], ["rotation", 0], ["arc", 0],
+                  ] as const).filter(([key, base]) => Number(transform?.[key] ?? base) !== base).length
+                    + (perspectiveActive ? 1 : 0);
                   return textWarpHost ? createPortal(<div className="text-warp-controls space-y-2 text-xs text-cyan-900 dark:text-cyan-100" onInputCapture={(event) => { const target = event.target; if (target instanceof HTMLInputElement && target.type === "range") pulseRangeStep(target); }}>
                     <div className="flex flex-wrap items-center gap-2">
                       <div className="relative shrink-0" ref={warpRef}><button onClick={() => setWarpOpen((value) => !value)} className="bezier-card flex items-center gap-1.5 rounded-md bg-white/60 px-2 py-1 text-xs text-zinc-700 transition hover:bg-zinc-100 dark:bg-zinc-900/60 dark:text-zinc-300 dark:hover:bg-zinc-800">{WARP_PRESETS.find((preset) => preset.value === (transform.preset ?? "custom"))?.label ?? "Custom"}<ChevronDown size={12} className={`transition ${warpOpen ? "rotate-180" : ""}`} /></button><div className={`dropdown-morph bezier-card absolute left-0 top-full z-200 mt-1 w-40 rounded-lg bg-white p-1 dark:bg-zinc-900${warpOpen ? " expanded" : ""}`} style={warpOpen ? { boxShadow: "1px 1px 0 var(--bc-shadow), 2px 2px 6px rgba(0,0,0,0.06)" } : undefined}>{WARP_PRESETS.map((preset) => <button key={preset.value} onClick={() => { applyCanvasWarpPreset(preset.value); setWarpOpen(false); }} className={`flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-xs transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${(transform.preset ?? "custom") === preset.value ? "bg-zinc-100 font-medium text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100" : "text-zinc-600 dark:text-zinc-400"}`}><span>{preset.label}</span>{preset.value !== "none" && preset.value !== "custom" && <WarpPreview preset={preset.value} />}</button>)}</div></div>
                       <button type="button" onClick={toggleAllTransformLocks} className="rounded-sm p-0.5 transition hover:scale-110" title={allTransformLocksActive ? "Unlock all transform values" : "Lock all transform values"}>{allTransformLocksActive ? <HiLockClosed size={12} className="text-cyan-600 dark:text-cyan-400" /> : <HiLockOpen size={12} className="text-zinc-400 dark:text-zinc-500" />}</button>
                       <button type="button" disabled={!detectedQuad} onClick={() => detectedQuad && updateSelectedStyle({ transform: { ...transform, quad: detectedQuad, preset: "custom" } })} className="rounded-sm border border-cyan-300 px-1.5 py-0.5 text-[10px] text-cyan-700 disabled:cursor-not-allowed disabled:opacity-35 dark:border-cyan-800 dark:text-cyan-300" title={detectedQuad ? "Seed perspective from the detected text outline" : "No sufficiently confident, usable text outline is available"}>from detection</button>
                       <button type="button" disabled={!parsedQuad || isIdentityQuad(parsedQuad)} onClick={clearSelectedQuad} className="rounded-sm border border-zinc-300 px-1.5 py-0.5 text-[10px] text-zinc-600 disabled:cursor-not-allowed disabled:opacity-35 dark:border-zinc-700 dark:text-zinc-400">reset perspective</button>
+                      <button
+                        type="button"
+                        disabled={changedCount === 0 || visibleManifest.length < 2}
+                        onClick={applyTransformToAllRegions}
+                        className="flex items-center gap-1 rounded-sm border border-cyan-300 px-1.5 py-0.5 text-[10px] text-cyan-700 disabled:cursor-not-allowed disabled:opacity-35 dark:border-cyan-800 dark:text-cyan-300"
+                        title={changedCount === 0
+                          ? "Set a skew, rotation, stretch or offset first"
+                          : visibleManifest.length < 2
+                            ? "There is no other region to apply it to"
+                            : "Give every other region this skew, rotation, stretch and offset. Perspective corners stay per-region, and locked values are left alone."}
+                      >
+                        <PiArrowsMergeBold size={11} /> apply to all
+                      </button>
+                      {changedCount > 0 && (
+                        <span
+                          className="rounded-full bg-cyan-100 px-1.5 py-0.5 text-[10px] font-medium text-cyan-800 dark:bg-cyan-950 dark:text-cyan-300"
+                          title={`${changedCount} transform value${changedCount === 1 ? "" : "s"} differ${changedCount === 1 ? "s" : ""} from default on this region`}
+                        >
+                          {changedCount} changed
+                        </span>
+                      )}
                       <button onClick={() => setWarpCollapsed((value) => !value)} className="ml-auto shrink-0 rounded-sm p-1 text-zinc-500 transition hover:bg-zinc-200 dark:hover:bg-zinc-800" title={warpCollapsed ? "expand" : "collapse"}><FcCollapse style={{ transform: warpCollapsed ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} /></button>
                       <div className={`style-panel-morph style-panel-overflow-visible flex-1 ${!warpCollapsed ? "expanded" : ""}`}>
                         <div className="flex flex-wrap items-center gap-2 pt-1">
@@ -5550,6 +5632,7 @@ export default function App() {
         <ProjectGate
           languages={languages}
           onSelectProject={openProject}
+          onProjectRenamed={setProject}
           onClose={() => {
             setPantryLeaving(true);
             setTimeout(() => {
