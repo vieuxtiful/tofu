@@ -114,7 +114,112 @@ class DiacriticRestorationProvider:
         return ()
 
 
+## Scripts whose text is scored CHARACTER by character rather than word by
+## word. CJK is written without word spaces, and its OCR errors are
+## character substitutions rather than boundary errors, so a character
+## n-gram is both simpler (no segmenter to depend on) and better matched
+## to the failure it has to rank. Mixed kana/kanji/latin falls out of the
+## same treatment for free -- every codepoint is a token.
+_CHARACTER_SCRIPTS = {"Hani", "Hang", "Hira", "Kana", "Jpan", "Hans", "Hant"}
+
+
+class KenLMScoringProvider:
+    """Side-loaded KenLM n-gram model for OCR candidate rescoring.
+
+    A CRNN+CTC recognizer decodes character by character with no notion of
+    whether the reading it produced is a plausible string -- savor.py's
+    module note says exactly this, and it is why the glyph-confusion
+    courses have to reason from pixels alone. An n-gram model is the
+    cheapest thing that supplies the missing signal: it cannot read the
+    image, but it can say that MAIN STREET is a likelier string than MAIN
+    STBEET.
+
+    One engine, one model file per script family, routed by the script
+    already detected upstream. A single model spanning Latin and CJK is
+    deliberately NOT supported: the vocabularies are disjoint, and mixing
+    them dilutes exactly the n-gram statistics the ranking depends on.
+
+    Like every other provider here it never downloads anything and never
+    makes a network call. Absent ``TOFU_KENLM_DIR``, an unreadable model,
+    or a missing ``kenlm`` package all resolve to "no score", and callers
+    treat that as one signal being unavailable rather than as evidence.
+    """
+    provider_id = "kenlm-ngram"
+
+    def __init__(self, model_dir: Optional[str] = None):
+        self.model_dir = Path(model_dir or os.environ.get("TOFU_KENLM_DIR", ""))
+        self._models: Dict[str, object] = {}
+        self._failed: Dict[str, str] = {}
+
+    @staticmethod
+    def _family(script: Optional[str]) -> str:
+        return "cjk" if script in _CHARACTER_SCRIPTS else "latin"
+
+    def _load(self, family: str):
+        if family in self._models:
+            return self._models[family]
+        if family in self._failed:
+            return None
+        path = self.model_dir / f"{family}.klm"
+        if not self.model_dir or not path.is_file():
+            self._failed[family] = f"no readable model at {path}"
+            return None
+        try:
+            import kenlm  # type: ignore
+            model = kenlm.Model(str(path))
+        except Exception as exc:  # optional native extension/model errors
+            self._failed[family] = f"model load failed: {type(exc).__name__}"
+            return None
+        self._models[family] = model
+        return model
+
+    def score(self, text: str, script: Optional[str] = None) -> Optional[float]:
+        """Mean log10 probability per token, or None when unavailable.
+
+        Normalized by token count so a long correct line is not ranked
+        below a short one purely for having more tokens to be charged for.
+        """
+        cleaned = (text or "").strip()
+        if not cleaned:
+            return None
+        family = self._family(script)
+        model = self._load(family)
+        if model is None:
+            return None
+        tokens = list(cleaned) if family == "cjk" else cleaned.split()
+        if not tokens:
+            return None
+        try:
+            total = model.score(" ".join(tokens), bos=True, eos=True)
+        except Exception:
+            return None
+        return float(total) / len(tokens)
+
+    def status(self) -> Dict[str, object]:
+        families = {}
+        for family in ("latin", "cjk"):
+            path = self.model_dir / f"{family}.klm" if self.model_dir else None
+            families[family] = bool(path and path.is_file())
+        ready = any(families.values())
+        return {
+            "id": self.provider_id, "available": ready, "ready": ready,
+            "version": str(self.model_dir) if ready else None,
+            "families": families,
+            "reason": None if ready else "no readable model configured in TOFU_KENLM_DIR",
+        }
+
+
 _default_provider: LanguageModelProvider = FastTextLanguageProvider()
+_default_scorer = KenLMScoringProvider()
+
+
+def get_scoring_provider() -> KenLMScoringProvider:
+    return _default_scorer
+
+
+def set_scoring_provider(provider: KenLMScoringProvider) -> None:
+    global _default_scorer
+    _default_scorer = provider
 
 
 def get_language_provider() -> LanguageModelProvider:

@@ -4617,6 +4617,92 @@ def hybrid_audit(asset: Any, instances: List[InstText]) -> int:
     return changed
 
 
+def _score_region_hypothesis(
+    inst: InstText,
+    primary: "OCRCandidate",
+    alternate: "OCRCandidate",
+    result: Any,
+    primary_script: Optional[str],
+    alternate_script: Optional[str],
+) -> Optional[Dict[str, Any]]:
+    """Run the hypothesis scorer over every recorded reading of one region.
+
+    The observations are assembled from `recognition_history` -- one per
+    detection pass -- plus the settled primary and the independent
+    verifier. They all share the instance's box, so clustering resolves
+    them into the single hypothesis they are: competing readings of the
+    same pixels, which is the case score_hypothesis exists to weigh.
+
+    Returns None (rather than raising) whenever the machinery cannot run,
+    because this is evidence-gathering: it must never be able to fail a
+    detection that would otherwise have succeeded.
+    """
+    try:
+        from tofu.layers.ocr_arbitration import (
+            build_hypothesis_decision, form_region_hypotheses,
+        )
+        from tofu.core.types import OCRObservation
+
+        box = inst.bounding_box
+        if box is None:
+            return None
+        observations: List[OCRObservation] = []
+        for index, item in enumerate(inst.recognition_history or []):
+            if item.get("stage") != "detection_pass":
+                continue
+            text = item.get("candidate_text")
+            if not (text or "").strip():
+                continue
+            observations.append(OCRObservation(
+                observation_id=f"{inst.id}-pass{item.get('pass', index)}-{index}",
+                backend=str(item.get("engine") or "easyocr"),
+                backend_revision=str(item.get("engine_version") or "unknown"),
+                pass_tag=f"detection_pass_{item.get('pass', index)}",
+                text=text,
+                raw_confidence=max(0.0, min(1.0, float(item.get("candidate_confidence") or 0.0))),
+                bbox=box,
+                detected_script=primary_script,
+            ))
+        observations.append(OCRObservation(
+            observation_id=f"{inst.id}-primary",
+            backend=primary.engine, backend_revision=primary.engine_version,
+            pass_tag="selected_existing_pipeline",
+            text=primary.text, raw_confidence=primary.raw_confidence,
+            bbox=box, detected_script=primary_script,
+        ))
+        if (alternate.text or "").strip():
+            observations.append(OCRObservation(
+                observation_id=f"{inst.id}-verifier",
+                backend=alternate.engine, backend_revision=alternate.engine_version,
+                pass_tag="independent_verifier",
+                text=alternate.text, raw_confidence=alternate.raw_confidence,
+                bbox=box, detected_script=alternate_script,
+            ))
+        if len(observations) < 2:
+            return None
+        hypotheses = form_region_hypotheses(observations)
+        if not hypotheses:
+            return None
+        verifier_id = f"{inst.id}-verifier" if (alternate.text or "").strip() else None
+        verdict = build_hypothesis_decision(
+            hypotheses[0], getattr(result, "state", "unavailable"), verifier_id,
+        )
+        return {
+            "observations_scored": len(observations),
+            "selected_observation_id": verdict.selected_observation_id,
+            "selected_text": verdict.selected_text,
+            "transcription_score": verdict.transcription_score,
+            "geometry_score": verdict.geometry_score,
+            "auto_accepted": verdict.auto_accepted,
+            "review_required": verdict.review_required,
+            "reason_codes": list(verdict.reason_codes),
+            "score_breakdown": dict(verdict.score_breakdown),
+            "agrees_with_pairwise": (verdict.selected_text or "") == (inst.text or ""),
+        }
+    except Exception:
+        return None
+
+
 def assess_multi_candidate_ocr(
     asset: Any,
     instances: List[InstText],
@@ -4844,6 +4930,27 @@ def assess_multi_candidate_ocr(
             },
             verification,
         ])
+        # Hypothesis scoring over EVERY reading of this region, beside the
+        # pairwise decision above rather than instead of it.
+        #
+        # arbitrate() compares exactly two candidates: the primary and the
+        # verifier. But a region is usually read several times before that
+        # -- once per CRAFT threshold pass, again by the zoom pass, again by
+        # second_look -- and those readings were only ever kept as
+        # provenance text. score_hypothesis weighs all of them together
+        # (cross-backend agreement, stability of the modal reading, geometry,
+        # language consistency, glyph evidence, and n-gram plausibility when
+        # a model is side-loaded), which is evidence the pairwise comparison
+        # structurally cannot see.
+        #
+        # It does not choose the text. The pairwise decision remains
+        # authoritative because it is what every existing gate and baseline
+        # was calibrated against; this records what a fuller reading of the
+        # same evidence concludes, and where the two disagree is where the
+        # weights should be examined before anything is promoted.
+        hypothesis_record = _score_region_hypothesis(
+            inst, primary, alternate, result, primary_script, alternate_script,
+        )
         inst.ocr_provenance = {
             "schema": 2,
             "policy_revision": policy.calibration_revision,
@@ -4866,6 +4973,7 @@ def assess_multi_candidate_ocr(
             },
             "primary_calibrated_confidence": decision.primary.calibrated_confidence,
             "alternate_calibrated_confidence": decision.alternate.calibrated_confidence,
+            "hypothesis": hypothesis_record,
         }
         _history(inst, {
             "stage": "multi_candidate_ocr",
