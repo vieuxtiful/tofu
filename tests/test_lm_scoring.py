@@ -2,7 +2,7 @@
 import pytest
 
 from tofu.core.types import BBox, OCRObservation
-from tofu.layers.language_models import KenLMScoringProvider
+from tofu.layers.language_models import KenLMScoringProvider, tokenize_for_lm
 from tofu.layers.ocr_arbitration import (
     HYPOTHESIS_WEIGHTS,
     RegionHypothesis,
@@ -54,6 +54,33 @@ class TestKenLMProviderWithoutAModel:
         assert KenLMScoringProvider._family("Latn") == "latin"
         assert KenLMScoringProvider._family("Cyrl") == "latin"
         assert KenLMScoringProvider._family(None) == "latin"
+
+
+class TestSharedTokenizer:
+    """One tokenizer for training and scoring, or the signal decays silently."""
+
+    def test_latin_is_case_folded_so_signage_caps_are_not_unseen_tokens(self):
+        assert (tokenize_for_lm("RUE DE LA PAIX", "latin")
+                == tokenize_for_lm("rue de la paix", "latin")
+                == ["rue", "de", "la", "paix"])
+
+    def test_punctuation_is_its_own_token(self):
+        # the '!' that reads as '4' has to be rankable on its own.
+        assert tokenize_for_lm("nos rues !", "latin") == ["nos", "rues", "!"]
+        assert tokenize_for_lm("nos rues!", "latin") == ["nos", "rues", "!"]
+
+    def test_diacritics_survive(self):
+        assert "république" in tokenize_for_lm("AVENUE DE LA RÉPUBLIQUE", "latin")
+
+    def test_cjk_is_one_token_per_codepoint(self):
+        assert tokenize_for_lm("茂昌眼镜公司", "cjk") == list("茂昌眼镜公司")
+
+    def test_cjk_needs_no_segmenter_for_mixed_script(self):
+        assert tokenize_for_lm("3F 華聯店", "cjk") == ["3", "F", "華", "聯", "店"]
+
+    def test_empty_input(self):
+        assert tokenize_for_lm("", "latin") == []
+        assert tokenize_for_lm("   ", "cjk") == []
 
 
 class TestLanguageModelSignal:

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import os
+import re
 from pathlib import Path
 from typing import Dict, Iterable, Optional, Protocol, Sequence
 
@@ -122,6 +123,32 @@ class DiacriticRestorationProvider:
 ## same treatment for free -- every codepoint is a token.
 _CHARACTER_SCRIPTS = {"Hani", "Hang", "Hira", "Kana", "Jpan", "Hans", "Hant"}
 
+## Punctuation is split into its own token rather than glued to the word
+## beside it, because ranking punctuation is part of the job: decolonisons'
+## 'nos rues !' comes back as 'nos rues 4', and a model that has only ever
+## seen 'rues!' as one token cannot say which of those is likelier.
+_LM_PUNCT = re.compile(r"([^\w\s]|_)", re.UNICODE)
+
+
+def tokenize_for_lm(text: str, family: str) -> list:
+    """Tokenize exactly the same way at training time and at scoring time.
+
+    Exported and used by BOTH this provider and scripts/build_kenlm_models.py.
+    Train/score skew is the quiet way an n-gram model underperforms: a model
+    trained on 'rue de la paix' scores 'RUE DE LA PAIX' as unseen, and the
+    signal degrades to noise without ever failing loudly.
+
+    Latin is case-folded because signage is routinely set in caps and the
+    model's job is the plausibility of the word sequence, not its casing --
+    which savor's case course decides from pixels anyway. CJK is one token
+    per codepoint, so no segmenter, and mixed kana/kanji/latin needs no
+    special handling.
+    """
+    if family == "cjk":
+        return [ch for ch in (text or "").strip() if not ch.isspace()]
+    spaced = _LM_PUNCT.sub(r" \1 ", (text or "").casefold())
+    return spaced.split()
+
 
 class KenLMScoringProvider:
     """Side-loaded KenLM n-gram model for OCR candidate rescoring.
@@ -186,7 +213,7 @@ class KenLMScoringProvider:
         model = self._load(family)
         if model is None:
             return None
-        tokens = list(cleaned) if family == "cjk" else cleaned.split()
+        tokens = tokenize_for_lm(cleaned, family)
         if not tokens:
             return None
         try:
