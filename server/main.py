@@ -30,6 +30,7 @@ import io
 import json
 import math
 import os
+import queue
 import re
 import shutil
 import sys
@@ -2028,7 +2029,6 @@ def detect_stream(
 
     def gen():
         try:
-            start = time.time()
             yield event({"stage": "scene", "status": "running"})
             try:
                 regions = scene.analyze_regions(str(path))
@@ -2058,236 +2058,44 @@ def detect_stream(
                 except ImportError:
                     backend = cicerone.NullBackend()
 
-            detections = []
-            if isinstance(backend, cicerone.EasyOCRBackend):
-                for n, _tt, _lt, cumulative in cicerone.iter_multipass(
-                    backend, str(path)
-                ):
-                    if cumulative is None:
-                        yield event({
-                            "stage": "cicerone", "pass": n,
-                            "status": "running",
-                        })
-                        continue
-                    detections = cumulative
-                    yield event({
-                        "stage": "cicerone", "pass": n, "status": "complete",
-                        "regions": len(detections),
-                    })
-            else:
-                # PaddleOCR / single-pass backend uses the same canonical
-                # iterator as synchronous Cicerone.
-                for n, _tt, _lt, cumulative in cicerone.iter_multipass(
-                    backend, str(path)
-                ):
-                    if cumulative is None:
-                        continue
-                    detections = cumulative
-                    yield event({
-                        "stage": "cicerone", "pass": n, "status": "complete",
-                        "regions": len(detections),
-                    })
+            # Run the ONE pipeline, forwarding its stage callbacks as SSE.
+            #
+            # This endpoint used to re-implement cicerone.detect() inline so it
+            # could interleave progress events, and the two copies drifted
+            # seven ways -- the worst being that assess_multi_candidate_ocr
+            # never ran here at all, so every region detected through the app
+            # carried no arbitration record and no hypothesis score, while the
+            # eval harness (which calls detect()) measured a pipeline the app
+            # was not running. Detection now happens in a worker thread and
+            # its callback payloads are drained onto this generator.
+            events: "queue.Queue[Optional[Dict[str, Any]]]" = queue.Queue()
+            outcome: Dict[str, Any] = {}
 
-            yield event({"stage": "finalize", "status": "running"})
-            manifest = cicerone.build_manifest(
-                str(path), detections,
-                asset_info=info, engine=backend,
-                scene_regions=regions, start=start,
-            )
-
-            # language-adaptive stage 2 (mirrors cicerone.detect): when the
-            # unhinted pass identified a language the stage-1 charset could
-            # not express, re-detect with a tuned reader — this is where
-            # wrong-charset garbage regions become real recall
-            if lang_hints is None and isinstance(backend, cicerone.EasyOCRBackend):
-                target = cicerone.refine_langset(manifest.instances, backend)
-                # scene-surface probe: rescues vertical CJK signage whose
-                # fragments carry no usable instance evidence
-                surface_dets = []
-                if target is None and regions:
-                    target, surface_dets = cicerone.probe_uncovered_surfaces(
-                        str(path), regions, manifest.instances, backend
+            def run_detection():
+                try:
+                    outcome["manifest"] = cicerone.detect(
+                        str(path), asset_info=info, backend=backend,
+                        languages=list(lang_hints) if lang_hints else None,
+                        scene_regions=regions,
+                        font_registry=get_validator().font_registry,
+                        on_stage=events.put,
                     )
-                if target:
-                    yield event({
-                        "stage": "refine", "status": "running",
-                        "langset": list(target),
-                    })
-                    tuned = cicerone.EasyOCRBackend(languages=target, gpu=gpu)
-                    second = cicerone.run_multipass(tuned, str(path))
-                    if surface_dets:
-                        second = cicerone.union_prefer_primary(surface_dets, second)
-                    merged = cicerone.union_prefer_primary(second, detections)
-                    manifest = cicerone.build_manifest(
-                        str(path), merged,
-                        asset_info=info, engine=tuned,
-                        scene_regions=regions, start=start,
-                    )
-                    backend = tuned
-                    yield event({
-                        "stage": "refine", "status": "complete",
-                        "regions": len(manifest.instances),
-                    })
+                except BaseException as exc:  # surfaced on the main thread
+                    outcome["error"] = exc
+                finally:
+                    events.put(None)
 
-            # coarse-to-fine zoom pass: re-detect scene surfaces at 2x —
-            # fine boxes replace coarse multi-sign boxes they overlap, unless
-            # those fine boxes are pieces of what the coarse box already read
-            # whole (keep_the_loaf).  kept in step with cicerone.detect's own
-            # zoom stage; the streaming endpoint must not diverge from it.
-            if not isinstance(backend, cicerone.NullBackend) and regions:
-                yield event({"stage": "zoom", "status": "running"})
-                fine = cicerone.zoom_detect(backend, str(path), regions)
-                if fine:
-                    detections = cicerone.union_prefer_primary(
-                        fine, detections, keep_the_loaf=True
-                    )
-                    manifest = cicerone.build_manifest(
-                        str(path), detections,
-                        asset_info=info, engine=backend,
-                        scene_regions=regions, start=start,
-                    )
-                yield event({
-                    "stage": "zoom", "status": "complete",
-                    "regions": len(manifest.instances),
-                })
-
-            # vertical-stack re-split: a detection box far taller than
-            # wide is likely CRAFT over-merging several stacked
-            # vertical-CJK characters into one box (see
-            # cicerone._split_tall_detections) -- this endpoint calls
-            # build_manifest() directly (not cicerone.detect(), which
-            # already runs this as its own step) so it needs its own
-            # explicit stage here for parity, same as savor below
-            if isinstance(backend, cicerone.EasyOCRBackend):
-                yield event({"stage": "vertical_split", "status": "running"})
-                split = cicerone._split_tall_detections(str(path), backend, detections)
-                if split is not None:
-                    detections = split
-                    manifest = cicerone.build_manifest(
-                        str(path), detections,
-                        asset_info=info, engine=backend,
-                        scene_regions=regions, start=start,
-                    )
-                yield event({
-                    "stage": "vertical_split", "status": "complete",
-                    "regions": len(manifest.instances),
-                })
-
-            # horizontal line assembly: the mirror of the split above, and
-            # the same parity obligation. Without it this endpoint returned
-            # the words of a poster line as separate regions while the
-            # library returned the line -- the app was measurably worse than
-            # the harness, which is the failure mode this whole block of
-            # explicit per-stage mirrors exists to prevent.
-            if isinstance(backend, cicerone.EasyOCRBackend):
-                yield event({"stage": "line_assembly", "status": "running"})
-                joined = cicerone.merge_baseline_runs(str(path), backend, detections)
-                if joined is not None:
-                    detections = joined
-                    manifest = cicerone.build_manifest(
-                        str(path), detections,
-                        asset_info=info, engine=backend,
-                        scene_regions=regions, start=start,
-                    )
-                yield event({
-                    "stage": "line_assembly", "status": "complete",
-                    "regions": len(manifest.instances),
-                })
-
-            # PaddleOCR rescue: a second, differently-architected engine
-            # for whatever EasyOCR's own passes above still leave weak or
-            # entirely undetected on a CJK-dominant scene -- self-gating
-            # (should_paddle_rescue) and best-effort, same as savor/menu
-            # below. backend is already the CJK-tuned reader by this
-            # point if the refine stage above fired, so no separate
-            # "avoid re-triggering the expensive langset probe" handling
-            # is needed here the way cicerone.detect() needs it.
-            if (isinstance(backend, cicerone.EasyOCRBackend)
-                    and cicerone.PaddleOCRBackend.is_available()):
-                should_rescue, dominant = cicerone.should_paddle_rescue(
-                    manifest.instances, regions
-                )
-                if should_rescue:
-                    yield event({"stage": "paddle_rescue", "status": "running"})
-                    try:
-                        rescued = cicerone.run_paddle_rescue(
-                            str(path), detections, regions, dominant, gpu=gpu,
-                        )
-                    except Exception:
-                        rescued = None
-                    if rescued is not None:
-                        detections = rescued
-                        manifest = cicerone.build_manifest(
-                            str(path), detections,
-                            asset_info=info, engine=backend,
-                            scene_regions=regions, start=start,
-                        )
-                    yield event({
-                        "stage": "paddle_rescue", "status": "complete",
-                        "regions": len(manifest.instances),
-                    })
-
-            # second-look recognition on surviving weak regions
-            if not isinstance(backend, cicerone.NullBackend) and manifest.instances:
-                yield event({"stage": "polish", "status": "running"})
-                improved = cicerone.second_look(
-                    str(path), manifest.instances, backend
-                )
-                yield event({
-                    "stage": "polish", "status": "complete",
-                    "regions": improved,
-                })
-
-            if (cicerone._engine_from_env() in {"auto", "hybrid"}
-                    and isinstance(backend, cicerone.EasyOCRBackend)
-                    and manifest.instances):
-                yield event({"stage": "hybrid_audit", "status": "running"})
-                corrected = cicerone.hybrid_audit(str(path), manifest.instances)
-                yield event({"stage": "hybrid_audit", "status": "complete", "corrected": corrected})
-
-            # Savor's taste test on the FINAL recognized text -- this
-            # endpoint calls build_manifest()/second_look() directly
-            # (not cicerone.detect(), which already runs Savor as its
-            # own last step) to interleave progress events per pass, so
-            # Savor needs its own explicit stage here for parity
-            if manifest.instances:
-                yield event({"stage": "savor", "status": "running"})
-                from tofu.layers.savor import taste
-                # Keep SSE parity with cicerone.detect(): course 0 may only
-                # recover a clumped token when its isolated re-read has a
-                # real engine behind it.  Passing no engine would turn every
-                # otherwise healthy SSE clump into a review-only false alarm.
-                swallowed = taste(
-                    str(path), manifest.instances, font_registry=get_validator().font_registry,
-                    engine=None if isinstance(backend, cicerone.NullBackend) else backend,
-                )
-                yield event({"stage": "savor", "status": "complete", "corrected": swallowed})
-
-            # gazetteer correction on whatever text Savor left behind --
-            # Japanese/simplified-Chinese glyph normalization -- this
-            # endpoint calls build_manifest()/taste() directly (not
-            # cicerone.detect(), which already runs wasabi.season() as
-            # its own step), so wasabi needs its own explicit stage here
-            # for parity, same as savor above. runs before menu so its
-            # gazetteer fuzzy-match sees corrected characters.
-            if manifest.instances:
-                yield event({"stage": "wasabi", "status": "running"})
-                from tofu.layers.wasabi import season
-                normalized = season(manifest.instances)
-                yield event({"stage": "wasabi", "status": "complete", "corrected": normalized})
-
-            # this endpoint calls build_manifest()/taste() directly (not
-            # cicerone.detect(), which already runs menu.browse() as its
-            # own last step), so menu needs its own explicit stage here
-            # for parity, same as savor above
-            if manifest.instances:
-                yield event({"stage": "menu", "status": "running"})
-                from tofu.layers.menu import browse
-                matched = browse(
-                    manifest.instances, asset=str(path),
-                    font_registry=get_validator().font_registry,
-                )
-                yield event({"stage": "menu", "status": "complete", "corrected": matched})
+            worker = threading.Thread(target=run_detection, daemon=True)
+            worker.start()
+            while True:
+                payload = events.get()
+                if payload is None:
+                    break
+                yield event(payload)
+            worker.join()
+            if "error" in outcome:
+                raise outcome["error"]
+            manifest = outcome["manifest"]
 
             # scene enrichment at capture time: profiles + typography
             if manifest.instances:

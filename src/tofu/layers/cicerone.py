@@ -49,7 +49,7 @@ import unicodedata
 from abc import ABC, abstractmethod
 from pathlib import Path
 from dataclasses import dataclass
-from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, Iterator, List, Optional, Sequence, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -3603,6 +3603,7 @@ def detect(
     wasabi: bool = True,
     menu: bool = True,
     font_registry: Optional[Any] = None,
+    on_stage: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> TextManifest:
     """detect and localize text instances in the asset.
 
@@ -3700,6 +3701,26 @@ def detect(
     start = time.time()
     asset_info = asset_info or infer_asset_info(asset)
 
+    def _stage(payload: Dict[str, Any]) -> None:
+        """Report a stage boundary to a caller that wants progress.
+
+        The SSE endpoint used to re-implement this whole function so it
+        could interleave progress events, and the two copies drifted seven
+        ways -- most seriously, the endpoint never ran
+        assess_multi_candidate_ocr at all, so every region detected through
+        the app carried no arbitration record. A callback costs one branch
+        per stage and leaves exactly one definition of the pipeline.
+
+        Never allowed to fail the detection: a consumer that raises (a
+        closed SSE connection, most likely) must not lose the manifest.
+        """
+        if on_stage is None:
+            return
+        try:
+            on_stage(payload)
+        except Exception:
+            pass
+
     # `languages` IS the project's declared source (the server passes the
     # locked source_lang through as the reader hint), so latin-language
     # labelling can hold a competing guess to the declared-source margin
@@ -3725,11 +3746,24 @@ def detect(
 
     # multi-pass detection: EasyOCR uses threshold sweeps, PaddleOCR a
     # single detect call (run_multipass dispatches internally).
-    if multipass:
+    if multipass and on_stage is not None:
+        # run_multipass is iter_multipass drained; draining it here instead
+        # lets a progress consumer see each threshold pass land, which is
+        # the one place the SSE contract is finer-grained than a stage.
+        detections = []
+        for number, _tt, _lt, cumulative in iter_multipass(engine, asset):
+            if cumulative is None:
+                _stage({"stage": "cicerone", "pass": number, "status": "running"})
+                continue
+            detections = cumulative
+            _stage({"stage": "cicerone", "pass": number, "status": "complete",
+                    "regions": len(detections)})
+    elif multipass:
         detections = run_multipass(engine, asset)
     else:
         detections = engine.detect(asset)
 
+    _stage({"stage": "finalize", "status": "running"})
     manifest = build_manifest(
         asset, detections,
         asset_info=asset_info,
@@ -3763,6 +3797,7 @@ def detect(
                 asset, scene_regions, manifest.instances, engine
             )
         if target:
+            _stage({"stage": "refine", "status": "running", "langset": list(target)})
             tuned = EasyOCRBackend(languages=target, gpu=engine.gpu)
             second = (
                 run_multipass(tuned, asset) if multipass else tuned.detect(asset)
@@ -3785,6 +3820,8 @@ def detect(
                 prune_garbage=prune_garbage,
                 start=start,
             )
+            _stage({"stage": "refine", "status": "complete",
+                    "regions": len(manifest.instances)})
 
     # coarse-to-fine zoom pass with the final engine: fine boxes are
     # authoritative — a coarse frame-scale box that spans several signs is
@@ -3793,6 +3830,7 @@ def detect(
     # false: a coarse box the zoom pass merely broke into pieces of its own
     # correct reading keeps its ground, and the pieces go.
     if zoom and scene_regions and not isinstance(final_engine, NullBackend):
+        _stage({"stage": "zoom", "status": "running"})
         fine = zoom_detect(final_engine, asset, scene_regions)
         if fine:
             detections = union_prefer_primary(fine, detections, keep_the_loaf=True)
@@ -3809,12 +3847,16 @@ def detect(
                 start=start,
             )
 
+    _stage({"stage": "zoom", "status": "complete",
+            "regions": len(manifest.instances)})
+
     # vertical-stack re-split: runs LAST among the detection-refinement
     # passes, against whichever engine/detections survived every
     # earlier stage, so it benefits from the adaptive/zoom passes' own
     # language and coverage improvements rather than duplicating them.
     # see _split_tall_detections's module-level note.
     if vertical_split and isinstance(final_engine, EasyOCRBackend):
+        _stage({"stage": "vertical_split", "status": "running"})
         split = _split_tall_detections(asset, final_engine, detections)
         if split is not None:
             detections = split
@@ -3831,11 +3873,15 @@ def detect(
                 start=start,
             )
 
+    _stage({"stage": "vertical_split", "status": "complete",
+            "regions": len(manifest.instances)})
+
     # horizontal line assembly: the mirror of the split above, and it runs
     # after it for the same reason -- against whatever every earlier stage
     # settled on. the two cannot fight: one only ever splits a tall box,
     # the other only ever joins boxes that already sit on one baseline.
     if line_assembly and isinstance(final_engine, EasyOCRBackend):
+        _stage({"stage": "line_assembly", "status": "running"})
         joined = merge_baseline_runs(asset, final_engine, detections)
         if joined is not None:
             detections = joined
@@ -3851,6 +3897,9 @@ def detect(
                 prune_garbage=prune_garbage,
                 start=start,
             )
+
+    _stage({"stage": "line_assembly", "status": "complete",
+            "regions": len(manifest.instances)})
 
     # PaddleOCR rescue: a second, differently-architected engine for
     # whatever EasyOCR's own passes above still leave weak or entirely
@@ -3896,30 +3945,42 @@ def detect(
 
     # second-look recognition on the surviving weak regions
     if polish and manifest.instances and not isinstance(final_engine, NullBackend):
+        _stage({"stage": "polish", "status": "running"})
         second_look(asset, manifest.instances, final_engine)
         # ...then the clipped-edge pass. It runs AFTER second_look because it
         # tests whether the settled text is missing a glyph its box cut off,
         # and second_look is what settles that text.
         rescue_clipped_edge_glyphs(asset, manifest.instances, final_engine)
+        _stage({"stage": "polish", "status": "complete",
+                "regions": len(manifest.instances)})
 
     # General risk-based cross-provider assessment happens after proposal
     # generation has settled and before any correction stage mutates text.
-    assess_multi_candidate_ocr(
+    _stage({"stage": "arbitration", "status": "running"})
+    replaced = assess_multi_candidate_ocr(
         asset, manifest.instances, scene_regions, ocr_assessment_policy
     )
+    _stage({"stage": "arbitration", "status": "complete", "corrected": replaced})
 
     # Hybrid arbitration runs after every EasyOCR refinement has settled;
     # invoking Paddle earlier would let later EasyOCR passes overwrite the
     # independent candidate that resolves a risky read.
     if (_engine_from_env() in {"auto", "hybrid"}
             and isinstance(final_engine, EasyOCRBackend)):
-        hybrid_audit(asset, manifest.instances)
+        _stage({"stage": "hybrid_audit", "status": "running"})
+        corrected = hybrid_audit(asset, manifest.instances)
+        _stage({"stage": "hybrid_audit", "status": "complete",
+                "corrected": corrected})
         # Skim's own arbitration shares that gate and that reasoning: it
         # runs on the settled text, and it is the only place Paddle is
         # ever used to REMOVE an EasyOCR read rather than add or replace
         # one, so it must not see text a later pass would have repaired.
+        _stage({"stage": "skim", "status": "running"})
+        before_skim = len(manifest.instances)
         manifest.instances = skim_audit(asset, manifest.instances)
         manifest.total_regions = len(manifest.instances)
+        _stage({"stage": "skim", "status": "complete",
+                "removed": before_skim - len(manifest.instances)})
 
     # Savor's taste test runs LAST, once, on the FINAL text — after
     # every detection/refinement/re-read pass above has had its say.
@@ -3935,8 +3996,11 @@ def detect(
             # the only course that changes a read's character COUNT, and it
             # will not do so without an independent re-read of the disputed
             # span (see savor.chew_clump).
-            taste(asset, manifest.instances, font_registry=font_registry,
-                  engine=None if isinstance(final_engine, NullBackend) else final_engine)
+            _stage({"stage": "savor", "status": "running"})
+            swallowed = taste(
+                asset, manifest.instances, font_registry=font_registry,
+                engine=None if isinstance(final_engine, NullBackend) else final_engine)
+            _stage({"stage": "savor", "status": "complete", "corrected": swallowed})
         except Exception:
             pass
 
@@ -3947,7 +4011,10 @@ def detect(
     if wasabi and manifest.instances:
         try:
             from tofu.layers.wasabi import season
-            season(manifest.instances)
+            _stage({"stage": "wasabi", "status": "running"})
+            normalized = season(manifest.instances)
+            _stage({"stage": "wasabi", "status": "complete",
+                    "corrected": normalized})
         except Exception:
             pass
 
@@ -3957,21 +4024,27 @@ def detect(
     if menu and manifest.instances:
         try:
             from tofu.layers.menu import browse
-            browse(manifest.instances, asset=asset, font_registry=font_registry)
+            _stage({"stage": "menu", "status": "running"})
+            matched = browse(manifest.instances, asset=asset,
+                             font_registry=font_registry)
+            _stage({"stage": "menu", "status": "complete", "corrected": matched})
         except Exception:
             pass
 
-    # ordinal/administrative abbreviations, offered for REVIEW only. Runs after
-    # every text-rewriting stage for the same reason they run last: the final
-    # text is the only text worth judging. It proposes and never applies, so
-    # unlike the courses above it cannot change what any later stage sees.
+    # ordinal/administrative abbreviations. Runs after every text-rewriting
+    # stage for the same reason they run last: the final text is the only text
+    # worth judging. It applies only where Savor already called the region
+    # reliable, and records a review proposal everywhere else.
     if manifest.instances:
         try:
             from tofu.layers.ordinal import propose as propose_ordinals
-            propose_ordinals(
+            _stage({"stage": "ordinal", "status": "running"})
+            proposed = propose_ordinals(
                 asset, manifest.instances,
                 language=(languages[0] if languages else manifest.src_lang),
             )
+            _stage({"stage": "ordinal", "status": "complete",
+                    "proposed": proposed})
         except Exception:
             pass
 

@@ -643,7 +643,15 @@ export interface RenderResult {
 }
 
 export interface DetectStreamEvent {
-  stage: "scene" | "cicerone" | "finalize" | "refine" | "zoom" | "vertical_split" | "paddle_rescue" | "polish" | "savor" | "wasabi" | "menu" | "enrich" | "memory" | "complete" | "error";
+  /** Every stage cicerone.detect() reports through its on_stage callback,
+   *  plus the server-only ones the endpoint adds around it (scene, enrich,
+   *  font_match, memory, complete, error). App.tsx handles a subset via an
+   *  if/else chain, so an unlisted stage is inert rather than fatal -- but
+   *  this union is the contract, and it drifted once already. */
+  stage: "scene" | "cicerone" | "finalize" | "refine" | "zoom" | "vertical_split"
+    | "line_assembly" | "paddle_rescue" | "polish" | "arbitration" | "hybrid_audit"
+    | "skim" | "savor" | "wasabi" | "menu" | "ordinal" | "enrich" | "font_match"
+    | "memory" | "complete" | "error";
   status?: "running" | "complete";
   pass?: number;
   regions?: SceneRegion[] | number;  // scene: region list; cicerone/refine: running count
