@@ -162,13 +162,29 @@ export default function TitleScreen({ onEnter, onSelectProject, onCreateProject,
     setConfirmProject(p);
   };
 
+  // The card animates in (tco-fade-in / tco-card-in) and the mirrored exit
+  // has been sitting in uikit.css unused: unmounting on the state change
+  // alone gave it no frame to play. `leaving` applies the class, and the
+  // 300ms matches the keyframes -- one duration, not a second constant.
+  const [confirmLeaving, setConfirmLeaving] = useState(false);
+
+  const dismissConfirm = (after: () => void) => {
+    setConfirmLeaving(true);
+    setTimeout(() => {
+      setConfirmLeaving(false);
+      after();
+    }, 300);
+  };
+
   const confirmYes = () => {
-    if (confirmProject) onSelectProject(confirmProject);
-    setConfirmProject(null);
+    dismissConfirm(() => {
+      if (confirmProject) onSelectProject(confirmProject);
+      setConfirmProject(null);
+    });
   };
 
   const confirmNo = () => {
-    setConfirmProject(null);
+    dismissConfirm(() => setConfirmProject(null));
   };
 
   const startRename = (e: React.MouseEvent, p: Project) => {
@@ -480,7 +496,10 @@ export default function TitleScreen({ onEnter, onSelectProject, onCreateProject,
 
       {/* CONFIRM: open project? */}
       {confirmProject && (
-        <div className="title-confirm-backdrop" onClick={confirmNo}>
+        <div
+          className={`title-confirm-backdrop${confirmLeaving ? " leaving" : ""}`}
+          onClick={confirmNo}
+        >
           <div className="bezier-card title-confirm-card" onClick={(e) => e.stopPropagation()}>
             <p className="title-confirm-message">open project?</p>
             <div className="title-confirm-actions">

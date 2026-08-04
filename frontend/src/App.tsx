@@ -1138,6 +1138,9 @@ export default function App() {
 
   /** pull a project's active asset + manifest from the server and hydrate
    * the editor — this is how sessions are resumed after a reload */
+  /** true while a project's manifest is still being fetched */
+  const [sessionLoading, setSessionLoading] = useState(false);
+
   const loadProjectSession = useCallback(async (projectId: string) => {
     const p = await getProject(projectId);
     setProject(p);
@@ -1194,13 +1197,18 @@ export default function App() {
     setSrcLang(p.source_lang);
     prevScreen.current = displayedScreen;
     setScreen("main");
+    // The workspace is shown before the manifest arrives -- loadProjectSession
+    // makes two round trips -- so without this a project WITH regions looks
+    // for a moment exactly like a project with none.
+    setSessionLoading(true);
     loadProjectSession(p.id)
       .then((full) => {
         if (full.active_asset?.has_manifest) {
           addToast("success", `resumed session: "${p.name}"`);
         }
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setSessionLoading(false));
   }, [resetSession, loadProjectSession, addToast, displayedScreen]);
 
   // auto-resume project session when reloading directly into main screen
@@ -1210,10 +1218,13 @@ export default function App() {
     const pid = localStorage.getItem(PROJECT_KEY);
     if (!pid || project) return;
     sessionRestoredRef.current = true;
-    loadProjectSession(pid).catch(() => {
-      sessionStorage.removeItem(SCREEN_KEY);
-      setScreen("title");
-    });
+    setSessionLoading(true);
+    loadProjectSession(pid)
+      .catch(() => {
+        sessionStorage.removeItem(SCREEN_KEY);
+        setScreen("title");
+      })
+      .finally(() => setSessionLoading(false));
   }, [screen, project, loadProjectSession]);
 
   const refreshProject = useCallback(() => {
@@ -5783,6 +5794,20 @@ export default function App() {
             >
               close
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* The session is still resolving: same card shell as the confirm
+          overlays, so it arrives with the identical animation, but with
+          nothing to choose -- clicking the scrim must not dismiss it. */}
+      {sessionLoading && (
+        <div className="title-confirm-backdrop">
+          <div className="title-confirm-card">
+            <p className="title-confirm-message flex items-center gap-3">
+              <SquareLoader size="sm" />
+              loading…
+            </p>
           </div>
         </div>
       )}

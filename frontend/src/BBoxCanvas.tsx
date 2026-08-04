@@ -253,6 +253,13 @@ export default function BBoxCanvas({
   );
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {
+    // Every branch below starts a drag, and a mouse-down-and-move is also how
+    // the browser starts a text selection -- which painted a blue highlight
+    // across the asset while a box was being resized. The select-none class
+    // on the container stops that highlight being drawn; this stops the
+    // selection existing at all, which is what keeps a stray copy from
+    // picking up half the page.
+    e.preventDefault();
     if (preview) {
       // in preview mode, drag pans the view (same as empty-canvas drag in edit mode)
       const el = containerRef.current;
@@ -408,7 +415,7 @@ export default function BBoxCanvas({
     >
     <div
       ref={containerRef}
-      className="bbox-canvas-scroll relative flex-1 mr-6"
+      className="bbox-canvas-scroll relative flex-1 mr-6 select-none"
       style={{
         cursor: preview ? (drag?.type === "pan" ? "grabbing" : "grab") : drawMode ? "crosshair" : drag?.type === "pan" ? "grabbing" : "grab",
       }}

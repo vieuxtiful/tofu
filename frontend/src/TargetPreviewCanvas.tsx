@@ -117,6 +117,7 @@ export default function TargetPreviewCanvas({
   }, [onZoomChange]);
 
   const onPanStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();  // stop the drag from starting a text selection
     const el = containerRef.current;
     if (!el) return;
     setPan({
@@ -284,7 +285,9 @@ export default function TargetPreviewCanvas({
     >
       <div
         ref={containerRef}
-        className="bbox-canvas-scroll relative flex-1 mr-6"
+        // same drag-selects-the-page problem BBoxCanvas had: dragging to pan
+        // is also how the browser begins a text selection
+        className="bbox-canvas-scroll relative flex-1 mr-6 select-none"
         style={{
           cursor: pan ? "grabbing" : "grab",
           overflow: "auto",
