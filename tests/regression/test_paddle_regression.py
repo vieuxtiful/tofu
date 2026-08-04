@@ -38,16 +38,20 @@ def _paddle_available() -> bool:
     return PADDLE_VENV.exists()
 
 
-@pytest.mark.skipif(not _paddle_available(), reason="PaddleOCR venv not found")
-@pytest.mark.parametrize("fixture", _fixture_names())
-def test_paddle_regression(fixture: str) -> None:
-    """PaddleOCR metrics must stay within baseline tolerances."""
-    import subprocess
+def _paddle_metrics(fixture: str) -> dict[str, float]:
+    """Run the isolated Paddle harness and extract its headline metrics.
+
+    Factored out of the test so generate_baseline can record numbers
+    produced by exactly this code, rather than a second copy of it that
+    could drift. Returns {} when the harness could not produce metrics;
+    the test turns that into a skip, the generator into an omission.
+    """
     import json
+    import subprocess
 
     image_path = FIXTURES_DIR / f"{fixture}.png"
     if not image_path.exists():
-        pytest.skip(f"fixture image missing: {image_path}")
+        return {}
 
     result = subprocess.run(
         [str(PADDLE_VENV), str(ROOT / "scripts" / "eval_paddle.py"),
@@ -55,26 +59,28 @@ def test_paddle_regression(fixture: str) -> None:
         capture_output=True, text=True, timeout=120, cwd=str(ROOT),
     )
     if result.returncode != 0:
-        pytest.skip(f"PaddleOCR harness failed: {result.stderr[:200]}")
+        return {}
 
     report_path = ROOT / "scripts" / "eval_out" / f"{fixture}-regression.paddle.json"
     if not report_path.exists():
-        pytest.skip("PaddleOCR report not found")
+        return {}
     report = json.loads(report_path.read_text(encoding="utf-8"))
 
     metrics: dict[str, float] = {}
-    m = report.get("metrics", {})
-    if m.get("precision") is not None:
-        metrics["precision"] = float(m["precision"])
-    if m.get("recall") is not None:
-        metrics["recall"] = float(m["recall"])
-    if m.get("f1") is not None:
-        metrics["f1"] = float(m["f1"])
-    if m.get("mean_norm_ed") is not None:
-        metrics["mean_norm_ed"] = float(m["mean_norm_ed"])
+    for key in ("precision", "recall", "f1", "mean_norm_ed"):
+        value = report.get("metrics", {}).get(key)
+        if value is not None:
+            metrics[key] = float(value)
+    return metrics
 
+
+@pytest.mark.skipif(not _paddle_available(), reason="PaddleOCR venv not found")
+@pytest.mark.parametrize("fixture", _fixture_names())
+def test_paddle_regression(fixture: str) -> None:
+    """PaddleOCR metrics must stay within baseline tolerances."""
+    metrics = _paddle_metrics(fixture)
     if not metrics:
-        pytest.skip("no PaddleOCR metrics produced")
+        pytest.skip(f"PaddleOCR harness produced no metrics for {fixture}")
     violations = compare("paddle", fixture, metrics)
     if violations:
         msgs = "\n".join(v.message() for v in violations)

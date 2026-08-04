@@ -618,6 +618,2131 @@
           "direction": "at_most"
         }
       }
+    },
+    "savor": {
+      "cjk-horizontal": {
+        "applied": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "unresolved": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "cjk-vertical": {
+        "applied": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "unresolved": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "degraded-ink": {
+        "applied": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "unresolved": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "dense-layout": {
+        "applied": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "unresolved": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "expansion-en": {
+        "applied": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "unresolved": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "flat-sign": {
+        "applied": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "unresolved": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "gradient-banner": {
+        "applied": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "unresolved": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "indic-shaping": {
+        "applied": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "unresolved": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "low-confidence": {
+        "applied": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "unresolved": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "mixed-orientation": {
+        "applied": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "unresolved": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "mixed-script": {
+        "applied": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "unresolved": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "multicolour-text": {
+        "applied": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "unresolved": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "perspective-sign": {
+        "applied": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "unresolved": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "product-label": {
+        "applied": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "unresolved": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "rtl-sign": {
+        "applied": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "unresolved": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "serif-vs-sans": {
+        "applied": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "unresolved": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "shadow-effects": {
+        "applied": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "unresolved": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "stylized-italic": {
+        "applied": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "unresolved": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "textured-wall": {
+        "applied": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "unresolved": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "tight-space": {
+        "applied": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "unresolved": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "ui-controls": {
+        "applied": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "unresolved": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      }
+    },
+    "cleanse_providers": {
+      "flat": {
+        "mask_mae": {
+          "expected": 0.4639,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        },
+        "outside_mae": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        },
+        "mask_recall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      },
+      "gradient": {
+        "mask_mae": {
+          "expected": 1.4823,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        },
+        "outside_mae": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        },
+        "mask_recall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      },
+      "textured": {
+        "mask_mae": {
+          "expected": 13.3346,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        },
+        "outside_mae": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        },
+        "mask_recall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      },
+      "repeating": {
+        "mask_mae": {
+          "expected": 5.892,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        },
+        "outside_mae": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        },
+        "mask_recall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      },
+      "outlined": {
+        "mask_mae": {
+          "expected": 13.3738,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        },
+        "outside_mae": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        },
+        "mask_recall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      }
+    },
+    "tofu": {
+      "cjk-horizontal": {
+        "glyph_median": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "glyph_min": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "render_median": {
+          "expected": 0.874,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "render_min": {
+          "expected": 0.7868,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      },
+      "cjk-vertical": {
+        "glyph_median": {
+          "expected": 0.95,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "glyph_min": {
+          "expected": 0.95,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "render_median": {
+          "expected": 0.874,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "render_min": {
+          "expected": 0.7868,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      },
+      "degraded-ink": {
+        "glyph_median": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "glyph_min": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "render_median": {
+          "expected": 0.874,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "render_min": {
+          "expected": 0.7868,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      },
+      "dense-layout": {
+        "glyph_median": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "glyph_min": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "render_median": {
+          "expected": 0.874,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "render_min": {
+          "expected": 0.7868,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      },
+      "expansion-en": {
+        "glyph_median": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "glyph_min": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "render_median": {
+          "expected": 0.874,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "render_min": {
+          "expected": 0.7868,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      },
+      "flat-sign": {
+        "glyph_median": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "glyph_min": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "render_median": {
+          "expected": 0.874,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "render_min": {
+          "expected": 0.7868,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      },
+      "gradient-banner": {
+        "glyph_median": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "glyph_min": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "render_median": {
+          "expected": 0.874,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "render_min": {
+          "expected": 0.7868,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      },
+      "indic-shaping": {
+        "glyph_median": {
+          "expected": 0.65,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "glyph_min": {
+          "expected": 0.65,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "render_median": {
+          "expected": 0.844,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "render_min": {
+          "expected": 0.7568,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      },
+      "low-confidence": {
+        "glyph_median": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "glyph_min": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "render_median": {
+          "expected": 0.874,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "render_min": {
+          "expected": 0.7868,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      },
+      "mixed-orientation": {
+        "glyph_median": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "glyph_min": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "render_median": {
+          "expected": 0.874,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "render_min": {
+          "expected": 0.7868,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      },
+      "mixed-script": {
+        "glyph_median": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "glyph_min": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "render_median": {
+          "expected": 0.874,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "render_min": {
+          "expected": 0.7868,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      },
+      "multicolour-text": {
+        "glyph_median": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "glyph_min": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "render_median": {
+          "expected": 0.8668,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "render_min": {
+          "expected": 0.7796,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      },
+      "perspective-sign": {
+        "glyph_median": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "glyph_min": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "render_median": {
+          "expected": 0.874,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "render_min": {
+          "expected": 0.7868,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      },
+      "product-label": {
+        "glyph_median": {
+          "expected": 0.9817,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "glyph_min": {
+          "expected": 0.9817,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "render_median": {
+          "expected": 0.874,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "render_min": {
+          "expected": 0.7868,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      },
+      "rtl-sign": {
+        "glyph_median": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "glyph_min": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "render_median": {
+          "expected": 0.874,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "render_min": {
+          "expected": 0.7868,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      },
+      "serif-vs-sans": {
+        "glyph_median": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "glyph_min": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "render_median": {
+          "expected": 0.874,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "render_min": {
+          "expected": 0.7868,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      },
+      "shadow-effects": {
+        "glyph_median": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "glyph_min": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "render_median": {
+          "expected": 0.8668,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "render_min": {
+          "expected": 0.7796,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      },
+      "stylized-italic": {
+        "glyph_median": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "glyph_min": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "render_median": {
+          "expected": 0.8668,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "render_min": {
+          "expected": 0.7796,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      },
+      "textured-wall": {
+        "glyph_median": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "glyph_min": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "render_median": {
+          "expected": 0.874,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "render_min": {
+          "expected": 0.7868,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      },
+      "tight-space": {
+        "glyph_median": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "glyph_min": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "render_median": {
+          "expected": 0.874,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "render_min": {
+          "expected": 0.7868,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      },
+      "ui-controls": {
+        "glyph_median": {
+          "expected": 0.9633,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "glyph_min": {
+          "expected": 0.9633,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "render_median": {
+          "expected": 0.874,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "render_min": {
+          "expected": 0.7868,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      }
+    },
+    "memory": {
+      "cjk-horizontal": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "predicted": {
+          "expected": 2.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "correct": {
+          "expected": 2.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      },
+      "cjk-vertical": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "predicted": {
+          "expected": 2.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "correct": {
+          "expected": 2.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      },
+      "degraded-ink": {
+        "predicted": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "correct": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      },
+      "dense-layout": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "predicted": {
+          "expected": 4.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "correct": {
+          "expected": 4.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      },
+      "expansion-en": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "predicted": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "correct": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      },
+      "flat-sign": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "predicted": {
+          "expected": 2.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "correct": {
+          "expected": 2.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      },
+      "gradient-banner": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "predicted": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "correct": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      },
+      "indic-shaping": {
+        "predicted": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "correct": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      },
+      "low-confidence": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "predicted": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "correct": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      },
+      "mixed-orientation": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "predicted": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "correct": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      },
+      "mixed-script": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "predicted": {
+          "expected": 3.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "correct": {
+          "expected": 3.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      },
+      "multicolour-text": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "predicted": {
+          "expected": 2.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "correct": {
+          "expected": 2.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      },
+      "perspective-sign": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "predicted": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "correct": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      },
+      "product-label": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "predicted": {
+          "expected": 2.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "correct": {
+          "expected": 2.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      },
+      "rtl-sign": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "predicted": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "correct": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      },
+      "serif-vs-sans": {
+        "precision": {
+          "expected": 0.6,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "predicted": {
+          "expected": 5.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "correct": {
+          "expected": 3.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      },
+      "shadow-effects": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "predicted": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "correct": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      },
+      "stylized-italic": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "predicted": {
+          "expected": 4.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "correct": {
+          "expected": 4.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      },
+      "textured-wall": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "predicted": {
+          "expected": 2.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "correct": {
+          "expected": 2.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      },
+      "tight-space": {
+        "predicted": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "correct": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      },
+      "ui-controls": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "predicted": {
+          "expected": 3.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "correct": {
+          "expected": 3.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      }
+    },
+    "font_match": {
+      "serif-vs-sans": {
+        "rank_r1": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        },
+        "rank_r2": {
+          "expected": 6.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        },
+        "rank_r3": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        },
+        "rank_r4": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        },
+        "rank_r5": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        },
+        "rank_r6": {
+          "expected": 6.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      }
+    },
+    "render": {
+      "cjk-horizontal": {
+        "qa_overall": {
+          "expected": 0.5,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_ring_ssim": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_ocr_roundtrip": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_residual_similarity": {
+          "expected": 0.5,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        },
+        "max_residual_similarity": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "cjk-vertical": {
+        "qa_overall": {
+          "expected": 0.3,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_ring_ssim": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_ocr_roundtrip": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_residual_similarity": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        },
+        "max_residual_similarity": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "degraded-ink": {
+        "qa_overall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_ring_ssim": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_ocr_roundtrip": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_residual_similarity": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        },
+        "max_residual_similarity": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "dense-layout": {
+        "qa_overall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_ring_ssim": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_ocr_roundtrip": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_residual_similarity": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        },
+        "max_residual_similarity": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "expansion-en": {
+        "qa_overall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_ring_ssim": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_ocr_roundtrip": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_residual_similarity": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        },
+        "max_residual_similarity": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "flat-sign": {
+        "qa_overall": {
+          "expected": 0.9854,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_ring_ssim": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_ocr_roundtrip": {
+          "expected": 0.9792,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_residual_similarity": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        },
+        "max_residual_similarity": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "gradient-banner": {
+        "qa_overall": {
+          "expected": 0.9895,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_ring_ssim": {
+          "expected": 0.965,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_ocr_roundtrip": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_residual_similarity": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        },
+        "max_residual_similarity": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "indic-shaping": {
+        "qa_overall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      },
+      "low-confidence": {
+        "qa_overall": {
+          "expected": 0.2,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_ring_ssim": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_ocr_roundtrip": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_residual_similarity": {
+          "expected": 0.8,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        },
+        "max_residual_similarity": {
+          "expected": 0.8,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "mixed-orientation": {
+        "qa_overall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_ring_ssim": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_ocr_roundtrip": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_residual_similarity": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        },
+        "max_residual_similarity": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "mixed-script": {
+        "qa_overall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_ring_ssim": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_ocr_roundtrip": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_residual_similarity": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        },
+        "max_residual_similarity": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "multicolour-text": {
+        "qa_overall": {
+          "expected": 0.2735,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_ring_ssim": {
+          "expected": 0.5226,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_ocr_roundtrip": {
+          "expected": 0.1667,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_residual_similarity": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        },
+        "max_residual_similarity": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "perspective-sign": {
+        "qa_overall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_ring_ssim": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_ocr_roundtrip": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_residual_similarity": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        },
+        "max_residual_similarity": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "product-label": {
+        "qa_overall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_ring_ssim": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_ocr_roundtrip": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_residual_similarity": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        },
+        "max_residual_similarity": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "rtl-sign": {
+        "qa_overall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_ring_ssim": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_ocr_roundtrip": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_residual_similarity": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        },
+        "max_residual_similarity": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "serif-vs-sans": {
+        "qa_overall": {
+          "expected": 0.6794,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_ring_ssim": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_ocr_roundtrip": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_residual_similarity": {
+          "expected": 0.391,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        },
+        "max_residual_similarity": {
+          "expected": 0.8571,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "shadow-effects": {
+        "qa_overall": {
+          "expected": 0.9428,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_ring_ssim": {
+          "expected": 0.8094,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_ocr_roundtrip": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_residual_similarity": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        },
+        "max_residual_similarity": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "stylized-italic": {
+        "qa_overall": {
+          "expected": 0.8895,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_ring_ssim": {
+          "expected": 0.7093,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_ocr_roundtrip": {
+          "expected": 0.9667,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_residual_similarity": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        },
+        "max_residual_similarity": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "textured-wall": {
+        "qa_overall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_ring_ssim": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_ocr_roundtrip": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_residual_similarity": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        },
+        "max_residual_similarity": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "tight-space": {
+        "qa_overall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_ring_ssim": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_ocr_roundtrip": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_residual_similarity": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        },
+        "max_residual_similarity": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "ui-controls": {
+        "qa_overall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_ring_ssim": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_ocr_roundtrip": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_residual_similarity": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        },
+        "max_residual_similarity": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      }
+    },
+    "paddle": {
+      "cjk-horizontal": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "recall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "cjk-vertical": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "recall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "degraded-ink": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "recall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "dense-layout": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "recall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "expansion-en": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "recall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "flat-sign": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "recall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "gradient-banner": {
+        "precision": {
+          "expected": 0.667,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "recall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.176,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "indic-shaping": {
+        "precision": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "recall": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      },
+      "low-confidence": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "recall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "mixed-orientation": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "recall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.5,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "mixed-script": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "recall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "multicolour-text": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "recall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.4,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "perspective-sign": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "recall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "product-label": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "recall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "rtl-sign": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "recall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "serif-vs-sans": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "recall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "shadow-effects": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "recall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "stylized-italic": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "recall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "textured-wall": {
+        "precision": {
+          "expected": 0.333,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "recall": {
+          "expected": 0.5,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "tight-space": {
+        "precision": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "recall": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      },
+      "ui-controls": {
+        "precision": {
+          "expected": 0.667,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "recall": {
+          "expected": 0.667,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "mean_norm_ed": {
+          "expected": 0.0,
+          "tolerance": 0.0,
+          "direction": "at_most"
+        }
+      }
+    },
+    "verification_corpus": {
+      "overall": {
+        "pass_rate": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "pass_rate_wave-1-simple-latin": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "pass_rate_wave-2-dense-layouts": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "pass_rate_wave-3-difficult-rendering": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "pass_rate_wave-4-multilingual-scale": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "pass_rate_wave-5-language-matrix": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        },
+        "pass_rate_wave-6-perspective": {
+          "expected": 1.0,
+          "tolerance": 0.0,
+          "direction": "at_least"
+        }
+      }
     }
   }
 }

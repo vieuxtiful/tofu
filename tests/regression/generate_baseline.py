@@ -111,6 +111,38 @@ def gen_projects() -> dict[str, dict[str, float]]:
     return results
 
 
+def gen_paddle() -> dict[str, dict[str, float]]:
+    """Baseline the PaddleOCR harness.
+
+    test_paddle_regression has always called ``compare("paddle", ...)`` and
+    there has never been a ``paddle`` generator, so that test ran the whole
+    isolated-worker harness and then asserted against an empty baseline --
+    real work, no guard. Reuses the test's own metric extraction for the
+    same reason gen_projects does: the numbers recorded here have to come
+    from exactly the code the test asserts on.
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import test_paddle_regression as harness
+
+    if not harness.PADDLE_VENV.exists():
+        print("  paddle: SKIPPED (no isolated .venv-paddle)")
+        return {}
+
+    results = {}
+    for fixture in harness._fixture_names():
+        try:
+            entry = harness._paddle_metrics(fixture)
+        except Exception as exc:
+            print(f"  paddle/{fixture}: SKIPPED ({type(exc).__name__}: {exc})")
+            continue
+        if not entry:
+            print(f"  paddle/{fixture}: SKIPPED (no metrics produced)")
+            continue
+        results[fixture] = entry
+        print(f"  paddle/{fixture}: {entry}")
+    return results
+
+
 def gen_savor() -> dict[str, dict[str, float]]:
     from tofu.core.types import AssetInfo, AssetType
     from tofu.layers import cicerone
@@ -244,44 +276,28 @@ def gen_render() -> dict[str, dict[str, float]]:
 
 
 def gen_font_match() -> dict[str, dict[str, float]]:
-    from tofu.layers import font_matching
-    from tofu.layers.fonts import FontRegistry, faces_of, pantry
-    from tofu.utils.manifest_store import load_manifest
+    """Baseline font retrieval rank on the serif-vs-sans fixture.
 
-    fixture = "serif-vs-sans"
-    image_path = FIXTURES_DIR / f"{fixture}.png"
-    gt_path = FIXTURES_DIR / f"{fixture}.gt.json"
-    if not image_path.exists():
-        return {}
+    Reuses the test's own metric function, as gen_projects and gen_paddle
+    do. This used to be a second copy of that logic and carried the same
+    two bugs: load_manifest(image_path) -- wrong signature, wrong kind of
+    argument -- and a call to a `font_matching.match` that has never
+    existed, wrapped in a bare except that hid it. Two copies, both wrong,
+    neither able to report it.
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from test_font_match_regression import _font_match_metrics
 
-    gt = json.loads(gt_path.read_text(encoding="utf-8"))
-    font_dir = pantry()
-    if not font_dir:
+    try:
+        metrics = _font_match_metrics()
+    except Exception as exc:
+        print(f"  font_match: SKIPPED ({type(exc).__name__}: {exc})")
         return {}
-    registry = FontRegistry(font_dir)
-    faces = faces_of(registry)
-    manifest = load_manifest(image_path)
-    if manifest is None:
+    if not metrics:
+        print("  font_match: SKIPPED (no metrics produced)")
         return {}
-
-    results: dict[str, dict[str, float]] = {}
-    metrics: dict[str, float] = {}
-    for i, inst in enumerate(manifest.instances):
-        style = gt["regions"][i].get("style", {}) if i < len(gt["regions"]) else {}
-        gt_font_file = style.get("font_file")
-        if not gt_font_file:
-            continue
-        try:
-            ranked = font_matching.match(inst, registry, faces, manifest, str(image_path))
-        except Exception:
-            continue
-        for idx, (face, score) in enumerate(ranked, 1):
-            if face.file_path and gt_font_file in face.file_path:
-                metrics[f"rank_{inst.id}"] = float(idx)
-                break
-    results[fixture] = metrics
-    print(f"  font_match/{fixture}: {metrics}")
-    return results
+    print(f"  font_match/serif-vs-sans: {metrics}")
+    return {"serif-vs-sans": metrics}
 
 
 def gen_verification() -> dict[str, dict[str, float]]:
@@ -299,9 +315,19 @@ def gen_verification() -> dict[str, dict[str, float]]:
     per_wave: dict[str, int] = {}
     per_wave_matched: dict[str, int] = {}
 
+    # One raising case used to cost the whole harness: run_case raises before
+    # it writes anything, nothing here caught it, and `verification_corpus`
+    # was left with no baseline at all -- which compare() reads as "nothing to
+    # check", so its regression test ran the full corpus and asserted nothing.
+    # A bad case should cost one case, and say so.
     for case in spec["cases"]:
         wave = case.get("wave", "default")
-        result = run_case(case, output_dir, real_ocr=False)
+        try:
+            result = run_case(case, output_dir, real_ocr=False)
+        except Exception as exc:
+            print(f"  verification_corpus/{case['id']}: SKIPPED "
+                  f"({type(exc).__name__}: {exc})")
+            continue
         total += 1
         per_wave[wave] = per_wave.get(wave, 0) + 1
         if result["matched"]:
@@ -408,6 +434,7 @@ HARNESS_MAP = {
     "tofu": gen_tofu,
     "render": gen_render,
     "font_match": gen_font_match,
+    "paddle": gen_paddle,
     "verification_corpus": gen_verification,
     "memory": gen_memory,
 }

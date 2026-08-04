@@ -23,14 +23,27 @@ BASELINE_PATH = ROOT / "tests" / "fixtures" / "regression" / "baseline_metrics.j
 ## Anything unrecognised keeps the higher-is-better default, so a new
 ## score-like metric behaves as before and a new error-like one is a one-line
 ## addition here.
-LOWER_IS_BETTER_SUFFIXES = ("_mae", "_ed", "_error", "_err", "_distance", "_loss")
+## `*_residual_similarity` is how much of the SOURCE text still shows after
+## erasure -- eval_render prints it as "lower = cleaner erase". Left on the
+## higher-is-better default, a render that erased perfectly (0.0) would fail
+## against a baseline of 0.5, and one that stopped erasing would pass.
+LOWER_IS_BETTER_SUFFIXES = ("_mae", "_ed", "_error", "_err", "_distance", "_loss",
+                            "_residual_similarity")
 LOWER_IS_BETTER_NAMES = frozenset({"unresolved"})
+## Metric families named by PREFIX rather than suffix.  `rank_r1` is the
+## position of the true font face in a ranked candidate list -- 1 is a
+## perfect retrieval and 5 is a bad one -- so the higher-is-better default
+## would invert that guard exactly the way the textured-wall note above
+## describes: a rank degrading 1 -> 5 would PASS.
+LOWER_IS_BETTER_PREFIXES = ("rank_",)
 
 
 def direction_for(metric: str) -> str:
     """Which way is 'better' for this metric name."""
     name = metric.casefold()
-    if name in LOWER_IS_BETTER_NAMES or name.endswith(LOWER_IS_BETTER_SUFFIXES):
+    if (name in LOWER_IS_BETTER_NAMES
+            or name.endswith(LOWER_IS_BETTER_SUFFIXES)
+            or name.startswith(LOWER_IS_BETTER_PREFIXES)):
         return "at_most"
     return "at_least"
 

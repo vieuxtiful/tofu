@@ -34,6 +34,22 @@ Thumbs.db
 # that is the part worth reading in a diff.
 tests/fixtures/video/*.mp4
 
+# Regression-harness output. These are rewritten byte-for-byte every time
+# the suite runs, so tracking them puts 100+ files of pure churn in front of
+# any real change -- 21 paddle reports were dirty in the tree before anyone
+# touched recognition. The harnesses regenerate all of it from the fixtures.
+#
+# Deliberately NARROW: the rest of scripts/eval_out/ is cited evidence, not
+# churn -- font_matching.py points at font-match-baseline.json, tofu.py at
+# tofu-calibration-baseline.json, and cross-layer-architecture.md at several
+# more. Those stay tracked. Whether the remaining ~640 one-off eval artifacts
+# belong in git at all is the open question in docs/static-release-readiness.md.
+scripts/eval_out/*-regression.paddle.json
+scripts/eval_out/_memeval_*
+scripts/eval_out/verification-baseline/
+scripts/eval_out/verification-regression/
+scripts/eval_out/tofu_manifests/
+
 # Server runtime data
 server/uploads/
 server/outputs/
