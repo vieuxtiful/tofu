@@ -677,6 +677,151 @@ def _source_mask(img: Any, inst: InstText):
     return source
 
 
+class _CohortScoring(NamedTuple):
+    """Every candidate face scored against every member of one cohort."""
+    scored: List[InstText]                      # members with a usable mask
+    pool: Dict[str, Dict[str, Any]]             # font_path -> candidate meta
+    viable: List[str]                           # candidate paths, best-tallied first
+    complete: Dict[str, Dict[str, float]]       # path -> {region_id: raw score}
+    best_per_region: Dict[str, float]           # region_id -> its own best raw score
+    shared_profile: GlyphProfile
+    profiles: Dict[str, GlyphProfile]
+
+    def normalised(self, scores: Dict[str, float]) -> List[float]:
+        """Scores as a fraction of what each region could achieve at best.
+
+        The achievable score depends on the string -- a long word can never
+        reach a short word's Dice -- so raw scores from different regions are
+        not on one scale. Each face is judged on how close it comes to THAT
+        region's own best, which is comparable.
+        """
+        return [score / self.best_per_region[rid] for rid, score in scores.items()]
+
+    def maximin(self, paths: Sequence[str]) -> Tuple[float, float]:
+        """Rank a set of faces by their WORST member, mean breaking ties.
+
+        The failure this exists to prevent is precisely "excellent on one
+        region, wrong on another": on the la-rue-sans-nom plaque Centaur is
+        the top face for "La rue" at 1.00 normalised and the very worst for
+        "SANS-NOM" at 0.57. A mean lets a strong member carry a face that
+        badly misdescribes its neighbour; requiring no member to be poorly
+        served does not.
+        """
+        per_region: Dict[str, float] = {}
+        for path in paths:
+            for rid, score in self.complete[path].items():
+                ratio = score / self.best_per_region[rid]
+                per_region[rid] = max(per_region.get(rid, 0.0), ratio)
+        if not per_region:
+            return (0.0, 0.0)
+        values = list(per_region.values())
+        return (min(values), sum(values) / len(values))
+
+
+def _score_cohort(img: Any, members: Sequence[InstText], registry) -> Optional[_CohortScoring]:
+    """Re-score every face the members nominated against every member.
+
+    Shared by the two reconciliation passes so they cannot drift on how a
+    cohort is measured -- ``agree_on_face``, which asks which single face
+    the members carry, and ``agree_on_family``, which asks the looser
+    question of which family they were drawn from.
+    """
+    # Candidate pool: what the members themselves nominated.  A face
+    # nobody ranked is not worth re-rendering for every member.
+    pool: Dict[str, Dict[str, Any]] = {}
+    tally: Dict[str, float] = {}
+    for inst in members:
+        for candidate in (inst.font_match or {}).get("candidates") or []:
+            path = candidate.get("font_path")
+            if not path:
+                continue  # contextual reference, not an installed face
+            pool.setdefault(path, candidate)
+            tally[path] = tally.get(path, 0.0) + float(candidate.get("score") or 0.0)
+    if not pool:
+        return None
+
+    # A face must be able to set every member's text, or it cannot be
+    # the face the cohort was drawn in.
+    needed = {ch for inst in members for ch in (inst.text or "") if not ch.isspace()}
+    fonts = faces_of(registry)
+    viable = []
+    for path in pool:
+        face = fonts.get(path)
+        if face is not None and not all(ord(ch) in face.codepoints for ch in needed):
+            continue
+        viable.append(path)
+    if not viable:
+        return None
+    viable.sort(key=lambda p: (-tally.get(p, 0.0), p.lower()))
+    viable = viable[:MAX_COHORT_CANDIDATES]
+
+    masks = {inst.id: _source_mask(img, inst) for inst in members}
+    scored = [inst for inst in members if masks.get(inst.id) is not None]
+    if len(scored) < 2:
+        return None
+
+    # One hand, one typographic reading.  Each member measures the sign's
+    # contrast and serif structure off its own lettering, but they do not
+    # measure it equally well: a line of lowercase carries bowls,
+    # terminals and crossbars, and a line of capitals is nearly all stems
+    # and diagonals.  Measured on the plaque, "La rue" reads contrast 2.33
+    # with 46% of its skeleton available to the measurement while
+    # "SANS-NOM" reads 1.49 on 33% -- and silhouette alone ranks the
+    # correct serif 2nd of 206 on the first and 192nd on the second.  So
+    # the cohort pools its members' readings, each weighted by its own
+    # evidence, and every member is then judged against THAT.  The line
+    # that can see the typeface speaks for the line that cannot.
+    profiles = {inst.id: _glyph_profile(masks[inst.id]) for inst in scored}
+
+    def _pooled(value_of, weight_of) -> Optional[float]:
+        pairs = [
+            (value_of(p), weight_of(p)) for p in profiles.values()
+            if value_of(p) is not None and weight_of(p) > 0
+        ]
+        if not pairs:
+            return None
+        total = sum(weight for _, weight in pairs)
+        return sum(value * weight for value, weight in pairs) / max(1e-6, total)
+
+    shared_profile = GlyphProfile(
+        contrast=_pooled(lambda p: p.contrast, lambda p: p.contrast_sufficiency),
+        contrast_sufficiency=max(p.contrast_sufficiency for p in profiles.values()),
+        serif=_pooled(lambda p: p.serif, lambda p: p.serif_sufficiency),
+        serif_sufficiency=max(p.serif_sufficiency for p in profiles.values()),
+    )
+
+    per_face: Dict[str, Dict[str, float]] = {}
+    for path in viable:
+        for inst in scored:
+            source = masks[inst.id]
+            try:
+                candidate = _render_mask(path, inst.text or "", source.shape[0])
+                if candidate is None:
+                    continue
+                score, _ = _visual_score(source, candidate, source_profile=shared_profile)
+            except Exception:
+                continue
+            per_face.setdefault(path, {})[inst.id] = score
+    # Only faces we could actually score on every member can be
+    # compared; a partial column would flatter the face that failed.
+    complete = {
+        path: scores for path, scores in per_face.items()
+        if len(scores) == len(scored)
+    }
+    if not complete:
+        return None
+
+    best_per_region = {
+        inst.id: max(scores.get(inst.id, 0.0) for scores in complete.values()) or 1.0
+        for inst in scored
+    }
+    return _CohortScoring(
+        scored=scored, pool=pool, viable=viable, complete=complete,
+        best_per_region=best_per_region, shared_profile=shared_profile,
+        profiles=profiles,
+    )
+
+
 def agree_on_face(
     img: Any, manifest: TextManifest, cohorts: Sequence[Dict[str, Any]], registry,
 ) -> int:
@@ -741,101 +886,15 @@ def agree_on_face(
         if len(members) < 2:
             continue
 
-        # Candidate pool: what the members themselves nominated.  A face
-        # nobody ranked is not worth re-rendering for every member.
-        pool: Dict[str, Dict[str, Any]] = {}
-        tally: Dict[str, float] = {}
-        for inst in members:
-            for candidate in (inst.font_match or {}).get("candidates") or []:
-                path = candidate.get("font_path")
-                if not path:
-                    continue  # contextual reference, not an installed face
-                pool.setdefault(path, candidate)
-                tally[path] = tally.get(path, 0.0) + float(candidate.get("score") or 0.0)
-        if not pool:
+        scoring = _score_cohort(img, members, registry)
+        if scoring is None:
             continue
-
-        # A face must be able to set every member's text, or it cannot be
-        # the sign's one face.
-        needed = {ch for inst in members for ch in (inst.text or "") if not ch.isspace()}
-        fonts = faces_of(registry)
-        viable = []
-        for path in pool:
-            face = fonts.get(path)
-            if face is not None and not all(ord(ch) in face.codepoints for ch in needed):
-                continue
-            viable.append(path)
-        if not viable:
-            continue
-        viable.sort(key=lambda p: (-tally.get(p, 0.0), p.lower()))
-        viable = viable[:MAX_COHORT_CANDIDATES]
-
-        masks = {inst.id: _source_mask(img, inst) for inst in members}
-        scored = [inst for inst in members if masks.get(inst.id) is not None]
-        if len(scored) < 2:
-            continue
-
-        # One hand, one typographic reading.  Each member measures the sign's
-        # contrast and serif structure off its own lettering, but they do not
-        # measure it equally well: a line of lowercase carries bowls,
-        # terminals and crossbars, and a line of capitals is nearly all stems
-        # and diagonals.  Measured on the plaque, "La rue" reads contrast 2.33
-        # with 46% of its skeleton available to the measurement while
-        # "SANS-NOM" reads 1.49 on 33% -- and silhouette alone ranks the
-        # correct serif 2nd of 206 on the first and 192nd on the second.  So
-        # the bouquet pools its members' readings, each weighted by its own
-        # evidence, and every member is then judged against THAT.  The line
-        # that can see the typeface speaks for the line that cannot.
-        profiles = {inst.id: _glyph_profile(masks[inst.id]) for inst in scored}
-
-        def _pooled(value_of, weight_of) -> Optional[float]:
-            pairs = [
-                (value_of(p), weight_of(p)) for p in profiles.values()
-                if value_of(p) is not None and weight_of(p) > 0
-            ]
-            if not pairs:
-                return None
-            total = sum(weight for _, weight in pairs)
-            return sum(value * weight for value, weight in pairs) / max(1e-6, total)
-
-        shared_profile = GlyphProfile(
-            contrast=_pooled(lambda p: p.contrast, lambda p: p.contrast_sufficiency),
-            contrast_sufficiency=max(p.contrast_sufficiency for p in profiles.values()),
-            serif=_pooled(lambda p: p.serif, lambda p: p.serif_sufficiency),
-            serif_sufficiency=max(p.serif_sufficiency for p in profiles.values()),
-        )
-
-        per_face: Dict[str, Dict[str, float]] = {}
-        for path in viable:
-            for inst in scored:
-                source = masks[inst.id]
-                try:
-                    candidate = _render_mask(path, inst.text or "", source.shape[0])
-                    if candidate is None:
-                        continue
-                    score, _ = _visual_score(source, candidate, source_profile=shared_profile)
-                except Exception:
-                    continue
-                per_face.setdefault(path, {})[inst.id] = score
-        # Only faces we could actually score on every member can be
-        # compared; a partial column would flatter the face that failed.
-        complete = {
-            path: scores for path, scores in per_face.items()
-            if len(scores) == len(scored)
-        }
-        if not complete:
-            continue
-
-        best_per_region = {
-            inst.id: max(scores.get(inst.id, 0.0) for scores in complete.values()) or 1.0
-            for inst in scored
-        }
-
-        def normalised(scores: Dict[str, float]) -> List[float]:
-            return [score / best_per_region[rid] for rid, score in scores.items()]
+        scored, pool, viable = scoring.scored, scoring.pool, scoring.viable
+        complete, profiles = scoring.complete, scoring.profiles
+        shared_profile = scoring.shared_profile
 
         def rank(path: str) -> Tuple[float, float, int]:
-            values = normalised(complete[path])
+            values = scoring.normalised(complete[path])
             # worst member first, mean as the tiebreak, then the members'
             # own nomination order so the choice is deterministic
             return (min(values), sum(values) / len(values), -viable.index(path))
@@ -891,6 +950,181 @@ def agree_on_face(
                 "family": winner_meta.get("family"),
                 "subfamily": winner_meta.get("subfamily"),
                 "score": round(winner_scores.get(inst.id, 0.0), 4),
+            }
+            inst.font_match = evidence
+            updated += 1
+
+    return updated
+
+
+def _weight_distance(face: Any, inst: InstText) -> Tuple[int, int]:
+    """How badly a face's weight/slant fits what capture saw on this region.
+
+    Sorted ascending, so the closest face wins. Slant is checked first and
+    counts for more: an upright standing in for an italic is a visibly
+    different letter, where one weight step is a shade darker.
+    """
+    detected = str(
+        getattr(getattr(inst, "characteristics", None), "font_style", None)
+        or getattr(getattr(inst, "style_profile", None), "font_weight", None)
+        or ""
+    ).lower()
+    subfamily = str(getattr(face, "subfamily", "") or "").lower()
+    want_italic = "italic" in detected or "oblique" in detected
+    has_italic = "italic" in subfamily or "oblique" in subfamily
+    if "heavy" in detected or "black" in detected or "ultra" in detected:
+        want_weight = 900
+    elif "bold" in detected:
+        want_weight = 700
+    elif "light" in detected or "thin" in detected:
+        want_weight = 300
+    else:
+        want_weight = 400
+    weight_class = int(getattr(face, "weight_class", 400) or 400)
+    return (0 if want_italic == has_italic else 1, abs(weight_class - want_weight))
+
+
+def agree_on_family(
+    img: Any, manifest: TextManifest, cohorts: Sequence[Dict[str, Any]], registry,
+) -> int:
+    """Make a cohort agree on one FAMILY, each region keeping its own weight.
+
+    ``agree_on_face`` asks which single face a set of regions carries, and
+    is right to be strict: it exists for the case where one plaque is
+    unmistakably set in one face. But most signage is not that. A poster
+    sets its title large, its qualifier small and its house number bold,
+    all drawn by one hand -- and asking those regions to agree on an
+    identical face would force Bold onto a region capture read as regular,
+    or the reverse, whichever way the vote fell.
+
+    So the vote here is over families. Candidates are grouped by
+    ``FontCoverage.family`` (already normalised in the registry, so
+    "Arial Black" collapses into "Arial"), each family is scored by the
+    best its faces manage on each member, and the winner is ranked by its
+    WORST member exactly as ``agree_on_face`` ranks faces -- the failure
+    to avoid is still "excellent on one region, wrong on another".
+
+    Each region then takes the face WITHIN that family that best matches
+    its own detected weight and slant, so "la Bastille" keeps Regular
+    while "Rue St. Antoine" keeps Bold and both name one family.
+
+    Runs after ``agree_on_face`` and deliberately has the last word on
+    ``recommended_substitute``: its cohorts are supersets of the bouquets,
+    so letting the narrower pass win would leave a sign whose regions name
+    one family in some places and another elsewhere -- the exact
+    inconsistency both passes exist to remove. The tighter pass's record
+    is preserved under ``cohort`` and is not overwritten.
+
+    Nothing is written to ``style_profile``. This stays evidence a human
+    accepts, exactly as ``local_match`` is.
+
+    Returns the number of instances whose evidence was updated.
+    """
+    if not registry or not cohorts:
+        return 0
+    try:
+        import numpy as np  # noqa: F401
+    except ImportError:
+        return 0
+
+    by_id = {inst.id: inst for inst in manifest.instances}
+    fonts = faces_of(registry)
+    updated = 0
+
+    for cohort in cohorts:
+        members = [by_id[rid] for rid in cohort.get("region_ids", []) if rid in by_id]
+        # Only a region that nominated candidates can vote. A region too
+        # small or too faint for local_match to read -- la-bastille's 13x12
+        # "de" -- still BELONGS to the sign, so it receives the family
+        # rather than being left blank while its neighbours all name one.
+        voters = [inst for inst in members if inst.font_match]
+        if len(voters) < 2:
+            continue
+        scoring = _score_cohort(img, voters, registry)
+        if scoring is None:
+            continue
+
+        # Group the scored faces by family. A family nobody could score on
+        # every member never enters the vote, so a family cannot win on a
+        # partial column.
+        families: Dict[str, List[str]] = {}
+        for path in scoring.complete:
+            face = fonts.get(path)
+            family = (
+                getattr(face, "family", None)
+                or (scoring.pool[path] or {}).get("family")
+                or path
+            )
+            families.setdefault(str(family), []).append(path)
+        if not families:
+            continue
+
+        def family_rank(name: str) -> Tuple[float, float, int]:
+            worst, mean = scoring.maximin(families[name])
+            # nomination order last, so the choice is deterministic
+            return (worst, mean, -min(scoring.viable.index(p) for p in families[name]))
+
+        winner_family = max(families, key=family_rank)
+        worst, mean, _ = family_rank(winner_family)
+
+        # Each member's own pick within the winning family: closest weight
+        # and slant first, then the face that actually scored best on it.
+        chosen: Dict[str, str] = {}
+        for inst in scoring.scored:
+            chosen[inst.id] = min(
+                families[winner_family],
+                key=lambda p: (
+                    _weight_distance(fonts.get(p), inst),
+                    -scoring.complete[p].get(inst.id, 0.0),
+                ),
+            )
+        fallback = min(
+            families[winner_family],
+            key=lambda p: (int(getattr(fonts.get(p), "weight_class", 400) or 400) - 400) ** 2,
+        )
+
+        # Where the family answer overrules a region's own favourite, say
+        # so: that is the reconciliation a reviewer most needs to check.
+        dissent = []
+        for inst in scoring.scored:
+            own = (inst.font_match or {}).get("region_substitute") \
+                or (inst.font_match or {}).get("recommended_substitute") or {}
+            if own.get("family") and str(own["family"]) != winner_family:
+                dissent.append({
+                    "region_id": inst.id,
+                    "preferred": own.get("family"),
+                    "preferred_score": own.get("score"),
+                    "cohort_score": round(
+                        scoring.complete[chosen[inst.id]].get(inst.id, 0.0), 4,
+                    ),
+                })
+
+        for inst in members:
+            evidence = inst.font_match or {}
+            previous = evidence.get("recommended_substitute")
+            if previous and "region_substitute" not in evidence:
+                evidence["region_substitute"] = previous
+            path = chosen.get(inst.id, fallback)
+            face = fonts.get(path)
+            evidence["family_cohort"] = {
+                "id": cohort.get("id"),
+                "region_ids": [i.id for i in members],
+                "method": "cohort_family_consensus",
+                "family": winner_family,
+                "agreement": round(worst, 4),        # the worst-served member
+                "mean_agreement": round(mean, 4),
+                "per_region_face": {i.id: chosen.get(i.id, fallback) for i in members},
+                "dissent": dissent,
+                # Whether this region's own pixels were part of the vote,
+                # so an inherited family is never mistaken for a measured one.
+                "voted": inst.id in {v.id for v in scoring.scored},
+            }
+            evidence["recommended_substitute"] = {
+                "font_path": path,
+                "family": winner_family,
+                "subfamily": getattr(face, "subfamily", None)
+                or (scoring.pool.get(path) or {}).get("subfamily"),
+                "score": round(scoring.complete[path].get(inst.id, 0.0), 4),
             }
             inst.font_match = evidence
             updated += 1
@@ -965,7 +1199,15 @@ def identify_manifest_fonts(asset: Any, manifest: TextManifest, registry) -> int
     try:
         from tofu.layers import basil
 
+        # Two passes, narrow then wide. bouquet() names the regions that
+        # carry an identical face and agree_on_face settles that; then
+        # mother_sauce() names the wider set drawn by one hand at whatever
+        # size and weight, and agree_on_family settles the family for all
+        # of them. The second is a superset of the first, so it runs last
+        # and has the final word -- otherwise one sign would name one
+        # family on the regions a bouquet covered and another elsewhere.
         agree_on_face(img, manifest, basil.bouquet(manifest), registry)
+        agree_on_family(img, manifest, basil.mother_sauce(manifest), registry)
     except Exception as exc:
         # Best-effort, but never silent.  Swallowing this whole leaves a
         # sign recommending a different face per region with nothing

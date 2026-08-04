@@ -907,6 +907,142 @@ def bouquet(manifest: TextManifest) -> List[Dict[str, Any]]:
     return bundles
 
 
+def _italic_flag(inst: InstText) -> bool:
+    """Whether the localiser's style pick calls this region italic."""
+    return bool(getattr(getattr(inst, "style_profile", None), "italic", False))
+
+
+def _bind(
+    eligible: Sequence[InstText],
+    scene_regions: Optional[Sequence[Any]],
+    pairwise_edge,
+    panel_edge,
+) -> List[Dict[str, Any]]:
+    """Union-find over a panel pre-pass and a pairwise pass, as bouquet does.
+
+    Written as its own function rather than by refactoring ``bouquet``,
+    which keeps its own copy: that function's groupings are pinned by a
+    long row of deliberately-measured tests, and the point of this file's
+    second cohort pass is to change nothing about the first.
+    """
+    parent: Dict[str, str] = {inst.id: inst.id for inst in eligible}
+
+    def find(node: str) -> str:
+        while parent[node] != node:
+            parent[node] = parent[parent[node]]
+            node = parent[node]
+        return node
+
+    def union(a: str, b: str) -> None:
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[rb] = ra
+
+    for region in scene_regions or []:
+        if region.semantic_label not in _PANEL_LABELS or region.confidence < _PANEL_MIN_CONFIDENCE:
+            continue
+        members = [inst for inst in eligible if _contains(region.bbox, inst.bounding_box)]
+        for i, left in enumerate(members):
+            for right in members[i + 1:]:
+                if panel_edge(left, right):
+                    union(left.id, right.id)
+
+    for i, left in enumerate(eligible):
+        for right in eligible[i + 1:]:
+            if pairwise_edge(left, right):
+                union(left.id, right.id)
+
+    order = [inst.id for inst in eligible]
+    grouped: Dict[str, List[str]] = {}
+    for region_id in order:
+        grouped.setdefault(find(region_id), []).append(region_id)
+
+    bundles: List[Dict[str, Any]] = []
+    for root in order:
+        members = grouped.get(root)
+        if not members or len(members) < 2:
+            continue
+        bundles.append({"id": f"c{len(bundles) + 1}", "region_ids": members})
+    return bundles
+
+
+def _one_hand_any_size(left: InstText, right: InstText) -> bool:
+    """Could these be the same FAMILY, at whatever size and weight?
+
+    The narrower question ``_same_hand`` asks -- same size, same ink, same
+    weight -- is the right one for claiming two regions carry the identical
+    face.  It is the wrong one for claiming they came from one family, and
+    on real signage it is wrong often.  Measured on the la-bastille poster,
+    every pair the eye reads as one hand was refused by a gate about
+    something other than the shape of the letters:
+
+      * height ratio: '80' over 'bis' is 2.33, 'en' over '1789' is 2.96.
+        A sign sets its house number large and its qualifier small in one
+        hand; glyph size is not typeface identity.
+      * colour: 'la Bastille' samples #6c3f3c and 'Rue St. Antoine'
+        #bbbda1 on the same engraving, a distance of 180 against a
+        tolerance of 90.  Ageing and uneven lighting move sampled ink
+        colour far more than a change of face does.
+      * weight bucket: a 15px 'bis' reads bold and 'Avenue' reads light
+        italic on a poster lettered by one hand.  At these sizes the
+        weight detector is guessing.
+
+    So this keeps only the two gates that survive a change of size:
+
+      * ``_nearby``, which is what holds the title block apart from the
+        address block below it -- and, on a street scene, one shopfront
+        apart from the next.  Dropping it would make a photograph into a
+        single cohort, which is not a claim anyone can defend.
+      * ``_same_language``, carried on BOTH routes here rather than only
+        the panel route.  In ``bouquet`` the typographic gates did this
+        work incidentally; with them gone, a CJK headline sitting directly
+        above its own romanisation would otherwise join it.
+
+    Italic stays a hard split.  A true italic is a different drawing of
+    the letters, not a different size of the same one.
+    """
+    return (
+        _nearby(left, right)
+        and _same_language(left, right)
+        and _italic_flag(left) == _italic_flag(right)
+    )
+
+
+def mother_sauce(manifest: TextManifest) -> List[Dict[str, Any]]:
+    """Regions that share a typeface FAMILY, whatever size or weight.
+
+    The five mother sauces are the bases every daughter sauce derives
+    from; a family is the same thing for type, with the weights as its
+    daughters.  ``bouquet`` asks which regions carry the identical face
+    and is right to be strict about it.  This asks the looser question a
+    localiser actually faces -- which regions should be offered ONE family
+    to choose from -- and leaves each region its own weight within it.
+
+    Same shape as ``bouquet``: ``[{"id": "c1", "region_ids": [...]}, ...]``
+    for bundles of two or more, and a lone region is not a bundle.
+
+    Necessarily a superset of ``bouquet``'s bundles on the same manifest,
+    since every gate here is one ``bouquet`` also applies.  That is the
+    intended relationship: the strict pass settles the identical face
+    where it can, and this one covers the rest of the sign.
+    """
+    eligible = [
+        inst for inst in manifest.instances
+        if not inst.excluded and (inst.text or "").strip()
+    ]
+    return _bind(
+        eligible,
+        manifest.scene_regions,
+        _one_hand_any_size,
+        # Inside a bordered panel the architecture has already answered
+        # proximity, exactly as it does for bouquet.
+        lambda left, right: (
+            _same_language(left, right)
+            and _italic_flag(left) == _italic_flag(right)
+        ),
+    )
+
+
 def bunch(manifest: TextManifest, verdict: str) -> List[Dict[str, Any]]:
     """Group instances into candidate sprigs, gated on actual evidence.
 

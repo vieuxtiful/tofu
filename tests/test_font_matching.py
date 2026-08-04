@@ -9,11 +9,11 @@ from PIL import Image, ImageDraw, ImageFont
 from conftest import system_font
 
 from tofu.core.types import BBox, CharactText, InstText, SceneRegion, StyleProfil, TextManifest
-from tofu.layers.basil import bouquet
+from tofu.layers.basil import bouquet, mother_sauce
 from tofu.layers.font_matching import (
     GlyphProfile, _eligible_faces, _glyph_profile, _relative_agreement, _visual_score,
-    _weight_target,
-    agree_on_face, external_catalog_match, local_match,
+    _weight_distance, _weight_target,
+    agree_on_face, agree_on_family, external_catalog_match, local_match,
 )
 from tofu.layers.fonts import FontCoverage, FontRegistry
 
@@ -163,6 +163,107 @@ class TestBouquet:
         faint = self._sign_line("r2", 240, 400, 543, 110, "SANS-NOM")
         faint.characteristics = CharactText(font_style="light")
         assert bouquet(self._manifest(heavy, faint)) == []
+
+
+class TestMotherSauce:
+    """The wider cohort: one family, whatever the size or weight.
+
+    ``bouquet`` asks which regions carry the IDENTICAL face and gates on
+    size, ink colour and weight to decide. Those gates are right for that
+    question and wrong for "were these drawn by one hand", which is what a
+    localiser choosing a font actually needs. Measured on the la-bastille
+    poster, every pair the eye reads as one hand was refused by one of
+    them: '80' over 'bis' is a height ratio of 2.33, 'la Bastille' and
+    'Rue St. Antoine' are 180 apart in sampled ink on one engraving, and a
+    15px 'bis' reads bold beside lettering that reads regular.
+    """
+
+    def _sign_line(self, rid, x, y, w, h, text, color="#ffffff", weight=None,
+                   italic=None, lang=None, detected=None):
+        inst = InstText(
+            id=rid, bounding_box=BBox(x, y, w, h), text=text,
+            detected_language=lang,
+            style_profile=StyleProfil(color=color, font_weight=weight, italic=italic),
+        )
+        if detected:
+            inst.characteristics = CharactText(font_style=detected)
+        return inst
+
+    def _manifest(self, *instances):
+        return TextManifest(asset_id="a", total_regions=len(instances), instances=list(instances))
+
+    def test_a_house_number_and_its_qualifier_are_one_hand(self):
+        # la-bastille's '80' over 'bis': a height ratio of 2.33 and opposite
+        # weight readings, which bouquet refuses and the eye does not.
+        manifest = self._manifest(
+            self._sign_line("r1", 90, 121, 37, 35, "80", detected="regular"),
+            self._sign_line("r2", 123, 122, 19, 15, "bis", detected="bold"),
+        )
+        assert bouquet(manifest) == []
+        assert mother_sauce(manifest) == [{"id": "c1", "region_ids": ["r1", "r2"]}]
+
+    def test_one_engraving_read_as_two_inks_is_still_one_hand(self):
+        # 'la Bastille' samples #6c3f3c and 'Rue St. Antoine' #bbbda1 on the
+        # same sheet -- a distance of 180 against bouquet's tolerance of 90.
+        manifest = self._manifest(
+            self._sign_line("r1", 26, 11, 309, 63, "la Bastille", color="#6c3f3c"),
+            self._sign_line("r2", 20, 76, 274, 47, "Rue St. Antoine", color="#bbbda1"),
+        )
+        assert bouquet(manifest) == []
+        assert mother_sauce(manifest) == [{"id": "c1", "region_ids": ["r1", "r2"]}]
+
+    def test_signage_across_a_street_is_still_not_one_hand(self):
+        # Proximity is the gate that survives, and has to: without it a
+        # photograph of a street becomes a single cohort.
+        manifest = self._manifest(
+            self._sign_line("r1", 0, 0, 200, 60, "Rue"),
+            self._sign_line("r2", 3000, 2000, 200, 60, "Place"),
+        )
+        assert mother_sauce(manifest) == []
+
+    def test_a_romanisation_is_still_not_part_of_the_entity(self):
+        # japan-subs stacks a line over its own transliteration. bouquet's
+        # typographic gates used to separate these incidentally; with those
+        # gone the language guard has to do it explicitly.
+        manifest = self._manifest(
+            self._sign_line("r1", 100, 100, 200, 60, "ひだおさか", lang="ja"),
+            self._sign_line("r2", 100, 168, 200, 40, "Hida-osaka", lang="en"),
+        )
+        assert mother_sauce(manifest) == []
+
+    def test_italic_is_still_a_different_drawing_of_the_letters(self):
+        manifest = self._manifest(
+            self._sign_line("r1", 100, 100, 200, 60, "Avenue", italic=True),
+            self._sign_line("r2", 100, 168, 200, 60, "de Suffren", italic=False),
+        )
+        assert mother_sauce(manifest) == []
+
+    def test_a_lone_region_is_not_a_cohort(self):
+        manifest = self._manifest(self._sign_line("r1", 0, 0, 100, 40, "Rue"))
+        assert mother_sauce(manifest) == []
+
+    def test_excluded_regions_take_no_part(self):
+        excluded = self._sign_line("r2", 20, 76, 274, 47, "Rue St. Antoine")
+        excluded.excluded = True
+        manifest = self._manifest(self._sign_line("r1", 26, 11, 309, 63, "la Bastille"), excluded)
+        assert mother_sauce(manifest) == []
+
+    def test_every_bouquet_is_also_a_cohort(self):
+        """The wider pass must never split what the stricter one bound.
+
+        Both passes write `recommended_substitute` and the wider one runs
+        last, so a bouquet that fell outside it would be reconciled to a
+        face and then left naming a family nothing agreed on.
+        """
+        manifest = self._manifest(
+            self._sign_line("r1", 300, 250, 314, 100, "La rue"),
+            self._sign_line("r2", 240, 400, 543, 110, "SANS-NOM"),
+        )
+        bound = {tuple(c["region_ids"]) for c in bouquet(manifest)}
+        wide = [set(c["region_ids"]) for c in mother_sauce(manifest)]
+        assert bound
+        for group in bound:
+            assert any(set(group) <= cohort for cohort in wide)
 
 
 class TestBouquetPanels:
@@ -365,6 +466,142 @@ class TestCohortConsensus:
         assert agree_on_face(None, manifest, [], FontRegistry()) == 0
         assert members[0].font_match["recommended_substitute"]["family"] == "Centaur"
         assert "cohort" not in members[0].font_match
+
+
+class TestFamilyConsensus:
+    """One family across a sign; each region keeps its own weight.
+
+    The case agree_on_face cannot serve: a poster whose title reads regular
+    and whose house number reads bold was lettered by one hand, and forcing
+    those two regions onto an identical face has to put the wrong weight on
+    one of them whichever way the vote falls.
+    """
+
+    def _registry(self):
+        # every codepoint the members set, or the coverage gate drops the
+        # face before it can be scored and the cohort silently does nothing
+        glyphs = {ord(ch) for ch in "la Bastille Rue St. Antoine de"}
+        registry = FontRegistry()
+        registry._fonts = {
+            "twcen.ttf": FontCoverage("twcen.ttf", "Tw Cen MT", "Regular", 400, glyphs),
+            "twcenbd.ttf": FontCoverage("twcenbd.ttf", "Tw Cen MT", "Bold", 700, glyphs),
+            "playbill.ttf": FontCoverage("playbill.ttf", "Playbill", "Regular", 400, glyphs),
+        }
+        return registry
+
+    def _members(self):
+        def inst(rid, text, detected, candidates):
+            item = InstText(
+                id=rid, bounding_box=BBox(0, 0, 100, 40), text=text,
+                font_match={"candidates": candidates,
+                            "recommended_substitute": dict(candidates[0])},
+            )
+            item.characteristics = CharactText(font_style=detected)
+            return item
+
+        regular = {"family": "Tw Cen MT", "subfamily": "Regular", "font_path": "twcen.ttf", "score": 0.7}
+        bold = {"family": "Tw Cen MT", "subfamily": "Bold", "font_path": "twcenbd.ttf", "score": 0.7}
+        other = {"family": "Playbill", "subfamily": "Regular", "font_path": "playbill.ttf", "score": 0.6}
+        return [
+            inst("r1", "la Bastille", "regular", [regular, other, bold]),
+            inst("r2", "Rue St. Antoine", "bold", [other, bold, regular]),
+        ]
+
+    def _run(self, monkeypatch, scores, members=None):
+        import tofu.layers.font_matching as fm
+
+        monkeypatch.setattr(fm, "_source_mask", lambda img, inst: np.ones((20, 40), dtype=bool))
+        monkeypatch.setattr(fm, "_render_mask", lambda path, text, height: (path, text))
+        monkeypatch.setattr(fm, "_glyph_profile", lambda mask: fm.GlyphProfile(1.0, 0.5, 1.0, 0.5))
+        monkeypatch.setattr(fm, "_visual_score", lambda src, cand, **kw: (scores[cand[0]][cand[1]], {}))
+        members = members if members is not None else self._members()
+        manifest = TextManifest(asset_id="a", total_regions=len(members), instances=members)
+        cohorts = [{"id": "c1", "region_ids": [m.id for m in members]}]
+        agree_on_family(None, manifest, cohorts, self._registry())
+        return members
+
+    def _even_scores(self):
+        return {
+            "twcen.ttf": {"la Bastille": 0.80, "Rue St. Antoine": 0.74},
+            "twcenbd.ttf": {"la Bastille": 0.74, "Rue St. Antoine": 0.80},
+            "playbill.ttf": {"la Bastille": 0.50, "Rue St. Antoine": 0.52},
+        }
+
+    def test_one_family_but_each_region_keeps_its_own_weight(self, monkeypatch):
+        r1, r2 = self._run(monkeypatch, self._even_scores())
+        assert r1.font_match["recommended_substitute"]["family"] == "Tw Cen MT"
+        assert r2.font_match["recommended_substitute"]["family"] == "Tw Cen MT"
+        # the whole point: one family, two weights, matching what capture read
+        assert r1.font_match["recommended_substitute"]["subfamily"] == "Regular"
+        assert r2.font_match["recommended_substitute"]["subfamily"] == "Bold"
+
+    def test_a_family_strong_on_one_region_and_weak_on_the_other_loses(self, monkeypatch):
+        # Playbill is r2's own favourite by raw score, but it is the worst
+        # face r1 has. Maximin is what refuses it, exactly as for faces.
+        scores = {
+            "twcen.ttf": {"la Bastille": 0.80, "Rue St. Antoine": 0.60},
+            "twcenbd.ttf": {"la Bastille": 0.60, "Rue St. Antoine": 0.78},
+            "playbill.ttf": {"la Bastille": 0.20, "Rue St. Antoine": 0.95},
+        }
+        r1, r2 = self._run(monkeypatch, scores)
+        assert r1.font_match["recommended_substitute"]["family"] == "Tw Cen MT"
+        assert r2.font_match["recommended_substitute"]["family"] == "Tw Cen MT"
+
+    def test_the_region_own_pick_is_preserved_and_dissent_recorded(self, monkeypatch):
+        r1, r2 = self._run(monkeypatch, self._even_scores())
+        # r2 nominated Playbill first; the cohort overruled it, and says so
+        assert r2.font_match["region_substitute"]["family"] == "Playbill"
+        dissent = r2.font_match["family_cohort"]["dissent"]
+        assert [d["region_id"] for d in dissent] == ["r2"]
+        assert dissent[0]["preferred"] == "Playbill"
+
+    def test_a_region_too_faint_to_score_still_inherits_the_family(self, monkeypatch):
+        """A 13x12 'de' carries no usable silhouette but is still on the sign.
+
+        It cannot vote -- it nominated nothing -- but leaving it blank while
+        every region around it names one family is the inconsistency this
+        pass exists to remove.
+        """
+        members = self._members()
+        silent = InstText(id="r3", bounding_box=BBox(0, 0, 13, 12), text="de")
+        members.append(silent)
+        self._run(monkeypatch, self._even_scores(), members)
+        assert silent.font_match["recommended_substitute"]["family"] == "Tw Cen MT"
+        assert silent.font_match["family_cohort"]["voted"] is False
+        assert members[0].font_match["family_cohort"]["voted"] is True
+
+    def test_style_profile_is_never_written(self, monkeypatch):
+        r1, _ = self._run(monkeypatch, self._even_scores())
+        # evidence a human accepts, exactly as local_match is
+        assert r1.style_profile is None or r1.style_profile.font_family is None
+
+    def test_no_cohorts_changes_nothing(self, monkeypatch):
+        members = self._members()
+        manifest = TextManifest(asset_id="a", total_regions=2, instances=members)
+        assert agree_on_family(None, manifest, [], self._registry()) == 0
+        assert "family_cohort" not in members[0].font_match
+
+
+class TestWeightDistance:
+    """Picking the face within the winning family."""
+
+    def _inst(self, detected):
+        item = InstText(id="r1", bounding_box=BBox(0, 0, 10, 10), text="x")
+        item.characteristics = CharactText(font_style=detected)
+        return item
+
+    def test_the_detected_weight_wins(self):
+        regular = FontCoverage("a.ttf", "F", "Regular", 400, set())
+        bold = FontCoverage("b.ttf", "F", "Bold", 700, set())
+        assert _weight_distance(bold, self._inst("bold")) < _weight_distance(regular, self._inst("bold"))
+        assert _weight_distance(regular, self._inst("regular")) < _weight_distance(bold, self._inst("regular"))
+
+    def test_slant_outranks_weight(self):
+        # an upright standing in for an italic is a visibly different letter;
+        # one weight step is a shade darker
+        italic = FontCoverage("i.ttf", "F", "Italic", 400, set())
+        bold_upright = FontCoverage("b.ttf", "F", "Bold", 700, set())
+        assert _weight_distance(italic, self._inst("bold italic")) < _weight_distance(bold_upright, self._inst("bold italic"))
 
 
 def _rendered_mask(font_path, text, size=128):
