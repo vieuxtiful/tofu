@@ -907,11 +907,6 @@ def bouquet(manifest: TextManifest) -> List[Dict[str, Any]]:
     return bundles
 
 
-def _italic_flag(inst: InstText) -> bool:
-    """Whether the localiser's style pick calls this region italic."""
-    return bool(getattr(getattr(inst, "style_profile", None), "italic", False))
-
-
 def _bind(
     eligible: Sequence[InstText],
     scene_regions: Optional[Sequence[Any]],
@@ -998,14 +993,22 @@ def _one_hand_any_size(left: InstText, right: InstText) -> bool:
         work incidentally; with them gone, a CJK headline sitting directly
         above its own romanisation would otherwise join it.
 
-    Italic stays a hard split.  A true italic is a different drawing of
-    the letters, not a different size of the same one.
+    Italic is NOT a gate here, though it reads like one it should be.  A
+    true italic is a different drawing of the letters, so the first version
+    of this refused to pair across it -- and on la-bastille that put
+    "Avenue" and "Champs" in a cohort of their own, away from the address
+    they belong to, on a detector reading of *light italic* for lettering
+    the eye reads as upright.  At 15-40px the slant detector is guessing as
+    freely as the weight one.
+
+    Nothing is lost by dropping it, because slant is still decided -- one
+    step later and with better evidence.  ``font_matching._weight_distance``
+    ranks slant AHEAD of weight when each region picks its face within the
+    cohort's family, so an italic region in a mixed cohort takes the
+    family's Italic face while its neighbours take Regular or Bold.  Italic
+    decides the FACE, not the membership.
     """
-    return (
-        _nearby(left, right)
-        and _same_language(left, right)
-        and _italic_flag(left) == _italic_flag(right)
-    )
+    return _nearby(left, right) and _same_language(left, right)
 
 
 def mother_sauce(manifest: TextManifest) -> List[Dict[str, Any]]:
@@ -1036,10 +1039,7 @@ def mother_sauce(manifest: TextManifest) -> List[Dict[str, Any]]:
         _one_hand_any_size,
         # Inside a bordered panel the architecture has already answered
         # proximity, exactly as it does for bouquet.
-        lambda left, right: (
-            _same_language(left, right)
-            and _italic_flag(left) == _italic_flag(right)
-        ),
+        _same_language,
     )
 
 

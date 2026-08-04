@@ -984,6 +984,31 @@ def _weight_distance(face: Any, inst: InstText) -> Tuple[int, int]:
     return (0 if want_italic == has_italic else 1, abs(weight_class - want_weight))
 
 
+## How close two families must be on maximin before the choice between them
+## is treated as a coin flip. Measured on la-bastille: Impact leads Tw Cen MT
+## by 0.0147 across a thirteen-region cohort, which is not a difference this
+## kernel can defend.
+FAMILY_TIE_EPSILON = 0.02
+
+
+def _family_style_cost(family: str, fonts: Dict[str, Any], members: Sequence[InstText]) -> float:
+    """How badly a family would dress this cohort, averaged over members.
+
+    Zero when every member finds a face matching its own detected slant and
+    weight. A family with a single installed face pays for every member that
+    is not that weight, which is the point: it cannot tell a bold line from
+    a regular one however well its outlines happen to score.
+    """
+    installed = [f for f in fonts.values() if getattr(f, "family", None) == family]
+    if not installed or not members:
+        return 0.0
+    total = 0.0
+    for inst in members:
+        slant, weight_gap = min(_weight_distance(face, inst) for face in installed)
+        total += slant + min(1.0, weight_gap / 300.0)
+    return total / len(members)
+
+
 def agree_on_family(
     img: Any, manifest: TextManifest, cohorts: Sequence[Dict[str, Any]], registry,
 ) -> int:
@@ -1030,6 +1055,9 @@ def agree_on_family(
     by_id = {inst.id: inst for inst in manifest.instances}
     fonts = faces_of(registry)
     updated = 0
+    # what each cohort settled on, so a region left out of every one of them
+    # can still be offered the family that best explains its own pixels
+    decided: List[Tuple[Any, str, List[str]]] = []
 
     for cohort in cohorts:
         members = [by_id[rid] for rid in cohort.get("region_ids", []) if rid in by_id]
@@ -1064,22 +1092,59 @@ def agree_on_family(
             # nomination order last, so the choice is deterministic
             return (worst, mean, -min(scoring.viable.index(p) for p in families[name]))
 
-        winner_family = max(families, key=family_rank)
-        worst, mean, _ = family_rank(winner_family)
+        # Break a near-tie on whether the family can DRESS the cohort.
+        #
+        # Measured on la-bastille's address block: Impact leads Tw Cen MT by
+        # 0.0147 on maximin -- inside the noise of this kernel -- and Impact
+        # ships exactly one installed face, so a cohort whose members read
+        # regular, bold and italic would all have worn Regular. Tw Cen MT has
+        # the weights to tell them apart. Visual evidence still decides;
+        # this only chooses between families it cannot separate.
+        ranked = {name: family_rank(name) for name in families}
+        best_worst = max(r[0] for r in ranked.values())
+        contenders = [n for n, r in ranked.items()
+                      if best_worst - r[0] <= FAMILY_TIE_EPSILON]
+        winner_family = max(
+            contenders,
+            key=lambda n: (-_family_style_cost(n, fonts, scoring.scored), ranked[n]),
+        )
+        worst, mean, _ = ranked[winner_family]
 
         # Each member's own pick within the winning family: closest weight
         # and slant first, then the face that actually scored best on it.
+        #
+        # Drawn from every INSTALLED face of the family, not just the paths
+        # the members nominated. local_match nominates individual faces, so
+        # the pool typically holds one weight per family by accident of
+        # which member ranked what -- and picking within that gave a cohort
+        # spanning regular, bold and italic a single Regular for all of
+        # them. The family has been chosen on pooled evidence by this point;
+        # which of its faces each region wears is a question about that
+        # region's own detected style.
+        installed = [
+            path for path, face in fonts.items()
+            if getattr(face, "family", None) == winner_family
+        ] or families[winner_family]
+
+        def _usable(path: str, inst: InstText) -> bool:
+            face = fonts.get(path)
+            if face is None:
+                return True
+            return all(ord(ch) in face.codepoints
+                       for ch in (inst.text or "") if not ch.isspace())
+
         chosen: Dict[str, str] = {}
         for inst in scoring.scored:
+            options = [p for p in installed if _usable(p, inst)] or families[winner_family]
             chosen[inst.id] = min(
-                families[winner_family],
+                options,
                 key=lambda p: (
                     _weight_distance(fonts.get(p), inst),
-                    -scoring.complete[p].get(inst.id, 0.0),
+                    -scoring.complete.get(p, {}).get(inst.id, 0.0),
                 ),
             )
         fallback = min(
-            families[winner_family],
+            installed,
             key=lambda p: (int(getattr(fonts.get(p), "weight_class", 400) or 400) - 400) ** 2,
         )
 
@@ -1095,7 +1160,7 @@ def agree_on_family(
                     "preferred": own.get("family"),
                     "preferred_score": own.get("score"),
                     "cohort_score": round(
-                        scoring.complete[chosen[inst.id]].get(inst.id, 0.0), 4,
+                        scoring.complete.get(chosen[inst.id], {}).get(inst.id, 0.0), 4,
                     ),
                 })
 
@@ -1124,12 +1189,136 @@ def agree_on_family(
                 "family": winner_family,
                 "subfamily": getattr(face, "subfamily", None)
                 or (scoring.pool.get(path) or {}).get("subfamily"),
-                "score": round(scoring.complete[path].get(inst.id, 0.0), 4),
+                # 0.0 when this particular FACE was never scored -- the
+                # family was, and that is what the vote decided. The face is
+                # this region's own style answer, not a second vote.
+                "score": round(scoring.complete.get(path, {}).get(inst.id, 0.0), 4),
             }
             inst.font_match = evidence
             updated += 1
+        decided.append((cohort.get("id"), winner_family, [i.id for i in members]))
 
+    updated += _adopt_orphans(img, manifest, decided, registry)
     return updated
+
+
+## A region whose serif structure is this poorly resolved cannot be said to
+## have seen its own typeface. Measured on merge-check: r5 "Texte Naïké
+## Desquesnes" reads 0.28 where its neighbours r3/r4 read 1.00, and r5 is
+## exactly the region that ended up alone on a family nobody else chose.
+ADOPTION_MAX_SUFFICIENCY = 0.5
+
+## How close a cohort's family must come to the orphan's own favourite
+## before it may overrule it. Measured on the same region: Verdana Bold
+## scores 0.7487 against r5's own best of 0.7916, a ratio of 0.95. Below
+## this the family plainly does not describe the ink and the region keeps
+## its own answer.
+ADOPTION_MIN_FIT = 0.90
+
+
+def _adopt_orphans(
+    img: Any, manifest: TextManifest,
+    decided: Sequence[Tuple[Any, str, List[str]]], registry,
+) -> int:
+    """Offer a region in no cohort to the cohort that best explains its ink.
+
+    Proximity forms the cohorts, and on real signage it sometimes cannot.
+    Measured on merge-check: r5 sits 48px below r4 against a 30px
+    allowance, so it never joins the vote, and ends up recommending Lucida
+    Sans while the two lines above it agree on Verdana -- a family r5 never
+    even nominated, since it reaches the cohort through r3.
+
+    Adoption cannot lean on proximity, because proximity is the gate that
+    failed. It leans on the two things that make the case defensible:
+
+      * the orphan's own evidence must be WEAK. A region that can resolve
+        its own serif structure is never overruled by a neighbour's
+        opinion; only one that cannot is offered someone else's.
+      * the family must FIT. It is scored against the orphan's own pixels
+        and must come close to what the orphan itself preferred, so a
+        cohort can lend a family but never force one.
+
+    Both together, and nothing about where the region sits. That is a
+    deliberate trade: it means a large, confidently-lettered sign across a
+    street scene can never be adopted, which is the case that would do real
+    damage, while a small caption under a poster's body text can.
+    """
+    if not decided:
+        return 0
+    fonts = faces_of(registry)
+    claimed = {rid for _, _, ids in decided for rid in ids}
+    orphans = [
+        inst for inst in manifest.instances
+        if inst.id not in claimed and inst.font_match and not inst.excluded
+        and (inst.text or "").strip()
+    ]
+    if not orphans:
+        return 0
+
+    adopted = 0
+    for inst in orphans:
+        mask = _source_mask(img, inst)
+        if mask is None:
+            continue
+        profile = _glyph_profile(mask)
+        if profile.serif_sufficiency >= ADOPTION_MAX_SUFFICIENCY:
+            continue  # this region can see its own typeface; leave it alone
+
+        own_best = max(
+            (float(c.get("score") or 0.0)
+             for c in (inst.font_match or {}).get("candidates") or []),
+            default=0.0,
+        ) or 1.0
+
+        best = None  # (fit, score, path, family, cohort_id)
+        for cohort_id, family, _ids in decided:
+            for path, face in fonts.items():
+                if getattr(face, "family", None) != family:
+                    continue
+                if not all(ord(ch) in face.codepoints
+                           for ch in (inst.text or "") if not ch.isspace()):
+                    continue
+                try:
+                    candidate = _render_mask(path, inst.text or "", mask.shape[0])
+                    if candidate is None:
+                        continue
+                    score, _ = _visual_score(mask, candidate, source_profile=profile)
+                except Exception:
+                    continue
+                fit = score / own_best
+                # closest slant/weight first, then the better fit, so the
+                # face chosen is the one this region would have wanted
+                key = (_weight_distance(face, inst), -score)
+                if best is None or key < best[0]:
+                    best = (key, fit, score, path, family, cohort_id)
+        if best is None or best[1] < ADOPTION_MIN_FIT:
+            continue
+
+        _, fit, score, path, family, cohort_id = best
+        face = fonts.get(path)
+        evidence = inst.font_match or {}
+        previous = evidence.get("recommended_substitute")
+        if previous and "region_substitute" not in evidence:
+            evidence["region_substitute"] = previous
+        evidence["family_cohort"] = {
+            "id": cohort_id,
+            "method": "cohort_family_adoption",
+            "family": family,
+            "adopted": True,
+            # the two numbers that justified overruling this region
+            "serif_sufficiency": round(profile.serif_sufficiency, 3),
+            "fit": round(fit, 4),
+            "voted": False,
+        }
+        evidence["recommended_substitute"] = {
+            "font_path": path,
+            "family": family,
+            "subfamily": getattr(face, "subfamily", None),
+            "score": round(score, 4),
+        }
+        inst.font_match = evidence
+        adopted += 1
+    return adopted
 
 
 def _looks_like_french_enamel_sign(img, manifest: TextManifest) -> bool:

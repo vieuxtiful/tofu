@@ -12,7 +12,7 @@ from tofu.core.types import BBox, CharactText, InstText, SceneRegion, StyleProfi
 from tofu.layers.basil import bouquet, mother_sauce
 from tofu.layers.font_matching import (
     GlyphProfile, _eligible_faces, _glyph_profile, _relative_agreement, _visual_score,
-    _weight_distance, _weight_target,
+    _family_style_cost, _weight_distance, _weight_target,
     agree_on_face, agree_on_family, external_catalog_match, local_match,
 )
 from tofu.layers.fonts import FontCoverage, FontRegistry
@@ -231,12 +231,22 @@ class TestMotherSauce:
         )
         assert mother_sauce(manifest) == []
 
-    def test_italic_is_still_a_different_drawing_of_the_letters(self):
+    def test_italic_does_not_split_a_cohort(self):
+        """Slant decides the FACE, one step later, not the membership.
+
+        This used to refuse the pairing. On la-bastille that put "Avenue"
+        and "Champs" in a cohort of their own, away from the address they
+        belong to, on a detector reading of *light italic* for lettering
+        the eye reads as upright -- at 15-40px the slant detector guesses as
+        freely as the weight one. Both regions now join the address cohort
+        and take that family's Italic face, which is where the reading is
+        allowed to matter. See TestFamilyConsensus for the face half.
+        """
         manifest = self._manifest(
             self._sign_line("r1", 100, 100, 200, 60, "Avenue", italic=True),
             self._sign_line("r2", 100, 168, 200, 60, "de Suffren", italic=False),
         )
-        assert mother_sauce(manifest) == []
+        assert mother_sauce(manifest) == [{"id": "c1", "region_ids": ["r1", "r2"]}]
 
     def test_a_lone_region_is_not_a_cohort(self):
         manifest = self._manifest(self._sign_line("r1", 0, 0, 100, 40, "Rue"))
@@ -799,3 +809,126 @@ class TestCandidatePool:
         families = [f.family for f in _eligible_faces(registry, "La rue", self._regular_inst())]
         assert families
         assert families != sorted(families)
+
+
+class TestFamilyStyleCost:
+    """A family that cannot dress the cohort should lose a coin flip.
+
+    Measured on la-bastille: Impact leads Tw Cen MT by 0.0147 on maximin
+    across a thirteen-region cohort -- inside this kernel's noise -- and
+    Impact ships one installed face, so every member, regular bold and
+    italic alike, would have worn Regular.
+    """
+
+    def _fonts(self):
+        return {
+            "one.ttf": FontCoverage("one.ttf", "OneFace", "Regular", 400, set()),
+            "many-r.ttf": FontCoverage("many-r.ttf", "ManyFaces", "Regular", 400, set()),
+            "many-b.ttf": FontCoverage("many-b.ttf", "ManyFaces", "Bold", 700, set()),
+            "many-i.ttf": FontCoverage("many-i.ttf", "ManyFaces", "Italic", 400, set()),
+        }
+
+    def _members(self, *styles):
+        out = []
+        for i, style in enumerate(styles, 1):
+            inst = InstText(f"r{i}", BBox(0, 0, 10, 10), text="x")
+            inst.characteristics = CharactText(font_style=style)
+            out.append(inst)
+        return out
+
+    def test_a_single_face_family_pays_for_every_member_it_cannot_dress(self):
+        fonts = self._fonts()
+        members = self._members("regular", "bold", "italic")
+        assert _family_style_cost("OneFace", fonts, members) > \
+               _family_style_cost("ManyFaces", fonts, members)
+
+    def test_both_are_free_when_every_member_is_regular(self):
+        fonts = self._fonts()
+        members = self._members("regular", "regular")
+        assert _family_style_cost("OneFace", fonts, members) == 0.0
+        assert _family_style_cost("ManyFaces", fonts, members) == 0.0
+
+    def test_an_uninstalled_family_costs_nothing_rather_than_erroring(self):
+        assert _family_style_cost("Nonexistent", self._fonts(), self._members("bold")) == 0.0
+
+
+class TestOrphanAdoption:
+    """Proximity forms the cohorts, and sometimes it cannot.
+
+    Measured on merge-check: "Texte Naïké Desquesnes" sits 48px below the
+    body text against a 30px allowance, so it never joins the vote and ends
+    up recommending Lucida Sans while the two lines above it agree on
+    Verdana -- a family it never even nominated, since it reaches the
+    cohort through its neighbour.
+    """
+
+    def _registry(self):
+        glyphs = {ord(ch) for ch in "abcdefghijklmnopqrstuvwxyz ABCDEFGHIJKLMNOPQRSTUVWXYZ"}
+        registry = FontRegistry()
+        registry._fonts = {
+            "cohort-r.ttf": FontCoverage("cohort-r.ttf", "CohortFamily", "Regular", 400, glyphs),
+            "cohort-b.ttf": FontCoverage("cohort-b.ttf", "CohortFamily", "Bold", 700, glyphs),
+            "own.ttf": FontCoverage("own.ttf", "OwnFavourite", "Regular", 400, glyphs),
+        }
+        return registry
+
+    def _members(self):
+        def inst(rid, text, cands):
+            return InstText(id=rid, bounding_box=BBox(0, 0, 100, 40), text=text,
+                            font_match={"candidates": cands,
+                                        "recommended_substitute": dict(cands[0])})
+        cohort = {"family": "CohortFamily", "subfamily": "Regular",
+                  "font_path": "cohort-r.ttf", "score": 0.8}
+        return [inst("r1", "body one", [cohort]), inst("r2", "body two", [cohort])]
+
+    def _orphan(self, own_score=0.79):
+        return InstText(
+            id="r3", bounding_box=BBox(0, 900, 100, 20), text="caption",
+            font_match={"candidates": [{"family": "OwnFavourite", "subfamily": "Regular",
+                                        "font_path": "own.ttf", "score": own_score}],
+                        "recommended_substitute": {"family": "OwnFavourite",
+                                                   "font_path": "own.ttf",
+                                                   "score": own_score}},
+        )
+
+    def _run(self, monkeypatch, serif_sufficiency, cohort_score, own_score=0.79):
+        import tofu.layers.font_matching as fm
+
+        monkeypatch.setattr(fm, "_source_mask", lambda img, inst: np.ones((20, 40), dtype=bool))
+        monkeypatch.setattr(fm, "_render_mask", lambda path, text, height: (path, text))
+        monkeypatch.setattr(fm, "_glyph_profile",
+                            lambda mask: fm.GlyphProfile(1.0, 1.0, 1.0, serif_sufficiency))
+        monkeypatch.setattr(fm, "_visual_score",
+                            lambda src, cand, **kw: (cohort_score if str(cand[0]).startswith("cohort") else 0.1, {}))
+        members = self._members()
+        orphan = self._orphan(own_score)
+        manifest = TextManifest(asset_id="a", total_regions=3,
+                                instances=[*members, orphan])
+        cohorts = [{"id": "c1", "region_ids": ["r1", "r2"]}]
+        agree_on_family(None, manifest, cohorts, self._registry())
+        return orphan
+
+    def test_weak_evidence_and_a_close_fit_adopt(self, monkeypatch):
+        orphan = self._run(monkeypatch, serif_sufficiency=0.28, cohort_score=0.75)
+        assert orphan.font_match["recommended_substitute"]["family"] == "CohortFamily"
+        cohort = orphan.font_match["family_cohort"]
+        assert cohort["adopted"] is True
+        assert cohort["voted"] is False
+        # the two numbers that justified overruling the region
+        assert cohort["serif_sufficiency"] == 0.28
+        assert cohort["fit"] >= 0.90
+        # and its own answer is preserved rather than lost
+        assert orphan.font_match["region_substitute"]["family"] == "OwnFavourite"
+
+    def test_a_region_that_can_see_its_own_typeface_is_left_alone(self, monkeypatch):
+        # serif structure well resolved: nobody overrules it
+        orphan = self._run(monkeypatch, serif_sufficiency=1.0, cohort_score=0.75)
+        assert orphan.font_match["recommended_substitute"]["family"] == "OwnFavourite"
+        assert "family_cohort" not in orphan.font_match
+
+    def test_a_family_that_does_not_fit_is_refused(self, monkeypatch):
+        # weak evidence, but the cohort's family explains the ink far worse
+        # than the region's own pick -- a cohort may lend a family, not force one
+        orphan = self._run(monkeypatch, serif_sufficiency=0.28, cohort_score=0.30)
+        assert orphan.font_match["recommended_substitute"]["family"] == "OwnFavourite"
+        assert "family_cohort" not in orphan.font_match
