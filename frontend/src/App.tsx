@@ -1792,10 +1792,16 @@ export default function App() {
   }, [brushMode, brushApplying, pointOnLocalizedCanvas]);
 
   const extendBrushStroke = useCallback((event: React.PointerEvent<HTMLImageElement>) => {
-    const drawing = brushDrawing.current;
-    if (!brushMode || !drawing || drawing.pointerId !== event.pointerId) return;
+    if (!brushMode) return;
     const point = pointOnLocalizedCanvas(event);
     if (!point) return;
+    // Track the pointer whether or not a stroke is live, so the radius ring
+    // previews the brush on hover. It used to move only while dragging, which
+    // meant the one moment you needed to see how big the brush was -- before
+    // committing a stroke -- was the one moment it was not shown.
+    setBrushCursor(point);
+    const drawing = brushDrawing.current;
+    if (!drawing || drawing.pointerId !== event.pointerId) return;
     event.preventDefault();
     const prior = drawing.stroke.points[drawing.stroke.points.length - 1];
     // Pointer events can arrive several times with the same mapped pixel.
@@ -1804,7 +1810,6 @@ export default function App() {
     drawing.stroke = { ...drawing.stroke, points: [...drawing.stroke.points, point] };
     brushDrawing.current = drawing;
     setActiveBrushStroke(drawing.stroke);
-    setBrushCursor(point);
   }, [brushMode, pointOnLocalizedCanvas]);
 
   const finishBrushStroke = useCallback((event: React.PointerEvent<HTMLImageElement>, cancelled = false) => {
@@ -4873,20 +4878,12 @@ export default function App() {
                     {[...new Set(manifest.filter((i) => !i.dnt).map((i) => i.target_language ?? targLang))]
                       .map((l) => langDisplayName(l)).join(", ") || "—"}
                   </span>
-                  <span className="text-zinc-300 dark:text-zinc-600">·</span>
-                  <span className="truncate text-zinc-600 dark:text-zinc-400" title={manifest.filter((i) => !i.dnt).map((i) => {
-                      const identity = fontIdentity(
-                        i, { familiesByLang, defaultTargLang: targLang },
-                      );
-                      return `${identity.label} (${i.id})`;
-                    }).join("; ")}>
-                    {manifest.filter((i) => !i.dnt).map((i) => {
-                      const identity = fontIdentity(
-                        i, { familiesByLang, defaultTargLang: targLang },
-                      );
-                      return `${identity.label} (${i.id})`;
-                    }).join("; ")}
-                  </span>
+                  {/* No font list here. It printed "family (id)" for every
+                      region, so a sign with a dozen regions pushed a dozen
+                      family names across the canvas and the two readings that
+                      matter -- how many are translated, and into what -- were
+                      lost in it. Per-region font evidence belongs in the
+                      Translate table, which has room to show it properly. */}
                   {manifest.some((i) => i.dnt) && (
                     <>
                       <span className="text-zinc-300 dark:text-zinc-600">·</span>

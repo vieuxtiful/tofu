@@ -278,11 +278,6 @@ export default function RegionTable({
         <h2 className="subtext mx-3 mb-3 mt-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
           <BsTranslate size={14} />
           Translate
-          {!hideRegionCounter && (
-            <span className="text-[10px] font-medium normal-case tracking-normal" style={{ color: bboxColor ?? "#22d3ee" }}>
-              regions: {regions.length}
-            </span>
-          )}
         </h2>
       )}
       {/* stats bar */}
@@ -392,29 +387,46 @@ export default function RegionTable({
                       {headerLabel(c)}
                     </span>
                   ) : c.key === "num" || c.key === "id" ? (
-                    <button
-                      onClick={() => {
-                        if (sortKey === c.key) {
-                          setSortDir((d) => d === "asc" ? "desc" : "asc");
-                        } else {
-                          setSortKey(c.key as "num" | "id");
-                          setSortDir("asc");
-                        }
-                      }}
-                      className="group flex items-center gap-0.5 hover:text-zinc-700 dark:hover:text-zinc-300"
-                      title={`sort by ${c.label}`}
-                    >
-                      {headerLabel(c)}
-                      <ChevronDown
-                        size={10}
-                        className={`transition-opacity ${
-                          sortKey === c.key
-                            ? "opacity-100"
-                            : "opacity-0 group-hover:opacity-50"
-                        }`}
-                        style={{ transform: sortKey === c.key && sortDir === "desc" ? "rotate(180deg)" : "none" }}
-                      />
-                    </button>
+                    // The region count rides beside ID rather than up in the
+                    // Translate heading, alongside the other header readouts
+                    // (Source/Target, font detected, average confidence). It
+                    // sits OUTSIDE the sort button on purpose: it is a
+                    // readout, and clicking a number to re-sort the table by
+                    // something else reads as a bug.
+                    <span className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          if (sortKey === c.key) {
+                            setSortDir((d) => d === "asc" ? "desc" : "asc");
+                          } else {
+                            setSortKey(c.key as "num" | "id");
+                            setSortDir("asc");
+                          }
+                        }}
+                        className="group flex items-center gap-0.5 hover:text-zinc-700 dark:hover:text-zinc-300"
+                        title={`sort by ${c.label}`}
+                      >
+                        {headerLabel(c)}
+                        <ChevronDown
+                          size={10}
+                          className={`transition-opacity ${
+                            sortKey === c.key
+                              ? "opacity-100"
+                              : "opacity-0 group-hover:opacity-50"
+                          }`}
+                          style={{ transform: sortKey === c.key && sortDir === "desc" ? "rotate(180deg)" : "none" }}
+                        />
+                      </button>
+                      {c.key === "id" && mode === "translate" && !hideRegionCounter && (
+                        <span
+                          className="text-[10px] font-medium normal-case tracking-normal"
+                          style={{ color: bboxColor ?? "#22d3ee" }}
+                          title={`${regions.length} region${regions.length === 1 ? "" : "s"}`}
+                        >
+                          {regions.length}
+                        </span>
+                      )}
+                    </span>
                   ) : c.key === "source" || c.key === "srctgt" ? (
                     <span className="flex items-center gap-1">
                       <button
