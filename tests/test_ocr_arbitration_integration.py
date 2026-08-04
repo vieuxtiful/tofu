@@ -7,7 +7,7 @@ from tofu.core.types import (
     SceneRegion,
     TextManifest,
 )
-from tofu.layers.cicerone import assess_multi_candidate_ocr
+from tofu.layers.cicerone import assess_multi_candidate_ocr, _promote_verifier_confusion
 from tofu.layers.ocr_arbitration import (
     ArbitrationSignals,
     CalibrationCurve,
@@ -330,3 +330,97 @@ def test_exhaustive_mode_lifts_the_proposal_budget(monkeypatch):
         inst.ocr_provenance["hypothesis"]["verified"] is True
         for inst in unrationed
     )
+
+
+class TestVerifierConfusionPromotion:
+    """Arbitration's reading reaches the manifest when the difference is a glyph.
+
+    The pairwise decision withholds acceptance whenever the independent
+    verifier disagrees with the primary, on the reasoning that a
+    disagreement is usually two engines failing differently. That same flag
+    fires when the verifier is simply right. Measured on decolonisons r2:
+    primary "nos rues 4", verifier "nos rues!", arbitration selects the
+    verifier's observation, geometry 1.0, glyph 1.0 -- and the region
+    shipped "4".
+    """
+
+    def _record(self, **overrides):
+        record = {
+            "selected_observation_id": "r2-verifier",
+            "selected_text": "nos rues!",
+            "geometry_score": 1.0,
+            "score_breakdown": {"glyph": 1.0},
+            "agrees_with_pairwise": False,
+            "reason_codes": ["verification_disagree"],
+        }
+        record.update(overrides)
+        return record
+
+    def _inst(self, text="nos rues 4"):
+        return InstText("r2", BBox(0, 0, 100, 40), text=text, detected_language="fr")
+
+    def test_a_confused_glyph_is_promoted(self):
+        inst = self._inst()
+        assert _promote_verifier_confusion(inst, self._record(), "nos rues 4") is True
+        assert inst.text == "nos rues!"
+        assert inst.ocr_correction["applied"] is True
+        assert inst.ocr_correction["original_text"] == "nos rues 4"
+        assert inst.recognition_history[-1]["stage"] == "hypothesis_promotion"
+
+    def test_whitespace_alone_never_blocks_the_comparison(self):
+        """The mark the recogniser set tight is the difference at issue.
+
+        "nos rues 4" and "nos rues!" differ in length as strings; compared
+        without whitespace they differ in exactly one glyph. Spacing is a
+        separate, locale-aware pass.
+        """
+        inst = self._inst()
+        assert _promote_verifier_confusion(inst, self._record(), "nos rues 4") is True
+
+    def test_a_different_word_is_never_promoted(self):
+        inst = self._inst("nos rues")
+        record = self._record(selected_text="vos rues")
+        assert _promote_verifier_confusion(inst, record, "nos rues") is False
+        assert inst.text == "nos rues"
+
+    def test_an_added_character_is_never_promoted(self):
+        inst = self._inst("nos rues")
+        record = self._record(selected_text="nos rues!!")
+        assert _promote_verifier_confusion(inst, record, "nos rues") is False
+
+    def test_imperfect_geometry_is_never_promoted(self):
+        # the two readings have to describe the same ink in the same place
+        inst = self._inst()
+        record = self._record(geometry_score=0.5)
+        assert _promote_verifier_confusion(inst, record, "nos rues 4") is False
+
+    def test_imperfect_glyph_evidence_is_never_promoted(self):
+        inst = self._inst()
+        record = self._record(score_breakdown={"glyph": 0.5})
+        assert _promote_verifier_confusion(inst, record, "nos rues 4") is False
+
+    def test_a_reading_the_primary_engine_produced_is_never_promoted(self):
+        """It has to be a SECOND engine, not a re-reading of the same one."""
+        inst = self._inst()
+        record = self._record(selected_observation_id="r2-primary")
+        assert _promote_verifier_confusion(inst, record, "nos rues 4") is False
+
+    def test_agreement_is_nothing_to_promote(self):
+        inst = self._inst()
+        record = self._record(agrees_with_pairwise=True)
+        assert _promote_verifier_confusion(inst, record, "nos rues 4") is False
+
+    def test_a_missing_hypothesis_is_handled(self):
+        assert _promote_verifier_confusion(self._inst(), None, "nos rues 4") is False
+
+    def test_the_disagreement_flag_is_cleared_once_promoted(self):
+        """The record was written against the text the pairwise pass chose.
+
+        Leaving the flag set would have the workspace mark this region as a
+        disagreement forever, against a reading it no longer ships.
+        """
+        inst = self._inst()
+        record = self._record()
+        assert _promote_verifier_confusion(inst, record, "nos rues 4") is True
+        assert record["agrees_with_pairwise"] is True
+        assert record["promoted"] is True

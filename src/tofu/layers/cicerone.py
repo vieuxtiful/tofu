@@ -49,7 +49,7 @@ import unicodedata
 from abc import ABC, abstractmethod
 from pathlib import Path
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Iterator, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, FrozenSet, Iterator, List, Optional, Sequence, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +64,7 @@ from tofu.core.types import (
     infer_asset_info,
     OCRAssessmentPolicy,
 )
+from tofu.utils.locale_typography import apply_punctuation_spacing, resolve_locale
 
 
 _CONTEXT_CLASSES = {"sign", "poster", "billboard", "product_label", "ui_graphic"}
@@ -4067,7 +4068,52 @@ def detect(
         if label_latin_languages(manifest.instances, declared):
             manifest.src_lang = taste_the_room(manifest.instances)
 
+    # Locale typographic spacing runs LAST, after every correction pass and
+    # after the language labels settle: the rule is keyed on the region's
+    # locale, so it cannot run before anything knows what that locale is.
+    # It only ever inserts a space the locale asks for -- French (France)
+    # sets one before '!', French (Canada) does not -- so it can be applied
+    # to a settled read without re-opening what the read SAYS.
+    _apply_locale_typography(manifest)
+
     return manifest
+
+
+def _apply_locale_typography(manifest: TextManifest) -> int:
+    """Give every region the spacing its own locale puts before punctuation.
+
+    Recognition reads the ink, and a recogniser that sets "nos rues !"
+    tight as "nos rues!" has not misread anything -- it has dropped a space
+    the typography of that locale requires. Measured on decolonisons, in
+    French (France), where the mark takes a space and in Canadian French it
+    would not.
+
+    Returns the number of regions whose text changed.
+    """
+    changed = 0
+    for inst in manifest.instances:
+        text = inst.text or ""
+        if not text.strip():
+            continue
+        locale = resolve_locale(
+            inst.language or inst.detected_language, manifest.src_lang,
+        )
+        spaced = apply_punctuation_spacing(text, locale)
+        if spaced == text:
+            continue
+        inst.text = spaced
+        _history(inst, {
+            "stage": "locale_typography",
+            "engine": "rule",
+            "accepted": True,
+            "applied": True,
+            "decision": "respace",
+            "candidate_text": spaced,
+            "primary_text": text,
+            "reason": f"{locale} sets a space before this punctuation",
+        })
+        changed += 1
+    return changed
 
 
 def _disambiguate_ja_zh(instances: List[InstText]) -> None:
@@ -5065,9 +5111,115 @@ def assess_multi_candidate_ocr(
                 "calibration_registry_version": decision.calibration_registry_version,
             }
             changed += 1
+        elif _promote_verifier_confusion(inst, hypothesis_record, primary_text):
+            changed += 1
 
     _grade_ungraded_regions(instances)
     return changed
+
+
+## Shapes a recogniser genuinely swaps for one another at sign scale. Every
+## pair here is a SILHOUETTE confusion -- the two glyphs occupy the same
+## stroke skeleton in a tight crop -- not a semantic one. Deliberately does
+## not include letter pairs that change a word ('rn'/'m', 'cl'/'d'): those
+## alter the reading rather than one mark, and belong to Savor's courses,
+## which have pixel evidence to spend on them.
+_GLYPH_CONFUSIONS: FrozenSet[FrozenSet[str]] = frozenset({
+    frozenset({"4", "!"}),   # decolonisons r2: "nos rues 4" for "nos rues !"
+    frozenset({"1", "!"}),
+    frozenset({"l", "!"}),
+    frozenset({"i", "!"}),
+    frozenset({"0", "O"}),
+    frozenset({"0", "o"}),
+    frozenset({"5", "S"}),
+    frozenset({"1", "l"}),
+    frozenset({"1", "I"}),
+    frozenset({"8", "B"}),
+    frozenset({"2", "Z"}),
+    frozenset({"6", "G"}),
+})
+
+
+def _promote_verifier_confusion(
+    inst: InstText, record: Optional[Dict[str, Any]], primary_text: str,
+) -> bool:
+    """Apply the verifier's reading when it differs only by a confused glyph.
+
+    The pairwise decision refuses these, and for a defensible reason: it
+    withholds acceptance whenever the independent verifier DISAGREES with
+    the primary, because a disagreement is usually two engines failing
+    differently. But that same flag is what fires when the verifier is
+    simply right, and arbitration -- which scores every observation rather
+    than the last two -- has already said so by selecting the verifier's
+    observation. Measured on decolonisons r2: primary "nos rues 4",
+    verifier "nos rues!", arbitration selects the verifier, geometry 1.0,
+    glyph 1.0, confidence 0.97 -- and the region shipped "4" anyway.
+
+    So this promotes exactly that case and nothing wider:
+
+      * arbitration must have selected the INDEPENDENT VERIFIER's
+        observation, not the primary's -- a second engine, not a re-reading
+        of the same one;
+      * geometry and glyph signals must both be perfect, so the two
+        readings describe the same ink in the same place;
+      * and the two texts must differ ONLY by glyph confusions from the
+        table above, compared with whitespace removed. Whitespace is
+        excluded because the very difference at issue is a mark the
+        recogniser set tight -- French spacing is a separate, locale-aware
+        pass (utils.locale_typography), not this one's business.
+
+    Anything else -- a different word, a dropped fragment, an extra
+    character -- stays with the pairwise decision and stays flagged for
+    review. Returns True when the text was replaced.
+    """
+    if not record or record.get("agrees_with_pairwise") is not False:
+        return False
+    if not str(record.get("selected_observation_id") or "").endswith("-verifier"):
+        return False
+    breakdown = record.get("score_breakdown") or {}
+    if record.get("geometry_score") != 1.0 or breakdown.get("glyph") != 1.0:
+        return False
+
+    candidate = record.get("selected_text") or ""
+    if not candidate.strip():
+        return False
+    left = "".join(candidate.split())
+    right = "".join((primary_text or "").split())
+    if len(left) != len(right) or left == right:
+        return False
+    for a, b in zip(left, right):
+        if a == b:
+            continue
+        if frozenset({a, b}) not in _GLYPH_CONFUSIONS:
+            return False
+
+    inst.text = candidate
+    # The record was written against the text the pairwise decision chose.
+    # That text is now arbitration's own, so leaving the flag alone would
+    # have the workspace mark this region as a disagreement forever, against
+    # a reading it no longer ships. `promoted` keeps the history of the
+    # override visible without pretending the two still differ.
+    record["agrees_with_pairwise"] = True
+    record["promoted"] = True
+    inst.ocr_correction = {
+        "applied": True,
+        "original_text": primary_text,
+        "corrected_text": candidate,
+        "reason": "arbitration selected the independent verifier; difference is a glyph confusion",
+        "policy_version": record.get("policy_revision"),
+    }
+    _history(inst, {
+        "stage": "hypothesis_promotion",
+        "engine": "paddleocr",
+        "accepted": True,
+        "applied": True,
+        "decision": "promote",
+        "candidate_text": candidate,
+        "primary_text": primary_text,
+        "reason_codes": list(record.get("reason_codes") or []),
+        "reason": "verifier-selected hypothesis differing only by a confusable glyph",
+    })
+    return True
 
 
 def _grade_ungraded_regions(instances: List[InstText]) -> int:
