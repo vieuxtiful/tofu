@@ -119,4 +119,11 @@ describe("groundTruthReading", () => {
     };
     expect(groundTruthReading(inst)).toBeNull();
   });
+
+  it("uses durable Ground Truth attribution after the correction scratch slot changes", () => {
+    const inst = region(null, "RÉPUBLIQUE");
+    inst.source_override = { kind: "ground_truth", text: "RÉPUBLIQUE", icon: "leaf", color: "emerald" };
+    inst.ocr_correction = null;
+    expect(groundTruthReading(inst)).toBe('Ground Truth override: "RÉPUBLIQUE"');
+  });
 });

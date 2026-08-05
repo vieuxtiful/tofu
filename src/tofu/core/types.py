@@ -233,6 +233,7 @@ class InstText:
     translation_decision: Optional[Dict[str, Any]] = None
     translation_history: List[Dict[str, Any]] = field(default_factory=list)
     ocr_correction: Optional[Dict[str, Any]] = None  ## recognition_correct: {applied, original_text/candidate_text, corrected_text?, reason}
+    source_override: Optional[Dict[str, Any]] = None  ## durable applied-source attribution: {kind, text, icon, color, resource}; independent of the correction scratch slot
     recognition_history: Optional[List[Dict[str, Any]]] = None  ## immutable audit trail of engine candidates and accepted/rejected corrections
     ocr_provenance: Optional[Dict[str, Any]] = None  ## multi-provider observations, arbitration and independent verification
     ocr_quality: Optional[Dict[str, Any]] = None  ## deterministic observability assessment; informs review-only OCR/Savor gating

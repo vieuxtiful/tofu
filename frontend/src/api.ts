@@ -271,6 +271,13 @@ export interface InstText {
       [key: string]: unknown;
     } | null;
   } | null;
+  source_override?: {
+    kind: "tofu_arbitration" | "ground_truth" | string;
+    text: string;
+    icon?: "tofu" | "leaf";
+    color?: "amber" | "emerald";
+    resource?: Record<string, unknown> | null;
+  } | null;
   // Arbitration's own reading of the region, scored across every observation
   // rather than the last two. `agrees_with_pairwise` is false when it would
   // have chosen differently from the text actually shown -- the region is

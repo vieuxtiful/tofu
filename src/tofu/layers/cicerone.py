@@ -5120,6 +5120,13 @@ def assess_multi_candidate_ocr(
                     "revision": decision.policy_version,
                 },
             }
+            inst.source_override = {
+                "kind": "tofu_arbitration",
+                "text": result.text,
+                "icon": "tofu",
+                "color": "amber",
+                "resource": inst.ocr_correction["correction_resource"],
+            }
             changed += 1
         elif _promote_verifier_confusion(
             inst, hypothesis_record, primary_text, asset, font_registry,
@@ -5365,6 +5372,13 @@ def _promote_verifier_confusion(
             "kind": "tofu_arbitration",
             "revision": record.get("policy_revision"),
         },
+    }
+    inst.source_override = {
+        "kind": "tofu_arbitration",
+        "text": candidate,
+        "icon": "tofu",
+        "color": "amber",
+        "resource": inst.ocr_correction["correction_resource"],
     }
     _history(inst, {
         "stage": "hypothesis_promotion",

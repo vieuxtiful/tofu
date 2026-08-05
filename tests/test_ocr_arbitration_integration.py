@@ -260,6 +260,11 @@ def test_assessment_applies_only_a_high_margin_visually_supported_correction(
     assert inst.ocr_provenance["selected_backend"] == "alternate"
     assert inst.ocr_correction["applied"] is True
     assert inst.ocr_correction["correction_resource"]["kind"] == "tofu_arbitration"
+    assert inst.source_override == {
+        "kind": "tofu_arbitration", "text": "RÃ‰PUBLIQUE",
+        "icon": "tofu", "color": "amber",
+        "resource": inst.ocr_correction["correction_resource"],
+    }
 
 
 def test_assessment_no_text_alternate_never_deletes_primary(monkeypatch):
@@ -367,6 +372,7 @@ class TestVerifierConfusionPromotion:
         assert inst.ocr_correction["applied"] is True
         assert inst.ocr_correction["original_text"] == "nos rues 4"
         assert inst.ocr_correction["correction_resource"]["kind"] == "tofu_arbitration"
+        assert inst.source_override["text"] == "nos rues!"
         assert inst.recognition_history[-1]["stage"] == "hypothesis_promotion"
 
     def test_whitespace_alone_never_blocks_the_comparison(self):

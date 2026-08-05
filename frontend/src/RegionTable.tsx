@@ -97,6 +97,10 @@ function confColor(conf: number | null): string {
  * as the render condition.
  */
 export function arbitrationReading(inst: InstText): string | null {
+  if (inst.source_override?.kind === "tofu_arbitration"
+      && inst.source_override.text === inst.text && inst.text) {
+    return `ToFU read: "${inst.text}"`;
+  }
   const correction = inst.ocr_correction;
   const legacyTofuReason = correction?.reason === "versioned cross-engine OCR arbitration"
     || correction?.reason === "arbitration selected the independent verifier; difference is a glyph confusion";
@@ -108,6 +112,10 @@ export function arbitrationReading(inst: InstText): string | null {
 }
 
 export function groundTruthReading(inst: InstText): string | null {
+  if (inst.source_override?.kind === "ground_truth"
+      && inst.source_override.text === inst.text && inst.text) {
+    return `Ground Truth override: "${inst.text}"`;
+  }
   const correction = inst.ocr_correction;
   if (!correction?.applied
       || correction.correction_resource?.kind !== "ground_truth"
@@ -602,9 +610,9 @@ export default function RegionTable({
                           onClick={(e) => e.stopPropagation()}
                           className={`w-full rounded-sm bg-transparent px-1 py-0.5 text-xs outline-hidden focus:bg-zinc-200 dark:focus:bg-zinc-800 ${
                             groundTruthReading(inst)
-                              ? "text-emerald-600 dark:text-emerald-400"
+                              ? "source-override-ground-truth text-emerald-600 dark:text-emerald-400"
                               : arbitrationReading(inst)
-                              ? "text-amber-600 dark:text-amber-400"
+                              ? "source-override-tofu text-amber-600 dark:text-amber-400"
                               : "text-zinc-800 dark:text-zinc-200"
                           }`}
                           placeholder="—"
@@ -615,9 +623,9 @@ export default function RegionTable({
                         <div className="min-w-0 px-1 py-0.5">
                           <span className={`block truncate text-xs ${
                             groundTruthReading(inst)
-                              ? "text-emerald-600 dark:text-emerald-400"
+                              ? "source-override-ground-truth rounded-sm px-1 text-emerald-600 dark:text-emerald-400"
                               : arbitrationReading(inst)
-                              ? "text-amber-600 dark:text-amber-400"
+                              ? "source-override-tofu rounded-sm px-1 text-amber-600 dark:text-amber-400"
                               : "text-zinc-700 dark:text-zinc-300"
                           }`} title={inst.text ?? ""}>
                             {inst.text || <span className="text-zinc-600">—</span>}
@@ -775,9 +783,9 @@ export default function RegionTable({
                               placeholder="no source text"
                               className={
                                 groundTruthReading(inst)
-                                  ? "ground-truth-value"
+                                  ? "ground-truth-value source-override-ground-truth"
                                   : arbitrationReading(inst)
-                                  ? "tofu-value"
+                                  ? "tofu-value source-override-tofu"
                                   : ""
                               }
                             />

@@ -2281,6 +2281,22 @@ html.dark .animated-caret-field.has-value { color: #6ee7b7; }
 html.dark .animated-caret-field.ground-truth-value { color: #34d399; }
 .animated-caret-field.tofu-value { color: #d97706; }
 html.dark .animated-caret-field.tofu-value { color: #fbbf24; }
+.source-override-ground-truth,
+.source-override-ground-truth:focus {
+  background: rgba(16, 185, 129, 0.14);
+}
+html.dark .source-override-ground-truth,
+html.dark .source-override-ground-truth:focus {
+  background: rgba(52, 211, 153, 0.14);
+}
+.source-override-tofu,
+.source-override-tofu:focus {
+  background: rgba(217, 119, 6, 0.14);
+}
+html.dark .source-override-tofu,
+html.dark .source-override-tofu:focus {
+  background: rgba(251, 191, 36, 0.14);
+}
 .animated-caret-field.stale-target { border-color: #f87171; background: #fef2f2; }
 html.dark .animated-caret-field.stale-target { border-color: #7f1d1d; background: rgba(69, 10, 10, 0.3); }
 

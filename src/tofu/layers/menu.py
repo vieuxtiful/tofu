@@ -442,6 +442,14 @@ def browse(instances: List[InstText], asset: Any = None,
                         if gt_scope else KNOWN_PLACES_RESOURCE.audit_identity()
                     ),
                 }
+                if gt_scope:
+                    inst.source_override = {
+                        "kind": "ground_truth",
+                        "text": new_text,
+                        "icon": "leaf",
+                        "color": "emerald",
+                        "resource": inst.ocr_correction["correction_resource"],
+                    }
                 inst.text = new_text
                 corrected += 1
             elif inconclusive:
@@ -487,6 +495,14 @@ def browse(instances: List[InstText], asset: Any = None,
                 if gt_scope else KNOWN_PLACES_RESOURCE.audit_identity()
             ),
         }
+        if gt_scope:
+            inst.source_override = {
+                "kind": "ground_truth",
+                "text": match.text,
+                "icon": "leaf",
+                "color": "emerald",
+                "resource": inst.ocr_correction["correction_resource"],
+            }
         inst.text = match.text
         corrected += 1
     return corrected

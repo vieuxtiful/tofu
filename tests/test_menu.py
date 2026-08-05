@@ -94,6 +94,8 @@ class TestBrowse:
         assert resource["kind"] == "ground_truth"
         assert resource["scope"] == "asset"
         assert resource["terms"] == ["湯屋"]
+        assert inst.source_override["kind"] == "ground_truth"
+        assert inst.source_override["text"] == "湯屋"
 
     def test_ground_truth_respects_confidence_and_language(self):
         confident = _inst("周屋", 0.9)
