@@ -11,7 +11,11 @@ import { fontIdentity } from "./doppelganger";
 import { HiLockClosed, HiLockOpen } from "react-icons/hi";
 import { FaSearch } from "react-icons/fa";
 import { PiArrowsMergeBold } from "react-icons/pi";
+import { RiFunctionAiFill, RiFunctionAiLine } from "react-icons/ri";
+import { TbLeafFilled } from "react-icons/tb";
+import type { Theme } from "./theme";
 import "./bbox.css";
+import AnimatedCaretTextarea from "./AnimatedCaretTextarea";
 
 /** capture: bbox/string registry (source text, source lang, OCR, delete).
  *  translate: translation work (target lang, font, target-text expansion,
@@ -62,6 +66,9 @@ interface RegionTableProps {
   onBatchEnd?: () => void;
   bboxColor?: string;
   hideRegionCounter?: boolean;
+  /** Passed rather than read from useTheme(): that hook holds its own state
+   * per caller, so a second copy here would not follow the toggle. */
+  theme?: Theme;
 }
 
 function confColor(conf: number | null): string {
@@ -71,33 +78,42 @@ function confColor(conf: number | null): string {
   return "text-red-400";
 }
 
-/** Where arbitration would have read this region differently.
+/** What ToFU's arbitration read for this region, when it has a reading.
  *
  * Arbitration scores every observation of a region -- each detection pass
- * plus the independent verifier -- while the text actually shown comes from
- * the older pairwise decision. When the two disagree the region keeps the
- * pairwise reading, deliberately: every regression baseline is calibrated
- * against it. The disagreement was being recorded and read by nobody, so
- * there was no way to see whether promoting the hypothesis would help. This
- * puts it in front of whoever is checking the capture, which is the evidence
- * that decision needs.
+ * plus the independent verifier -- and its reading is now loaded into the
+ * manifest rather than merely recorded. This attributes it: the marker says
+ * which text came from ToFU rather than from the recogniser's first pass.
  *
- * Returns null when there is nothing to report, so the caller can use it as
- * the render condition.
+ * The per-signal breakdown (cross_backend, confidence, stability, geometry,
+ * language, glyph, language_model) is deliberately NOT here. Six numbers in
+ * a hover tooltip is a debugging readout, not something a localiser can act
+ * on, and it buried the one line that matters. It stays where it belongs, in
+ * `ocr_provenance.hypothesis.score_breakdown` on the manifest -- written on
+ * every region, exported with the project, and readable whenever a decision
+ * has to be audited.
+ *
+ * Returns null when there is nothing to attribute, so the caller can use it
+ * as the render condition.
  */
-export function hypothesisDissent(inst: InstText): string | null {
-  const hypothesis = inst.ocr_provenance?.hypothesis;
-  if (!hypothesis || hypothesis.agrees_with_pairwise !== false) return null;
-  const signals = Object.entries(hypothesis.score_breakdown ?? {})
-    .filter(([, value]) => value !== null && value !== undefined)
-    .map(([name, value]) => `${name} ${(value as number).toFixed(2)}`);
-  return [
-    `arbitration read this as "${hypothesis.selected_text ?? ""}"`,
-    `shown: "${inst.text ?? ""}" (pairwise decision, kept)`,
-    `scored ${hypothesis.observations_scored} observations`,
-    hypothesis.verified ? "corroborated by the verifier" : "not verified",
-    signals.length ? `signals: ${signals.join(", ")}` : null,
-  ].filter(Boolean).join("\n");
+export function arbitrationReading(inst: InstText): string | null {
+  const correction = inst.ocr_correction;
+  const legacyTofuReason = correction?.reason === "versioned cross-engine OCR arbitration"
+    || correction?.reason === "arbitration selected the independent verifier; difference is a glyph confusion";
+  if (!correction?.applied
+      || (correction.correction_resource?.kind !== "tofu_arbitration" && !legacyTofuReason)
+      || !correction.corrected_text
+      || correction.corrected_text !== inst.text) return null;
+  return `ToFU read: "${inst.text}"`;
+}
+
+export function groundTruthReading(inst: InstText): string | null {
+  const correction = inst.ocr_correction;
+  if (!correction?.applied
+      || correction.correction_resource?.kind !== "ground_truth"
+      || !correction.corrected_text
+      || correction.corrected_text !== inst.text) return null;
+  return `Ground Truth override: "${inst.text}"`;
 }
 
 // column model: label collapses to `short` below `narrowAt` px
@@ -134,7 +150,7 @@ export default function RegionTable({
   mode, regions, selectedId, hoveredId, onSelect, onHover, onTextChange, onTargetChange,
   onDelete, onOcr, onToggleDnt, onTargetLangChange, onSrcLangChange, onFontChange,
   onApplyTargetLang, onMergeRegions, mergeLoading, ocrLoading, languages, defaultTargLang, defaultSrcLang, fontsByLang, familiesByLang, onNeedFonts,
-  lockedLangs, onToggleLangLock, onOrientationToggle, onWordOrderToggle, onFontMatch, fontMatchingId, formerTargLang, targLang, footer, onReorder, onBatchBegin, onBatchEnd, bboxColor, hideRegionCounter,
+  lockedLangs, onToggleLangLock, onOrientationToggle, onWordOrderToggle, onFontMatch, fontMatchingId, formerTargLang, targLang, footer, onReorder, onBatchBegin, onBatchEnd, bboxColor, hideRegionCounter, theme,
 }: RegionTableProps) {
   const COLS = ALL_COLS.filter((c) => MODE_COLS[mode].includes(c.key));
   const rowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
@@ -273,7 +289,7 @@ export default function RegionTable({
   };
 
   return (
-    <div className={`bezier-card soft-shadow flex h-full flex-col rounded-lg bg-white/60 dark:bg-zinc-900/60 ${footer ? "overflow-visible" : "overflow-hidden"}`}>
+    <div className={`bezier-card soft-shadow region-table-card flex h-full flex-col rounded-lg bg-white/60 dark:bg-zinc-900/60 ${footer || mode === "translate" ? "overflow-visible" : "overflow-hidden"}${hoveredId ? " region-hovering" : ""}`}>
       {mode === "translate" && (
         <h2 className="subtext mx-3 mb-3 mt-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
           <BsTranslate size={14} />
@@ -338,7 +354,7 @@ export default function RegionTable({
       )}
 
       {/* table */}
-      <div ref={scrollRef} className="bbox-canvas-scroll flex-1 min-h-0">
+      <div ref={scrollRef} className={`bbox-canvas-scroll flex-1 min-h-0${mode === "translate" ? " region-table-scroll" : ""}`}>
        <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
           <colgroup>
             {COLS.map((c) => (
@@ -393,7 +409,7 @@ export default function RegionTable({
                     // sits OUTSIDE the sort button on purpose: it is a
                     // readout, and clicking a number to re-sort the table by
                     // something else reads as a bug.
-                    <span className="flex items-center gap-2">
+                    <span className="flex items-center gap-1">
                       <button
                         onClick={() => {
                           if (sortKey === c.key) {
@@ -520,6 +536,8 @@ export default function RegionTable({
                     onMouseEnter={() => onHover(inst.id)}
                     onMouseLeave={() => onHover(null)}
                     className={`cursor-pointer border-b border-zinc-200 dark:border-zinc-800/50 ${
+                      mode === "translate" ? "region-row " : ""
+                    }${
                       draggedId === inst.id
                         ? "opacity-40"
                         : dragOverId === inst.id
@@ -557,9 +575,19 @@ export default function RegionTable({
                             <BookmarkCheck size={11} className="shrink-0 text-cyan-600 dark:text-cyan-400" />
                           </span>
                         )}
-                        {hypothesisDissent(inst) && (
-                          <span title={hypothesisDissent(inst)!}>
-                            <ScanText size={11} className="shrink-0 text-amber-600 dark:text-amber-400" />
+                        {groundTruthReading(inst) && (
+                          <span title={groundTruthReading(inst)!}>
+                            <TbLeafFilled size={11} className="shrink-0 text-emerald-600 dark:text-emerald-400" />
+                          </span>
+                        )}
+                        {!groundTruthReading(inst) && arbitrationReading(inst) && (
+                          <span title={arbitrationReading(inst)!}>
+                            {/* ToFU's own mark, in the amber that already
+                                flags this row, so the attribution reads as
+                                one indicator rather than two. */}
+                            {theme === "dark"
+                              ? <RiFunctionAiFill size={11} className="shrink-0 text-amber-600 dark:text-amber-400" />
+                              : <RiFunctionAiLine size={11} className="shrink-0 text-amber-600 dark:text-amber-400" />}
                           </span>
                         )}
                       </span>
@@ -572,14 +600,26 @@ export default function RegionTable({
                           onFocus={onBatchBegin}
                           onBlur={onBatchEnd}
                           onClick={(e) => e.stopPropagation()}
-                          className="w-full rounded-sm bg-transparent px-1 py-0.5 text-xs text-zinc-800 outline-hidden focus:bg-zinc-200 dark:text-zinc-200 dark:focus:bg-zinc-800"
+                          className={`w-full rounded-sm bg-transparent px-1 py-0.5 text-xs outline-hidden focus:bg-zinc-200 dark:focus:bg-zinc-800 ${
+                            groundTruthReading(inst)
+                              ? "text-emerald-600 dark:text-emerald-400"
+                              : arbitrationReading(inst)
+                              ? "text-amber-600 dark:text-amber-400"
+                              : "text-zinc-800 dark:text-zinc-200"
+                          }`}
                           placeholder="—"
                         />
                       ) : (
                         // source (read-only outside Capture) with target
                         // text stacked beneath — click to expand and edit
                         <div className="min-w-0 px-1 py-0.5">
-                          <span className="block truncate text-xs text-zinc-700 dark:text-zinc-300" title={inst.text ?? ""}>
+                          <span className={`block truncate text-xs ${
+                            groundTruthReading(inst)
+                              ? "text-emerald-600 dark:text-emerald-400"
+                              : arbitrationReading(inst)
+                              ? "text-amber-600 dark:text-amber-400"
+                              : "text-zinc-700 dark:text-zinc-300"
+                          }`} title={inst.text ?? ""}>
                             {inst.text || <span className="text-zinc-600">—</span>}
                           </span>
                           {inst.semantic_assignment && inst.semantic_assignment.semantic_region_id && inst.semantic_assignment.semantic_region_id !== inst.id ? (
@@ -724,9 +764,23 @@ export default function RegionTable({
                             <p className="subtext mb-1 text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-600">
                               source · {effectiveSrc ? langDisplayName(effectiveSrc) : "unknown"}
                             </p>
-                            <div className="rounded-sm bg-white px-2 py-1.5 text-xs text-zinc-700 dark:bg-zinc-900 dark:text-zinc-300">
-                              {inst.text || <span className="text-zinc-600">no source text</span>}
-                            </div>
+                            <AnimatedCaretTextarea
+                              label={`Source text for ${inst.id}`}
+                              value={inst.text ?? ""}
+                              onChange={(text) => onTextChange(inst.id, text)}
+                              onFocus={onBatchBegin}
+                              onBlur={onBatchEnd}
+                              onClick={(event) => event.stopPropagation()}
+                              rows={1}
+                              placeholder="no source text"
+                              className={
+                                groundTruthReading(inst)
+                                  ? "ground-truth-value"
+                                  : arbitrationReading(inst)
+                                  ? "tofu-value"
+                                  : ""
+                              }
+                            />
                           </div>
                           <div>
                             <div className="mb-1 flex items-center justify-between">
@@ -768,12 +822,12 @@ export default function RegionTable({
                               </div>
                             </div>
                             <div className="relative">
-                              <textarea
+                              <AnimatedCaretTextarea
+                                label={`Target text for ${inst.id}`}
                                 value={inst.target_text ?? ""}
                                 onFocus={onBatchBegin}
                                 onBlur={onBatchEnd}
-                                onChange={(e) => {
-                                  const val = e.target.value;
+                                onChange={(val) => {
                                   // Flag a wrong-language entry, never delete it.
                                   // This used to clear the field on mismatch,
                                   // which threw away real typing on a heuristic.
@@ -788,12 +842,12 @@ export default function RegionTable({
                                 onClick={(e) => e.stopPropagation()}
                                 rows={1}
                                 placeholder="enter translation…"
-                                className={`w-full resize-y rounded border px-2 py-1.5 text-xs outline-hidden ${
+                                className={`${
                                   formerTargLang && inst.target_text && inst.target_language === formerTargLang
-                                    ? "border-red-400 bg-red-50 dark:border-red-800/60 dark:bg-red-950/30"
-                                    : "border-zinc-300 bg-white dark:border-zinc-800 dark:bg-zinc-900"
-                                } focus:border-cyan-600 dark:focus:border-cyan-800 ${
-                                  inst.target_text ? "text-emerald-600 dark:text-emerald-300" : "text-zinc-600 dark:text-zinc-400"
+                                    ? "stale-target"
+                                    : ""
+                                } ${
+                                  inst.target_text ? "has-value" : ""
                                 }`}
                               />
                               {formerTargLang && inst.target_text && inst.target_language === formerTargLang && (

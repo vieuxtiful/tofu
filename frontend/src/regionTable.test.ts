@@ -1,21 +1,22 @@
-// 🍢 ToFU — the arbitration hypothesis has to reach a reader
+// 🍢 ToFU — attributing a reading to arbitration
 //
-// Arbitration scores every observation of a region and records what it would
-// have chosen. The region keeps the older pairwise reading on purpose, so the
-// hypothesis is evidence rather than a decision -- but it was written and
-// read by nothing at all, in the server, the client, or any test. These pin
-// the one thing that makes it reviewable: a disagreement produces a message,
-// and agreement produces silence.
+// Arbitration scores every observation of a region and its reading is now
+// loaded into the manifest rather than only recorded. The workspace marks
+// which text came from ToFU and says nothing else: the per-signal breakdown
+// is six numbers a localiser cannot act on, and it buried the one line that
+// could be. Those stay on ocr_provenance for audit.
 
 import { describe, it, expect } from "vitest";
 import { InstText } from "./api";
-import { hypothesisDissent } from "./RegionTable";
+import { arbitrationReading, groundTruthReading } from "./RegionTable";
 
-function region(hypothesis: InstText["ocr_provenance"] extends null ? never : NonNullable<InstText["ocr_provenance"]>["hypothesis"]): InstText {
+type Hypothesis = NonNullable<NonNullable<InstText["ocr_provenance"]>["hypothesis"]>;
+
+function region(hypothesis: Hypothesis | null, text = "nos rues 4"): InstText {
   return {
     id: "r2",
     bounding_box: { x: 0, y: 0, width: 10, height: 10 },
-    text: "nos rues 4",
+    text,
     target_text: null,
     confidence: 0.9,
     detected_language: "fr",
@@ -23,10 +24,16 @@ function region(hypothesis: InstText["ocr_provenance"] extends null ? never : No
     dnt: false,
     target_language: null,
     ocr_provenance: hypothesis ? { hypothesis } : null,
+    ocr_correction: hypothesis?.promoted ? {
+      applied: true,
+      original_text: "nos rues 4",
+      corrected_text: text,
+      correction_resource: { kind: "tofu_arbitration", revision: "test" },
+    } : null,
   } as InstText;
 }
 
-const DISSENTING = {
+const BASE = {
   verified: true,
   observations_scored: 4,
   selected_text: "nos rues !",
@@ -36,39 +43,80 @@ const DISSENTING = {
   agrees_with_pairwise: false,
 };
 
-describe("hypothesisDissent", () => {
-  it("reports the reading arbitration would have chosen instead", () => {
-    const message = hypothesisDissent(region(DISSENTING));
-    expect(message).not.toBeNull();
-    // Both readings, so the disagreement can be judged without opening
-    // anything: what it wanted, and what is actually shown.
-    expect(message).toContain('arbitration read this as "nos rues !"');
-    expect(message).toContain('shown: "nos rues 4"');
+describe("arbitrationReading", () => {
+  it("does not misrepresent an unapplied arbitration proposal as the manifest reading", () => {
+    expect(arbitrationReading(region(BASE))).toBeNull();
   });
 
-  it("carries the per-signal breakdown, skipping signals that had no value", () => {
-    const message = hypothesisDissent(region(DISSENTING))!;
-    expect(message).toContain("cross_backend 0.82");
-    expect(message).toContain("stability 1.00");
-    // language_model is null whenever no n-gram artifact is installed. A
-    // signal that did not weigh in must not be shown as if it scored zero.
-    expect(message).not.toContain("language_model");
+  it("carries none of the per-signal breakdown", () => {
+    const promoted = { ...BASE, agrees_with_pairwise: true, promoted: true };
+    const message = arbitrationReading(region(promoted, "nos rues !"))!;
+    for (const signal of ["cross_backend", "stability", "language_model",
+                          "observations", "verifier", "pairwise"]) {
+      expect(message).not.toContain(signal);
+    }
+    expect(message.split("\n")).toHaveLength(1);
   });
 
-  it("says whether the verifier corroborated the reading", () => {
-    expect(hypothesisDissent(region(DISSENTING))).toContain("corroborated by the verifier");
-    expect(hypothesisDissent(region({ ...DISSENTING, verified: false })))
-      .toContain("not verified");
+  it("attributes a promoted reading, which now agrees with the shown text", () => {
+    // promotion sets agrees_with_pairwise true, so the old disagreement
+    // condition would have gone silent on exactly the regions ToFU decided
+    const promoted = { ...BASE, agrees_with_pairwise: true, promoted: true,
+                       selected_text: "nos rues !" };
+    expect(arbitrationReading(region(promoted, "nos rues !")))
+      .toBe('ToFU read: "nos rues !"');
   });
 
-  it("is silent when the hypothesis agrees, so only disagreement is marked", () => {
-    expect(hypothesisDissent(region({ ...DISSENTING, agrees_with_pairwise: true }))).toBeNull();
+  it("uses the final manifest text after later normalization", () => {
+    const promoted = { ...BASE, agrees_with_pairwise: true, promoted: true };
+    expect(arbitrationReading(region(promoted, "nos rues !")))
+      .toBe('ToFU read: "nos rues !"');
+  });
+
+  it("does not attribute a later correction to an older promoted hypothesis", () => {
+    const promoted = { ...BASE, agrees_with_pairwise: true, promoted: true };
+    const inst = region(promoted, "湯屋下島濁河温泉");
+    inst.ocr_correction = {
+      applied: true,
+      original_text: "周屋下島周河温泉",
+      corrected_text: "湯屋下島濁河温泉",
+      correction_resource: { kind: "gazetteer" },
+    };
+    expect(arbitrationReading(inst)).toBeNull();
+  });
+
+  it("is silent when arbitration simply agreed and changed nothing", () => {
+    expect(arbitrationReading(region({ ...BASE, agrees_with_pairwise: true }))).toBeNull();
   });
 
   it("is silent for a region that was never arbitrated", () => {
-    // Every region detected before the hypothesis wiring, and every region
-    // under an 'off' policy, arrives with no hypothesis at all.
-    expect(hypothesisDissent(region(null))).toBeNull();
-    expect(hypothesisDissent(region(undefined))).toBeNull();
+    expect(arbitrationReading(region(null))).toBeNull();
+  });
+
+  it("is silent when arbitration produced no reading", () => {
+    expect(arbitrationReading(region({ ...BASE, selected_text: "" }))).toBeNull();
+  });
+});
+
+describe("groundTruthReading", () => {
+  it("attributes an applied end-user Ground Truth override", () => {
+    const inst = region(null, "RÉPUBLIQUE");
+    inst.ocr_correction = {
+      applied: true,
+      original_text: "REPUBLIOUE",
+      corrected_text: "RÉPUBLIQUE",
+      correction_resource: { kind: "ground_truth", scope: "asset", terms: ["RÉPUBLIQUE"] },
+    };
+    expect(groundTruthReading(inst)).toBe('Ground Truth override: "RÉPUBLIQUE"');
+  });
+
+  it("is silent for a review-only Ground Truth proposal", () => {
+    const inst = region(null);
+    inst.ocr_correction = {
+      applied: false,
+      candidate_text: "nos rues !",
+      correction_resource: { kind: "ground_truth", scope: "project" },
+    };
+    expect(groundTruthReading(inst)).toBeNull();
   });
 });

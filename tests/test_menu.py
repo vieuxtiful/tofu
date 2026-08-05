@@ -85,6 +85,28 @@ class TestBrowse:
         assert inst.text == "下り"
         assert inst.ocr_correction is None
 
+    def test_user_two_char_ground_truth_corrects_and_is_audited(self):
+        inst = _inst("周屋", 0.4)
+        n = browse([inst], ground_truth_pool=[("湯屋", "ja", "asset")])
+        assert n == 1
+        assert inst.text == "湯屋"
+        resource = inst.ocr_correction["correction_resource"]
+        assert resource["kind"] == "ground_truth"
+        assert resource["scope"] == "asset"
+        assert resource["terms"] == ["湯屋"]
+
+    def test_ground_truth_respects_confidence_and_language(self):
+        confident = _inst("周屋", 0.9)
+        wrong_language = _inst("周屋", 0.2, lang="en")
+        pool = [("湯屋", "ja", "project")]
+        assert browse([confident], ground_truth_pool=pool) == 0
+        assert browse([wrong_language], ground_truth_pool=pool) == 0
+
+    def test_one_character_ground_truth_never_fuzzy_replaces(self):
+        inst = _inst("周", 0.1)
+        assert browse([inst], ground_truth_pool=[("湯", "ja", "asset")]) == 0
+        assert inst.text == "周"
+
 
 class TestConsultMenuSubstring:
     """composite reads: known names aligned INSIDE a longer text."""

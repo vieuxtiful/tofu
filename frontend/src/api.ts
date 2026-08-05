@@ -25,6 +25,7 @@ export interface ProjectAsset {
   is_active: number;
   asset_url?: string | null;
   has_manifest?: boolean;
+  ground_truth: string[];
 }
 
 export type AssetKind = "image" | "video";
@@ -91,6 +92,7 @@ export interface Project {
   created_at: number;
   updated_at: number;
   archived_at?: number | null;
+  ground_truth: string[];
   asset_count?: number;
   snapshot_count?: number;
   assets?: ProjectAsset[];
@@ -254,6 +256,21 @@ export interface InstText {
   translation_decision?: TranslationDecision | null;
   translation_history?: TranslationDecision[];
   recognition_history?: Array<{ stage: string; engine: string; candidate_text?: string; candidate_confidence?: number; primary_text?: string; primary_confidence?: number; accepted: boolean; reason: string }> | null;
+  ocr_correction?: {
+    applied: boolean;
+    original_text?: string;
+    candidate_text?: string;
+    corrected_text?: string;
+    reason?: string;
+    policy_version?: string;
+    correction_resource?: {
+      kind?: string;
+      scope?: string;
+      terms?: string[];
+      revision?: string;
+      [key: string]: unknown;
+    } | null;
+  } | null;
   // Arbitration's own reading of the region, scored across every observation
   // rather than the last two. `agrees_with_pairwise` is false when it would
   // have chosen differently from the text actually shown -- the region is
@@ -269,8 +286,13 @@ export interface InstText {
       auto_accepted: boolean;
       review_required: boolean;
       reason_codes?: string[];
+      // Kept for audit, not for display: six per-signal numbers are a
+      // debugging readout, and the workspace shows only the reading.
       score_breakdown?: Record<string, number | null>;
       agrees_with_pairwise: boolean;
+      // set when arbitration's reading was taken into the manifest, so an
+      // attributed region is distinguishable from one that merely differs
+      promoted?: boolean;
     } | null;
   } | null;
   ocr_quality?: OcrQuality | null;
@@ -833,13 +855,26 @@ export async function getProject(id: string): Promise<Project> {
 
 export async function updateProject(
   id: string,
-  updates: Partial<{ name: string; target_lang: string; source_lang: string; archived: boolean }>
+  updates: Partial<{ name: string; target_lang: string; source_lang: string; ground_truth: string[]; archived: boolean }>
 ): Promise<Project> {
   return json(
     await fetch(`/api/projects/${encodeURIComponent(id)}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(updates),
+    })
+  );
+}
+
+export async function updateAssetGroundTruth(
+  assetId: string,
+  groundTruth: string[]
+): Promise<ProjectAsset> {
+  return json(
+    await fetch(`/api/assets/${encodeURIComponent(assetId)}/ground-truth`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ground_truth: groundTruth }),
     })
   );
 }
@@ -1245,12 +1280,13 @@ export async function renderAsset(
 }
 
 export async function renderPreview(
-  assetId: string, targLang: string, manifest: TextManifest, signal?: AbortSignal, fastPath = false
+  assetId: string, targLang: string, manifest: TextManifest, signal?: AbortSignal, fastPath = false,
+  showLocalizedText = true,
 ): Promise<{ output_url: string; text_manifest: TextManifest; cleanse_cache_key: string }> {
   return json(await fetch("/api/preview/render", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ asset_id: assetId, targ_lang: targLang, manifest, fast_path: fastPath }),
+    body: JSON.stringify({ asset_id: assetId, targ_lang: targLang, manifest, fast_path: fastPath, show_localized_text: showLocalizedText }),
     signal,
   }));
 }
@@ -1262,7 +1298,16 @@ export async function previewCandidateLocalized(assetId: string, candidateId: st
 }
 
 export interface InpaintPatch { id: string; bbox: BBox; polygon: number[][]; points?: number[][]; mode: string; strategy?: string; radius?: number; hardness?: number; candidate_id?: string; }
-export interface TreatmentRequest { polygon?: number[][]; points?: number[][]; mode?: "blur"; radius?: number; hardness?: number; blur_strength?: number; }
+export interface TreatmentRequest {
+  polygon?: number[][];
+  points?: number[][];
+  mode?: "blur" | "heal" | "clone" | "context_fill";
+  radius?: number;
+  hardness?: number;
+  blur_strength?: number;
+  opacity?: number;
+  clone_source?: number[];
+}
 export async function createInpaintPatch(assetId: string, treatment: TreatmentRequest, manifest?: TextManifest) {
   return json(await fetch("/api/inpaint", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ asset_id: assetId, ...treatment, manifest }) })) as Promise<{ id: string; bbox: BBox; patches: InpaintPatch[]; revision: string }>;
 }

@@ -29,6 +29,7 @@ import os
 import re
 import unicodedata
 from dataclasses import asdict
+from itertools import permutations
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
@@ -1359,6 +1360,60 @@ def plan_substitution(
     if not phrase:
         base["warnings"].append("Enter the complete target phrase before planning placement.")
         return base
+
+    # Unspaced/CJK targets (ko/ja/zh/th/km/lo/my) have no word delimiter, so
+    # the glossary-verified token alignment below cannot segment the target
+    # phrase back to source regions.  The user's SlotEditor arrangement is
+    # encoded in the concatenated target_text: match it against the
+    # permutations of per-region translations, then tiebreak with the
+    # typology-derived order from suggest_plating.
+    if _script_class(phrase) == "unspaced":
+        by_id = {inst.id: inst for inst in manifest.instances}
+        region_texts = {
+            region_id: (by_id[region_id].target_text or "").strip()
+            for region_id in unit.region_ids if region_id in by_id
+        }
+        missing = [rid for rid in unit.region_ids if not region_texts.get(rid)]
+        if missing:
+            base["warnings"].append(
+                f"Translate every region before plating; missing target text for {', '.join(missing)}."
+            )
+            return base
+        candidates = [
+            list(order) for order in permutations(unit.region_ids)
+            if "".join(region_texts[rid] for rid in order) == phrase
+        ]
+        if not candidates:
+            base["warnings"].append(
+                "The target phrase does not match any arrangement of the per-region translations; "
+                "reorder the slots in the Basil panel to match your typed phrase."
+            )
+            return base
+        suggestion = unit.suggestion or {}
+        suggested_order = suggestion.get("region_order") or unit.region_ids
+        if tuple(suggested_order) in {tuple(c) for c in candidates}:
+            chosen = list(suggested_order)
+        else:
+            chosen = candidates[0]
+        assignments: List[Dict[str, Any]] = []
+        for anchor_id, region_id in zip(unit.region_ids, chosen):
+            assignments.append({
+                "region_id": region_id,
+                "text": region_texts[region_id],
+                "target_positions": [],
+                "method": "manual_slot_arrangement",
+                "confidence": 0.9,
+                "anchor_id": anchor_id,
+            })
+        base.update({
+            "assignments": assignments,
+            "target_region_order": chosen,
+            "method": "manual_slot_arrangement",
+            "confidence": 0.9,
+            "review_required": False,
+        })
+        return base
+
     effective = external_lexicon if external_lexicon is not None else _GLOSSARY
     source_locale, target_locale = _locale(manifest.src_lang), _locale(targ_lang)
     lexicon = effective.get((source_locale, target_locale))

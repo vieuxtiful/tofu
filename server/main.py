@@ -584,6 +584,9 @@ class DetectRequest(BaseModel):
     gpu: Optional[bool] = None
     languages: Optional[List[str]] = None  ## source-language hints (tofu codes)
 
+class GroundTruthUpdate(BaseModel):
+    ground_truth: List[str] = []
+
 class OcrRegionRequest(BaseModel):
     asset_id: str
     bbox: Dict[str, int]
@@ -618,6 +621,9 @@ class PreviewRenderRequest(BaseModel):
     # Garnish/treatment controls do not alter scene interpretation or the
     # Cleanse cache key.  Their preview can safely skip that expensive pass.
     fast_path: bool = False
+    # Workspace-only inspection control. It never changes the manifest or
+    # final render; Cleanup can expose the patched Cleanse base directly.
+    show_localized_text: bool = True
 
 class CandidatePreviewRequest(BaseModel):
     manifest: Optional[Dict[str, Any]] = None
@@ -631,6 +637,8 @@ class InpaintRequest(BaseModel):
     radius: int = 18
     hardness: float = 0.85
     blur_strength: float = 0.5
+    opacity: float = 1.0
+    clone_source: Optional[List[int]] = None
     # The localized canvas can be ahead of autosave.  Supplying this snapshot
     # keeps manual treatment on the exact same Cleanse base as the preview,
     # without mutating the stored manifest.
@@ -663,6 +671,7 @@ class ProjectUpdate(BaseModel):
     name: Optional[str] = None
     target_lang: Optional[str] = None
     source_lang: Optional[str] = None
+    ground_truth: Optional[List[str]] = None
     archived: Optional[bool] = None
 
 class SnapshotCreate(BaseModel):
@@ -1657,6 +1666,10 @@ def get_project(pid: str):
 def update_project(pid: str, req: ProjectUpdate):
     project = db.update_project(
         pid, name=req.name, target_lang=req.target_lang, source_lang=req.source_lang,
+        ground_truth=(
+            _normalize_ground_truth(req.ground_truth)
+            if req.ground_truth is not None else None
+        ),
         archived=req.archived,
     )
     if project is None:
@@ -1842,6 +1855,20 @@ def delete_project_asset(pid: str, asset_id: str):
     return {"ok": True}
 
 
+@app.patch("/api/assets/{asset_id}/ground-truth")
+def update_asset_ground_truth(asset_id: str, req: GroundTruthUpdate):
+    asset = db.update_asset_ground_truth(
+        asset_id, _normalize_ground_truth(req.ground_truth)
+    )
+    if asset is None:
+        raise HTTPException(404, f"asset '{asset_id}' is not linked to a project")
+    db.log_event(
+        asset["project_id"], "ground-truth",
+        f"updated {len(asset['ground_truth'])} asset Ground Truth term(s) for {asset_id}",
+    )
+    return asset
+
+
 @app.delete("/api/snapshots/{sid}")
 def delete_snapshot(sid: int):
     snap = db.get_snapshot(sid)
@@ -1873,6 +1900,36 @@ def activate_asset(pid: str, asset_id: str):
 
 
 # --- detect + manifest CRUD ---
+
+def _normalize_ground_truth(values: Optional[List[str]]) -> List[str]:
+    """Whitespace-delimited, stable, exact-Unicode term normalization."""
+    result: List[str] = []
+    seen = set()
+    for value in values or []:
+        for term in str(value).split():
+            if term and term not in seen:
+                seen.add(term)
+                result.append(term)
+    return result
+
+
+def _ground_truth_pool(asset_id: str, lang: Optional[str]) -> List[tuple]:
+    """Effective project+asset pool, with asset scope winning duplicates."""
+    pid = db.project_for_asset(asset_id)
+    project = db.get_project(pid) if pid else None
+    if not project:
+        return []
+    effective: Dict[str, str] = {
+        term: "project" for term in _normalize_ground_truth(project.get("ground_truth"))
+    }
+    active = next(
+        (item for item in project.get("assets", []) if item["asset_id"] == asset_id),
+        None,
+    )
+    for term in _normalize_ground_truth(active.get("ground_truth") if active else None):
+        effective[term] = "asset"
+    source_lang = lang or project.get("source_lang")
+    return [(term, source_lang, scope) for term, scope in effective.items()]
 
 def _project_lang_hints(asset_id: str) -> Optional[List[str]]:
     """source-language priority protection: when the asset's project has a
@@ -1920,6 +1977,9 @@ def detect(req: DetectRequest):
     manifest = cicerone.detect(
         str(path), info, backend=backend, scene_regions=scene_regions,
         languages=hints,
+        ground_truth_pool=_ground_truth_pool(
+            req.asset_id, hints[0] if hints else None
+        ),
         font_registry=get_validator().font_registry,
     )
     manifest.src_lang = _infer_src_lang(manifest)
@@ -2081,6 +2141,9 @@ def detect_stream(
                         str(path), asset_info=info, backend=backend,
                         languages=list(lang_hints) if lang_hints else None,
                         scene_regions=regions,
+                        ground_truth_pool=_ground_truth_pool(
+                            asset_id, lang_hints[0] if lang_hints else None
+                        ),
                         font_registry=get_validator().font_registry,
                         on_stage=events.put,
                     )
@@ -3122,7 +3185,8 @@ def inpaint(req: InpaintRequest):
         crop, bbox, strategy = make_patch(
             base, [tuple(p) for p in req.polygon], req.mode,
             [tuple(p) for p in req.points], req.radius, req.hardness,
-            req.blur_strength,
+            req.blur_strength, req.opacity,
+            tuple(req.clone_source) if req.clone_source and len(req.clone_source) == 2 else None,
         )
         patch_id = uuid.uuid4().hex[:12]
         filename = f"{req.asset_id}.patch-{patch_id}.png"
@@ -3132,6 +3196,7 @@ def inpaint(req: InpaintRequest):
                         "polygon": req.polygon, "points": req.points,
                         "mode": req.mode, "strategy": strategy,
                         "radius": req.radius, "hardness": req.hardness,
+                        "opacity": req.opacity, "clone_source": req.clone_source,
                         "parent_revision": _patch_revision(req.asset_id)})
         _archive_patches(req.asset_id, patches)
         _patch_index(req.asset_id).write_text(json.dumps(patches), encoding="utf-8")
@@ -3282,9 +3347,12 @@ def preview_render(req: PreviewRenderRequest):
             manifest = scene.analyze(str(path), manifest)
         cleansed = _cleansed_base(req.asset_id, manifest)
         patched = _composite_patches(req.asset_id, cleansed)
-        with _matched_faces_applied(manifest):
-            localized = scribe.render(patched, manifest, req.targ_lang, font_registry=get_validator().font_registry)
-        localized = garnish.apply(localized, manifest, patched, get_validator().font_registry)
+        if req.show_localized_text:
+            with _matched_faces_applied(manifest):
+                localized = scribe.render(patched, manifest, req.targ_lang, font_registry=get_validator().font_registry)
+            localized = garnish.apply(localized, manifest, patched, get_validator().font_registry)
+        else:
+            localized = patched.copy()
         if localized is None or not hasattr(localized, "save"):
             raise RuntimeError("preview produced no image")
         # Preview requests can overlap while an editor drags a control.  A
@@ -3298,6 +3366,7 @@ def preview_render(req: PreviewRenderRequest):
             "manifest": jsonable(manifest),
             "patch_revision": _patch_revision(req.asset_id),
             "cleanse_cache_key": _cleanse_cache_key(req.asset_id, manifest),
+            "show_localized_text": req.show_localized_text,
         }
         version = hashlib.sha256(
             json.dumps(fingerprint, sort_keys=True, default=str).encode("utf-8")

@@ -259,6 +259,7 @@ def test_assessment_applies_only_a_high_margin_visually_supported_correction(
     assert inst.ocr_provenance["decision"] == "accept"
     assert inst.ocr_provenance["selected_backend"] == "alternate"
     assert inst.ocr_correction["applied"] is True
+    assert inst.ocr_correction["correction_resource"]["kind"] == "tofu_arbitration"
 
 
 def test_assessment_no_text_alternate_never_deletes_primary(monkeypatch):
@@ -365,6 +366,7 @@ class TestVerifierConfusionPromotion:
         assert inst.text == "nos rues!"
         assert inst.ocr_correction["applied"] is True
         assert inst.ocr_correction["original_text"] == "nos rues 4"
+        assert inst.ocr_correction["correction_resource"]["kind"] == "tofu_arbitration"
         assert inst.recognition_history[-1]["stage"] == "hypothesis_promotion"
 
     def test_whitespace_alone_never_blocks_the_comparison(self):
@@ -424,3 +426,62 @@ class TestVerifierConfusionPromotion:
         assert _promote_verifier_confusion(inst, record, "nos rues 4") is True
         assert record["agrees_with_pairwise"] is True
         assert record["promoted"] is True
+
+    def test_a_trailing_dash_the_verifier_does_not_see_is_dropped(self):
+        """The artifact class that raised the risk flag in the first place.
+
+        japan-subs r2 read '御獄-' where the sign says '御嶽': a spurious
+        hyphen AND a wrong kanji. An equal-length comparison refused it
+        outright, so neither error was addressed.
+        """
+        inst = InstText("r2", BBox(0, 0, 60, 30), text="御嶽-", detected_language="ja")
+        record = self._record(selected_text="御嶽")
+        assert _promote_verifier_confusion(inst, record, "御嶽-") is True
+        assert inst.text == "御嶽"
+
+    def test_an_untabled_substitution_needs_a_second_opinion(self, monkeypatch):
+        """Rendering the two readings is a veto, not a mandate.
+
+        Measured on japan-subs r2, worst margin over five covering faces:
+        the correct 御嶽 scores +0.0215 and the plainly wrong 御海 scores
+        +0.0199. At sign scale dense kanji share a silhouette, so the ink
+        cannot authorise a substitution by itself and the language model
+        has to agree. With no n-gram artifact installed -- the default --
+        that means refusing.
+        """
+        import tofu.layers.cicerone as cic
+
+        monkeypatch.setattr(cic, "_verifier_fits_the_ink",
+                            lambda *a, **k: True)  # ink says yes
+        inst = InstText("r2", BBox(0, 0, 60, 30), text="御獄", detected_language="ja")
+        record = self._record(selected_text="御嶽")
+        assert _promote_verifier_confusion(inst, record, "御獄") is False
+        assert inst.text == "御獄"
+
+    def test_an_untabled_substitution_promotes_when_both_agree(self, monkeypatch):
+        import tofu.layers.cicerone as cic
+
+        monkeypatch.setattr(cic, "_verifier_fits_the_ink", lambda *a, **k: True)
+        monkeypatch.setattr(cic, "_language_model_prefers", lambda *a, **k: True)
+        inst = InstText("r2", BBox(0, 0, 60, 30), text="御獄-", detected_language="ja")
+        record = self._record(selected_text="御嶽")
+        assert _promote_verifier_confusion(inst, record, "御獄-") is True
+        assert inst.text == "御嶽"
+
+    def test_the_ink_can_still_veto_what_the_model_likes(self, monkeypatch):
+        import tofu.layers.cicerone as cic
+
+        monkeypatch.setattr(cic, "_verifier_fits_the_ink", lambda *a, **k: False)
+        monkeypatch.setattr(cic, "_language_model_prefers", lambda *a, **k: True)
+        inst = InstText("r2", BBox(0, 0, 60, 30), text="御獄", detected_language="ja")
+        assert _promote_verifier_confusion(inst, self._record(selected_text="御嶽"),
+                                           "御獄") is False
+
+    def test_two_differing_characters_are_never_promoted(self, monkeypatch):
+        import tofu.layers.cicerone as cic
+
+        monkeypatch.setattr(cic, "_verifier_fits_the_ink", lambda *a, **k: True)
+        monkeypatch.setattr(cic, "_language_model_prefers", lambda *a, **k: True)
+        inst = InstText("r2", BBox(0, 0, 60, 30), text="御獄", detected_language="ja")
+        assert _promote_verifier_confusion(inst, self._record(selected_text="小坂"),
+                                           "御獄") is False

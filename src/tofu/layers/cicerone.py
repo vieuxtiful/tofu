@@ -3603,6 +3603,7 @@ def detect(
     savor: bool = True,
     wasabi: bool = True,
     menu: bool = True,
+    ground_truth_pool: Optional[List[tuple]] = None,
     font_registry: Optional[Any] = None,
     on_stage: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> TextManifest:
@@ -3959,7 +3960,8 @@ def detect(
     # generation has settled and before any correction stage mutates text.
     _stage({"stage": "arbitration", "status": "running"})
     replaced = assess_multi_candidate_ocr(
-        asset, manifest.instances, scene_regions, ocr_assessment_policy
+        asset, manifest.instances, scene_regions, ocr_assessment_policy,
+        font_registry=font_registry,
     )
     _stage({"stage": "arbitration", "status": "complete", "corrected": replaced})
 
@@ -4026,8 +4028,11 @@ def detect(
         try:
             from tofu.layers.menu import browse
             _stage({"stage": "menu", "status": "running"})
-            matched = browse(manifest.instances, asset=asset,
-                             font_registry=font_registry)
+            matched = browse(
+                manifest.instances, asset=asset,
+                font_registry=font_registry,
+                ground_truth_pool=ground_truth_pool,
+            )
             _stage({"stage": "menu", "status": "complete", "corrected": matched})
         except Exception:
             pass
@@ -4803,6 +4808,7 @@ def assess_multi_candidate_ocr(
     instances: List[InstText],
     scene_regions: Optional[List[SceneRegion]] = None,
     policy: Optional[OCRAssessmentPolicy] = None,
+    font_registry: Optional[Any] = None,
 ) -> int:
     """Arbitrate risky settled reads against a fresh independent OCR pass.
 
@@ -5109,9 +5115,15 @@ def assess_multi_candidate_ocr(
                 "reason": "versioned cross-engine OCR arbitration",
                 "policy_version": decision.policy_version,
                 "calibration_registry_version": decision.calibration_registry_version,
+                "correction_resource": {
+                    "kind": "tofu_arbitration",
+                    "revision": decision.policy_version,
+                },
             }
             changed += 1
-        elif _promote_verifier_confusion(inst, hypothesis_record, primary_text):
+        elif _promote_verifier_confusion(
+            inst, hypothesis_record, primary_text, asset, font_registry,
+        ):
             changed += 1
 
     _grade_ungraded_regions(instances)
@@ -5140,8 +5152,101 @@ _GLYPH_CONFUSIONS: FrozenSet[FrozenSet[str]] = frozenset({
 })
 
 
+## How many covering faces the ink comparison renders before deciding. The
+## point is a fair comparison, not an exhaustive one: both readings are set
+## in the SAME faces, so a face that flatters one flatters the other.
+_INK_COMPARISON_FACES = 5
+
+
+def _verifier_fits_the_ink(
+    asset: Any, inst: InstText, candidate: str, primary: str, registry: Any,
+) -> bool:
+    """Does the verifier's reading look more like this region's ink?
+
+    Renders both readings and scores each against the region's own glyph
+    mask, reusing the retrieval kernel in font_matching -- the same
+    template evidence the hybrid audit already reasons about, applied to
+    the one character the two engines disagree on.
+
+    This exists because the record's `glyph` signal does NOT mean what its
+    name suggests: `_glyph_evidence` in ocr_arbitration returns 1.0 when
+    every observation agrees on the SCRIPT, which two readings of the same
+    kanji region always do. It is no evidence at all about which character
+    was printed.
+
+    Fails closed. No registry, no covering face, no mask, or no usable
+    score all return False, and the region keeps the pairwise answer -- an
+    unverifiable substitution is exactly the kind this must not wave
+    through.
+    """
+    if registry is None or not candidate or not primary:
+        return False
+    try:
+        import numpy as np
+        from tofu.layers import font_matching
+        from tofu.layers.fonts import faces_of
+        from tofu.utils.imaging import load_rgb
+
+        image = np.asarray(load_rgb(asset))
+        mask = font_matching._source_mask(image, inst)
+        if mask is None:
+            return False
+        needed = {ch for ch in candidate + primary if not ch.isspace()}
+        faces = [
+            path for path, face in faces_of(registry).items()
+            if all(ord(ch) in face.codepoints for ch in needed)
+        ]
+        if not faces:
+            return False
+
+        wins = 0
+        compared = 0
+        for path in sorted(faces)[:_INK_COMPARISON_FACES]:
+            try:
+                shot = font_matching._render_mask(path, candidate, mask.shape[0])
+                held = font_matching._render_mask(path, primary, mask.shape[0])
+                if shot is None or held is None:
+                    continue
+                new_score, _ = font_matching._visual_score(mask, shot)
+                old_score, _ = font_matching._visual_score(mask, held)
+            except Exception:
+                continue
+            compared += 1
+            if new_score >= old_score:
+                wins += 1
+        # Every face that could render both has to agree. One dissenting
+        # face means the two characters are close enough that the ink is
+        # not deciding, which is not a mandate to overwrite a user's text.
+        return compared > 0 and wins == compared
+    except Exception:
+        return False
+
+
+def _language_model_prefers(candidate: str, primary: str, inst: InstText) -> bool:
+    """Is the verifier's reading the more plausible string of the two?
+
+    The only signal available that can separate two readings the pixels
+    support equally well. Returns False when no model is installed, which
+    is the default state: without it, an untabled substitution has no
+    second opinion and must not be promoted.
+    """
+    try:
+        from tofu.layers.language_models import get_scoring_provider
+
+        provider = get_scoring_provider()
+        script = ScriptDetector().detect_script(candidate or primary or "")
+        new_score = provider.score(candidate, script)
+        old_score = provider.score(primary, script)
+        if new_score is None or old_score is None:
+            return False
+        return new_score > old_score
+    except Exception:
+        return False
+
+
 def _promote_verifier_confusion(
     inst: InstText, record: Optional[Dict[str, Any]], primary_text: str,
+    asset: Any = None, registry: Any = None,
 ) -> bool:
     """Apply the verifier's reading when it differs only by a confused glyph.
 
@@ -5185,13 +5290,62 @@ def _promote_verifier_confusion(
         return False
     left = "".join(candidate.split())
     right = "".join((primary_text or "").split())
-    if len(left) != len(right) or left == right:
+    if not left or left == right:
         return False
-    for a, b in zip(left, right):
-        if a == b:
-            continue
+
+    # A trailing dash the verifier does not see is the artifact class this
+    # region was flagged for in the first place -- `trailing_artifact` is
+    # what spends a verifier round trip on it. japan-subs r2 read '御獄-'
+    # where the sign says '御嶽': one spurious hyphen AND one wrong kanji,
+    # which is why an equal-length test alone refused it.
+    trimmed = False
+    if len(right) == len(left) + 1 and right[-1:] in _TRAILING_ARTIFACTS:
+        right = right[:-1]
+        trimmed = True
+    if len(left) != len(right):
+        return False
+
+    differences = [(a, b) for a, b in zip(left, right) if a != b]
+    if len(differences) > 1:
+        return False
+    if differences:
+        a, b = differences[0]
         if frozenset({a, b}) not in _GLYPH_CONFUSIONS:
-            return False
+            # Not a Latin pair anyone has tabled, and a table cannot scale
+            # to kanji -- 獄 and 嶽 are one of thousands of such pairs. So
+            # the claim has to be measured, TWICE, because measuring it
+            # once is demonstrably not enough.
+            #
+            # Rendering both readings against this region's ink separates
+            # some pairs and not others. Measured on japan-subs r2, worst
+            # margin across five covering faces:
+            #
+            #     御嶽 (correct)  +0.0215
+            #     御海 (wrong)    +0.0199
+            #     御山 (wrong)    -0.0686
+            #     御一 (wrong)    -0.0817
+            #
+            # The correct reading and a plainly wrong one are 0.0016 apart.
+            # At sign scale dense kanji collapse into the same silhouette,
+            # so no threshold on this kernel can be defended -- it can veto
+            # a substitution but must not authorise one alone.
+            #
+            # The second opinion is linguistic: 御嶽 is a mountain, 御海 is
+            # not a word. That is the language model's question, and it is
+            # the one signal here that can separate two readings the pixels
+            # support equally well. Absent an n-gram artifact it returns
+            # None and this refuses -- an unverifiable substitution is
+            # exactly the kind that must not be waved through.
+            if not _verifier_fits_the_ink(asset, inst, candidate,
+                                          right if trimmed else primary_text,
+                                          registry):
+                return False
+            if not _language_model_prefers(candidate,
+                                           right if trimmed else primary_text,
+                                           inst):
+                return False
+    elif not trimmed:
+        return False
 
     inst.text = candidate
     # The record was written against the text the pairwise decision chose.
@@ -5207,6 +5361,10 @@ def _promote_verifier_confusion(
         "corrected_text": candidate,
         "reason": "arbitration selected the independent verifier; difference is a glyph confusion",
         "policy_version": record.get("policy_revision"),
+        "correction_resource": {
+            "kind": "tofu_arbitration",
+            "revision": record.get("policy_revision"),
+        },
     }
     _history(inst, {
         "stage": "hypothesis_promotion",

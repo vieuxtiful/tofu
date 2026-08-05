@@ -106,3 +106,75 @@ def test_basil_migrates_legacy_target_order_into_spatial_cubes():
     assert {inst.id: inst.target_text for inst in manifest.instances} == {
         "r1": "Via dei", "r2": "Vecchi", "r3": "Muri",
     }
+
+
+def _rue_des_martyrs_ko_manifest() -> TextManifest:
+    # rue-des-martyrs: a single blue enamel plaque split into three regions:
+    # r1 "RUE", r2 "DES", r3 "MARTYRS".  Korean signage puts the designator
+    # (로/길) as a suffix of the head, so the target order is r3 then r2 then r1.
+    instances = [
+        InstText("r1", BBox(530, 62, 61, 45), text="RUE", reading_order=0),
+        InstText("r2", BBox(489, 111, 43, 39), text="DES", reading_order=1),
+        InstText("r3", BBox(527, 89, 129, 59), text="MARTYRS", reading_order=2),
+    ]
+    manifest = TextManifest(
+        asset_id="rue-des-martyrs", total_regions=3, instances=instances,
+        src_lang="fr", targ_lang="ko-KR",
+        scene_regions=[SceneRegion(BBox(480, 55, 180, 100), "bordered_region", 0.9)],
+    )
+    # Per-region Korean translations entered in the Translate table.  The
+    # SlotEditor concatenates these in the user's chosen order to form the
+    # target phrase, so the plan must recover that arrangement.
+    by_id = {inst.id: inst for inst in manifest.instances}
+    by_id["r1"].target_text = "르"
+    by_id["r2"].target_text = "데"
+    by_id["r3"].target_text = "마르티르"
+    return manifest
+
+
+def test_basil_plates_unspaced_korean_target_via_slot_arrangement():
+    manifest = _rue_des_martyrs_ko_manifest()
+    unit = basil.unify_manifest(manifest)[0]
+    # The SlotEditor arranges r3 (head) before r1 (designator), which is the
+    # Korean typology order suggest_plating should propose.
+    phrase = "마르티르데르"
+
+    plan = basil.plan_substitution(manifest, unit.id, phrase, "ko-KR")
+
+    assert plan["review_required"] is False
+    assert plan["method"] == "manual_slot_arrangement"
+    assert plan["assignments"], "expected a plating plan for an unspaced target"
+    assert {item["region_id"]: item["text"] for item in plan["assignments"]} == {
+        "r1": "르", "r2": "데", "r3": "마르티르",
+    }
+    # The head (r3) is plated into the first cube, the designator (r1) into the last.
+    assert plan["target_region_order"] == ["r3", "r2", "r1"]
+    assert {item["region_id"]: item["anchor_id"] for item in plan["assignments"]} == {
+        "r3": "r1", "r2": "r2", "r1": "r3",
+    }
+
+    basil.apply_substitution(manifest, plan, "ko-KR")
+    assert basil.plated_texts(manifest) == {"r1": "마르티르", "r2": "데", "r3": "르"}
+
+
+def test_basil_unspaced_target_requires_all_regions_translated():
+    manifest = _rue_des_martyrs_ko_manifest()
+    manifest.instances[1].target_text = None  # erase r2's translation
+    unit = basil.unify_manifest(manifest)[0]
+
+    plan = basil.plan_substitution(manifest, unit.id, "마르티르데르", "ko-KR")
+
+    assert plan["assignments"] == []
+    assert plan["review_required"] is True
+    assert any("missing target text" in warning for warning in plan["warnings"])
+
+
+def test_basil_unspaced_target_rejects_phrase_not_matching_any_arrangement():
+    manifest = _rue_des_martyrs_ko_manifest()
+    unit = basil.unify_manifest(manifest)[0]
+    # A phrase that is not any concatenation of the per-region translations.
+    plan = basil.plan_substitution(manifest, unit.id, "불일치문구", "ko-KR")
+
+    assert plan["assignments"] == []
+    assert plan["review_required"] is True
+    assert any("does not match any arrangement" in warning for warning in plan["warnings"])

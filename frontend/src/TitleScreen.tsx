@@ -15,6 +15,10 @@ interface TitleScreenProps {
   onCreateProject: () => void;
   theme: Theme;
   onToggleTheme: () => void;
+  /** id of the project currently open in the workspace, if any */
+  currentProjectId?: string | null;
+  /** fired when a project is renamed, so the caller can sync its own state (e.g. the currently open project) */
+  onProjectRenamed?: (project: Project) => void;
 }
 
 const FOOTER_TEXT = "ToFU v0.1.0.";
@@ -42,7 +46,7 @@ function brineOffsets(slot: HTMLElement | null): React.CSSProperties {
  * tray and levitate on hover; Workspace opens the four-pane main screen,
  * while Pantry (project list) and Settings (dark-mode switch) press flat into
  * a card floating in the blurred brine. */
-export default function TitleScreen({ onEnter, onSelectProject, onCreateProject, theme, onToggleTheme }: TitleScreenProps) {
+export default function TitleScreen({ onEnter, onSelectProject, onCreateProject, theme, onToggleTheme, currentProjectId, onProjectRenamed }: TitleScreenProps) {
   const [viewLeaving, setViewLeaving] = useState(false);
   const [footerTyped, setFooterTyped] = useState(0);
   const [projects, setProjects] = useState<Project[] | null>(null);
@@ -203,6 +207,7 @@ export default function TitleScreen({ onEnter, onSelectProject, onCreateProject,
     try {
       const updated = await updateProject(renamingProject.id, { name: renameValue.trim() });
       setProjects((prev) => prev ? prev.map((p) => p.id === updated.id ? updated : p) : prev);
+      if (updated.id === currentProjectId) onProjectRenamed?.(updated);
     } catch { /* ignore */ }
     setRenamingProject(null);
     setRenameValue("");

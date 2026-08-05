@@ -19,7 +19,7 @@ detection/refinement/recognition pass (including Savor's) has already
 had its say.
 """
 
-from typing import Any, List, NamedTuple, Optional
+from typing import Any, Dict, List, NamedTuple, Optional
 
 from tofu.core.types import InstText
 from tofu.utils.correction_resources import gazetteer_entries, load_correction_resource
@@ -110,7 +110,24 @@ class MenuSpan(NamedTuple):
     diffs: List[tuple]    # [(absolute_index, recognized_char, candidate_char)]
 
 
-def consult_menu(text: str, lang: Optional[str], confidence: Optional[float]) -> Optional[MenuMatch]:
+def _entry_parts(entry: tuple) -> tuple[str, Optional[str], Optional[str]]:
+    candidate = str(entry[0])
+    candidate_lang = entry[1] if len(entry) > 1 else None
+    scope = entry[2] if len(entry) > 2 else None
+    return candidate, candidate_lang, scope
+
+
+def _ground_truth_identity(scope: str, terms: List[str]) -> Dict[str, Any]:
+    return {
+        "kind": "ground_truth",
+        "scope": scope,
+        "terms": sorted(set(terms)),
+        "revision": "user-1",
+    }
+
+
+def consult_menu(text: str, lang: Optional[str], confidence: Optional[float],
+                 ground_truth_pool: Optional[List[tuple]] = None) -> Optional[MenuMatch]:
     """check a low-confidence read against the known-places gazetteer.
 
     returns the best-matching known name if one clears SIMILARITY_FLOOR,
@@ -120,8 +137,11 @@ def consult_menu(text: str, lang: Optional[str], confidence: Optional[float]) ->
     if not text or (confidence or 0) >= CONFIDENCE_FLOOR:
         return None
     best: Optional[MenuMatch] = None
-    for candidate, cand_lang in KNOWN_PLACES:
-        if len(candidate) < WHOLE_STRING_MIN_CANDIDATE_LEN:
+    entries = list(KNOWN_PLACES) + list(ground_truth_pool or [])
+    for entry in entries:
+        candidate, cand_lang, scope = _entry_parts(entry)
+        minimum = 2 if scope else WHOLE_STRING_MIN_CANDIDATE_LEN
+        if len(candidate) < minimum:
             continue
         if lang and cand_lang != lang:
             continue
@@ -131,7 +151,8 @@ def consult_menu(text: str, lang: Optional[str], confidence: Optional[float]) ->
     return best
 
 
-def consult_menu_substring(text: str, lang: Optional[str]) -> List[MenuSpan]:
+def consult_menu_substring(text: str, lang: Optional[str],
+                           ground_truth_pool: Optional[List[tuple]] = None) -> List[MenuSpan]:
     """find known names ALIGNED WITHIN a longer composite read.
 
     a directional post or stacked sign OCRs as one instance whose text
@@ -155,7 +176,7 @@ def consult_menu_substring(text: str, lang: Optional[str]) -> List[MenuSpan]:
     overlap in the result; equal-length window replacement means
     corrections are length-preserving and can all be applied at once.
     """
-    return align_spans(text, lang, KNOWN_PLACES)
+    return align_spans(text, lang, list(KNOWN_PLACES) + list(ground_truth_pool or []))
 
 
 def align_spans(text: str, lang: Optional[str], pool: List[tuple],
@@ -179,7 +200,8 @@ def align_spans(text: str, lang: Optional[str], pool: List[tuple],
         # pixel tier depends on
         return []
     proposals: List[MenuSpan] = []
-    for candidate, cand_lang in pool:
+    for entry in pool:
+        candidate, cand_lang, _scope = _entry_parts(entry)
         if lang and cand_lang != lang:
             continue
         n = len(candidate)
@@ -230,7 +252,8 @@ def exact_spans(text: str, lang: Optional[str], pool: List[tuple]) -> List[MenuS
     if not text or " " in text:
         return []
     found: List[MenuSpan] = []
-    for candidate, cand_lang in pool:
+    for entry in pool:
+        candidate, cand_lang, _scope = _entry_parts(entry)
         if lang and cand_lang != lang:
             continue
         n = len(candidate)
@@ -251,7 +274,8 @@ def exact_spans(text: str, lang: Optional[str], pool: List[tuple]) -> List[MenuS
 
 
 def _count_exact_known_names(text: str, lang: Optional[str],
-                              exclude_spans: List[MenuSpan]) -> int:
+                              exclude_spans: List[MenuSpan],
+                              ground_truth_pool: Optional[List[tuple]] = None) -> int:
     """how many DISTINCT gazetteer names appear verbatim in `text`,
     outside the proposal spans -- the exact-match half of the
     corroboration count (the other half is spans the string/pixel tiers
@@ -259,7 +283,8 @@ def _count_exact_known_names(text: str, lang: Optional[str],
     non-overlapping occurrence."""
     count = 0
     taken = [(s.start, s.end) for s in exclude_spans]
-    for candidate, cand_lang in KNOWN_PLACES:
+    for entry in list(KNOWN_PLACES) + list(ground_truth_pool or []):
+        candidate, cand_lang, _scope = _entry_parts(entry)
         if lang and cand_lang != lang:
             continue
         if len(candidate) < 2 or len(candidate) >= len(text):
@@ -294,7 +319,8 @@ def _verify_span_pixels(asset: Any, inst: InstText, span: MenuSpan,
 
 
 def browse(instances: List[InstText], asset: Any = None,
-           font_registry: Optional[Any] = None) -> int:
+           font_registry: Optional[Any] = None,
+           ground_truth_pool: Optional[List[tuple]] = None) -> int:
     """the full menu pass, run once across every instance.
 
     two courses per instance, mutually exclusive:
@@ -326,13 +352,19 @@ def browse(instances: List[InstText], asset: Any = None,
     corrected (mirrors second_look()/savor.taste()'s return contract).
     """
     corrected = 0
+    ground_truth_sources = {
+        candidate: scope or "project"
+        for candidate, _lang, scope in (
+            _entry_parts(entry) for entry in (ground_truth_pool or [])
+        )
+    }
     for inst in instances:
         text = inst.text or ""
         if not text:
             continue
         lang = inst.detected_language or inst.language
 
-        spans = consult_menu_substring(text, lang)
+        spans = consult_menu_substring(text, lang, ground_truth_pool)
         if spans:
             applied: List[MenuSpan] = []
             inconclusive: List[MenuSpan] = []
@@ -367,7 +399,9 @@ def browse(instances: List[InstText], asset: Any = None,
             # sibling count is computed ONCE from independently-confirmed
             # evidence, so promoted spans can't bootstrap each other
             if inconclusive:
-                siblings = _count_exact_known_names(text, lang, spans) + len(applied)
+                siblings = _count_exact_known_names(
+                    text, lang, spans, ground_truth_pool
+                ) + len(applied)
                 if siblings >= CORROBORATION_MIN_SIBLINGS:
                     for span in list(inconclusive):
                         if len(span.diffs) != 1:
@@ -393,12 +427,20 @@ def browse(instances: List[InstText], asset: Any = None,
                         f"[{s.start}:{s.end}] {text[s.start:s.end]}->{s.candidate}"
                         for s in inconclusive
                     ) + " left unchanged, pixel evidence inconclusive"
+                gt_terms = [s.candidate for s in applied if s.candidate in ground_truth_sources]
+                gt_scope = next(
+                    (ground_truth_sources[s.candidate] for s in applied
+                     if s.candidate in ground_truth_sources), None
+                )
                 inst.ocr_correction = {
                     "applied": True,
                     "original_text": original,
                     "corrected_text": new_text,
                     "reason": reason,
-                    "correction_resource": KNOWN_PLACES_RESOURCE.audit_identity(),
+                    "correction_resource": (
+                        _ground_truth_identity(gt_scope, gt_terms)
+                        if gt_scope else KNOWN_PLACES_RESOURCE.audit_identity()
+                    ),
                 }
                 inst.text = new_text
                 corrected += 1
@@ -406,6 +448,11 @@ def browse(instances: List[InstText], asset: Any = None,
                 chars = list(text)
                 for span in inconclusive:
                     chars[span.start:span.end] = list(span.candidate)
+                gt_terms = [s.candidate for s in inconclusive if s.candidate in ground_truth_sources]
+                gt_scope = next(
+                    (ground_truth_sources[s.candidate] for s in inconclusive
+                     if s.candidate in ground_truth_sources), None
+                )
                 inst.ocr_correction = {
                     "applied": False,
                     "candidate_text": "".join(chars),
@@ -416,22 +463,29 @@ def browse(instances: List[InstText], asset: Any = None,
                                   for s in inconclusive
                               )
                               + "), pixel evidence inconclusive",
-                    "correction_resource": KNOWN_PLACES_RESOURCE.audit_identity(),
+                    "correction_resource": (
+                        _ground_truth_identity(gt_scope, gt_terms)
+                        if gt_scope else KNOWN_PLACES_RESOURCE.audit_identity()
+                    ),
                 }
             # a substring alignment is structural evidence of a composite
             # read -- never fall through to the whole-string rewrite,
             # which would collapse the whole post to a single name
             continue
 
-        match = consult_menu(text, lang, inst.confidence)
+        match = consult_menu(text, lang, inst.confidence, ground_truth_pool)
         if match is None or match.text == text:
             continue
+        gt_scope = ground_truth_sources.get(match.text)
         inst.ocr_correction = {
             "applied": True,
             "original_text": text,
             "corrected_text": match.text,
             "reason": f"gazetteer match ({match.similarity:.2f} similarity) against a known place/establishment name",
-            "correction_resource": KNOWN_PLACES_RESOURCE.audit_identity(),
+            "correction_resource": (
+                _ground_truth_identity(gt_scope, [match.text])
+                if gt_scope else KNOWN_PLACES_RESOURCE.audit_identity()
+            ),
         }
         inst.text = match.text
         corrected += 1

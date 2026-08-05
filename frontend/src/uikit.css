@@ -908,6 +908,108 @@ html.dark .tofu-block.title-morph.morphing.morphing-back {
   }
 }
 
+/* Region-table rows in the Translate tab pop out as 3D "tiles" on hover.
+   A sharp tack-like motion (ease-out-back bezier overshoot, ~180ms) lifts
+   the row 2% with a soft cast shadow so it reads as a physical tile rising
+   off the surface.  Inner <td> content scales an additional 3% to magnify
+   the source/target strings, detected icon, font name, conf, percentage,
+   etc.  The card uses overflow-visible in translate mode (see
+   RegionTable.tsx) so the pop-out and shadow aren't clipped.  Replaces the
+   former pantry-hover-pulse (infinite scale alternate) which truncated
+   against the card's overflow-hidden. */
+.region-row {
+  position: relative;
+  z-index: 0;
+  transform: scale(1);
+  transition:
+    transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.18s cubic-bezier(0.34, 1.56, 0.64, 1),
+    background-color 0.2s ease;
+}
+
+.region-row:hover {
+  z-index: 1;
+  transform: scale(1.02);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.18);
+}
+
+/* Left/right bezier stroke on the popped row, drawn via pseudo-elements
+   on the first and last <td> (pseudo-elements on <tr> don't render in
+   most browsers).  Uses --bc-border from .bezier-card on the card
+   container, so the stroke matches the card's border color and weight.
+   No layout shift — the pseudo-elements are position: absolute overlays. */
+.region-row:hover td:first-child {
+  position: relative;
+}
+.region-row:hover td:first-child::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--bc-border, #323232);
+  border-radius: 2px 0 0 2px;
+  pointer-events: none;
+}
+.region-row:hover td:last-child {
+  position: relative;
+}
+.region-row:hover td:last-child::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--bc-border, #323232);
+  border-radius: 0 2px 2px 0;
+  pointer-events: none;
+}
+
+.region-row td {
+  transform: scale(1);
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.region-row:hover td {
+  transform: scale(1.03);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .region-row,
+  .region-row td {
+    transition: none;
+  }
+  .region-row:hover,
+  .region-row:hover td {
+    transform: none;
+  }
+}
+
+/* When a region row pops on hover, the card's soft-shadow float animation
+   pauses and the drop shadow shrinks so the popped tile isn't occluded.
+   All 4 borders stay continuous — the row floats on top via overflow:
+   visible + z-index: 1, so no border manipulation is needed.  (The
+   previous transparent-border approach caused a 2px invisible gap — a
+   visual "cut" at the top/bottom of the card.) */
+.region-table-card.region-hovering {
+  animation: none;
+  box-shadow: 4px 4px 0 var(--bc-shadow), 4px 4px 8px rgba(0, 0, 0, 0.10);
+  transition: box-shadow 0.18s ease;
+}
+
+/* The table scroll container (.bbox-canvas-scroll) has overflow-y: auto
+   and overflow-x: scroll, which clips the popped row's 2% scale + shadow
+   even though the card itself is overflow: visible.  Adding padding gives
+   the pop-out room within the scroll container's padding box (overflow
+   clips at the padding box edge, so content within the padding is
+   visible).  The sticky header and synced bottom scrollbar are
+   unaffected — scrollLeft is relative to the content area. */
+.region-table-scroll {
+  padding: 8px 10px;
+}
+
 .project-name-text {
   display: inline-block;
   position: relative;
@@ -1545,6 +1647,66 @@ html.light .penumbra-switch {
   transition: grid-template-rows 0.32s ease-in-out, opacity 0.22s ease-in 0.08s;
 }
 
+/* ============ DaisyUI-mimicking alerts ============ */
+
+.alert {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  font-size: 0.75rem;
+  border: 1px solid transparent;
+}
+
+.alert-info {
+  --alert-color: #0ea5e9;
+  --alert-bg: color-mix(in srgb, #0ea5e9 12%, transparent);
+  border-color: var(--alert-color);
+  background-color: var(--alert-bg);
+  color: var(--alert-color);
+}
+
+.alert-success {
+  --alert-color: #22c55e;
+  --alert-bg: color-mix(in srgb, #22c55e 12%, transparent);
+  border-color: var(--alert-color);
+  background-color: var(--alert-bg);
+  color: var(--alert-color);
+}
+
+/* warning uses #0f2600 (dark green) as specified for the Capture-tab
+   "Review: blocks " alert */
+.alert-warning {
+  --alert-color: #0f2600;
+  --alert-bg: color-mix(in srgb, #0f2600 8%, transparent);
+  border-color: var(--alert-color);
+  background-color: var(--alert-bg);
+  color: var(--alert-color);
+}
+html.dark .alert-warning {
+  --alert-color: #4ade80;
+  --alert-bg: color-mix(in srgb, #4ade80 10%, transparent);
+}
+
+.alert-error {
+  --alert-color: #ef4444;
+  --alert-bg: color-mix(in srgb, #ef4444 12%, transparent);
+  border-color: var(--alert-color);
+  background-color: var(--alert-bg);
+  color: var(--alert-color);
+}
+
+.alert-dash {
+  border-style: dashed;
+  border-width: 1.5px;
+}
+
+.alert-outline {
+  background-color: transparent;
+  border-style: solid;
+  border-width: 1.5px;
+}
+
 /* Garnish uses a compact native checkbox toggle instead of the theme-switch
    wrapper.  Its purple knob stays darker than both the rail and its border. */
 .garnish-activation-toggle {
@@ -2088,6 +2250,120 @@ html.dark .basil-plate-input {
   border-radius: 0.15rem;
   background: color-mix(in srgb, var(--bh-ink, #22d3ee) 16%, transparent);
   filter: brightness(0.75);
+}
+
+/* Native textarea over a glyph-for-glyph mirror. The real control keeps
+   selection, undo and IME; only its ink is transparent. */
+.animated-caret-field {
+  position: relative;
+  min-height: 2rem;
+  border: 1px solid #d4d4d8;
+  border-radius: 0.25rem;
+  background: #fff;
+  color: #52525b;
+  overflow: hidden;
+}
+
+html.dark .animated-caret-field {
+  border-color: #27272a;
+  background: #18181b;
+  color: #a1a1aa;
+}
+
+.animated-caret-field:focus-within {
+  border-color: #0891b2;
+  box-shadow: 0 0 0 1px #0891b2;
+}
+
+.animated-caret-field.has-value { color: #059669; }
+html.dark .animated-caret-field.has-value { color: #6ee7b7; }
+.animated-caret-field.ground-truth-value { color: #059669; }
+html.dark .animated-caret-field.ground-truth-value { color: #34d399; }
+.animated-caret-field.tofu-value { color: #d97706; }
+html.dark .animated-caret-field.tofu-value { color: #fbbf24; }
+.animated-caret-field.stale-target { border-color: #f87171; background: #fef2f2; }
+html.dark .animated-caret-field.stale-target { border-color: #7f1d1d; background: rgba(69, 10, 10, 0.3); }
+
+.animated-caret-input,
+.animated-caret-mirror {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 2rem;
+  padding: 0.375rem 0.5rem;
+  border: 0;
+  font: inherit;
+  font-size: 0.75rem;
+  line-height: 1.25rem;
+  letter-spacing: normal;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  tab-size: 4;
+}
+
+.animated-caret-mirror {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  overflow: hidden;
+  color: inherit;
+}
+
+.animated-caret-input {
+  position: relative;
+  z-index: 1;
+  display: block;
+  resize: vertical;
+  background: transparent;
+  color: transparent;
+  caret-color: #18181b;
+  outline: none;
+}
+
+html.dark .animated-caret-input { caret-color: #f4f4f5; }
+.animated-caret-input::selection { background: rgba(34, 211, 238, 0.35); color: transparent; }
+.animated-caret-input::placeholder { color: transparent; }
+.animated-caret-placeholder { color: #a1a1aa; }
+
+.animated-caret-insert {
+  display: inline;
+  position: relative;
+  animation: animated-caret-reveal 140ms ease-out both;
+}
+
+@keyframes animated-caret-reveal {
+  from { opacity: 0; top: 0.16em; }
+  to { opacity: 1; top: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animated-caret-insert { animation: none; }
+}
+
+/* Ground Truth keeps Basil's token-colour mirror but uses the exact same
+   field dimensions, border focus, bar caret and insertion animation as the
+   Capture/Translate editors. */
+.ground-truth-field.animated-caret-field {
+  margin-top: 0.5rem;
+  color: #52525b;
+}
+
+.ground-truth-field .basil-plate-input,
+.ground-truth-field .basil-plate-mirror {
+  min-height: 2rem;
+  padding: 0.375rem 0.5rem;
+  font-size: 0.75rem;
+  line-height: 1.25rem;
+}
+
+.ground-truth-field .basil-plate-input {
+  border: 0;
+  border-radius: 0;
+}
+
+.ground-truth-field .basil-plate-input:focus {
+  border-color: transparent;
+  box-shadow: none;
 }
 
 html.dark .basil-token.mapped {

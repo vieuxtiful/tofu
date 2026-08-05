@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Archive, ArchiveRestore, ArrowLeft, ArrowRight, History, Loader2, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowLeft, ArrowRight, History, Loader2, Plus, Search, Trash2, X } from "lucide-react";
+import { CgRename } from "react-icons/cg";
 import { MdMonochromePhotos } from "react-icons/md";
 import { AiFillVideoCamera } from "react-icons/ai";
 import { TbCubePlus } from "react-icons/tb";
@@ -20,6 +21,8 @@ interface ProjectGateProps {
   listOnly?: boolean;
   /** id of the project currently open in the workspace (gets the halo) */
   currentProjectId?: string | null;
+  /** fired when a project is renamed, so the caller can sync its own state (e.g. the currently open project) */
+  onProjectRenamed?: (project: Project) => void;
 }
 
 function timeAgo(ts: number): string {
@@ -44,7 +47,7 @@ const STEP_HINT: Record<View, string> = {
  * language [default auto] → target language) or load an existing one.
  * The source language gates uploads: assets scanned in another language
  * are rejected unless the user overrides. */
-export default function ProjectGate({ languages, onSelectProject, onClose, theme, leaving, initialView, listOnly, currentProjectId }: ProjectGateProps) {
+export default function ProjectGate({ languages, onSelectProject, onClose, theme, leaving, initialView, listOnly, currentProjectId, onProjectRenamed }: ProjectGateProps) {
   const [view, setView] = useState<View>(initialView ?? "list");
   const [projects, setProjects] = useState<Project[] | null>(null);
   const [name, setName] = useState("");
@@ -128,10 +131,11 @@ export default function ProjectGate({ languages, onSelectProject, onClose, theme
     if (!pendingRename || !renameValue.trim()) return;
     setRenameBusy(true);
     try {
-      await updateProject(pendingRename.id, { name: renameValue.trim() });
+      const updated = await updateProject(pendingRename.id, { name: renameValue.trim() });
       setPendingRename(null);
       setRenameValue("");
       refresh();
+      if (updated.id === currentProjectId) onProjectRenamed?.(updated);
     } catch (e) {
       setError(String(e));
       setPendingRename(null);
@@ -270,7 +274,7 @@ export default function ProjectGate({ languages, onSelectProject, onClose, theme
                   title="Rename project"
                   className="relative rounded-sm p-1.5 text-zinc-400 hover:bg-zinc-200 hover:text-cyan-600 dark:text-zinc-600 dark:hover:bg-zinc-700 dark:hover:text-cyan-400"
                 >
-                  <Pencil size={14} />
+                  <CgRename size={14} />
                 </button>
                 <button
                   onClick={() => onDelete(p)}

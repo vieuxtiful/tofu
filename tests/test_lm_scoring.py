@@ -1,4 +1,6 @@
 ## 🍢 n-gram scoring seam + hypothesis LM signal (no model artifact needed)
+from pathlib import Path
+
 import pytest
 
 from tofu.core.types import BBox, OCRObservation
@@ -132,3 +134,78 @@ class TestHypothesisScoringWithTheNewWeight:
         scored = score_hypothesis(hypothesis)
         assert scored["score_breakdown"]["language_model"] is None
         assert scored["selected_text"] == "RUE"
+
+
+class TestKneserNeyProvider:
+    """The n-gram signal without a C++ toolchain.
+
+    KenLM's lmplz and build_binary are C++ programs -- pip install kenlm
+    ships the scoring module only -- so having this signal at all meant a
+    compiler and a multi-GB dump. This trains from a local text file with
+    the interpreter already in hand.
+    """
+
+    def _model_dir(self, tmp_path, family, lines):
+        import sys
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+        from build_ngram_models import build
+        import gzip, json
+
+        corpus = tmp_path / f"{family}.txt"
+        corpus.write_text("\n".join(lines), encoding="utf-8")
+        model = build(corpus, family, None)
+        out = tmp_path / "ngram"
+        out.mkdir(exist_ok=True)
+        with gzip.open(out / f"{family}.ngram.json.gz", "wt", encoding="utf-8") as fh:
+            json.dump(model, fh, ensure_ascii=False)
+        return out
+
+    def test_no_artifact_means_no_score_rather_than_a_guess(self, tmp_path):
+        from tofu.layers.language_models import KneserNeyScoringProvider
+
+        provider = KneserNeyScoringProvider(str(tmp_path / "absent"))
+        assert provider.score("nos rues !", "latin") is None
+        assert provider.status()["ready"] is False
+
+    def test_it_ranks_the_plausible_reading_higher(self, tmp_path):
+        from tofu.layers.language_models import KneserNeyScoringProvider
+
+        out = self._model_dir(tmp_path, "latin",
+                              ["decolonisons nos rues !"] * 30 + ["nos rues portent des noms"] * 30)
+        provider = KneserNeyScoringProvider(str(out))
+        assert provider.score("nos rues !", "latin") > provider.score("nos rues 4", "latin")
+
+    def test_an_unseen_token_falls_to_the_floor_rather_than_erroring(self, tmp_path):
+        from tofu.layers.language_models import KneserNeyScoringProvider
+
+        out = self._model_dir(tmp_path, "latin", ["rue de la paix"] * 30)
+        provider = KneserNeyScoringProvider(str(out))
+        score = provider.score("zzzz qqqq", "latin")
+        assert score == KneserNeyScoringProvider.OOV_LOGPROB
+
+    def test_cjk_routes_to_the_character_model(self, tmp_path):
+        """The routing bug this class exists to pin.
+
+        cicerone's ScriptDetector emits lowercase names ("han",
+        "japanese"), not the ISO 15924 codes the manifest carries, and
+        ocr_arbitration hands the DETECTOR's value straight to score(). With
+        only the ISO half recognised, every CJK reading was scored against
+        the Latin model -- a wrong answer indistinguishable from a working
+        one.
+        """
+        from tofu.layers.language_models import KneserNeyScoringProvider
+
+        out = self._model_dir(tmp_path, "cjk", ["御嶽 は 岐阜 の 山"] * 30)
+        provider = KneserNeyScoringProvider(str(out))
+        for script in ("han", "japanese", "Hani", "Jpan"):
+            assert provider._family(script) == "cjk", script
+        assert provider.score("御嶽", "han") > provider.score("御獄", "han")
+
+    def test_the_tokenizer_is_the_one_the_build_script_used(self, tmp_path):
+        """Train/score skew is the quiet way an n-gram underperforms."""
+        import sys
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+        import build_ngram_models
+        from tofu.layers.language_models import tokenize_for_lm
+
+        assert build_ngram_models.tokenize_for_lm is tokenize_for_lm

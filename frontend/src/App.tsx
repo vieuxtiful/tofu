@@ -4,7 +4,7 @@ import InputAdornment from "@mui/material/InputAdornment";
 import TextField from "@mui/material/TextField";
 import {
   AlertTriangle, AlignCenter, AlignEndHorizontal, AlignEndVertical, AlignJustify, AlignLeft, AlignRight, AlignStartHorizontal, AlignStartVertical, ArrowLeft, ArrowLeftRight, ArrowUpFromLine, Baseline, Bold, BookmarkCheck, Box, Check, ChevronDown, Circle, CircleDashed, CircleDot, CircleOff, FileImage, FolderOpen, Hexagon, History, Home, Italic, Languages, Loader2,
-  Play, Plus, RotateCcw, ScanText, ShieldAlert, Sparkles, SquareStack, Subscript, Superscript, Trash2, Type, Underline, VectorSquare, X, Cpu,
+  Play, Plus, RotateCcw, ScanText, ShieldAlert, SquareStack, Subscript, Superscript, Trash2, Type, Underline, VectorSquare, X, Cpu,
 } from "lucide-react";
 import {
   BBox, FontFamily, FontOption, FontWeight, ImportResult, InpaintPatch, InstText, LanguageOption, Project, VideoJob,
@@ -12,16 +12,16 @@ import {
   addRegion, approveRender, checkDuplicateAsset, deleteProjectAsset, deleteRegion, detectAssetStream, mergeRegions,
   fetchFonts, fetchLanguages, getManifest, getProject, importFile, matchFonts, ocrRegion, putManifest,
   applyRepairCandidate, captureLocalizedBaseline, createInpaintPatch, getLocalizedBaseline, getTreatment, previewCandidateLocalized, refineRegion, renderAsset, renderAssetStream, renderPreview, restoreTreatment, scanAssetLanguage, sha256File, snapshotAsset, undoInpaint,
-  semanticSubstitution, semanticRepair, updateProject, uploadAsset, validateAsset, fetchGlossaryStatus, uploadGlossary, deleteGlossary, createVideoJob, getVideoJob, getLatestVideoJob, cancelVideoJob, resumeVideoJob, upgradeVideoJob, putVideoKeyframe, updateVideoTrack, watchVideoJob, renderVideoPreview, exportVideo,
+  semanticSubstitution, semanticRepair, updateProject, updateAssetGroundTruth, uploadAsset, validateAsset, fetchGlossaryStatus, uploadGlossary, deleteGlossary, createVideoJob, getVideoJob, getLatestVideoJob, cancelVideoJob, resumeVideoJob, upgradeVideoJob, putVideoKeyframe, updateVideoTrack, watchVideoJob, renderVideoPreview, exportVideo,
 } from "./api";
 import VideoWorkspace from "./VideoWorkspace";
 import { FcCollapse } from "react-icons/fc";
 import { LiaSpellCheckSolid } from "react-icons/lia";
 import { RiCheckboxFill } from "react-icons/ri";
-import { TbCubePlus, TbPhoto, TbPhotoEdit, TbPhotoScan, TbScanCube, TbCircleDashedPlus, TbCircleDashedMinus } from "react-icons/tb";
+import { TbBackground, TbCubePlus, TbPhoto, TbPhotoEdit, TbPhotoScan, TbScanCube, TbCircleDashedPlus, TbCircleDashedMinus } from "react-icons/tb";
 import { FaBoxOpen, FaLink, FaUnlink, FaEyeDropper } from "react-icons/fa";
 import { FaFileImport } from "react-icons/fa6";
-import { PiWarningCircleFill, PiHandGrabbingFill, PiHandGrabbingBold, PiArrowsMergeBold } from "react-icons/pi";
+import { PiWarningCircleFill, PiWarningFill, PiWarningLight, PiBoundingBoxBold, PiBoundingBoxFill, PiHandGrabbingFill, PiHandGrabbingBold, PiArrowsMergeBold, PiEyeBold, PiEyeClosedBold, PiEyeFill, PiEyeClosedFill, PiMagicWand, PiMagicWandFill } from "react-icons/pi";
 import { MdFontDownload, MdOutlineCompare, MdOutlineFontDownload, MdTipsAndUpdates } from "react-icons/md";
 import { BiAbacus, BiSolidErrorCircle } from "react-icons/bi";
 import { TiWarning } from "react-icons/ti";
@@ -66,6 +66,7 @@ import { FlipButton, PenumbraSwitch, PressButton, ThemeSwitch } from "./Buttons"
 import { SquareLoader } from "./Loaders";
 import ToastSystem, { useToasts, useNotifications, type ToastType, type ToastAction } from "./ToastSystem";
 import NotificationBell from "./NotificationBell";
+import GroundTruthField from "./GroundTruthField";
 import Stepper, { Step } from "./Stepper";
 import { logoSrc, useTheme } from "./theme";
 const SystemCapabilitiesPanel = lazy(() => import("./SystemCapabilitiesPanel"));
@@ -264,7 +265,7 @@ function withStyle(
   };
 }
 
-function TitleConfirmOverlay({ onYes, onNo }: { onYes: () => void; onNo: () => void }) {
+function TitleConfirmOverlay({ message, onYes, onNo }: { message: string; onYes: () => void; onNo: () => void }) {
   const [leaving, setLeaving] = useState(false);
 
   const handleNo = () => {
@@ -283,7 +284,7 @@ function TitleConfirmOverlay({ onYes, onNo }: { onYes: () => void; onNo: () => v
       onClick={handleNo}
     >
       <div className="title-confirm-card" onClick={(e) => e.stopPropagation()}>
-        <p className="title-confirm-message">return to title?</p>
+        <p className="title-confirm-message">{message}</p>
         <div className="title-confirm-actions">
           <button className="title-confirm-btn yes" onClick={handleYes}>Yes</button>
           <button className="title-confirm-btn no" onClick={handleNo}>No</button>
@@ -431,6 +432,12 @@ export default function App() {
   const [lassoPoints, setLassoPoints] = useState<[number, number][]>([]);
   const [nearFirstPoint, setNearFirstPoint] = useState(false);
   const [brushMode, setBrushMode] = useState(false);
+  const [cleanupOpen, setCleanupOpen] = useState(false);
+  const [cleanupTool, setCleanupTool] = useState<"heal" | "clone" | "context_fill">("heal");
+  const [showLocalizedText, setShowLocalizedText] = useState(true);
+  const [brushHardness, setBrushHardness] = useState(85);
+  const [brushOpacity, setBrushOpacity] = useState(100);
+  const [cloneSource, setCloneSource] = useState<[number, number] | null>(null);
   const [brushStrokes, setBrushStrokes] = useState<BrushStroke[]>([]);
   const [activeBrushStroke, setActiveBrushStroke] = useState<BrushStroke | null>(null);
   const [brushCursor, setBrushCursor] = useState<[number, number] | null>(null);
@@ -539,7 +546,10 @@ export default function App() {
   }, []);
   const onStyleDoubleClick = useCallback(() => {
     if (styleExpandedV) {
-      // collapse back to standard
+      // Match the chevron's content collapse as the card returns to its
+      // standard height. Leaving this state open made the body overflow and
+      // appear to float below the collapsed shell.
+      setStyleCollapsed(true);
       setStyleExpandedV(false);
       setStyleCardH(null);
     } else {
@@ -553,6 +563,7 @@ export default function App() {
       const gap = 16; // space-y-4 gap
       const maxH = localizedRect.bottom - styleRect.top - gap;
       preExpandStyleH.current = styleEl.offsetHeight;
+      setStyleCollapsed(false);
       setStyleCardH(Math.max(200, maxH));
       setStyleExpandedV(true);
     }
@@ -693,9 +704,24 @@ export default function App() {
   const [recommendationsOpen, setRecommendationsOpen] = useState(false);
   const [recommendationsSeen, setRecommendationsSeen] = useState(false);
   const [verifyCardOrder, setVerifyCardOrder] = useState<"compare-first" | "qa-first">("compare-first");
+  const [verifySummaryOpen, setVerifySummaryOpen] = useState(true);
+  const [dismissedVerifyStatus, setDismissedVerifyStatus] = useState(false);
+  const [dismissedVerifyFlags, setDismissedVerifyFlags] = useState<Set<string>>(new Set());
+  const [dismissedVerifyReviewRegions, setDismissedVerifyReviewRegions] = useState<Set<string>>(new Set());
+  const [dismissedQaRegions, setDismissedQaRegions] = useState<Set<string>>(new Set());
   const [reRenderingId, setReRenderingId] = useState<string | null>(null);
   const [approved, setApproved] = useState(false);
   const cancelVerifyRef = useRef<(() => void) | null>(null);
+
+  // Reset all verify-dismissal state whenever a fresh render result arrives
+  // (new render, per-region re-render, or asset clear).
+  useEffect(() => {
+    setVerifySummaryOpen(true);
+    setDismissedVerifyStatus(false);
+    setDismissedVerifyFlags(new Set());
+    setDismissedVerifyReviewRegions(new Set());
+    setDismissedQaRegions(new Set());
+  }, [renderResult]);
 
   // auto-expand the style panel when a region is selected
   useEffect(() => {
@@ -816,6 +842,7 @@ export default function App() {
   // Advisory only: usable text resolution is measured from detected crops,
   // never inferred solely from this whole-image dimension.
   const tinyUploadAdvisory = Boolean(imgSize && Math.min(imgSize.width, imgSize.height) < 360);
+  const [tinyAdvisoryDismissed, setTinyAdvisoryDismissed] = useState(false);
   const [imgDim, setImgDim] = useState<[number, number] | null>(null);
   useEffect(() => {
     const image = localizedImageRef.current;
@@ -922,6 +949,8 @@ export default function App() {
 
   // project-first session management
   const [project, setProject] = useState<Project | null>(null);
+  const [projectGroundTruth, setProjectGroundTruth] = useState("");
+  const [assetGroundTruth, setAssetGroundTruth] = useState("");
   const [showHistory, setShowHistory] = useState(false);
   const [showCapabilities, setShowCapabilities] = useState(false);
   const [historyLeaving, setHistoryLeaving] = useState(false);
@@ -969,6 +998,7 @@ export default function App() {
     if (shimmerTimer.current !== null) window.clearTimeout(shimmerTimer.current);
   }, []);
   const [showTitleConfirm, setShowTitleConfirm] = useState(false);
+  const [showRenderConfirm, setShowRenderConfirm] = useState(false);
   const [pendingAssetDelete, setPendingAssetDelete] = useState<{ assetId: string; filename: string | null } | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -1091,6 +1121,12 @@ export default function App() {
     setActiveBrushStroke(null);
     setBrushCursor(null);
     setBrushApplying(false);
+    setCleanupOpen(false);
+    setBrushMode(false);
+    setLassoMode(false);
+    setLassoPoints([]);
+    setCloneSource(null);
+    setShowLocalizedText(true);
     setAppliedCandidateIds([]);
     setInpaintPatchIds([]);
     localizedUndoStack.current = [];
@@ -1120,6 +1156,7 @@ export default function App() {
     setHoveredId(null);
     setDrawMode(false);
     setImgSize(null);
+    setTinyAdvisoryDismissed(false);
     setReport(null);
     setRenderResult(null);
     setVerifyBusy(null);
@@ -1231,6 +1268,36 @@ export default function App() {
     if (!project) return;
     getProject(project.id).then(setProject).catch(() => {});
   }, [project]);
+
+  useEffect(() => {
+    setProjectGroundTruth((project?.ground_truth ?? []).join(" "));
+    const activeTerms = project?.assets?.find(
+      (item) => item.asset_id === asset?.asset_id
+    )?.ground_truth ?? [];
+    setAssetGroundTruth(activeTerms.join(" "));
+  }, [project, asset?.asset_id]);
+
+  const saveProjectGroundTruth = useCallback(async () => {
+    if (!project) return;
+    const terms = projectGroundTruth.split(/\s+/).filter(Boolean);
+    const updated = await updateProject(project.id, { ground_truth: terms });
+    setProject((current) => current ? { ...current, ...updated } : updated);
+    setProjectGroundTruth(updated.ground_truth.join(" "));
+    addToast("success", `saved ${updated.ground_truth.length} project Ground Truth term(s)`);
+  }, [project, projectGroundTruth, addToast]);
+
+  const saveAssetGroundTruth = useCallback(async () => {
+    if (!asset) return;
+    const terms = assetGroundTruth.split(/\s+/).filter(Boolean);
+    const updated = await updateAssetGroundTruth(asset.asset_id, terms);
+    setProject((current) => current ? {
+      ...current,
+      assets: current.assets?.map((item) => item.asset_id === updated.asset_id ? updated : item),
+      active_asset: current.active_asset?.asset_id === updated.asset_id ? updated : current.active_asset,
+    } : current);
+    setAssetGroundTruth(updated.ground_truth.join(" "));
+    addToast("success", `saved ${updated.ground_truth.length} asset Ground Truth term(s)`);
+  }, [asset, assetGroundTruth, addToast]);
 
   useEffect(() => {
     fetchGlossaryStatus(project?.id).then(setGlossaryStatus).catch(() => setGlossaryStatus(null));
@@ -1671,7 +1738,7 @@ export default function App() {
         // initial/incomplete manifest; the server still re-cleanses on a real
         // geometry cache miss.
         const fastPreview = cause === "garnish" || cause === "treatment" || cause === "style" || cause === "text";
-        const result = await renderPreview(asset.asset_id, targLang, snapshot, controller.signal, fastPreview);
+        const result = await renderPreview(asset.asset_id, targLang, snapshot, controller.signal, fastPreview, showLocalizedText);
         if (!controller.signal.aborted && seq === previewRenderSeq.current) {
           setPreRenderUrl(result.output_url);
           setPreviewRenderError(null);
@@ -1728,7 +1795,7 @@ export default function App() {
     // Scene's returned garnish metadata is presentation data.  It must not
     // be a dependency here: accepting it after a successful response would
     // otherwise schedule a second, latent canvas render.
-  }, [step, asset, targLang, manifest, patchRevision, previewRetryRevision]);
+  }, [step, asset, targLang, manifest, patchRevision, previewRetryRevision, showLocalizedText]);
 
   useEffect(() => {
     if (!asset) return;
@@ -1794,13 +1861,23 @@ export default function App() {
     if (!brushMode || brushApplying) return;
     const point = pointOnLocalizedCanvas(event);
     if (!point) return;
+    if (cleanupTool === "clone" && event.altKey) {
+      event.preventDefault();
+      setCloneSource(point);
+      setBrushCursor(point);
+      return;
+    }
+    if (cleanupTool === "clone" && !cloneSource) {
+      addToast("warning", "Alt/Option-click the canvas to choose a clone source first");
+      return;
+    }
     event.preventDefault();
     const stroke = { id: `${Date.now()}-${event.pointerId}-${Math.random().toString(36).slice(2, 7)}`, points: [point] as [number, number][] };
     brushDrawing.current = { pointerId: event.pointerId, stroke };
     setActiveBrushStroke(stroke);
     setBrushCursor(point);
     event.currentTarget.setPointerCapture(event.pointerId);
-  }, [brushMode, brushApplying, pointOnLocalizedCanvas]);
+  }, [brushMode, brushApplying, pointOnLocalizedCanvas, cleanupTool, cloneSource, addToast]);
 
   const extendBrushStroke = useCallback((event: React.PointerEvent<HTMLImageElement>) => {
     if (!brushMode) return;
@@ -1839,24 +1916,37 @@ export default function App() {
     }
   }, []);
 
-  const applyBrush = useCallback(async () => {
-    if (!asset || !brushStrokes.length || brushApplying) return;
+  const applyCleanup = useCallback(async () => {
+    if (!asset || (!brushStrokes.length && lassoPoints.length < 3) || brushApplying) return;
     setBrushApplying(true);
     try {
       recordLocalizedChange();
       const snapshot = await flushCurrentManifest();
       let remaining = [...brushStrokes];
       for (const stroke of brushStrokes) {
-        const result = await createInpaintPatch(asset.asset_id, { points: stroke.points, mode: "blur", radius: brushRadius, blur_strength: brushIntensity / 100 }, snapshot ?? undefined);
+        const result = await createInpaintPatch(asset.asset_id, {
+          points: stroke.points, mode: cleanupTool, radius: brushRadius,
+          hardness: brushHardness / 100, opacity: brushOpacity / 100,
+          blur_strength: brushIntensity / 100,
+          clone_source: cleanupTool === "clone" && cloneSource ? cloneSource : undefined,
+        }, snapshot ?? undefined);
         syncTreatmentPatches(result.patches);
         remaining = remaining.filter((candidate) => candidate.id !== stroke.id);
         setBrushStrokes(remaining);
       }
+      if (lassoPoints.length >= 3) {
+        const result = await createInpaintPatch(asset.asset_id, {
+          polygon: lassoPoints, mode: cleanupTool === "clone" ? "context_fill" : cleanupTool,
+          radius: brushRadius, hardness: brushHardness / 100, opacity: brushOpacity / 100,
+        }, snapshot ?? undefined);
+        syncTreatmentPatches(result.patches);
+        setLassoPoints([]);
+      }
       setPatchRevision((v) => v + 1);
-      addToast("success", "text blur applied");
+      addToast("success", `${cleanupTool === "context_fill" ? "context fill" : cleanupTool} applied`);
     } catch (e) { setErrorWithNotif(String(e)); }
     finally { setBrushApplying(false); }
-  }, [asset, brushStrokes, brushRadius, brushIntensity, brushApplying, addToast, flushCurrentManifest, syncTreatmentPatches, recordLocalizedChange]);
+  }, [asset, brushStrokes, lassoPoints, cleanupTool, cloneSource, brushRadius, brushHardness, brushOpacity, brushIntensity, brushApplying, addToast, flushCurrentManifest, syncTreatmentPatches, recordLocalizedChange]);
 
   type CanvasTransformKey = "skew_x" | "skew_y" | "arc" | "scale_x" | "scale_y" | "offset_x" | "offset_y" | "rotation";
   const LOCKABLE_TRANSFORM_KEYS: CanvasTransformKey[] = ["skew_x", "skew_y", "arc", "rotation", "scale_x", "scale_y", "offset_x", "offset_y"];
@@ -2176,8 +2266,30 @@ export default function App() {
   // the OCR reader charset is language-tuned, which materially improves
   // recognition of non-latin scripts (used by Re-detect after the user
   // confirms the source language)
-  const runDetect = useCallback((langs?: string[]) => {
+  const runDetect = useCallback(async (langs?: string[]) => {
     if (!asset) return;
+    try {
+      const projectTerms = projectGroundTruth.split(/\s+/).filter(Boolean);
+      if (project && JSON.stringify(projectTerms) !== JSON.stringify(project.ground_truth ?? [])) {
+        const updated = await updateProject(project.id, { ground_truth: projectTerms });
+        setProject((current) => current ? { ...current, ...updated } : updated);
+      }
+      const assetTerms = assetGroundTruth.split(/\s+/).filter(Boolean);
+      const persistedAssetTerms = project?.assets?.find(
+        (item) => item.asset_id === asset.asset_id
+      )?.ground_truth ?? [];
+      if (JSON.stringify(assetTerms) !== JSON.stringify(persistedAssetTerms)) {
+        const updatedAsset = await updateAssetGroundTruth(asset.asset_id, assetTerms);
+        setProject((current) => current ? {
+          ...current,
+          assets: current.assets?.map((item) => item.asset_id === updatedAsset.asset_id ? updatedAsset : item),
+          active_asset: current.active_asset?.asset_id === updatedAsset.asset_id ? updatedAsset : current.active_asset,
+        } : current);
+      }
+    } catch (error) {
+      setErrorWithNotif(`could not save Ground Truth before detection: ${String(error)}`);
+      return;
+    }
     setShowCapturePrompt(false);
     setShowLangConfirm(false);
     setShowLangSelect(false);
@@ -2278,6 +2390,7 @@ export default function App() {
         setManifest(m.instances);
         markRegionsNew(m.instances);
         setDismissedOcrReview(new Set());
+        setTinyAdvisoryDismissed(false);
         setImgDim(m.img_dim);
         setSceneRegions(m.scene_regions ?? []);
         setSemanticUnits(m.semantic_units ?? []);
@@ -2321,7 +2434,7 @@ export default function App() {
       setDetectStage("idle");
       setErrorWithNotif(message);
     });
-  }, [asset, addToast, markRegionsNew]);
+  }, [asset, project, projectGroundTruth, assetGroundTruth, addToast, markRegionsNew]);
 
   const cancelDetect = useCallback(() => {
     if (cancelDetectRef.current) {
@@ -3481,6 +3594,25 @@ export default function App() {
                     <p className="subtext text-xs text-zinc-500">auto — locked from your first asset's scan</p>
                   )}
                 </div>
+                {asset && (
+                  <div>
+                    <p className="subtext mb-1 flex items-center gap-1 text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-600">
+                      <TbBackground size={13} /> Ground Truth
+                    </p>
+                    <GroundTruthField
+                      label="Asset Ground Truth"
+                      value={assetGroundTruth}
+                      onChange={setAssetGroundTruth}
+                      placeholder="Enter source terms"
+                    />
+                    <div className="mt-1.5 flex items-start justify-between gap-2">
+                      <p className="subtext text-[10px] text-zinc-500">
+                        Optional. {new Set([...projectGroundTruth.split(/\s+/), ...assetGroundTruth.split(/\s+/)].filter(Boolean)).size} effective term(s). Primes the next detection; it does not rewrite the current manifest.
+                      </p>
+                      <button type="button" onClick={() => saveAssetGroundTruth().catch((e) => setErrorWithNotif(String(e)))} className="shrink-0 rounded border border-zinc-300 px-2 py-1 text-[10px] hover:border-cyan-500 dark:border-zinc-700">save</button>
+                    </div>
+                  </div>
+                )}
                 {(project.assets?.length ?? 0) > 0 && (
                   <div>
                     <p className="subtext mb-1 text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-600">
@@ -3620,15 +3752,23 @@ export default function App() {
             </div>
           )}
 
-          {tinyUploadAdvisory && (
-            <div className="subtext flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
-              <AlertTriangle size={14} className="shrink-0" />
-              Small source image: detection will continue, but fine marks and narrow glyphs may require review.
+          {tinyUploadAdvisory && !tinyAdvisoryDismissed && (
+            <div role="alert" className="subtext flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+              {theme === "dark" ? <PiWarningFill size={16} style={{ width: 16, height: 16 }} className="shrink-0" /> : <PiWarningLight size={16} style={{ width: 16, height: 16 }} className="shrink-0" />}
+              <span className="flex-1">Small source image: detection will continue, but fine marks and narrow glyphs may require review.</span>
+              <button
+                type="button"
+                onClick={() => setTinyAdvisoryDismissed(true)}
+                className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-normal opacity-80 hover:opacity-100"
+                title="dismiss"
+              >
+                dismiss
+              </button>
             </div>
           )}
 
           {qualityReviewRegions.length > 0 && (
-            <div className="subtext rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+            <div role="alert" className="alert alert-warning alert-dash subtext flex-col items-stretch">
               <div className="flex w-full items-center gap-2 font-medium">
                 <button
                   type="button"
@@ -3636,21 +3776,21 @@ export default function App() {
                   className="flex flex-1 cursor-pointer items-center gap-2"
                   aria-expanded={ocrReviewOpen}
                 >
-                  <ShieldAlert size={14} className="shrink-0" />
-                  {qualityReviewRegions.length} OCR region{qualityReviewRegions.length === 1 ? "" : "s"} need{qualityReviewRegions.length === 1 ? "s" : ""} attention
+                  {theme === "dark" ? <PiBoundingBoxFill size={16} style={{ width: 16, height: 16 }} className="shrink-0" /> : <PiBoundingBoxBold size={16} style={{ width: 16, height: 16 }} className="shrink-0" />}
+                  Review: {qualityReviewRegions.length} block{qualityReviewRegions.length === 1 ? "" : "s"}
                 </button>
                 <button
                   type="button"
                   onClick={() => setDismissedOcrReview((prev) => new Set(qualityReviewRegions.map((r) => r.id).reduce((s, id) => s.add(id), new Set(prev))))}
                   className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-normal opacity-80 hover:opacity-100"
-                  title="dismiss all review items"
+                  title={qualityReviewRegions.length <= 1 ? "dismiss review item" : "dismiss all review items"}
                 >
-                  dismiss all
+                  {qualityReviewRegions.length <= 1 ? "dismiss" : "dismiss all"}
                 </button>
               </div>
               <div className={`ocr-review-content${ocrReviewOpen ? " expanded" : ""}`}>
                 <div className="min-h-0">
-                  <p className="mt-2 text-[11px] opacity-85">Detection is retained. Automatic OCR corrections were withheld where the crop cannot support them reliably.</p>
+                  <p className="mt-2 text-[11px] opacity-85">Blocks were withheld in some cases.</p> {/*Detection is retained. Automatic OCR corrections were withheld where the crop cannot support them reliably.*/}
                   <div className="mt-2 space-y-1.5">
                     {qualityReviewRegions.map((inst) => {
                       const quality = inst.ocr_quality!;
@@ -3719,6 +3859,7 @@ export default function App() {
             <div>
             <RegionTable
               mode="capture"
+              theme={theme}
               regions={visibleManifest}
               selectedId={selectedId}
               hoveredId={hoveredId}
@@ -4132,6 +4273,7 @@ export default function App() {
                   carries target text that folding it away would discard. */}
               <RegionTable
                 mode="translate"
+                theme={theme}
                 bboxColor={bboxColor}
                 hideRegionCounter={hideRegionCounter}
                 regions={visibleManifest}
@@ -4193,8 +4335,8 @@ export default function App() {
             </div>
             <div className="flex items-center gap-2">
               <PressButton
-                onClick={onRender}
-                disabled={busy !== null}
+                onClick={() => setShowRenderConfirm(true)}
+                disabled={busy !== null || showRenderConfirm}
                 title="Render localized image"
               >
                 {busy === "rendering" ? "Rendering…" : "Render"}
@@ -4697,6 +4839,49 @@ export default function App() {
                         collapsed card. */}
                     <div className={`style-panel-morph${!garnishCardCollapsed ? " expanded" : ""}`}>
                       <SmartFillReview reviews={repairReviews} fallbackIds={repairFallbackIds} previews={localizedCandidatePreviews} previewPending={previewPending} appliedIds={appliedCandidateIds} onRetryPreview={() => setCandidatePreviewRevision((value) => value + 1)} onApply={applyReviewCandidate} onApplyAll={applyAllReviewCandidates} onHoverRegion={setSmartFillHoverId} />
+                      <div className="mt-3 border-t border-zinc-200 pt-3 dark:border-zinc-800">
+                        <button type="button" onClick={() => {
+                          setCleanupOpen((open) => {
+                            if (open) { setBrushMode(false); setLassoMode(false); }
+                            return !open;
+                          });
+                        }} className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-xs font-medium text-violet-800 transition hover:bg-violet-100 dark:text-violet-200 dark:hover:bg-zinc-800" aria-expanded={cleanupOpen}>
+                          <span className="flex items-center gap-2">{theme === "dark" ? <PiMagicWandFill size={13} /> : <PiMagicWand size={13} />}Cleanup</span>
+                          <ChevronDown size={13} className={`transition ${cleanupOpen ? "rotate-180" : ""}`} />
+                        </button>
+                        {cleanupOpen && <div className="mt-2 space-y-3 rounded-lg border border-zinc-300/80 bg-white/30 p-3 dark:border-zinc-700/80 dark:bg-zinc-950/20">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[10px] uppercase tracking-wider text-zinc-500">Canvas cleanup</span>
+                            <button type="button" onClick={() => setShowLocalizedText((show) => !show)} className="rounded-sm p-1.5 text-violet-700 transition hover:bg-violet-100 dark:text-violet-300 dark:hover:bg-zinc-800" title={showLocalizedText ? "Hide localized text" : "Show localized text"} aria-label={showLocalizedText ? "Hide localized text" : "Show localized text"}>
+                              {theme === "dark"
+                                ? (showLocalizedText ? <PiEyeClosedFill size={17} /> : <PiEyeFill size={17} />)
+                                : (showLocalizedText ? <PiEyeClosedBold size={17} /> : <PiEyeBold size={17} />)}
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-3 gap-1">
+                            {(["heal", "clone", "context_fill"] as const).map((tool) => <button key={tool} type="button" onClick={() => {
+                              setCleanupTool(tool); setBrushMode(true); setLassoMode(false);
+                              setBrushStrokes([]); setLassoPoints([]);
+                            }} className={`rounded-md px-2 py-1.5 text-[11px] transition ${brushMode && cleanupTool === tool ? "bg-violet-700 text-white" : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"}`}>
+                              {tool === "context_fill" ? "Context Fill" : tool[0].toUpperCase() + tool.slice(1)}
+                            </button>)}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button type="button" onClick={() => { setBrushMode(true); setLassoMode(false); }} className={`rounded px-2 py-1 text-[10px] ${brushMode ? "bg-cyan-700 text-white" : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300"}`}>Brush mask</button>
+                            <button type="button" onClick={() => { setBrushMode(false); setLassoMode(true); setBrushStrokes([]); }} className={`rounded px-2 py-1 text-[10px] ${lassoMode ? "bg-cyan-700 text-white" : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300"}`}>Lasso mask</button>
+                            {cleanupTool === "clone" && <span className="text-[10px] text-zinc-500">{cloneSource ? `source ${cloneSource[0]}, ${cloneSource[1]}` : "Alt/Option-click source"}</span>}
+                          </div>
+                          <div className="grid grid-cols-3 gap-3 text-[10px] text-zinc-500">
+                            <label>Size <input type="range" min="2" max="80" value={brushRadius} onChange={(e) => setBrushRadius(Number(e.target.value))} className="block w-full accent-violet-700" /><span>{brushRadius}px</span></label>
+                            <label>Hardness <input type="range" min="0" max="100" value={brushHardness} onChange={(e) => setBrushHardness(Number(e.target.value))} className="block w-full accent-violet-700" /><span>{brushHardness}%</span></label>
+                            <label>Opacity <input type="range" min="1" max="100" value={brushOpacity} onChange={(e) => setBrushOpacity(Number(e.target.value))} className="block w-full accent-violet-700" /><span>{brushOpacity}%</span></label>
+                          </div>
+                          <div className="flex items-center justify-end gap-2">
+                            <button type="button" onClick={() => { setBrushStrokes([]); setLassoPoints([]); }} disabled={!brushStrokes.length && !lassoPoints.length} className="rounded px-2 py-1 text-[10px] text-zinc-500 disabled:opacity-40">Clear mask</button>
+                            <button type="button" onClick={applyCleanup} disabled={brushApplying || (!brushStrokes.length && lassoPoints.length < 3)} className="rounded bg-violet-700 px-3 py-1 text-[10px] text-white disabled:opacity-40">{brushApplying ? "Applying…" : "Apply cleanup"}</button>
+                          </div>
+                        </div>}
+                      </div>
                     </div>
                   </div>;
                 })()}
@@ -4819,6 +5004,10 @@ export default function App() {
                     {brushStrokes.map((stroke) => <polyline key={stroke.id} points={stroke.points.map((p) => p.join(",")).join(" ")} fill="none" stroke="#06b6d4" strokeWidth={brushRadius * 2} strokeLinecap="round" strokeLinejoin="round" opacity=".45" />)}
                     {activeBrushStroke && <polyline points={activeBrushStroke.points.map((p) => p.join(",")).join(" ")} fill="none" stroke="#06b6d4" strokeWidth={brushRadius * 2} strokeLinecap="round" strokeLinejoin="round" opacity=".70" />}
                     {brushMode && brushCursor && <circle cx={brushCursor[0]} cy={brushCursor[1]} r={brushRadius} fill="rgba(6,182,212,.10)" stroke="#06b6d4" strokeWidth="1.5" />}
+                    {cleanupOpen && cleanupTool === "clone" && cloneSource && <g pointerEvents="none">
+                      <circle cx={cloneSource[0]} cy={cloneSource[1]} r={Math.max(5, brushRadius)} fill="none" stroke="#a855f7" strokeWidth="2" />
+                      <path d={`M ${cloneSource[0] - 5} ${cloneSource[1]} H ${cloneSource[0] + 5} M ${cloneSource[0]} ${cloneSource[1] - 5} V ${cloneSource[1] + 5}`} stroke="#a855f7" strokeWidth="2" />
+                    </g>}
                     {lassoPoints.length > 0 && <>
                       <polyline points={[...lassoPoints, ...(lassoMode && brushCursor ? [brushCursor] : [])].map((p) => p.join(",")).join(" ")} fill="rgba(6,182,212,.15)" stroke="#06b6d4" strokeWidth="2" strokeDasharray={lassoMode && brushCursor ? "5 3" : undefined} />
                       {lassoPoints.map((point, index) => <circle key={`${point[0]}-${point[1]}-${index}`} cx={point[0]} cy={point[1]} r="3" fill="#06b6d4" stroke="white" strokeWidth="1" />)}
@@ -5193,67 +5382,107 @@ export default function App() {
               (renderResult.text_manifest?.instances ?? []).filter((i) => i.glyph_fallback).map((i) => i.id)
             );
             const coverageComplete = cov ? cov.untranslated === 0 : false;
+            // Dynamic tally: dismissed per-region QA entries reduce the
+            // addressed/rendered counters shown in the Compare header
+            // bubbles and the approve-gate summary.
+            const perKeys = new Set(Object.keys(per));
+            const dismissedInPer = [...dismissedQaRegions].filter((id) => perKeys.has(id)).length;
+            const adjRendered = cov ? Math.max(0, cov.rendered - dismissedInPer) : 0;
+            const adjAddressed = cov ? Math.max(0, cov.regions_total - dismissedInPer) : 0;
+            const adjFallback = cov ? Math.max(0, cov.fallback_font - [...dismissedQaRegions].filter((id) => perKeys.has(id) && fallbackIds.has(id)).length) : 0;
             return (
               <>
                 {verification && (
-                  <Section title="Verification summary" icon={<BiAbacus size={15} />}>
-                    <div className="space-y-3">
-                      <div className={`rounded-lg border px-3 py-2 ${
-                        verification.project.overall_status === "pass"
-                          ? "border-emerald-300 bg-emerald-50 dark:border-emerald-900/70 dark:bg-emerald-950/30"
-                          : verification.project.overall_status === "review"
-                            ? "border-amber-300 bg-amber-50 dark:border-amber-900/70 dark:bg-amber-950/30"
-                            : "border-red-300 bg-red-50 dark:border-red-900/70 dark:bg-red-950/30"
-                      }`}>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-sm font-semibold capitalize text-zinc-800 dark:text-zinc-100">
-                            {verification.project.overall_status === "pass" ? "Ready" : verification.project.overall_status === "review" ? "Needs review" : "Blocked"}
-                          </span>
-                          {verification.project.overall_score != null && (
-                            <span className="rounded-full bg-white/70 px-2 py-0.5 font-mono text-xs dark:bg-zinc-900/60">
-                              {verification.project.overall_score.toFixed(0)}/100
+                  <Section
+                    title="Verification summary"
+                    icon={<BiAbacus size={15} />}
+                    rightSideHandle={<button type="button" onClick={() => setVerifySummaryOpen((open) => !open)} className="absolute right-5 top-4 rounded-sm p-1 text-zinc-500 transition hover:bg-zinc-200 dark:hover:bg-zinc-800" title={verifySummaryOpen ? "collapse summary" : "expand summary"} aria-label={verifySummaryOpen ? "collapse summary" : "expand summary"}><FcCollapse size={12} style={{ transform: verifySummaryOpen ? "none" : "rotate(180deg)", transition: "transform 0.2s" }} /></button>}
+                  >
+                    <div className={`style-panel-morph${verifySummaryOpen ? " expanded" : ""}`}>
+                      <div className="space-y-3">
+                        {!dismissedVerifyStatus && (
+                          <div className={`rounded-lg border px-3 py-2 ${
+                            verification.project.overall_status === "pass"
+                              ? "border-emerald-300 bg-emerald-50 dark:border-emerald-900/70 dark:bg-emerald-950/30"
+                              : verification.project.overall_status === "review"
+                                ? "border-amber-300 bg-amber-50 dark:border-amber-900/70 dark:bg-amber-950/30"
+                                : "border-red-300 bg-red-50 dark:border-red-900/70 dark:bg-red-950/30"
+                          }`}>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-sm font-semibold capitalize text-zinc-800 dark:text-zinc-100">
+                                {verification.project.overall_status === "pass" ? "Ready" : verification.project.overall_status === "review" ? "Needs review" : "Blocked"}
+                              </span>
+                              {verification.project.overall_score != null && (
+                                <span className="rounded-full bg-white/70 px-2 py-0.5 font-mono text-xs dark:bg-zinc-900/60">
+                                  {verification.project.overall_score.toFixed(0)}/100
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => setDismissedVerifyStatus(true)}
+                                className="ml-auto shrink-0 rounded px-1.5 py-0.5 text-[10px] font-normal opacity-70 hover:opacity-100"
+                                title="dismiss"
+                              >
+                                dismiss
+                              </button>
+                            </div>
+                            {verification.project.summary && <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">{verification.project.summary}</p>}
+                          </div>
+                        )}
+                        <div className="flex flex-wrap gap-1.5">
+                          {Object.entries(verification.project.component_scores).map(([name, score]) => (
+                            <span
+                              key={name}
+                              title={score == null ? "No deterministic evidence was available for this component." : `${name.replace(/_/g, " ")} score`}
+                              className="rounded bg-zinc-100 px-2 py-1 text-[10px] text-zinc-600 dark:bg-zinc-900 dark:text-zinc-300"
+                            >
+                              {name.replace(/_/g, " ")}: {score == null ? "not scored" : `${score.toFixed(0)}/100`}
                             </span>
-                          )}
+                          ))}
                         </div>
-                        {verification.project.summary && <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">{verification.project.summary}</p>}
-                      </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {Object.entries(verification.project.component_scores).map(([name, score]) => (
-                          <span
-                            key={name}
-                            title={score == null ? "No deterministic evidence was available for this component." : `${name.replace(/_/g, " ")} score`}
-                            className="rounded bg-zinc-100 px-2 py-1 text-[10px] text-zinc-600 dark:bg-zinc-900 dark:text-zinc-300"
-                          >
-                            {name.replace(/_/g, " ")}: {score == null ? "not scored" : `${score.toFixed(0)}/100`}
-                          </span>
-                        ))}
-                      </div>
-                      <div className="flex flex-wrap gap-1.5 text-[10px]">
-                        {Object.entries(verification.project.region_totals).map(([status, count]) => (
-                          <span key={status} className="rounded-full border border-zinc-200 px-2 py-0.5 capitalize text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
-                            {count} {status.replace(/_/g, " ")}
-                          </span>
-                        ))}
-                        {verification.project.summary_flags.slice(0, 3).map((flag) => (
-                          <span key={flag} className="rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-amber-700 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
-                            {flag.replace(/_/g, " ")}
-                          </span>
-                        ))}
-                      </div>
-                      {verification.project.review_order.length > 0 && (
-                        <div className="space-y-1">
-                          {verification.project.review_order.map((regionId) => {
-                            const region = verification.regions.find((candidate) => candidate.region_id === regionId);
-                            if (!region) return null;
-                            return <div key={regionId} className="flex flex-wrap items-center gap-2 rounded border border-zinc-200 px-2 py-1.5 text-xs dark:border-zinc-800">
-                              <span className={`font-mono font-semibold ${region.status === "fail" ? "text-red-600 dark:text-red-400" : "text-amber-600 dark:text-amber-400"}`}>{regionId}</span>
-                              <span className="capitalize text-zinc-500">{region.status}</span>
-                              {region.overall_score != null && <span className="font-mono text-zinc-500">{region.overall_score.toFixed(0)}/100</span>}
-                              <span className="min-w-0 flex-1 text-zinc-600 dark:text-zinc-300">{region.recommended_action ?? region.flags[0]?.replace(/_/g, " ")}</span>
-                            </div>;
-                          })}
+                        <div className="flex flex-wrap gap-1.5 text-[10px]">
+                          {Object.entries(verification.project.region_totals).map(([status, count]) => (
+                            <span key={status} className="rounded-full border border-zinc-200 px-2 py-0.5 capitalize text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+                              {count} {status.replace(/_/g, " ")}
+                            </span>
+                          ))}
+                          {verification.project.summary_flags.slice(0, 3).filter((flag) => !dismissedVerifyFlags.has(flag)).map((flag) => (
+                            <span key={flag} className="flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-amber-700 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
+                              {flag.replace(/_/g, " ")}
+                              <button
+                                type="button"
+                                onClick={() => setDismissedVerifyFlags((prev) => new Set(prev).add(flag))}
+                                className="shrink-0 opacity-60 hover:opacity-100"
+                                title={`dismiss ${flag.replace(/_/g, " ")}`}
+                              >
+                                <X size={9} />
+                              </button>
+                            </span>
+                          ))}
                         </div>
-                      )}
+                        {verification.project.review_order.filter((regionId) => !dismissedVerifyReviewRegions.has(regionId)).length > 0 && (
+                          <div className="space-y-1">
+                            {verification.project.review_order.filter((regionId) => !dismissedVerifyReviewRegions.has(regionId)).map((regionId) => {
+                              const region = verification.regions.find((candidate) => candidate.region_id === regionId);
+                              if (!region) return null;
+                              return <div key={regionId} className="flex flex-wrap items-center gap-2 rounded border border-zinc-200 px-2 py-1.5 text-xs dark:border-zinc-800">
+                                <span className={`font-mono font-semibold ${region.status === "fail" ? "text-red-600 dark:text-red-400" : "text-amber-600 dark:text-amber-400"}`}>{regionId}</span>
+                                <span className="capitalize text-zinc-500">{region.status}</span>
+                                {region.overall_score != null && <span className="font-mono text-zinc-500">{region.overall_score.toFixed(0)}/100</span>}
+                                <span className="min-w-0 flex-1 text-zinc-600 dark:text-zinc-300">{region.recommended_action ?? region.flags[0]?.replace(/_/g, " ")}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setDismissedVerifyReviewRegions((prev) => new Set(prev).add(regionId))}
+                                  className="shrink-0 rounded p-0.5 opacity-60 hover:opacity-100"
+                                  title={`dismiss ${regionId}`}
+                                >
+                                  <X size={12} />
+                                </button>
+                              </div>;
+                            })}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </Section>
                 )}
@@ -5285,7 +5514,7 @@ export default function App() {
                     title="Compare"
                     icon={<MdOutlineCompare size={15} />}
                     className={verifyCardOrder === "compare-first" ? "order-1" : "order-2"}
-                    headerExtra={<span className="ml-1 flex min-w-0 items-center gap-1 normal-case text-[10px] font-normal tracking-normal">{qa?.overall_score != null && <Badge ok={renderResult.qa_passed}>QA {(qa.overall_score * 100).toFixed(0)}%</Badge>}{cov && <><span className="subtext whitespace-nowrap rounded-full bg-zinc-200 px-2 py-0.5 text-xs text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">{cov.rendered}/{cov.regions_total} rendered</span>{cov.dnt > 0 && <span className="subtext whitespace-nowrap rounded-full bg-zinc-200 px-2 py-0.5 text-xs text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">{cov.dnt} DNT</span>}{cov.untranslated > 0 && <span className="subtext flex whitespace-nowrap items-center gap-1 rounded-full bg-red-500/15 px-2 py-0.5 text-xs text-red-600 dark:text-red-400"><AlertTriangle size={11} /> {cov.untranslated} untranslated</span>}{cov.fallback_font > 0 && <span className="subtext flex whitespace-nowrap items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs text-amber-600 dark:text-amber-400"><AlertTriangle size={11} /> {cov.fallback_font} font fallback</span>}</>}</span>}
+                    headerExtra={<span className="ml-1 flex min-w-0 items-center gap-1 normal-case text-[10px] font-normal tracking-normal">{qa?.overall_score != null && <Badge ok={renderResult.qa_passed}>QA {(qa.overall_score * 100).toFixed(0)}%</Badge>}{cov && <><span className="subtext whitespace-nowrap rounded-full bg-zinc-200 px-2 py-0.5 text-xs text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">{adjRendered}/{cov.regions_total} rendered</span>{cov.dnt > 0 && <span className="subtext whitespace-nowrap rounded-full bg-zinc-200 px-2 py-0.5 text-xs text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">{cov.dnt} DNT</span>}{cov.untranslated > 0 && <span className="subtext flex whitespace-nowrap items-center gap-1 rounded-full bg-red-500/15 px-2 py-0.5 text-xs text-red-600 dark:text-red-400"><AlertTriangle size={11} /> {cov.untranslated} untranslated</span>}{adjFallback > 0 && <span className="subtext flex whitespace-nowrap items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs text-amber-600 dark:text-amber-400"><AlertTriangle size={11} /> {adjFallback} font fallback</span>}</>}</span>}
                     rightSideHandle={Object.keys(per).length > 0 ? <button type="button" onClick={() => setVerifyCardOrder((order) => order === "compare-first" ? "qa-first" : "compare-first")} title={verifyCardOrder === "compare-first" ? "Move Compare below Per-Region QA" : "Move Compare above Per-Region QA"} aria-label={verifyCardOrder === "compare-first" ? "move Compare down" : "move Compare up"} className="absolute right-5 top-4 rounded-sm p-1 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800">{theme === "dark" ? (verifyCardOrder === "compare-first" ? <BsArrowDownSquareFill size={16} /> : <BsArrowUpSquareFill size={16} />) : (verifyCardOrder === "compare-first" ? <LuSquareArrowDown size={16} /> : <LuSquareArrowUp size={16} />)}</button> : undefined}
                   >
                     <div className="grid gap-4 md:grid-cols-2">
@@ -5330,7 +5559,7 @@ export default function App() {
                 {Object.keys(per).length > 0 && (
                   <Section title="Per-Region QA" icon={<TbScanCube size={14} />} className={`${stackClass(3)} ${verifyCardOrder === "compare-first" ? "order-2" : "order-1"}`} rightSideHandle={renderResult.output_url ? <button type="button" onClick={() => setVerifyCardOrder((order) => order === "compare-first" ? "qa-first" : "compare-first")} title={verifyCardOrder === "compare-first" ? "Move Per-Region QA above Compare" : "Move Per-Region QA below Compare"} aria-label={verifyCardOrder === "compare-first" ? "move Per-Region QA up" : "move Per-Region QA down"} className="absolute right-5 top-4 rounded-sm p-1 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800">{theme === "dark" ? (verifyCardOrder === "compare-first" ? <BsArrowUpSquareFill size={16} /> : <BsArrowDownSquareFill size={16} />) : (verifyCardOrder === "compare-first" ? <LuSquareArrowUp size={16} /> : <LuSquareArrowDown size={16} />)}</button> : undefined}>
                     <div className="space-y-1.5">
-                      {Object.entries(per).map(([rid, score]) => {
+                      {Object.entries(per).filter(([rid]) => !dismissedQaRegions.has(rid)).map(([rid, score]) => {
                         const isSel = verifySelId === rid;
                         return (
                           <div key={rid} className="rounded-lg border border-zinc-200 dark:border-zinc-800">
@@ -5362,6 +5591,13 @@ export default function App() {
                                 {reRenderingId === rid ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
                                 re-render
                               </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setDismissedQaRegions((prev) => new Set(prev).add(rid)); }}
+                                className="shrink-0 rounded p-0.5 text-zinc-400 opacity-60 hover:opacity-100 dark:text-zinc-600"
+                                title={`dismiss ${rid}`}
+                              >
+                                <X size={12} />
+                              </button>
                             </div>
                             <div className={`smart-fill-content${isSel ? " expanded" : ""}`}>
                               <div className="min-h-0">
@@ -5386,7 +5622,7 @@ export default function App() {
                 {/* double-confirmation approve gate */}
                 <div className={`bezier-card soft-shadow flex flex-wrap items-center gap-3 rounded-lg bg-white/60 px-4 py-3 dark:bg-zinc-900/60 ${stackClass(4)}`}>
                   <span className="subtext text-sm text-zinc-600 dark:text-zinc-400">
-                    {cov ? `${cov.regions_total}/${cov.regions_total} region(s) addressed — ${cov.rendered} rendered, ${cov.dnt} DNT` : "coverage unavailable"}
+                    {cov ? `${adjAddressed}/${cov.regions_total} region(s) addressed — ${adjRendered} rendered, ${cov.dnt} DNT` : "coverage unavailable"}
                     {!coverageComplete && cov && cov.untranslated > 0 && (
                       <span className="text-red-600 dark:text-red-400"> ({cov.untranslated} still untranslated)</span>
                     )}
@@ -5787,6 +6023,21 @@ export default function App() {
                   </div>
                 </div>
               </div>
+              {project && (
+                <div>
+                  <p className="subtext mb-2 flex items-center gap-1 text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-600"><TbBackground size={13} /> Ground Truth</p>
+                  <GroundTruthField
+                    label="Project Ground Truth"
+                    value={projectGroundTruth}
+                    onChange={setProjectGroundTruth}
+                    placeholder="Enter reusable source terms"
+                  />
+                  <div className="mt-2 flex items-start justify-between gap-3">
+                    <p className="subtext text-[10px] text-zinc-500">Project terms combine with the active asset’s terms on its next detection.</p>
+                    <button type="button" onClick={() => saveProjectGroundTruth().catch((e) => setErrorWithNotif(String(e)))} className="shrink-0 rounded border border-zinc-300 px-2 py-1 text-[10px] hover:border-cyan-500 dark:border-zinc-700">save</button>
+                  </div>
+                </div>
+              )}
             </div>
             <button
               onClick={() => setShowSettings(false)}
@@ -5812,10 +6063,32 @@ export default function App() {
         </div>
       )}
 
+      {/* Final Render in progress: same card shell as the confirm overlays,
+          non-dismissable scrim — clicking must not cancel a render mid-flight. */}
+      {busy === "rendering" && (
+        <div className="title-confirm-backdrop">
+          <div className="title-confirm-card">
+            <p className="title-confirm-message flex items-center gap-3">
+              <SquareLoader size="sm" />
+              rendering…
+            </p>
+          </div>
+        </div>
+      )}
+
       {showTitleConfirm && (
         <TitleConfirmOverlay
+          message="return to title?"
           onYes={() => { setShowTitleConfirm(false); prevScreen.current = displayedScreen; setScreen("title"); }}
           onNo={() => setShowTitleConfirm(false)}
+        />
+      )}
+
+      {showRenderConfirm && (
+        <TitleConfirmOverlay
+          message="start render?"
+          onYes={() => { setShowRenderConfirm(false); onRender(); }}
+          onNo={() => setShowRenderConfirm(false)}
         />
       )}
 

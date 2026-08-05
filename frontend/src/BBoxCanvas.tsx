@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { TbZoomInFilled, TbCircleDashedPlus, TbCircleDashedMinus } from "react-icons/tb";
 import { FaPlus, FaMinus } from "react-icons/fa";
@@ -75,6 +75,15 @@ export default function BBoxCanvas({
   const containerRef = useRef<HTMLDivElement>(null);
   const syncBarRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
+  const hoveredBboxRef = useRef<HTMLDivElement | null>(null);
+  const [portalTooltip, setPortalTooltip] = useState<{ x: number; y: number; width: number; height: number; inst: InstText } | null>(null);
+  const tooltipRef = useRef<HTMLDivElement | null>(null);
+  const [tooltipMetrics, setTooltipMetrics] = useState<{ w: number; h: number } | null>(null);
+  // preview-mode tooltip flip: when the hovered bbox is too close to the
+  // card's top edge, the .bbox-preview-tooltip (positioned above the bbox)
+  // would overflow the scroll container and get clipped.  This flag flips
+  // it below the bbox instead, keeping it card-bound.
+  const [previewTooltipFlip, setPreviewTooltipFlip] = useState(false);
   const [zoom, setZoom] = useState(1);
   const effectiveZoom = controlledZoom !== undefined ? controlledZoom : zoom;
 
@@ -372,13 +381,77 @@ export default function BBoxCanvas({
     return () => window.removeEventListener("mouseup", up);
   }, [drag, onMouseUp]);
 
-  const handleBboxMouseEnter = useCallback((id: string) => {
+  const handleBboxMouseEnter = useCallback((id: string, el: HTMLDivElement, inst: InstText) => {
     onHover(id);
+    hoveredBboxRef.current = el;
+    const rect = el.getBoundingClientRect();
+    setPortalTooltip({ x: rect.left, y: rect.top, width: rect.width, height: rect.height, inst });
   }, [onHover]);
 
   const handleBboxMouseLeave = useCallback(() => {
     onHover(null);
+    hoveredBboxRef.current = null;
+    setPortalTooltip(null);
   }, [onHover]);
+
+  // keep the portal tooltip glued to the bbox while the canvas scrolls
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const bbox = hoveredBboxRef.current;
+      if (!bbox) return;
+      const rect = bbox.getBoundingClientRect();
+      setPortalTooltip((prev) => prev ? { ...prev, x: rect.left, y: rect.top, width: rect.width, height: rect.height } : prev);
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+
+  // measure the actual rendered tooltip dimensions for viewport collision.
+  // useLayoutEffect fires synchronously after render but before paint, so
+  // there is no visible flash of the pre-measurement position.
+  useLayoutEffect(() => {
+    const el = tooltipRef.current;
+    if (!el || !portalTooltip) { setTooltipMetrics(null); return; }
+    const rect = el.getBoundingClientRect();
+    setTooltipMetrics({ w: rect.width, h: rect.height });
+  }, [portalTooltip]);
+
+  // recompute on resize — bbox coordinates are viewport-relative (position: fixed)
+  useEffect(() => {
+    if (!portalTooltip) return;
+    const onResize = () => {
+      const bbox = hoveredBboxRef.current;
+      if (!bbox) return;
+      const rect = bbox.getBoundingClientRect();
+      setPortalTooltip((prev) => prev ? { ...prev, x: rect.left, y: rect.top, width: rect.width, height: rect.height } : prev);
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [portalTooltip]);
+
+  // card-bound protection for the preview tooltip: when a region is hovered
+  // (either by mouse-enter on the bbox or by hovering a row in the
+  // RegionTable, which sets hoveredId externally), measure the bbox's
+  // position relative to the scroll container.  If there isn't enough room
+  // above the bbox for the tooltip (~30px: 6px gap + ~24px tooltip height),
+  // flip it below so it stays inside the card instead of being clipped.
+  useEffect(() => {
+    if (!preview || !hoveredId) { setPreviewTooltipFlip(false); return; }
+    const container = containerRef.current;
+    if (!container) { setPreviewTooltipFlip(false); return; }
+    const bboxEl = container.querySelector<HTMLElement>(`[data-region-id="${CSS.escape(hoveredId)}"]`);
+    if (!bboxEl) { setPreviewTooltipFlip(false); return; }
+    // offsetTop is relative to the offsetParent (the bbox overlay div),
+    // which is positioned at 0,0 inside the scroll container — so this is
+    // effectively the bbox's distance from the container's content top.
+    // Add the container's scrollTop to account for scrolled-away bboxes.
+    const bboxTopInContainer = bboxEl.offsetTop + container.scrollTop;
+    const TOOLTIP_GAP = 6;
+    const TOOLTIP_EST_HEIGHT = 24;
+    setPreviewTooltipFlip(bboxTopInContainer < TOOLTIP_GAP + TOOLTIP_EST_HEIGHT);
+  }, [preview, hoveredId]);
 
   const startDrag = (e: React.MouseEvent, state: Exclude<DragState, null>) => {
     e.stopPropagation();
@@ -486,6 +559,7 @@ export default function BBoxCanvas({
                 return (
                   <div
                     key={inst.id}
+                    data-region-id={inst.id}
                     className={`${bboxClass(inst)} ${isSel ? "selected" : ""} ${isHovered && !isSel ? "hovered" : ""}`}
                     style={{
                       left: px(inst.bounding_box.x),
@@ -514,7 +588,7 @@ export default function BBoxCanvas({
                         }
                       }
                     }}
-                    onMouseEnter={() => handleBboxMouseEnter(inst.id)}
+                    onMouseEnter={(e) => handleBboxMouseEnter(inst.id, e.currentTarget, inst)}
                     onMouseLeave={handleBboxMouseLeave}
                   >
                     <div className="bbox-corners" />
@@ -542,63 +616,14 @@ export default function BBoxCanvas({
                     )}
                     {inst.dnt && <div className="bbox-dnt-badge">DNT</div>}
                     {preview && isHovered && (
-                      <div className="bbox-preview-tooltip subtext">
+                      <div className={`bbox-preview-tooltip subtext${previewTooltipFlip ? " flip-below" : ""}`}>
                         {inst.target_text || "No translation yet"}
                       </div>
                     )}
-                    {/* capture-mode metadata tooltip: scene/typography
-                        enrichment (style + background) detected at capture */}
-                    {!preview && !drawMode && !drag && (() => {
-                      const sp = inst.style_profile;
-                      const bp = inst.background_profile;
-                      const ch = inst.characteristics;
-                      const styleBits = [
-                        ch?.font_style,
-                      ].filter(Boolean).join(" · ");
-                      const bgBits = [
-                        bp?.material,
-                        bp?.material ? null : bp?.semantic_label?.replace(/_/g, " "),
-                        bp?.texture,
-                        ...(bp?.gradients ?? []),
-                      ].filter(Boolean).join(" · ");
-                      if (!sp?.color && !styleBits && !bgBits && !inst.detected_language && ch?.size == null) return null;
-                      return (
-                        <div className={`bbox-meta-tooltip subtext dropdown-morph${isHovered ? " expanded" : ""}`}>
-                          {inst.detected_language && (
-                            <div className="meta-row">
-                              <span className="meta-key">lang</span>
-                              <span>{inst.detected_language}</span>
-                              {inst.confidence !== null && (
-                                <span className={`text-[10px] ${
-                                  inst.confidence >= 0.8 ? "text-emerald-400"
-                                  : inst.confidence >= 0.6 ? "text-amber-400"
-                                  : "text-red-400"
-                                }`}>
-                                  {(inst.confidence * 100).toFixed(0)}%
-                                </span>
-                              )}
-                            </div>
-                          )}
-                          {(sp?.color || styleBits || ch?.size != null) && (
-                            <div className="meta-row">
-                              <span className="meta-key">style</span>
-                              {sp?.color && <span className="meta-swatch" style={{ background: sp.color }} />}
-                              {(styleBits || sp?.color) && <span>{styleBits || sp?.color}</span>}
-                              {ch?.size != null && (
-                                <span className="text-[10px] text-[#2d8cf0]">~{ch.size}px</span>
-                              )}
-                            </div>
-                          )}
-                          {(bp?.dominant_color || bgBits) && (
-                            <div className="meta-row">
-                              <span className="meta-key">bg</span>
-                              {bp?.dominant_color && <span className="meta-swatch" style={{ background: bp.dominant_color }} />}
-                              <span>{bgBits || bp?.dominant_color}</span>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })()}
+                    {/* capture-mode metadata tooltip is rendered via portal
+                        at the end of this component so it escapes the
+                        scroll container's overflow clipping.  See
+                        portalTooltip state + createPortal below. */}
                     {isSel && !drawMode && !preview && (
                       <>
                         {resizeHandle(inst, "nw")}
@@ -747,6 +772,125 @@ export default function BBoxCanvas({
         </svg>
       </div>
       )}
+      {/* capture-mode metadata tooltip — portaled to document.body so it
+          escapes the scroll container's overflow clipping.  Positioned
+          above the hovered bbox via fixed coordinates from
+          getBoundingClientRect(), updated on scroll. */}
+      {!preview && portalTooltip && (() => {
+        const inst = portalTooltip.inst;
+        const sp = inst.style_profile;
+        const bp = inst.background_profile;
+        const ch = inst.characteristics;
+        const styleBits = [ch?.font_style].filter(Boolean).join(" · ");
+        const bgBits = [
+          bp?.material,
+          bp?.material ? null : bp?.semantic_label?.replace(/_/g, " "),
+          bp?.texture,
+          ...(bp?.gradients ?? []),
+        ].filter(Boolean).join(" · ");
+        if (!sp?.color && !styleBits && !bgBits && !inst.detected_language && ch?.size == null) return null;
+        // Use measured dimensions (from useLayoutEffect) for accurate
+        // collision detection; fall back to CSS max-width / estimated
+        // height on first render before measurement completes.
+        const TOOLTIP_W = tooltipMetrics?.w ?? 260;
+        const TOOLTIP_H = tooltipMetrics?.h ?? 80;
+        const GAP = 6;
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        const bboxCx = portalTooltip.x + portalTooltip.width / 2;
+        const bboxCy = portalTooltip.y + portalTooltip.height / 2;
+        // default: above, centered horizontally
+        let placement: "above" | "below" | "left" | "right" = "above";
+        const fitsAbove = portalTooltip.y - GAP - TOOLTIP_H >= 0;
+        const fitsBelow = portalTooltip.y + portalTooltip.height + GAP + TOOLTIP_H <= vh;
+        const fitsLeft = portalTooltip.x - GAP - TOOLTIP_W >= 0;
+        const fitsRight = portalTooltip.x + portalTooltip.width + GAP + TOOLTIP_W <= vw;
+        if (!fitsAbove && fitsBelow) {
+          placement = "below";
+        } else if (!fitsAbove && !fitsBelow) {
+          // neither vertical fits — pick the horizontal direction with more room
+          if (fitsRight) placement = "right";
+          else if (fitsLeft) placement = "left";
+          // if none fit, keep "above" (default) so it at least anchors to the bbox
+        }
+        let left: number, top: number, transform: string;
+        if (placement === "above") {
+          left = bboxCx;
+          top = portalTooltip.y - GAP;
+          transform = "translate(-50%, -100%)";
+        } else if (placement === "below") {
+          left = bboxCx;
+          top = portalTooltip.y + portalTooltip.height + GAP;
+          transform = "translateX(-50%)";
+        } else if (placement === "left") {
+          left = portalTooltip.x - GAP;
+          top = bboxCy;
+          transform = "translate(-100%, -50%)";
+        } else { // right
+          left = portalTooltip.x + portalTooltip.width + GAP;
+          top = bboxCy;
+          transform = "translateY(-50%)";
+        }
+        // edge clamping — keep the tooltip fully visible even when no
+        // direction fits cleanly.  For vertical placements, clamp
+        // horizontally; for horizontal placements, clamp vertically.
+        const halfW = TOOLTIP_W / 2;
+        const halfH = TOOLTIP_H / 2;
+        if (placement === "above" || placement === "below") {
+          if (left - halfW < 4) left = halfW + 4;
+          if (left + halfW > vw - 4) left = vw - halfW - 4;
+        } else {
+          if (top - halfH < 4) top = halfH + 4;
+          if (top + halfH > vh - 4) top = vh - halfH - 4;
+        }
+        return createPortal(
+          <div
+            ref={tooltipRef}
+            className="bbox-meta-tooltip-portal subtext"
+            style={{
+              position: "fixed",
+              left,
+              top,
+              transform,
+              "--bbox-color": bboxColor,
+            } as React.CSSProperties}
+          >
+            {inst.detected_language && (
+              <div className="meta-row">
+                <span className="meta-key">lang</span>
+                <span>{inst.detected_language}</span>
+                {inst.confidence !== null && (
+                  <span className={`text-[10px] ${
+                    inst.confidence >= 0.8 ? "text-emerald-400"
+                    : inst.confidence >= 0.6 ? "text-amber-400"
+                    : "text-red-400"
+                  }`}>
+                    {(inst.confidence * 100).toFixed(0)}%
+                  </span>
+                )}
+              </div>
+            )}
+            {(sp?.color || styleBits || ch?.size != null) && (
+              <div className="meta-row">
+                <span className="meta-key">style</span>
+                {sp?.color && <span className="meta-swatch" style={{ background: sp.color }} />}
+                {(styleBits || sp?.color) && <span>{styleBits || sp?.color}</span>}
+                {ch?.size != null && (
+                  <span className="text-[10px] text-[#2d8cf0]">~{ch.size}px</span>
+                )}
+              </div>
+            )}
+            {(bp?.dominant_color || bgBits) && (
+              <div className="meta-row">
+                <span className="meta-key">bg</span>
+                {bp?.dominant_color && <span className="meta-swatch" style={{ background: bp.dominant_color }} />}
+                <span>{bgBits || bp?.dominant_color}</span>
+              </div>
+            )}
+          </div>,
+          document.body
+        );
+      })()}
     </div>
   );
 }
