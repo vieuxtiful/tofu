@@ -56,7 +56,7 @@ from tofu.core.pipeline import TofuPipeline
 from tofu.core.events import PipelineEvent, PipelineEventStatus
 from tofu.core.types import (
     PipelineCfg, LayerMode, infer_asset_info, TextManifest, InstText, BBox,
-    RenderParams, StyleProfil, VldtnClass,
+    RenderParams, StyleProfil, VldtnClass, OCRAssessmentPolicy,
 )
 from tofu.layers.tofu import ToFU, lang_to_script
 from tofu.layers.fonts import (
@@ -113,12 +113,18 @@ def _font_dirs() -> List[str]:
 
 
 _validator: Optional[ToFU] = None
+_validator_lock = threading.Lock()
 
 
 def get_validator() -> ToFU:
     global _validator
     if _validator is None:
-        _validator = ToFU(font_library_path=_font_dirs())
+        # FastAPI runs synchronous routes in a worker pool.  The font menus
+        # commonly request two languages together, so guard the expensive
+        # registry scan against being constructed once per worker.
+        with _validator_lock:
+            if _validator is None:
+                _validator = ToFU(font_library_path=_font_dirs())
     return _validator
 
 
@@ -509,7 +515,18 @@ async def app_lifespan(_: FastAPI):
         if VIDEO_WORKER_THREAD: VIDEO_WORKER_THREAD.join(timeout=5)
 
 
-app = FastAPI(title="ToFU", version="0.2.0", lifespan=app_lifespan)
+app = FastAPI(
+    title="ToFU",
+    version="1.0.0",
+    lifespan=app_lifespan,
+    description=(
+        "ToFU is context-aware visual text localization: detect text in an image, "
+        "erase it, and re-render it in another language while preserving the scene's "
+        "visual context. This API serves the React frontend and exposes the full "
+        "pipeline: asset upload, text detection, translation, rendering, verification, "
+        "translation memory, and video localization."
+    ),
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173"],
@@ -687,12 +704,19 @@ class RegionCreate(BaseModel):
     target_text: Optional[str] = None
 
 class RegionMerge(BaseModel):
-    # No `reread` switch. It defaulted to True and no client ever sent it, so
-    # the join-only branch was unreachable -- untested surface that read as a
-    # supported option. cicerone.reread_merged_region already falls back to
-    # joining the parts whenever the whole-region read fails to beat them, so
-    # the choice this exposed was never the caller's to make.
     region_ids: List[str]
+    # Frontend may send the user's current text for each region so the merge
+    # uses edited text instead of stale OCR text from disk.  Ordered to match
+    # region_ids.
+    texts: Optional[List[str]] = None
+    # Opt-in whole-region re-read via cicerone.reread_merged_region. Off by
+    # default: the join is always correct on geometry the user has asserted
+    # belongs together, and a re-read costs an OCR pass. When on, the re-read
+    # runs its quality gates and falls back to joining the parts whenever it
+    # fails to beat them -- so the caller never gets a worse read than the
+    # join, only a better-confirmed one. The response's `source` field reports
+    # which path produced the returned text.
+    reread: bool = False
 
 class RegionUpdate(BaseModel):
     x: Optional[int] = None
@@ -727,6 +751,26 @@ class SemanticRepairRequest(BaseModel):
     reading waits here until someone says so explicitly.
     """
     accepted: bool
+
+
+class SemanticModifyMembersRequest(BaseModel):
+    """Add or remove a single region from a semantic unit's membership.
+
+    Exactly one of ``add_region_id`` / ``remove_region_id`` must be set.
+    Region boxes, ids and OCR text are never touched; only the unit's own
+    ``region_ids``, ``source_text``, ``bbox`` and ``suggestion`` change.
+    """
+    add_region_id: Optional[str] = None
+    remove_region_id: Optional[str] = None
+
+
+class SemanticCreateUnitRequest(BaseModel):
+    """Create a new, user-authored semantic unit (a 'plate').
+
+    ``region_ids`` is optional; an empty plate can be filled later via
+    the members endpoint.
+    """
+    region_ids: Optional[List[str]] = None
 
 
 class TranslationRunRequest(BaseModel):
@@ -1869,6 +1913,39 @@ def update_asset_ground_truth(asset_id: str, req: GroundTruthUpdate):
     return asset
 
 
+@app.post("/api/assets/{asset_id}/ground-truth/import")
+async def import_asset_ground_truth(asset_id: str, file: UploadFile = File(...)):
+    existing = db.asset_by_id(asset_id)
+    if existing is None:
+        raise HTTPException(404, f"asset '{asset_id}' is not linked to a project")
+    raw = await file.read()
+    if len(raw) > 8 * 1024 * 1024:
+        raise HTTPException(413, "Ground Truth import is limited to 8 MB")
+    try:
+        content = interchange.decode_translation_bytes(raw)
+        project = db.get_project(existing["project_id"])
+        imported = interchange.extract_ground_truth(
+            file.filename or "ground-truth.txt", content,
+            project.get("source_lang") if project else None,
+        )
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise HTTPException(422, f"could not parse Ground Truth file: {exc}")
+    except Exception as exc:
+        raise HTTPException(422, f"could not parse Ground Truth file: {type(exc).__name__}: {exc}")
+    merged = _normalize_ground_truth([*existing.get("ground_truth", []), *imported])
+    updated = db.update_asset_ground_truth(asset_id, merged)
+    db.log_event(
+        existing["project_id"], "ground-truth-import",
+        f"imported {len(merged) - len(existing.get('ground_truth', []))} Ground Truth term(s) from '{file.filename or 'file'}'",
+    )
+    return {
+        "asset": updated,
+        "imported": len(merged) - len(existing.get("ground_truth", [])),
+        "total": len(merged),
+        "filename": file.filename,
+    }
+
+
 @app.delete("/api/snapshots/{sid}")
 def delete_snapshot(sid: int):
     snap = db.get_snapshot(sid)
@@ -2256,6 +2333,26 @@ def get_manifest(asset_id: str):
     # a unit that spans several unrelated signs.  Re-registering is cheap and
     # is the same deterministic pass, so upgrade those too rather than
     # leaving a project permanently on the old grouping.
+    # Fill in missing src_lang/targ_lang from the project so Basil's
+    # pairing() has the language pair it needs to decide whether plating
+    # is even relevant.  Manifests saved before the project's source
+    # language was confirmed carry None, which made pairing return
+    # "source or target language is not set yet" even though the project
+    # had a valid language pair.
+    if not manifest.src_lang or not manifest.targ_lang:
+        pid = db.project_for_asset(asset_id)
+        if pid:
+            project = db.get_project(pid)
+            if project:
+                changed = False
+                if not manifest.src_lang and project.get("source_lang"):
+                    manifest.src_lang = project["source_lang"]
+                    changed = True
+                if not manifest.targ_lang and project.get("target_lang"):
+                    manifest.targ_lang = project["target_lang"]
+                    changed = True
+                if changed:
+                    save_manifest(UPLOAD_DIR, asset_id, manifest)
     if not manifest.semantic_units or any(unit.pairing is None for unit in manifest.semantic_units):
         try:
             from tofu.layers.basil import unify_manifest
@@ -2340,6 +2437,75 @@ def semantic_repair(asset_id: str, unit_id: str, req: SemanticRepairRequest):
         raise HTTPException(422, str(exc))
     save_manifest(UPLOAD_DIR, asset_id, manifest)
     return {"manifest": jsonable(manifest), "accepted": bool(req.accepted)}
+
+
+@app.post("/api/semantic-units/{asset_id}/{unit_id}/members")
+def semantic_modify_members(asset_id: str, unit_id: str, req: SemanticModifyMembersRequest):
+    """Add or remove a single region from a semantic unit's membership.
+
+    Only the unit's own ``region_ids``, ``source_text``, ``bbox`` and
+    ``suggestion`` change.  Region boxes, ids and OCR text are untouched,
+    so a later re-detection can still re-group them.
+    """
+    if not req.add_region_id and not req.remove_region_id:
+        raise HTTPException(422, "either add_region_id or remove_region_id must be provided")
+    if req.add_region_id and req.remove_region_id:
+        raise HTTPException(422, "only one of add_region_id / remove_region_id may be set")
+    manifest = load_manifest(UPLOAD_DIR, asset_id)
+    if manifest is None:
+        raise HTTPException(404, f"no manifest for asset '{asset_id}'")
+    from tofu.layers import basil
+    try:
+        basil.modify_unit_members(
+            manifest, unit_id,
+            add_region_id=req.add_region_id,
+            remove_region_id=req.remove_region_id,
+        )
+    except KeyError as exc:
+        raise HTTPException(404, str(exc))
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+    save_manifest(UPLOAD_DIR, asset_id, manifest)
+    return {"manifest": jsonable(manifest)}
+
+
+@app.post("/api/semantic-units/{asset_id}/create")
+def semantic_create_unit(asset_id: str, req: SemanticCreateUnitRequest):
+    """Create a new, user-authored semantic unit (a 'plate').
+
+    The unit starts empty or with the given region IDs.  Region boxes,
+    ids and OCR text are untouched.
+    """
+    manifest = load_manifest(UPLOAD_DIR, asset_id)
+    if manifest is None:
+        raise HTTPException(404, f"no manifest for asset '{asset_id}'")
+    from tofu.layers import basil
+    try:
+        basil.create_unit(manifest, req.region_ids)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+    save_manifest(UPLOAD_DIR, asset_id, manifest)
+    return {"manifest": jsonable(manifest)}
+
+
+@app.delete("/api/semantic-units/{asset_id}/{unit_id}")
+def semantic_delete_unit(asset_id: str, unit_id: str):
+    """Permanently remove a semantic unit from the manifest.
+
+    Region boxes, ids and OCR text are untouched; only the unit entry is
+    dropped, so its former members can be re-grouped by a later re-detection
+    or re-assigned by the user.
+    """
+    manifest = load_manifest(UPLOAD_DIR, asset_id)
+    if manifest is None:
+        raise HTTPException(404, f"no manifest for asset '{asset_id}'")
+    from tofu.layers import basil
+    try:
+        basil.delete_unit(manifest, unit_id)
+    except KeyError as exc:
+        raise HTTPException(404, str(exc))
+    save_manifest(UPLOAD_DIR, asset_id, manifest)
+    return {"manifest": jsonable(manifest)}
 
 
 def _glossary_path(scope: str, project_id: Optional[str] = None) -> Path:
@@ -2429,8 +2595,17 @@ def font_match(asset_id: str, req: FontMatchRequest):
     if manifest is None:
         raise HTTPException(404, f"no manifest for asset '{asset_id}'")
     from tofu.layers.font_matching import identify_manifest_fonts, external_catalog_match
-    local = identify_manifest_fonts(str(path), manifest, get_validator().font_registry)
-    external = external_catalog_match(str(path), manifest, get_validator().font_registry) if req.allow_external else 0
+    try:
+        local = identify_manifest_fonts(str(path), manifest, get_validator().font_registry)
+        external = external_catalog_match(str(path), manifest, get_validator().font_registry) if req.allow_external else 0
+    except Exception as exc:
+        # identify_manifest_fonts has internal guards around image loading
+        # and basil reconciliation, but local_match() per region is
+        # unguarded — a corrupt crop or a registry lookup failure there
+        # propagates as a bare 500.  Surface a structured error instead so
+        # the frontend toast can say what went wrong rather than a mystery
+        # "500: Internal Server Error".
+        raise HTTPException(503, f"font analysis failed: {type(exc).__name__}: {exc}")
     save_manifest(UPLOAD_DIR, asset_id, manifest)
     return {"manifest": jsonable(manifest), "local_matched": local, "external_matched": external}
 
@@ -2440,7 +2615,7 @@ def put_manifest(asset_id: str, manifest_data: Dict[str, Any]):
     from tofu.utils.manifest_store import _dict_to_manifest, _manifest_to_dict
     manifest = _dict_to_manifest(manifest_data)
     manifest.asset_id = asset_id
-    manifest.total_regions = len(manifest.instances)
+    manifest.total_regions = sum(1 for i in manifest.instances if not i.excluded)
     # re-resolve "auto" fonts on every save: target_text/target_language
     # are exactly what changes during Translate-step editing, and
     # resolution is cheap (registry lookups, no font-file I/O) -- no
@@ -2604,7 +2779,7 @@ def add_region(asset_id: str, req: RegionCreate):
 
 @app.post("/api/manifest/{asset_id}/regions/merge")
 def merge_regions(asset_id: str, req: RegionMerge):
-    """Fold several regions into one, re-reading the union where it helps.
+    """Fold several regions into one.
 
     merge_baseline_runs already joins the words of a line automatically,
     and declines wherever the geometry is ambiguous -- across a column
@@ -2640,21 +2815,59 @@ def merge_regions(asset_id: str, req: RegionMerge):
         width=max(b.x + b.width for b in boxes) - min(b.x for b in boxes),
         height=max(b.y + b.height for b in boxes) - min(b.y for b in boxes),
     )
-    lang = members[0].detected_language or members[0].language or manifest.src_lang
-    try:
-        engine = cicerone.EasyOCRBackend(cicerone.expand_langset([lang] if lang else ["en"]))
-    except Exception:
-        engine = None
-    text, confidence, source = cicerone.reread_merged_region(
-        str(_asset_path(asset_id)), union,
-        [i.text or "" for i in members], boxes, engine=engine,
+    # Use the user's current text from the frontend when available: the
+    # manifest on disk may still carry stale OCR text that the user has
+    # already corrected but autosave hasn't persisted yet.
+    member_texts = list(i.text or "" for i in members)
+    if req.texts and len(req.texts) == len(req.region_ids):
+        # req.texts is ordered to match req.region_ids, not the geometric
+        # reading order we just computed.  Re-map via the original index.
+        id_order = [members.index(by_id[rid]) for rid in req.region_ids]
+        member_texts = [req.texts[j] for j in id_order]
+    text = cicerone.assemble_fragments(member_texts, boxes)
+    # Area-weighted confidence: a tiny low-confidence fragment no longer drags
+    # down a large high-confidence region equally. Weight by each member's own
+    # bbox area (pre-union), so the dominant region's confidence dominates.
+    weighted = [
+        (i.confidence, i.bounding_box)
+        for i in members if i.confidence is not None
+    ]
+    total_area = sum(b.width * b.height for _, b in weighted)
+    confidence = (
+        sum(c * b.width * b.height for c, b in weighted) / total_area
+        if total_area else None
     )
+    source = "joined"
+
+    # Opt-in whole-region re-read. reread_merged_region runs its own quality
+    # gates and returns source='joined' (with confidence=None) whenever the
+    # whole-region read fails to beat the joined parts -- so we keep the
+    # area-weighted average in that case and only adopt the re-read's text and
+    # confidence when it genuinely won.
+    if req.reread:
+        backend = _merge_reread_backend(asset_id, manifest)
+        if backend is not None:
+            reread_text, reread_conf, reread_source = cicerone.reread_merged_region(
+                str(_asset_path(asset_id)), union, member_texts, boxes,
+                engine=backend,
+            )
+            if reread_source == "reread":
+                text = reread_text
+                confidence = reread_conf
+                source = "reread"
 
     survivor = members[0]
     survivor.bounding_box = union
     survivor.text = text
     if confidence is not None:
         survivor.confidence = confidence
+    # The survivor's font_match was computed by local_match against its
+    # pre-merge text and bounding box.  The merged region has different text
+    # (joined or re-read) and a larger box, so the old candidates, confidence,
+    # recommended_substitute and cohort metadata are all stale.  Clear it so
+    # the UI shows "not analyzed" and the user can re-run font analysis on
+    # the merged region rather than acting on a stale 2% confidence.
+    survivor.font_match = None
     for spare in members[1:]:
         spare.excluded = True
     manifest.total_regions = sum(1 for i in manifest.instances if not i.excluded)
@@ -2662,12 +2875,32 @@ def merge_regions(asset_id: str, req: RegionMerge):
     pid = db.project_for_asset(asset_id)
     if pid:
         db.log_event(pid, "region-merge",
-                     f"merged {len(members)} regions into {survivor.id} ({source})")
+                     f"merged {len(members)} regions into {survivor.id}")
     return {
         "ok": True, "region": jsonable(survivor), "source": source,
         "merged_ids": [i.id for i in members[1:]],
         "total_regions": manifest.total_regions,
     }
+
+
+def _merge_reread_backend(asset_id: str, manifest: Optional[TextManifest]):
+    """Build an OCR backend for the merge re-read path, or None when no real
+    engine is available (the join-only path stands). Language hints come from
+    the project's locked source language, falling back to the manifest's
+    detected source language."""
+    hints = _project_lang_hints(asset_id)
+    if not hints and manifest and manifest.src_lang:
+        hints = [manifest.src_lang]
+    if cicerone._engine_from_env() == "paddleocr":
+        if not cicerone.PaddleOCRBackend.is_available():
+            return None
+        return cicerone.PaddleOCRBackend(languages=hints or ["en"], gpu=False)
+    try:
+        import easyocr  # noqa: F401
+        langset = cicerone.expand_langset(hints) if hints else ("en",)
+        return cicerone.EasyOCRBackend(languages=langset, gpu=False)
+    except ImportError:
+        return None
 
 
 @app.delete("/api/manifest/{asset_id}/regions/{rid}")
@@ -2780,7 +3013,47 @@ def ocr_region(req: OcrRegionRequest):
         detections = backend.detect(crop_np)
         if detections:
             det = detections[0]
-            return {"text": det.text, "confidence": det.confidence, "detected_language": det.language}
+            detected_language = det.language or src_lang
+            inst = InstText(
+                "ocr-region",
+                BBox(0, 0, int(bbox.width), int(bbox.height)),
+                text=det.text,
+                confidence=float(det.confidence or 0.0),
+                detected_language=detected_language,
+                recognition_history=[{
+                    "stage": "detection_pass", "engine": "easyocr", "pass": 1,
+                    "candidate_text": det.text,
+                    "candidate_confidence": round(float(det.confidence or 0.0), 6),
+                    "selected": True,
+                }],
+            )
+            ground_truth_pool = _ground_truth_pool(req.asset_id, detected_language)
+            try:
+                cicerone.assess_multi_candidate_ocr(
+                    crop_np, [inst], policy=OCRAssessmentPolicy(mode="exhaustive"),
+                    font_registry=get_validator().font_registry,
+                    ground_truth_pool=ground_truth_pool,
+                )
+            except Exception:
+                pass
+            try:
+                from tofu.layers.menu import browse
+                browse(
+                    [inst], asset=crop_np,
+                    font_registry=get_validator().font_registry,
+                    ground_truth_pool=ground_truth_pool,
+                )
+            except Exception:
+                pass
+            return {
+                "text": inst.text or "",
+                "confidence": inst.confidence or 0.0,
+                "detected_language": inst.detected_language,
+                "ocr_correction": jsonable(inst.ocr_correction),
+                "source_override": jsonable(inst.source_override),
+                "recognition_history": jsonable(inst.recognition_history),
+                "ocr_provenance": jsonable(inst.ocr_provenance),
+            }
     except ImportError:
         pass
     except Exception as exc:
@@ -2791,7 +3064,9 @@ def ocr_region(req: OcrRegionRequest):
             results = reader.readtext(crop_np)
             if results:
                 _, text, conf = results[0]
-                return {"text": text, "confidence": float(conf), "detected_language": ocr_langs[0]}
+                return {"text": text, "confidence": float(conf), "detected_language": ocr_langs[0],
+                        "ocr_correction": None, "source_override": None,
+                        "recognition_history": None, "ocr_provenance": None}
         except Exception:
             pass
     return {"text": "", "confidence": 0.0, "detected_language": None}
@@ -4090,3 +4365,45 @@ def process(req: ProcessRequest):
     payload.pop("output_asset", None)
     payload["output_url"] = output_url
     return payload
+
+
+# ─── route tagging ────────────────────────────────────────────────────────
+# Assign tags to routes based on path prefix so the OpenAPI schema groups
+# endpoints logically. This runs after all routes are defined.
+_TAG_PREFIXES = [
+    ("capabilities", "/api/capabilities"),
+    ("assets", "/api/assets"),
+    ("video", "/api/video"),
+    ("languages", "/api/languages"),
+    ("fonts", "/api/fonts"),
+    ("font-file", "/api/font-file"),
+    ("validation", "/api/validate"),
+    ("projects", "/api/projects"),
+    ("snapshots", "/api/snapshots"),
+    ("memory", "/api/memory"),
+    ("detection", "/api/detect"),
+    ("manifest", "/api/manifest"),
+    ("semantic", "/api/semantic"),
+    ("glossary", "/api/glossary"),
+    ("font-match", "/api/font-match"),
+    ("ocr-region", "/api/ocr-region"),
+    ("export", "/api/export"),
+    ("import", "/api/import"),
+    ("inpainting", "/api/inpaint"),
+    ("inpainting", "/api/inpainting"),
+    ("treatment", "/api/treatment"),
+    ("localized-baseline", "/api/localized-baseline"),
+    ("preview", "/api/preview"),
+    ("render", "/api/render"),
+    ("process", "/api/process"),
+]
+
+for _route in app.routes:
+    _path = getattr(_route, "path", "")
+    for _tag, _prefix in _TAG_PREFIXES:
+        if _path.startswith(_prefix):
+            _route.tags = [_tag]
+            break
+    else:
+        if _path and not _path.startswith("/uploads") and not _path.startswith("/outputs") and not _path.startswith("/tm_thumbs"):
+            _route.tags = ["root"]

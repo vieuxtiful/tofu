@@ -21,7 +21,7 @@ had its say.
 
 from typing import Any, Dict, List, NamedTuple, Optional
 
-from tofu.core.types import InstText
+from tofu.core.types import ImageLike, InstText
 from tofu.utils.correction_resources import gazetteer_entries, load_correction_resource
 from tofu.utils.textmatch import fuzzy_similarity
 
@@ -300,7 +300,7 @@ def _count_exact_known_names(text: str, lang: Optional[str],
     return count
 
 
-def _verify_span_pixels(asset: Any, inst: InstText, span: MenuSpan,
+def _verify_span_pixels(asset: ImageLike, inst: InstText, span: MenuSpan,
                          lang: Optional[str], font_registry: Any) -> "dict[int, Optional[bool]]":
     """pixel verdicts for a span's diff positions via savor's shared
     glyph-swap machinery. wrapped fail-open: menu has always been pure
@@ -318,7 +318,7 @@ def _verify_span_pixels(asset: Any, inst: InstText, span: MenuSpan,
         return {}
 
 
-def browse(instances: List[InstText], asset: Any = None,
+def browse(instances: List[InstText], asset: Optional[ImageLike] = None,
            font_registry: Optional[Any] = None,
            ground_truth_pool: Optional[List[tuple]] = None) -> int:
     """the full menu pass, run once across every instance.

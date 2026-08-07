@@ -152,9 +152,13 @@ _STREET_DESIGNATORS: Dict[str, set] = {
     "ru": {"улица", "проспект", "переулок", "площадь", "шоссе"},
     # CJK designators are SUFFIXES of a token, not tokens of their own --
     # _designator_position() below tests endswith for these languages.
-    "ja": {"通り", "街道", "駅", "橋", "公園", "温泉", "神社", "寺", "港", "町"},
-    "zh": {"路", "街", "站", "桥", "公园", "大道", "广场", "巷", "镇"},
-    "ko": {"로", "길", "역", "광장", "공원"},
+    # Only thoroughfare designators belong here. Stations, parks, bridges,
+    # baths and shrines are named places/facilities, not streets; treating
+    # every CJK place suffix as a road made phrases such as
+    # ``丸太造りの駅舎飛騨小坂駅`` semantically false before Basil aligned it.
+    "ja": {"通り", "街道"},
+    "zh": {"路", "街", "大道", "巷"},
+    "ko": {"로", "길"},
 }
 _MODIFIERS: Dict[str, set] = {
     "fr": {"vieux", "vieil", "vieille", "vieilles", "nouveau", "nouvelle", "grand", "grande", "petit", "petite", "haut", "haute", "bas", "basse"},
@@ -1278,6 +1282,106 @@ def accept_repair(manifest: TextManifest, unit_id: str, accepted: bool) -> Seman
         unit.source_text = unit.source_text.replace(proposed, read, 1)
     unit.review_required = not accepted
     return unit
+
+
+def modify_unit_members(
+    manifest: TextManifest,
+    unit_id: str,
+    *,
+    add_region_id: Optional[str] = None,
+    remove_region_id: Optional[str] = None,
+) -> SemanticTextUnit:
+    """Add or remove a single region from a semantic unit's membership.
+
+    Only the unit's own ``region_ids``, ``source_text``, ``bbox`` and
+    ``suggestion`` change.  Region boxes, ids and OCR text are untouched,
+    so a later re-detection (``unify_manifest``) can still re-group them.
+
+    Removing a region from one unit does NOT automatically add it to
+    another; adding a region that already belongs to a different unit
+    removes it from that unit first, so a region is always in at most one
+    unit.
+    """
+    unit = next((item for item in (manifest.semantic_units or []) if item.id == unit_id), None)
+    if unit is None:
+        raise KeyError(f"semantic unit '{unit_id}' not found")
+    by_id = {inst.id: inst for inst in manifest.instances}
+
+    if remove_region_id is not None:
+        if remove_region_id not in unit.region_ids:
+            raise ValueError(f"region '{remove_region_id}' is not a member of unit '{unit_id}'")
+        new_ids = [rid for rid in unit.region_ids if rid != remove_region_id]
+    elif add_region_id is not None:
+        if add_region_id in unit.region_ids:
+            raise ValueError(f"region '{add_region_id}' is already a member of unit '{unit_id}'")
+        if add_region_id not in by_id:
+            raise ValueError(f"region '{add_region_id}' does not exist in the manifest")
+        # Remove from any other unit that currently owns it.
+        for other in (manifest.semantic_units or []):
+            if other.id != unit_id and add_region_id in other.region_ids:
+                other.region_ids = [rid for rid in other.region_ids if rid != add_region_id]
+                other_members = [by_id[rid] for rid in other.region_ids if rid in by_id]
+                other.source_text = _join([inst.text or "" for inst in other_members]) if other_members else ""
+                other.bbox = _union_box(other_members) if other_members else other.bbox
+                other.substitution = None
+                other.suggestion = suggest_plating(manifest, other, manifest.targ_lang)
+        new_ids = [*unit.region_ids, add_region_id]
+    else:
+        raise ValueError("either add_region_id or remove_region_id must be provided")
+
+    unit.region_ids = new_ids
+    members = [by_id[rid] for rid in new_ids if rid in by_id]
+    unit.source_text = _join([inst.text or "" for inst in members]) if members else ""
+    unit.bbox = _union_box(members) if members else unit.bbox
+    # Clear stale substitution; the membership change invalidates any prior plan.
+    unit.substitution = None
+    unit.suggestion = suggest_plating(manifest, unit, manifest.targ_lang)
+    return unit
+
+
+def create_unit(manifest: TextManifest, region_ids: Optional[List[str]] = None) -> SemanticTextUnit:
+    """Create a new, user-authored semantic unit (a 'plate').
+
+    Starts empty or with the given region IDs.  The unit gets the next
+    available ``uN`` id and a pairing verdict from the manifest's language
+    pair.  Region boxes, ids and OCR text are untouched.
+    """
+    existing = {unit.id for unit in (manifest.semantic_units or [])}
+    number = 1
+    while f"u{number}" in existing:
+        number += 1
+    by_id = {inst.id: inst for inst in manifest.instances}
+    member_ids = [rid for rid in (region_ids or []) if rid in by_id]
+    members = [by_id[rid] for rid in member_ids]
+    verdict = pairing(manifest.src_lang, manifest.targ_lang)
+    unit = SemanticTextUnit(
+        id=f"u{number}",
+        region_ids=member_ids,
+        source_text=_join([inst.text or "" for inst in members]) if members else "",
+        bbox=_union_box(members) if members else BBox(0, 0, 0, 0),
+        entity_type="unknown",
+        confidence=0.0,
+        analysis_provider="user_created",
+        semantic_roles={},
+        review_required=True,
+        pairing=verdict,
+    )
+    unit.suggestion = suggest_plating(manifest, unit, manifest.targ_lang)
+    manifest.semantic_units = [*manifest.semantic_units, unit]
+    return unit
+
+
+def delete_unit(manifest: TextManifest, unit_id: str) -> None:
+    """Permanently remove a semantic unit from the manifest.
+
+    Region boxes, ids and OCR text are untouched -- only the unit entry is
+    dropped, so its former members can be re-grouped by a later
+    ``unify_manifest`` re-detection or re-assigned by the user.
+    """
+    units = manifest.semantic_units or []
+    if not any(unit.id == unit_id for unit in units):
+        raise KeyError(f"semantic unit '{unit_id}' not found")
+    manifest.semantic_units = [unit for unit in units if unit.id != unit_id]
 
 
 def provider_statuses() -> List[Dict[str, Any]]:

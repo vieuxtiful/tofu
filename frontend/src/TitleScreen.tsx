@@ -325,7 +325,7 @@ export default function TitleScreen({ onEnter, onSelectProject, onCreateProject,
                   <X size={14} />
                 </button>
               </div>
-              <div className="space-y-2">
+              <div className="space-y-2" style={{ scrollBehavior: "smooth" }}>
                 {morphing && projects === null && (
                   <div className="subtext step-fade flex items-center gap-4 py-4 text-[10px] text-cyan-600 dark:text-cyan-400">
                     <SquareLoader size="xs" /> simmering…
@@ -463,7 +463,7 @@ export default function TitleScreen({ onEnter, onSelectProject, onCreateProject,
                   <X size={14} />
                 </button>
               </div>
-              <div className="space-y-2">
+              <div className="space-y-2" style={{ scrollBehavior: "smooth" }}>
                 {settingsMorphing && (
                   <div
                     className="project-name-row flex w-full items-center justify-between rounded-lg border border-zinc-300 bg-zinc-100 px-3 py-2 text-sm text-zinc-800 dark:border-zinc-700 dark:bg-zinc-800/50 dark:text-zinc-200"

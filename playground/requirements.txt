@@ -14,7 +14,7 @@
 ## [ocr]     easyocr, the only detector that fits in one container
 ## [shaping] uharfbuzz + freetype-py, so Indic/SE-Asian targets render
 ##           correctly rather than as reordered mojibake
-tofu-l10n[ocr,shaping] @ git+https://github.com/vieuxtiful/tofu.git@main
+tofu-l10n[ocr,shaping] @ git+https://github.com/vieuxtiful/tofu.git@v1.0.0
 
 gradio==6.20.0
 

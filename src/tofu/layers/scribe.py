@@ -33,7 +33,7 @@ region, unrelated to cleanse and traced here).
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from tofu.core.types import TextManifest, RenderParams, BBox, StyleProfil
+from tofu.core.types import ImageLike, TextManifest, RenderParams, BBox, StyleProfil
 from tofu.layers.fonts import faces_of
 from tofu.utils.geometry import quad_is_usable
 
@@ -476,7 +476,7 @@ def _apply_style_transform(layer: Any, bbox: BBox, transform: Optional[Dict[str,
         return layer
 
 
-def _load_image(asset: Any):
+def _load_image(asset: ImageLike):
     """accept a PIL image, file path, or bytes; return RGBA image or None."""
     try:
         from PIL import Image
@@ -1434,7 +1434,7 @@ def _capture_text_mask(masks: Dict[str, Any], inst_id: str, layer: Any) -> None:
 
 
 def render(
-    cleansed_asset: Any,
+    cleansed_asset: ImageLike,
     text_manifest: TextManifest,
     targ_lang: str,
     render_params: Optional[Dict[str, RenderParams]] = None,

@@ -26,7 +26,7 @@ import math
 from dataclasses import dataclass
 from typing import Any, Optional
 
-from tofu.core.types import BBox, Polygon
+from tofu.core.types import BBox, ImageLike, Polygon
 from tofu.utils.imaging import text_mask
 
 # weight thresholds on stroke_width / text_height (calibrated on the
@@ -201,7 +201,7 @@ def _rotation(np, cv2, polygon: Optional[Polygon], mask) -> Optional[float]:
 
 
 def analyze_region(
-    img: Any,
+    img: ImageLike,
     bbox: BBox,
     polygon: Optional[Polygon] = None,
 ) -> Optional[TypographyProfile]:

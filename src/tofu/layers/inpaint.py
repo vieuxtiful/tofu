@@ -2,10 +2,11 @@
 ## vieuxtiful
 
 from typing import Any, Dict, List, Tuple
+from tofu.core.types import ImageLike
 
 
 def make_patch(
-    base_img: Any,
+    base_img: ImageLike,
     polygon: List[Tuple[int, int]] | None = None,
     mode: str = "auto",
     points: List[Tuple[int, int]] | None = None,

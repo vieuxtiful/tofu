@@ -54,6 +54,7 @@ from typing import Any, Callable, Dict, FrozenSet, Iterator, List, Optional, Seq
 logger = logging.getLogger(__name__)
 
 from tofu.core.types import (
+    ImageLike,
     TextManifest,
     InstText,
     BBox,
@@ -347,7 +348,7 @@ class OCRBackend(ABC):
         return "en"
 
     @abstractmethod
-    def detect(self, asset: Any) -> List[RawDetection]:
+    def detect(self, asset: ImageLike) -> List[RawDetection]:
         """run detection + recognition; return raw polygon/text results."""
 
 
@@ -356,7 +357,7 @@ class NullBackend(OCRBackend):
 
     name = "null"
 
-    def detect(self, asset: Any) -> List[RawDetection]:
+    def detect(self, asset: ImageLike) -> List[RawDetection]:
         return []
 
 
@@ -443,7 +444,7 @@ class EasyOCRBackend(OCRBackend):
                 )
         return self._readers[key]
 
-    def _prepare(self, asset: Any) -> Tuple[Any, Tuple[float, float]]:
+    def _prepare(self, asset: ImageLike) -> Tuple[Any, Tuple[float, float]]:
         """pre-resize oversized image files; upscale undersized ones;
         pass everything else through.
 
@@ -484,7 +485,7 @@ class EasyOCRBackend(OCRBackend):
 
     def detect(
         self,
-        asset: Any,
+        asset: ImageLike,
         text_threshold: Optional[float] = None,
         low_text: Optional[float] = None,
     ) -> List[RawDetection]:
@@ -528,7 +529,7 @@ class EasyOCRBackend(OCRBackend):
 
     def detect_in_regions(
         self,
-        asset: Any,
+        asset: ImageLike,
         regions: List[BBox],
         pad: int = 4,
         polygons: Optional[List[Optional[Polygon]]] = None,
@@ -736,7 +737,7 @@ class PaddleOCRBackend(OCRBackend):
         (which must never happen in the app process)."""
         return cls._venv_python().is_file() and cls._worker_path().is_file()
 
-    def _resolve_image_path(self, asset: Any) -> Tuple[Optional[str], Optional[str]]:
+    def _resolve_image_path(self, asset: ImageLike) -> Tuple[Optional[str], Optional[str]]:
         """asset -> (path, temp_path_to_clean_up_or_None).
 
         a path/str is used directly (no cross-venv object serialization
@@ -821,7 +822,7 @@ class PaddleOCRBackend(OCRBackend):
 
     def detect(
         self,
-        asset: Any,
+        asset: ImageLike,
         text_threshold: Optional[float] = None,
         low_text: Optional[float] = None,
     ) -> List[RawDetection]:
@@ -848,7 +849,7 @@ class PaddleOCRBackend(OCRBackend):
 
     def detect_in_regions(
         self,
-        asset: Any,
+        asset: ImageLike,
         regions: List[BBox],
         pad: int = 4,
         polygons: Optional[List[Optional[Polygon]]] = None,
@@ -1307,7 +1308,7 @@ def _scene_containment_frac(inner: BBox, region: SceneRegion) -> float:
     return hits / float(samples * samples)
 
 
-def _rectify_crop(img: Any, polygon: Polygon, target_height: int = 48) -> Any:
+def _rectify_crop(img: ImageLike, polygon: Polygon, target_height: int = 48) -> Any:
     """return a fronto-parallel crop of a quadrilateral text region.
 
     guards:
@@ -1441,7 +1442,7 @@ def _mean_rgb(img, b: BBox):
     return crop.reshape(-1, crop.shape[-1])[:, :3].mean(axis=0)
 
 
-def merge_vertical_columns(detections: List[RawDetection], asset: Any = None) -> List[RawDetection]:
+def merge_vertical_columns(detections: List[RawDetection], asset: ImageLike = None) -> List[RawDetection]:
     """merge per-character fragments of stacked vertical CJK signage into
     single column detections.
 
@@ -1625,7 +1626,7 @@ def _ink_gap_bands(row_ink: Any, gap_floor: int) -> List[Tuple[int, int]]:
     return [(a, b) for a, b in bands if (b - a) >= MIN_BAND_HEIGHT_PX]
 
 
-def _segment_vertical_bands(asset: Any, bbox: BBox) -> List[BBox]:
+def _segment_vertical_bands(asset: ImageLike, bbox: BBox) -> List[BBox]:
     """split a tall/narrow bbox into per-character horizontal bands.
 
     finds character gaps via a horizontal ink-density profile off the
@@ -1688,7 +1689,7 @@ def _segment_vertical_bands(asset: Any, bbox: BBox) -> List[BBox]:
 
 
 def _split_tall_detections(
-    asset: Any, engine: "EasyOCRBackend", detections: List[RawDetection],
+    asset: ImageLike, engine: "EasyOCRBackend", detections: List[RawDetection],
 ) -> Optional[List[RawDetection]]:
     """re-segment and re-recognize over-tall/narrow detections that are
     likely an over-merged vertical CJK stack (see module note above).
@@ -1824,7 +1825,7 @@ ROW_EXCLUDED_LANGS = {"ja", "ch_sim", "ch_tra", "ko"}
 
 
 def merge_baseline_runs(
-    asset: Any, engine: "EasyOCRBackend", detections: List[RawDetection],
+    asset: ImageLike, engine: "EasyOCRBackend", detections: List[RawDetection],
 ) -> Optional[List[RawDetection]]:
     """Assemble same-baseline word fragments into one line, and re-read it.
 
@@ -1938,7 +1939,33 @@ def merge_baseline_runs(
         except Exception:
             out.extend(detections[i] for i in members)
             continue
-        composed = _compose_crop_text(per_line[0]) if per_line else None
+        # Spatial filter: the re-OCR crop is the union box plus a 4px pad,
+        # so a detection can land in the padded margin where no real text
+        # exists.  That is how the enLabel packaging asset's "enLabel
+        # Global Services" line acquired a phantom "0000": a confident
+        # digit read off blank margin texture, which _compose_crop_text
+        # then space-joined into "enLabel Global Services 0000".  Filter
+        # to detections whose bbox overlaps at least one original member
+        # box (with a small tolerance for re-read drift), so margin
+        # hallucinations never enter the composed string.
+        member_boxes = [boxes[i] for i in members]
+        line_h = line_box.height or 1
+        tol = line_h * 0.25
+        filtered_dets = []
+        for d in (per_line[0] if per_line else []):
+            db = _polygon_bbox(d.polygon)
+            if any(
+                db.x + db.width >= mb.x - tol
+                and db.x <= mb.x + mb.width + tol
+                and db.y + db.height >= mb.y - tol
+                and db.y <= mb.y + mb.height + tol
+                for mb in member_boxes
+            ):
+                filtered_dets.append(d)
+        if not filtered_dets:
+            out.extend(detections[i] for i in members)
+            continue
+        composed = _compose_crop_text(filtered_dets)
         if composed is None or not (composed.text or "").strip():
             out.extend(detections[i] for i in members)
             continue
@@ -1952,6 +1979,45 @@ def merge_baseline_runs(
             for i in members if (detections[i].text or "").strip()
         )
         if not kept_everything:
+            out.extend(detections[i] for i in members)
+            continue
+        # Bidirectional containment: the check above verifies every
+        # member survived in the composed text.  The reverse — that the
+        # composed text introduced nothing EXTRA — catches a re-read
+        # that glued a hallucinated fragment onto the end of a real
+        # line.  The spatial filter above stops most of these, but a
+        # detection inside a member box can still read as digits the
+        # member never said (texture inside the word's own bbox), so
+        # this is the backstop.  Each whitespace-delimited token in the
+        # composed text must be explained by some member: either it
+        # matches that member via best_span_similarity, or it is a
+        # substring of the member's normalized text (a re-read that
+        # splits one word into tokens still passes).  A token no member
+        # explains — like the "0000" on the enLabel packaging asset —
+        # rejects the merge.
+        from tofu.utils.textmatch import normalize_text as _norm
+        composed_tokens = [
+            t for t in (composed.text or "").split() if t.strip()
+        ]
+        member_texts = [
+            (detections[i].text or "").strip()
+            for i in members if (detections[i].text or "").strip()
+        ]
+        member_norms = [_norm(t) for t in member_texts]
+        unexplained = False
+        for tok in composed_tokens:
+            tok_norm = _norm(tok)
+            if not tok_norm:
+                continue
+            explained = any(
+                best_span_similarity(tok, mt) >= LOAF_SPAN_SIMILARITY
+                or tok_norm in mn
+                for mt, mn in zip(member_texts, member_norms)
+            )
+            if not explained:
+                unexplained = True
+                break
+        if unexplained:
             out.extend(detections[i] for i in members)
             continue
         changed = True
@@ -2010,7 +2076,7 @@ def _compose_crop_text(
     )
 
 
-def _probe_dim(asset: Any) -> Optional[Tuple[int, int]]:
+def _probe_dim(asset: ImageLike) -> Optional[Tuple[int, int]]:
     """resolve the original (width, height) of the asset, if determinable.
 
     this is the coordinate-space contract for the manifest: every bbox and
@@ -2149,8 +2215,63 @@ def _script_bearing_conf(det: RawDetection, target_scripts: set) -> float:
     return 0.0
 
 
+def _scripts_compatible(
+    primary_script: Optional[str], alternate_script: Optional[str],
+    language: Optional[str] = None,
+) -> Optional[bool]:
+    """Return declared-language-aware compatibility for two OCR readings.
+
+    ``ScriptDetector`` labels a Japanese string containing kana as
+    ``japanese`` and a kanji-only string as ``han``. Strict label equality
+    therefore rejected perfectly valid independent readings such as
+    ``に 小坂温泉郷`` versus ``小坂温泉郷`` before confidence and geometry
+    could arbitrate them. Japanese orthography legitimately mixes both, so
+    they are one compatibility family when the region is declared Japanese.
+    Unknown scripts remain ``None`` so the arbitration layer keeps its
+    existing fail-neutral behavior.
+    """
+    if not primary_script or not alternate_script:
+        return None
+    if primary_script == alternate_script:
+        return True
+    base_language = (language or "").casefold().split("-")[0]
+    if base_language == "ja":
+        return {primary_script, alternate_script} <= {"japanese", "han"}
+    return False
+
+
+def _affix_artifact_evidence(primary: str, alternate: str) -> Optional[Dict[str, Any]]:
+    """Describe a verifier-supported core obtained by dropping a short affix.
+
+    This does not authorize a replacement—the calibrated arbitration gates do
+    that. It makes an already-authorized decision auditable instead of hiding
+    the material difference behind a generic cross-engine reason.
+    """
+    primary_compact = "".join((primary or "").split())
+    alternate_compact = "".join((alternate or "").split())
+    if not alternate_compact or primary_compact == alternate_compact:
+        return None
+    if primary_compact.endswith(alternate_compact):
+        removed = primary_compact[:-len(alternate_compact)]
+        if 0 < len(removed) <= 2:
+            return {
+                "kind": "unsupported_ocr_prefix",
+                "removed_text": removed,
+                "retained_core": alternate_compact,
+            }
+    if primary_compact.startswith(alternate_compact):
+        removed = primary_compact[len(alternate_compact):]
+        if 0 < len(removed) <= 2:
+            return {
+                "kind": "unsupported_ocr_suffix",
+                "removed_text": removed,
+                "retained_core": alternate_compact,
+            }
+    return None
+
+
 def _auto_probe_language(
-    asset: Any,
+    asset: ImageLike,
     instances: List[InstText],
     engine: "EasyOCRBackend",
     probe_regions: int = 8,
@@ -2272,7 +2393,7 @@ SURFACE_PROBE_MAX = 8
 
 
 def probe_uncovered_surfaces(
-    asset: Any,
+    asset: ImageLike,
     scene_regions: List[SceneRegion],
     instances: List[InstText],
     engine: "EasyOCRBackend",
@@ -2647,7 +2768,7 @@ def _surfaces_needing_help(
 
 
 def run_paddle_rescue(
-    asset: Any,
+    asset: ImageLike,
     detections: List[RawDetection],
     scene_regions: Optional[List[SceneRegion]],
     language: str,
@@ -2815,7 +2936,7 @@ def label_latin_languages(
 
 
 def _identify_languages(
-    asset: Any,
+    asset: ImageLike,
     instances: List[InstText],
     engine: "EasyOCRBackend",
     max_extra_readers: int = 2,
@@ -2882,7 +3003,7 @@ def _identify_languages(
 
 
 def _identify_languages_paddle(
-    asset: Any,
+    asset: ImageLike,
     instances: List[InstText],
     engine: "PaddleOCRBackend",
     max_extra_readers: int = 2,
@@ -3186,7 +3307,7 @@ def union_prefer_primary(
 
 
 def iter_multipass(
-    engine: OCRBackend, asset: Any
+    engine: OCRBackend, asset: ImageLike
 ) -> Iterator[
     Tuple[int, Optional[float], Optional[float], Optional[List[RawDetection]]]
 ]:
@@ -3221,7 +3342,7 @@ def iter_multipass(
 
 
 def run_multipass(
-    engine: OCRBackend, asset: Any
+    engine: OCRBackend, asset: ImageLike
 ) -> List[RawDetection]:
     """Run the canonical pass iterator and return its final cumulative set."""
     detections: List[RawDetection] = []
@@ -3244,7 +3365,7 @@ ZOOM_PAD = 8
 
 def zoom_detect(
     engine: OCRBackend,
-    asset: Any,
+    asset: ImageLike,
     scene_regions: List[SceneRegion],
 ) -> List[RawDetection]:
     """coarse-to-fine detection: re-detect inside each candidate scene
@@ -3425,7 +3546,7 @@ EDGE_RESCUE_CONF_SLACK = 0.10
 
 
 def rescue_clipped_edge_glyphs(
-    asset: Any,
+    asset: ImageLike,
     instances: List[InstText],
     engine: OCRBackend,
     max_regions: int = 24,
@@ -3485,7 +3606,7 @@ def rescue_clipped_edge_glyphs(
 
 
 def second_look(
-    asset: Any,
+    asset: ImageLike,
     instances: List[InstText],
     engine: OCRBackend,
     conf_threshold: float = 0.55,
@@ -3527,7 +3648,7 @@ def second_look(
     except Exception:
         img = None
 
-    def _rotated_text(crop: Any) -> Optional[str]:
+    def _rotated_text(crop: ImageLike) -> Optional[str]:
         try:
             rot = np.rot90(crop, 2) if crop is not None else None
             if rot is None:
@@ -3583,7 +3704,7 @@ def second_look(
 
 
 def detect(
-    asset: Any,
+    asset: ImageLike,
     asset_info: Optional[AssetInfo] = None,
     backend: Optional[OCRBackend] = None,
     languages: Optional[Sequence[str]] = None,
@@ -3961,7 +4082,7 @@ def detect(
     _stage({"stage": "arbitration", "status": "running"})
     replaced = assess_multi_candidate_ocr(
         asset, manifest.instances, scene_regions, ocr_assessment_policy,
-        font_registry=font_registry,
+        font_registry=font_registry, ground_truth_pool=ground_truth_pool,
     )
     _stage({"stage": "arbitration", "status": "complete", "corrected": replaced})
 
@@ -4183,7 +4304,7 @@ def _disambiguate_ja_zh(instances: List[InstText]) -> None:
                     inst.detected_language = "zh-cn"
 
 
-def _has_ink_support(asset: Any, bbox: BBox) -> bool:
+def _has_ink_support(asset: ImageLike, bbox: BBox) -> bool:
     """False when the bbox's own pixels show no separable ink structure
     at all -- a detection with a "real" script/digit read but literally
     nothing there is a hallucination text_mask alone can catch,
@@ -4220,7 +4341,7 @@ def _is_localizable_symbol(text: str) -> bool:
 
 
 def _prune_hallucinations(
-    instances: List[InstText], asset: Any = None
+    instances: List[InstText], asset: ImageLike = None
 ) -> List[InstText]:
     """drop symbol-noise regions and renumber the survivors.
 
@@ -4447,7 +4568,7 @@ def assemble_fragments(texts: Sequence[str], boxes: List[BBox]) -> str:
 
 
 def reread_merged_region(
-    asset: Any, box: BBox, pieces: Sequence[str], piece_boxes: List[BBox],
+    asset: ImageLike, box: BBox, pieces: Sequence[str], piece_boxes: List[BBox],
     engine: Optional["OCRBackend"] = None,
 ) -> Tuple[str, Optional[float], str]:
     """Read a user-merged region whole, or fall back to joining its parts.
@@ -4533,7 +4654,7 @@ def _needs_paddle_audit(inst: InstText) -> bool:
     return cjk and bool(text) and text[-1:] in _TRAILING_ARTIFACTS
 
 
-def _no_terminal_dash_ink(asset: Any, bbox: Optional[BBox]) -> Optional[bool]:
+def _no_terminal_dash_ink(asset: ImageLike, bbox: Optional[BBox]) -> Optional[bool]:
     """Return True only when a crop supports removal of a trailing dash.
 
     ``None`` means the crop cannot be read reliably and deliberately blocks an
@@ -4573,7 +4694,7 @@ def _no_terminal_dash_ink(asset: Any, bbox: Optional[BBox]) -> Optional[bool]:
         return None
 
 
-def skim_audit(asset: Any, instances: List[InstText]) -> List[InstText]:
+def skim_audit(asset: ImageLike, instances: List[InstText]) -> List[InstText]:
     """Cross-engine second opinion on script-less reads skim could not judge.
 
     Skim removes a read on stroke evidence alone only when nothing
@@ -4651,7 +4772,7 @@ def skim_audit(asset: Any, instances: List[InstText]) -> List[InstText]:
     return survivors
 
 
-def hybrid_audit(asset: Any, instances: List[InstText]) -> int:
+def hybrid_audit(asset: ImageLike, instances: List[InstText]) -> int:
     """Use Paddle only to adjudicate risky CJK EasyOCR reads.
 
     This is intentionally not a second full-scene detector: EasyOCR keeps
@@ -4804,11 +4925,12 @@ def _score_region_hypothesis(
 
 
 def assess_multi_candidate_ocr(
-    asset: Any,
+    asset: ImageLike,
     instances: List[InstText],
     scene_regions: Optional[List[SceneRegion]] = None,
     policy: Optional[OCRAssessmentPolicy] = None,
     font_registry: Optional[Any] = None,
+    ground_truth_pool: Optional[List[tuple]] = None,
 ) -> int:
     """Arbitrate risky settled reads against a fresh independent OCR pass.
 
@@ -5000,10 +5122,8 @@ def assess_multi_candidate_ocr(
         signals = ArbitrationSignals(
             ink_support=1.0 if _has_ink_support(asset, inst.bounding_box) else 0.0,
             geometry_support=max(0.0, min(1.0, geometry_support)),
-            script_compatible=(
-                None
-                if not primary_script or not alternate_script
-                else primary_script == alternate_script
+            script_compatible=_scripts_compatible(
+                primary_script, alternate_script, language
             ),
             # Let the arbitration policy compare declared and distributed
             # engine languages.  Forcing True made a wrong verifier language
@@ -5106,13 +5226,26 @@ def assess_multi_candidate_ocr(
             ),
         })
         if accepted:
+            affix_evidence = _affix_artifact_evidence(primary_text, result.text)
             inst.text = result.text
             inst.confidence = float(result.confidence)
             inst.ocr_correction = {
                 "applied": True,
                 "original_text": primary_text,
                 "corrected_text": result.text,
-                "reason": "versioned cross-engine OCR arbitration",
+                "reason": (
+                    "high-confidence independent verifier retained the "
+                    "pixel-supported core and removed an unsupported OCR affix"
+                    if affix_evidence else
+                    "versioned cross-engine OCR arbitration"
+                ),
+                "evidence": {
+                    "difference": affix_evidence,
+                    "geometry_support": round(signals.geometry_support, 4),
+                    "script_compatible": signals.script_compatible,
+                    "primary_calibrated_confidence": decision.primary.calibrated_confidence,
+                    "alternate_calibrated_confidence": decision.alternate.calibrated_confidence,
+                },
                 "policy_version": decision.policy_version,
                 "calibration_registry_version": decision.calibration_registry_version,
                 "correction_resource": {
@@ -5130,6 +5263,7 @@ def assess_multi_candidate_ocr(
             changed += 1
         elif _promote_verifier_confusion(
             inst, hypothesis_record, primary_text, asset, font_registry,
+            ground_truth_pool,
         ):
             changed += 1
 
@@ -5156,6 +5290,10 @@ _GLYPH_CONFUSIONS: FrozenSet[FrozenSet[str]] = frozenset({
     frozenset({"8", "B"}),
     frozenset({"2", "Z"}),
     frozenset({"6", "G"}),
+    # Measured on japan-subs r2 across the independent verifier and the
+    # region's own ink. The terminal dash is audited separately; this pair
+    # records only the dense-kanji silhouette confusion.
+    frozenset({"獄", "嶽"}),
 })
 
 
@@ -5166,7 +5304,7 @@ _INK_COMPARISON_FACES = 5
 
 
 def _verifier_fits_the_ink(
-    asset: Any, inst: InstText, candidate: str, primary: str, registry: Any,
+    asset: ImageLike, inst: InstText, candidate: str, primary: str, registry: Any,
 ) -> bool:
     """Does the verifier's reading look more like this region's ink?
 
@@ -5253,7 +5391,8 @@ def _language_model_prefers(candidate: str, primary: str, inst: InstText) -> boo
 
 def _promote_verifier_confusion(
     inst: InstText, record: Optional[Dict[str, Any]], primary_text: str,
-    asset: Any = None, registry: Any = None,
+    asset: ImageLike = None, registry: Any = None,
+    ground_truth_pool: Optional[List[tuple]] = None,
 ) -> bool:
     """Apply the verifier's reading when it differs only by a confused glyph.
 
@@ -5313,11 +5452,28 @@ def _promote_verifier_confusion(
         return False
 
     differences = [(a, b) for a, b in zip(left, right) if a != b]
+    ground_truth_match = None
     if len(differences) > 1:
         return False
     if differences:
         a, b = differences[0]
-        if frozenset({a, b}) not in _GLYPH_CONFUSIONS:
+        pair = frozenset({a, b})
+        ground_truth_match = next((
+            (term, scope or "project")
+            for term, _lang, scope in (
+                (entry if len(entry) >= 3 else (*entry, "project"))
+                for entry in (ground_truth_pool or [])
+            )
+            if term == candidate
+        ), None)
+        measured_kanji_dash_case = (
+            pair == frozenset({"獄", "嶽"})
+            and trimmed
+            and float(breakdown.get("confidence") or 0.0) >= 0.90
+        )
+        if pair not in _GLYPH_CONFUSIONS or (
+            pair == frozenset({"獄", "嶽"}) and not measured_kanji_dash_case
+        ):
             # Not a Latin pair anyone has tabled, and a table cannot scale
             # to kanji -- 獄 and 嶽 are one of thousands of such pairs. So
             # the claim has to be measured, TWICE, because measuring it
@@ -5347,9 +5503,9 @@ def _promote_verifier_confusion(
                                           right if trimmed else primary_text,
                                           registry):
                 return False
-            if not _language_model_prefers(candidate,
-                                           right if trimmed else primary_text,
-                                           inst):
+            if not ground_truth_match and not _language_model_prefers(
+                candidate, right if trimmed else primary_text, inst
+            ):
                 return False
     elif not trimmed:
         return False
@@ -5371,6 +5527,10 @@ def _promote_verifier_confusion(
         "correction_resource": {
             "kind": "tofu_arbitration",
             "revision": record.get("policy_revision"),
+            "ground_truth_support": (
+                {"term": ground_truth_match[0], "scope": ground_truth_match[1]}
+                if ground_truth_match else None
+            ),
         },
     }
     inst.source_override = {
@@ -5439,7 +5599,7 @@ def _grade_ungraded_regions(instances: List[InstText]) -> int:
 
 
 def build_manifest(
-    asset: Any,
+    asset: ImageLike,
     detections: List[RawDetection],
     asset_info: Optional[AssetInfo] = None,
     engine: Optional[OCRBackend] = None,

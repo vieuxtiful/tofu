@@ -744,6 +744,14 @@ def update_asset_ground_truth(asset_id: str, ground_truth: List[str]) -> Optiona
     return _with_ground_truth(dict(asset)) if asset else None
 
 
+def asset_by_id(asset_id: str) -> Optional[Dict[str, Any]]:
+    with _conn() as con:
+        row = con.execute(
+            "SELECT * FROM project_assets WHERE asset_id = ?", (asset_id,)
+        ).fetchone()
+    return _with_ground_truth(dict(row)) if row else None
+
+
 def find_asset_by_hash(content_hash: str) -> Optional[Dict[str, Any]]:
     """most recent asset (across all projects) matching an exact content
     hash, joined with its project's name -- the duplicate-upload check."""

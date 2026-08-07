@@ -24,6 +24,11 @@ South-East Asian scripts, and right-to-left handling for Arabic and Hebrew.
 
 Full project: **https://github.com/vieuxtiful/tofu**
 
+**Documentation:** [Architecture](https://github.com/vieuxtiful/tofu/blob/main/docs/architecture.md) ·
+[API reference](https://github.com/vieuxtiful/tofu/blob/main/docs/api.md) ·
+[Contributing](https://github.com/vieuxtiful/tofu/blob/main/CONTRIBUTING.md) ·
+[Changelog](https://github.com/vieuxtiful/tofu/blob/main/CHANGELOG.md)
+
 ---
 
 ## What this Space can and cannot do
@@ -73,6 +78,9 @@ Then open http://127.0.0.1:7860. Locally you can also provision the two
 isolated interpreters (`server/requirements-paddle.txt` and
 `server/requirements-inpaint.txt`) to get the full-quality path — ToFU
 discovers them at runtime and degrades cleanly when they are absent.
+
+See [CONTRIBUTING.md](https://github.com/vieuxtiful/tofu/blob/main/CONTRIBUTING.md)
+for the full three-venv setup instructions.
 
 ## Deploying as a Space
 

@@ -1,5 +1,21 @@
 // 🍢 ToFU — API client (mirrors server/main.py contracts)
 
+/**
+ * API base URL for cross-origin deployments. In development and nginx-reverse-
+ * proxy setups, this is empty and all requests use relative /api/ paths. For
+ * custom deployments where the frontend is served from a different origin:
+ *
+ *   VITE_API_URL=https://api.example.com npm run build
+ */
+const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? "";
+if (API_BASE) {
+  const _fetch = window.fetch.bind(window);
+  window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
+    if (typeof input === "string" && input.startsWith("/")) input = API_BASE + input;
+    return _fetch(input, init);
+  };
+}
+
 export interface AssetInfo {
   asset_type: string;
   frame_count: number;
@@ -717,6 +733,10 @@ export interface OcrRegionResult {
   confidence: number;
   detected_language: string | null;
   engine_missing?: boolean;  // OCR engine absent on the server (config issue)
+  ocr_correction?: InstText["ocr_correction"];
+  source_override?: InstText["source_override"];
+  recognition_history?: InstText["recognition_history"];
+  ocr_provenance?: InstText["ocr_provenance"];
 }
 
 export interface RefineRegionResult {
@@ -882,6 +902,20 @@ export async function updateAssetGroundTruth(
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ground_truth: groundTruth }),
+    })
+  );
+}
+
+export async function importAssetGroundTruth(
+  assetId: string,
+  file: File
+): Promise<{ asset: ProjectAsset; imported: number; total: number; filename: string }> {
+  const form = new FormData();
+  form.append("file", file);
+  return json(
+    await fetch(`/api/assets/${encodeURIComponent(assetId)}/ground-truth/import`, {
+      method: "POST",
+      body: form,
     })
   );
 }
@@ -1125,6 +1159,44 @@ export async function semanticRepair(
   );
 }
 
+export async function semanticModifyMembers(
+  assetId: string,
+  unitId: string,
+  options: { addRegionId?: string; removeRegionId?: string },
+): Promise<{ manifest: TextManifest }> {
+  return json(
+    await fetch(`/api/semantic-units/${encodeURIComponent(assetId)}/${encodeURIComponent(unitId)}/members`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(options),
+    })
+  );
+}
+
+export async function semanticCreateUnit(
+  assetId: string,
+  regionIds?: string[],
+): Promise<{ manifest: TextManifest }> {
+  return json(
+    await fetch(`/api/semantic-units/${encodeURIComponent(assetId)}/create`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ region_ids: regionIds ?? [] }),
+    })
+  );
+}
+
+export async function semanticDeleteUnit(
+  assetId: string,
+  unitId: string,
+): Promise<{ manifest: TextManifest }> {
+  return json(
+    await fetch(`/api/semantic-units/${encodeURIComponent(assetId)}/${encodeURIComponent(unitId)}`, {
+      method: "DELETE",
+    })
+  );
+}
+
 export async function uploadGlossary(
   file: File,
   scope: "global" | "project",
@@ -1180,7 +1252,7 @@ export async function deleteRegion(assetId: string, regionId: string): Promise<{
  *  whether the text came from re-reading the union box or from joining
  *  the parts. */
 export async function mergeRegions(
-  assetId: string, regionIds: string[],
+  assetId: string, regionIds: string[], texts?: string[],
 ): Promise<{
   ok: boolean; region: InstText; source: "reread" | "joined";
   merged_ids: string[]; total_regions: number;
@@ -1189,7 +1261,7 @@ export async function mergeRegions(
     await fetch(`/api/manifest/${assetId}/regions/merge`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ region_ids: regionIds }),
+      body: JSON.stringify({ region_ids: regionIds, texts }),
     })
   );
 }

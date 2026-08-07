@@ -1,0 +1,126 @@
+# ToFU — automated benchmark regression
+# Scheduled benchmark regression workflow.
+#
+# Runs the eval harnesses (detect, render, cleanse) against the GT-annotated
+# fixtures and compares metrics against the stored baseline.  Unlike the main
+# CI workflow (which runs unit tests on every push), this workflow:
+#   - runs on a schedule (nightly) and on manual dispatch
+#   - can be triggered on a PR via workflow_dispatch with the PR number
+#   - posts a comment on the PR if any metric regresses beyond tolerance
+#
+# The baseline lives in tests/fixtures/regression/baseline_metrics.json.
+# To update baselines after an intentional improvement, run
+# scripts/generate_baseline.py locally and commit the updated JSON.
+name: Benchmark
+
+on:
+  schedule:
+    # Nightly at 03:00 UTC — off-peak for GitHub Actions runners
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "PR number to comment on (optional)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: write  # needed to post PR comments
+
+jobs:
+  benchmark:
+    name: benchmark regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install (CPU torch + dev deps)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --extra-index-url https://download.pytorch.org/whl/cpu -e ".[all,dev]"
+
+      - name: Install fonts for shaping
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            fonts-dejavu-core fonts-noto-core fonts-liberation
+
+      - name: Run benchmark regression tests
+        id: benchmark
+        env:
+          PYTHONUTF8: "1"
+        run: |
+          # Run the regression test suite — these compare eval harness
+          # metrics against baseline_metrics.json and fail on regression.
+          python -m pytest tests/regression/ -q \
+            --tb=short \
+            -k "not video" \
+            --junitxml=benchmark-results.xml || echo "regression_detected=true" >> $GITHUB_OUTPUT
+
+      - name: Generate regression report
+        if: steps.benchmark.outputs.regression_detected == 'true'
+        id: report
+        run: |
+          # Extract failure summary from the JUnit XML
+          python -c "
+          import xml.etree.ElementTree as ET
+          tree = ET.parse('benchmark-results.xml')
+          root = tree.getroot()
+          failures = []
+          for tc in root.iter('testcase'):
+              for failure in tc.findall('failure'):
+                  failures.append(f'{tc.attrib[\"classname\"]}::{tc.attrib[\"name\"]}')
+          if failures:
+              for f in failures:
+                  print(f)
+          else:
+              print('No specific failures parsed')
+          " > regression-report.txt 2>&1 || true
+          cat regression-report.txt
+
+      - name: Comment on PR (if PR number provided)
+        if: steps.benchmark.outputs.regression_detected == 'true' && github.event.inputs.pr_number != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let report = 'No detailed report available';
+            try {
+              report = fs.readFileSync('regression-report.txt', 'utf8').trim();
+            } catch (e) {}
+
+            const pr_number = context.payload.inputs.pr_number;
+            const body = [
+              '## ⚠️ Benchmark Regression Detected',
+              '',
+              'The nightly benchmark regression check detected metric drift',
+              'beyond the configured tolerances:',
+              '',
+              '```',
+              report,
+              '```',
+              '',
+              'To update baselines after an intentional improvement,',
+              'run `scripts/generate_baseline.py` locally and commit the',
+              'updated `tests/fixtures/regression/baseline_metrics.json`.',
+            ].join('\\n');
+
+            await github.rest.issues.createComment({
+              ...context.repo,
+              issue_number: parseInt(pr_number),
+              body,
+            });
+
+      - name: Fail if regression detected
+        if: steps.benchmark.outputs.regression_detected == 'true'
+        run: |
+          echo "::error::Benchmark regression detected — see report above"
+          exit 1

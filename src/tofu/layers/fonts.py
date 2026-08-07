@@ -12,6 +12,7 @@ the frontend flow this enables:
      list of pre-verified alternatives — minimizing end-user work
 """
 
+import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -25,6 +26,22 @@ try:
     HAVE_FONTTOOLS = True
 except ImportError:  # registry degrades gracefully; tofu falls back to static map
     HAVE_FONTTOOLS = False
+
+
+class _BrokenVendorTimestampFilter(logging.Filter):
+    """Hide harmless malformed ``head`` dates without masking font errors."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        message = record.getMessage()
+        return not (
+            message.startswith("'created' timestamp")
+            or message.startswith("'modified' timestamp")
+        )
+
+
+logging.getLogger("fontTools.ttLib.tables._h_e_a_d").addFilter(
+    _BrokenVendorTimestampFilter()
+)
 
 FONT_EXTS = {".ttf", ".otf", ".ttc", ".otc"}
 FULL_THRESHOLD = 0.995    # tolerate trivial gaps in range-derived samples

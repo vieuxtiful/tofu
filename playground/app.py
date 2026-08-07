@@ -36,6 +36,7 @@ from typing import Any, List, Optional, Tuple
 import gradio as gr
 from PIL import Image
 
+from tofu import __version__
 from tofu.core.types import BBox, TextManifest
 from tofu.layers import cicerone, cleanse, scribe
 from tofu.utils import interchange, vtm
@@ -207,8 +208,8 @@ def render(state, table, targ_lang: str, progress=gr.Progress()):
 
 with gr.Blocks(title="ToFU — visual text localization") as demo:
     gr.Markdown(
-        """
-        # 🍢 ToFU — visual text localization
+        f"""
+        # 🍢 ToFU — visual text localization (v{__version__})
 
         Detect text inside an image, erase it, and re-render the translation
         **in the original's style** — face, size, colour, stroke, orientation.

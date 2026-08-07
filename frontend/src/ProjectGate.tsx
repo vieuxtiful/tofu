@@ -1,12 +1,16 @@
 import { useEffect, useRef, useState } from "react";
-import { Archive, ArchiveRestore, ArrowLeft, ArrowRight, History, Loader2, Plus, Search, Trash2, X } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowLeft, ArrowRight, ChevronDown, ChevronLeft, ChevronRight, Loader2, Plus, Search, Trash2, X } from "lucide-react";
 import { CgRename } from "react-icons/cg";
 import { MdMonochromePhotos } from "react-icons/md";
 import { AiFillVideoCamera } from "react-icons/ai";
 import { TbCubePlus } from "react-icons/tb";
 import { AssetKind, LanguageOption, Project, SystemCapabilities, archiveProject, createProject, deleteProject, fetchSystemCapabilities, listProjects, restoreProject, updateProject } from "./api";
 import SourceLangPicker from "./SourceLangPicker";
+import AnimatedCaretInput from "./AnimatedCaretInput";
+import { SquareLoader } from "./Loaders";
 import { Theme, logoSrc } from "./theme";
+
+const SEARCH_PLACEHOLDER = "search projects";
 
 interface ProjectGateProps {
   languages: LanguageOption[];
@@ -66,8 +70,31 @@ export default function ProjectGate({ languages, onSelectProject, onClose, theme
   const [projectQuery, setProjectQuery] = useState("");
   const [projectSort, setProjectSort] = useState<"updated" | "created" | "name">("updated");
   const [capabilities, setCapabilities] = useState<SystemCapabilities | null>(null);
+  const [projPage, setProjPage] = useState(0);
+  const [projRowsPerPage, setProjRowsPerPage] = useState(15);
+  const [projRowsOpen, setProjRowsOpen] = useState(false);
+  const [sortOpen, setSortOpen] = useState(false);
+  const projRowsRef = useRef<HTMLDivElement>(null);
+  const sortRef = useRef<HTMLDivElement>(null);
+  const pantryScrollRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<View>(view);
   viewRef.current = view;
+
+  // outside-click / escape closes the sort dropdown — same pattern as
+  // projRowsOpen above and LanguageCombobox's open state.
+  useEffect(() => {
+    if (!sortOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (sortRef.current && !sortRef.current.contains(e.target as Node)) setSortOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setSortOpen(false); };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [sortOpen]);
 
   const transitionTo = (next: View) => {
     if (next === viewRef.current) return;
@@ -87,7 +114,21 @@ export default function ProjectGate({ languages, onSelectProject, onClose, theme
       .catch((e) => { setProjects([]); setError(String(e)); });
   };
   useEffect(refresh, [showArchived, projectQuery, projectSort]);
+  useEffect(() => { setProjPage(0); }, [showArchived, projectQuery, projectSort]);
+  useEffect(() => {
+    if (pantryScrollRef.current) {
+      pantryScrollRef.current.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }, [projPage]);
   useEffect(() => { fetchSystemCapabilities().then(setCapabilities).catch(() => setCapabilities(null)); }, []);
+  useEffect(() => {
+    if (!projRowsOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (projRowsRef.current && !projRowsRef.current.contains(e.target as Node)) setProjRowsOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [projRowsOpen]);
 
   const onCreate = async () => {
     if (!assetKind || !targetLang) return;
@@ -175,8 +216,8 @@ export default function ProjectGate({ languages, onSelectProject, onClose, theme
 
   return (
     <div className={`fixed inset-0 z-400 flex items-center justify-center bg-black/70 p-6 pantry-overlay${leaving ? " leaving" : ""}`}>
-      <div className={`bezier-card pantry-card${leaving ? " leaving" : ""} max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white p-6 dark:bg-zinc-900`}>
-        <div className="mb-4 flex items-center justify-between">
+      <div className={`bezier-card pantry-card${leaving ? " leaving" : ""} flex max-h-[90vh] w-full max-w-2xl flex-col rounded-xl bg-white dark:bg-zinc-900`}>
+        <div className="flex items-center justify-between border-b border-zinc-200 px-6 py-4 dark:border-zinc-800">
           <div className="flex items-center gap-3">
             <img src={logoSrc(theme)} alt="ToFU" className="h-10 w-auto" />
             <div>
@@ -186,7 +227,7 @@ export default function ProjectGate({ languages, onSelectProject, onClose, theme
               <p className="subtext text-xs text-zinc-500">{view === "list" && listOnly ? "load a session." : STEP_HINT[view]}</p>
             </div>
           </div>
-          {view !== "list" && (
+          {view !== "list" ? (
             <button
               onClick={() => setShowExitConfirm(true)}
               className="rounded-lg p-1.5 text-zinc-400 transition hover:bg-zinc-200 hover:text-zinc-600 dark:text-zinc-500 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
@@ -194,9 +235,18 @@ export default function ProjectGate({ languages, onSelectProject, onClose, theme
             >
               <X size={18} />
             </button>
-          )}
+          ) : onClose ? (
+            <button
+              onClick={onClose}
+              className="rounded-sm p-1 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
+              title="close"
+            >
+              <X size={16} />
+            </button>
+          ) : null}
         </div>
 
+        <div ref={pantryScrollRef} className="pantry-scroll flex-1 overflow-y-auto p-6">
         {error && (
           <div className="subtext mb-3 rounded-lg border border-red-300 bg-red-100 px-3 py-2 text-xs text-red-700 dark:border-red-800 dark:bg-red-950/50 dark:text-red-300">
             {error}
@@ -206,14 +256,56 @@ export default function ProjectGate({ languages, onSelectProject, onClose, theme
         {view === "list" && (
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
-              <label className="flex min-w-45 flex-1 items-center gap-1 rounded-md border border-zinc-300 px-2 py-1 dark:border-zinc-700">
-                <Search size={13} className="text-zinc-500" />
-                <input value={projectQuery} onChange={(e) => setProjectQuery(e.target.value)} placeholder="search projects" className="min-w-0 flex-1 bg-transparent text-xs outline-none" />
-              </label>
-              <select value={projectSort} onChange={(e) => setProjectSort(e.target.value as typeof projectSort)} className="rounded-md border border-zinc-300 bg-transparent px-2 py-1 text-xs dark:border-zinc-700">
-                <option value="updated">recent</option><option value="created">created</option><option value="name">name</option>
-              </select>
-              <button onClick={() => setShowArchived((value) => !value)} className="rounded-md border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-700">{showArchived ? "active" : "archived"}</button>
+              {/* Search input — AnimatedCaretInput: same transparent-ink + mirror
+                  + motion caret + insertion reveal + selection highlight pattern
+                  as the Capture/Translate text boxes.  While the field is empty,
+                  a per-character typewriter placeholder populates the same way
+                  project names do in TitleScreen. */}
+              <AnimatedCaretInput
+                value={projectQuery}
+                onChange={setProjectQuery}
+                label="search projects"
+                typewriterPlaceholder={SEARCH_PLACEHOLDER}
+                leadingIcon={<Search size={13} className="text-zinc-500" />}
+                className="min-w-45 flex-1 rounded-md border border-zinc-300 dark:border-zinc-700"
+              />
+              {/* Sort dropdown — dropdown-morph panel matching LanguageCombobox's
+                  dropdown CSS (bezier-card + dropdown-morph + expanded). */}
+              <div className="relative" ref={sortRef}>
+                <button
+                  onClick={() => setSortOpen((v) => !v)}
+                  className="bezier-card flex items-center gap-1 rounded-lg bg-white/60 px-2 py-1 text-xs text-zinc-700 transition hover:bg-zinc-100 dark:bg-zinc-900/60 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                >
+                  {projectSort === "updated" ? "recent" : projectSort === "created" ? "created" : "name"}
+                  <ChevronDown size={10} className={`shrink-0 text-zinc-500 transition ${sortOpen ? "rotate-180" : ""}`} />
+                </button>
+                <div
+                  className={`dropdown-morph bezier-card absolute left-0 top-full z-100 mt-1 w-28 overflow-hidden rounded-lg border border-zinc-300 bg-white dark:border-zinc-700 dark:bg-zinc-900${sortOpen ? " expanded" : ""}`}
+                  style={sortOpen ? { boxShadow: "4px 4px 0 var(--bc-shadow), 8px 8px 16px rgba(0,0,0,0.18)" } : undefined}
+                >
+                  {(["updated", "created", "name"] as const).map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => { setProjectSort(s); setSortOpen(false); }}
+                      className={`flex w-full items-center px-2 py-1.5 text-left text-xs transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${projectSort === s ? "text-cyan-600 dark:text-cyan-400" : "text-zinc-700 dark:text-zinc-300"}`}
+                    >
+                      {s === "updated" ? "recent" : s === "created" ? "created" : "name"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {/* Archived toggle — same bezier-card sizing as the sort dropdown
+                  button above (px-2 py-1 text-xs), with active/inactive cyan state. */}
+              <button
+                onClick={() => setShowArchived((value) => !value)}
+                className={`bezier-card flex items-center gap-1 rounded-lg px-2 py-1 text-xs transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${
+                  showArchived
+                    ? "bg-cyan-600 text-white"
+                    : "bg-white/60 text-zinc-700 dark:bg-zinc-900/60 dark:text-zinc-300"
+                }`}
+              >
+                {showArchived ? "active" : "archived"}
+              </button>
             </div>
             {!listOnly && (
               <button
@@ -225,79 +317,130 @@ export default function ProjectGate({ languages, onSelectProject, onClose, theme
               </button>
             )}
             {projects === null && (
-              <div className="flex items-center gap-2 py-4 text-sm text-zinc-500">
-                <Loader2 size={14} className="animate-spin" /> loading pantry…
+              <div className="subtext step-fade flex items-center gap-2 py-4 text-[10px] text-cyan-600 dark:text-cyan-400">
+                <SquareLoader size="sm" /> loading pantry…
               </div>
             )}
-            {projects && [...projects]
-              .sort((a, b) => b.updated_at - a.updated_at)
-              .map((p, idx) => {
-              const isCurrent = p.id === currentProjectId;
+            {projects && (() => {
+              const sorted = [...projects].sort((a, b) => b.updated_at - a.updated_at);
+              const projTotalPages = Math.max(1, Math.ceil(sorted.length / projRowsPerPage));
+              const projClampedPage = Math.min(projPage, projTotalPages - 1);
+              const projStart = projClampedPage * projRowsPerPage;
+              const projEnd = Math.min(projStart + projRowsPerPage, sorted.length);
+              const paginated = sorted.slice(projStart, projEnd);
               return (
-              <div
-                key={p.id}
-                className={`${isCurrent ? "pantry-row-current " : ""}pantry-project-row relative flex items-center gap-3 rounded-lg border border-zinc-300 bg-zinc-100 p-3 transition hover:border-cyan-700 dark:border-zinc-700 dark:bg-zinc-800/50`}
-              >
-                {isCurrent && (
-                  <span className="pantry-halo" aria-hidden="true">
-                    <span className="pantry-halo-glow" />
-                    <span className="pantry-halo-particles" />
-                  </span>
-                )}
-                <button
-                  onClick={() => onSelectProject(p)}
-                  className="relative flex min-w-0 flex-1 items-center gap-3 text-left"
-                >
-                  <span className="subtext flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-zinc-300 bg-white text-xs font-semibold text-zinc-600 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
-                    {idx + 1}
-                  </span>
-                  <div className="min-w-0">
-                    <p className="flex items-center gap-2 truncate text-sm font-medium text-zinc-800 dark:text-zinc-200">
-                      <span className="truncate">{p.name}</span>
-                      <span className={`inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none ${
-                        p.asset_kind === "video"
-                          ? "bg-purple-500/15 text-purple-600 dark:text-purple-300"
-                          : "bg-cyan-500/15 text-cyan-700 dark:text-cyan-300"
-                      }`}>
-                        <span className="flex items-center">{p.asset_kind === "video" ? <AiFillVideoCamera size={9} /> : <MdMonochromePhotos size={9} />}</span>
-                        {p.asset_kind ?? "image"}
+                <>
+                  {paginated.map((p, idx) => {
+                    const globalIdx = projStart + idx;
+                    const isCurrent = p.id === currentProjectId;
+                    return (
+                      <div
+                        key={p.id}
+                        className={`${isCurrent ? "pantry-row-current " : ""}pantry-project-row relative flex items-center gap-3 rounded-lg border border-zinc-300 bg-zinc-100 p-3 transition hover:border-cyan-700 dark:border-zinc-700 dark:bg-zinc-800/50`}
+                      >
+                        {isCurrent && (
+                          <span className="pantry-halo" aria-hidden="true">
+                            <span className="pantry-halo-glow" />
+                            <span className="pantry-halo-particles" />
+                          </span>
+                        )}
+                        <button
+                          onClick={() => onSelectProject(p)}
+                          className="relative flex min-w-0 flex-1 items-center gap-3 text-left"
+                        >
+                          <span className="subtext flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-zinc-300 bg-white text-xs font-semibold text-zinc-600 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+                            {globalIdx + 1}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="flex items-center gap-2 truncate text-sm font-medium text-zinc-800 dark:text-zinc-200">
+                              <span className="truncate">{p.name}</span>
+                              <span className={`inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none ${
+                                p.asset_kind === "video"
+                                  ? "bg-purple-500/15 text-purple-600 dark:text-purple-300"
+                                  : "bg-cyan-500/15 text-cyan-700 dark:text-cyan-300"
+                              }`}>
+                                <span className="flex items-center">{p.asset_kind === "video" ? <AiFillVideoCamera size={9} /> : <MdMonochromePhotos size={9} />}</span>
+                                {p.asset_kind ?? "image"}
+                              </span>
+                            </p>
+                            <p className="subtext truncate text-xs text-zinc-500">
+                              {p.source_lang ?? "auto"} → {p.target_lang}
+                              {" · "}{p.asset_count ?? 0} asset(s) · {p.snapshot_count ?? 0} save(s) · {timeAgo(p.updated_at)}
+                            </p>
+                          </div>
+                        </button>
+                        <button
+                          onClick={() => onRename(p)}
+                          title="Rename project"
+                          className="relative rounded-sm p-1.5 text-zinc-400 hover:bg-zinc-200 hover:text-cyan-600 dark:text-zinc-600 dark:hover:bg-zinc-700 dark:hover:text-cyan-400"
+                        >
+                          <CgRename size={14} />
+                        </button>
+                        <button
+                          onClick={() => onDelete(p)}
+                          title="Delete project"
+                          className="relative rounded-sm p-1.5 text-zinc-400 hover:bg-zinc-200 hover:text-red-500 dark:text-zinc-600 dark:hover:bg-zinc-700 dark:hover:text-red-400"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                        <button onClick={() => toggleArchive(p)} title={p.archived_at ? "Restore project" : "Archive project"} className="relative rounded-sm p-1.5 text-zinc-400 hover:bg-zinc-200 hover:text-cyan-600 dark:text-zinc-600 dark:hover:bg-zinc-700">
+                          {p.archived_at ? <ArchiveRestore size={14} /> : <Archive size={14} />}
+                        </button>
+                      </div>
+                    );
+                  })}
+                  {sorted.length > projRowsPerPage && (
+                    <div className="flex items-center justify-end gap-2 pt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                      <div className="relative" ref={projRowsRef}>
+                        <button
+                          type="button"
+                          onClick={() => setProjRowsOpen((v) => !v)}
+                          className="flex items-center gap-1 rounded-md border border-zinc-300 bg-white px-1.5 py-0.5 text-[10px] text-zinc-600 transition hover:border-cyan-600 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400"
+                          title="Rows per page"
+                        >
+                          {projRowsPerPage}/page
+                          <ChevronDown size={10} className={`transition-transform duration-200 ${projRowsOpen ? "rotate-180" : ""}`} />
+                        </button>
+                        <div
+                          className={`dropdown-morph absolute right-0 top-full z-200 mt-1 w-20 rounded-lg border border-zinc-300 bg-white p-1 dark:border-zinc-700 dark:bg-zinc-900${projRowsOpen ? " expanded" : ""}`}
+                          style={projRowsOpen ? { boxShadow: "1px 1px 0 var(--bc-shadow), 2px 2px 6px rgba(0,0,0,0.06)" } : undefined}
+                        >
+                          {[15, 20, 25, 30].map((n) => (
+                            <button
+                              key={n}
+                              type="button"
+                              onClick={() => { setProjRowsPerPage(n); setProjPage(0); setProjRowsOpen(false); }}
+                              className={`flex w-full rounded-md px-2 py-1 text-[10px] transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${projRowsPerPage === n ? "bg-zinc-100 font-medium text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100" : "text-zinc-600 dark:text-zinc-400"}`}
+                            >
+                              {n}/page
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <span className="flex items-center gap-0.5">
+                        <button
+                          onClick={() => setProjPage((p) => Math.max(0, p - 1))}
+                          disabled={projClampedPage === 0}
+                          title="Previous page"
+                          className="rounded-sm p-0.5 text-zinc-500 hover:text-cyan-600 disabled:opacity-30 dark:text-zinc-400 dark:hover:text-cyan-400"
+                        >
+                          <ChevronLeft size={14} />
+                        </button>
+                        <span className="tabular-nums">{projClampedPage + 1}/{projTotalPages}</span>
+                        <button
+                          onClick={() => setProjPage((p) => Math.min(projTotalPages - 1, p + 1))}
+                          disabled={projClampedPage >= projTotalPages - 1}
+                          title="Next page"
+                          className="rounded-sm p-0.5 text-zinc-500 hover:text-cyan-600 disabled:opacity-30 dark:text-zinc-400 dark:hover:text-cyan-400"
+                        >
+                          <ChevronRight size={14} />
+                        </button>
                       </span>
-                    </p>
-                    <p className="subtext truncate text-xs text-zinc-500">
-                      {p.source_lang ?? "auto"} → {p.target_lang}
-                      {" · "}{p.asset_count ?? 0} asset(s) · {p.snapshot_count ?? 0} save(s) · {timeAgo(p.updated_at)}
-                    </p>
-                  </div>
-                </button>
-                <button
-                  onClick={() => onRename(p)}
-                  title="Rename project"
-                  className="relative rounded-sm p-1.5 text-zinc-400 hover:bg-zinc-200 hover:text-cyan-600 dark:text-zinc-600 dark:hover:bg-zinc-700 dark:hover:text-cyan-400"
-                >
-                  <CgRename size={14} />
-                </button>
-                <button
-                  onClick={() => onDelete(p)}
-                  title="Delete project"
-                  className="relative rounded-sm p-1.5 text-zinc-400 hover:bg-zinc-200 hover:text-red-500 dark:text-zinc-600 dark:hover:bg-zinc-700 dark:hover:text-red-400"
-                >
-                  <Trash2 size={14} />
-                </button>
-                <button onClick={() => toggleArchive(p)} title={p.archived_at ? "Restore project" : "Archive project"} className="relative rounded-sm p-1.5 text-zinc-400 hover:bg-zinc-200 hover:text-cyan-600 dark:text-zinc-600 dark:hover:bg-zinc-700">
-                  {p.archived_at ? <ArchiveRestore size={14} /> : <Archive size={14} />}
-                </button>
-              </div>
+                    </div>
+                  )}
+                </>
               );
-            })}
-            {projects && projects.length > 0 && (
-              <button
-                onClick={() => setShowArchived((value) => !value)}
-                className="flex w-full items-center justify-center gap-2 rounded-lg border border-zinc-300 bg-zinc-50 p-3 text-sm text-zinc-500 transition hover:border-cyan-600 hover:text-cyan-700 dark:border-zinc-700 dark:bg-zinc-800/30 dark:text-zinc-400 dark:hover:text-cyan-300"
-              >
-                <History size={16} />
-                {showArchived ? "active projects" : "historical projects"}
-              </button>
-            )}
+            })()}
           </div>
         )}
 
@@ -507,6 +650,8 @@ export default function ProjectGate({ languages, onSelectProject, onClose, theme
             </div>
           </div>
         )}
+
+        </div>{/* end pantry-scroll */}
 
         {showExitConfirm && (
           <div className="title-confirm-backdrop" onClick={() => setShowExitConfirm(false)}>

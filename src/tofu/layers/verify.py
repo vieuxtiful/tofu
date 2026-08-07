@@ -72,7 +72,7 @@ from difflib import SequenceMatcher
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from tofu.core.types import (
-    BBox, TextManifest, QAReport, VerificationEvidence, VerificationProject,
+    ImageLike, BBox, TextManifest, QAReport, VerificationEvidence, VerificationProject,
     VerificationRegion, VerificationReport, VerificationVisualFlag,
 )
 from tofu.layers import cicerone, garnish, julienne, scribe
@@ -381,7 +381,7 @@ def _shaping_evidence(lang: str, script: Optional[str]) -> Dict[str, Any]:
 
 
 def _target_ocr_evidence(
-    clean_rendered_asset: Any,
+    clean_rendered_asset: ImageLike,
     inst,
     bounds: Optional[BBox],
     targ_lang: str,
@@ -464,7 +464,7 @@ def _weight_value(weight: Optional[str]) -> Optional[int]:
         return None
 
 
-def _contrast_ratio(clean_rendered_asset: Any, mask: Any, bounds: BBox) -> Optional[float]:
+def _contrast_ratio(clean_rendered_asset: ImageLike, mask: Any, bounds: BBox) -> Optional[float]:
     if clean_rendered_asset is None or mask is None:
         return None
     try:
@@ -512,7 +512,7 @@ def _contrast_ratio(clean_rendered_asset: Any, mask: Any, bounds: BBox) -> Optio
 
 
 def _typography_evidence(
-    clean_rendered_asset: Any,
+    clean_rendered_asset: ImageLike,
     mask: Any,
     rendered_bounds: Optional[BBox],
     approved_bounds: BBox,
@@ -935,7 +935,7 @@ def _aggregate_presentation(
 
 
 def build_verification_report(
-    clean_rendered_asset: Any,
+    clean_rendered_asset: ImageLike,
     text_manifest: TextManifest,
     font_registry: Any = None,
 ) -> VerificationReport:

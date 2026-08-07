@@ -33,7 +33,7 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List, Optional
 
-from tofu.core.types import InstText
+from tofu.core.types import ImageLike, InstText
 from tofu.utils.correction_resources import (
     CorrectionResource,
     CorrectionResourceError,
@@ -92,7 +92,7 @@ def _pattern_for(entry: Dict[str, Any]) -> re.Pattern:
     )
 
 
-def _leading_geometry(asset: Any, inst: InstText) -> Dict[str, Any]:
+def _leading_geometry(asset: ImageLike, inst: InstText) -> Dict[str, Any]:
     """Aspect of the region's first glyph cluster, when it can be measured.
 
     Fails OPEN: this course only ever proposes, so missing geometry costs a
@@ -127,7 +127,7 @@ def _leading_geometry(asset: Any, inst: InstText) -> Dict[str, Any]:
 
 
 def propose(
-    asset: Any,
+    asset: ImageLike,
     instances: List[InstText],
     language: Optional[str] = None,
 ) -> int:

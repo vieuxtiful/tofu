@@ -56,7 +56,7 @@ import urllib.parse
 import urllib.request
 from typing import Any, Dict, Iterable, List, NamedTuple, Optional, Sequence, Tuple
 
-from tofu.core.types import InstText, TextManifest
+from tofu.core.types import ImageLike, InstText, TextManifest
 from tofu.layers.fonts import faces_of
 from tofu.utils.imaging import text_mask
 
@@ -580,7 +580,7 @@ def _eligible_faces(
     return chosen
 
 
-def local_match(img: Any, inst: InstText, registry) -> Optional[Dict[str, Any]]:
+def local_match(img: ImageLike, inst: InstText, registry) -> Optional[Dict[str, Any]]:
     """Rank installed faces against a source instance's glyph silhouette."""
     if not registry or not inst.text or len(inst.text.strip()) < 2:
         return None
@@ -661,7 +661,7 @@ def local_match(img: Any, inst: InstText, registry) -> Optional[Dict[str, Any]]:
 MAX_COHORT_CANDIDATES = 12
 
 
-def _source_mask(img: Any, inst: InstText):
+def _source_mask(img: ImageLike, inst: InstText):
     """The observed glyph silhouette for one instance, or None."""
     import numpy as np
 
@@ -718,7 +718,7 @@ class _CohortScoring(NamedTuple):
         return (min(values), sum(values) / len(values))
 
 
-def _score_cohort(img: Any, members: Sequence[InstText], registry) -> Optional[_CohortScoring]:
+def _score_cohort(img: ImageLike, members: Sequence[InstText], registry) -> Optional[_CohortScoring]:
     """Re-score every face the members nominated against every member.
 
     Shared by the two reconciliation passes so they cannot drift on how a
@@ -823,7 +823,7 @@ def _score_cohort(img: Any, members: Sequence[InstText], registry) -> Optional[_
 
 
 def agree_on_face(
-    img: Any, manifest: TextManifest, cohorts: Sequence[Dict[str, Any]], registry,
+    img: ImageLike, manifest: TextManifest, cohorts: Sequence[Dict[str, Any]], registry,
 ) -> int:
     """Make every region Basil tied into one bouquet agree on one face.
 
@@ -1010,7 +1010,7 @@ def _family_style_cost(family: str, fonts: Dict[str, Any], members: Sequence[Ins
 
 
 def agree_on_family(
-    img: Any, manifest: TextManifest, cohorts: Sequence[Dict[str, Any]], registry,
+    img: ImageLike, manifest: TextManifest, cohorts: Sequence[Dict[str, Any]], registry,
 ) -> int:
     """Make a cohort agree on one FAMILY, each region keeping its own weight.
 
@@ -1217,7 +1217,7 @@ ADOPTION_MIN_FIT = 0.90
 
 
 def _adopt_orphans(
-    img: Any, manifest: TextManifest,
+    img: ImageLike, manifest: TextManifest,
     decided: Sequence[Tuple[Any, str, List[str]]], registry,
 ) -> int:
     """Offer a region in no cohort to the cohort that best explains its ink.
@@ -1360,7 +1360,7 @@ def _french_enamel_reference() -> Dict[str, Any]:
     }
 
 
-def identify_manifest_fonts(asset: Any, manifest: TextManifest, registry) -> int:
+def identify_manifest_fonts(asset: ImageLike, manifest: TextManifest, registry) -> int:
     """Attach local glyph-retrieval evidence to every eligible instance."""
     try:
         from PIL import Image
@@ -1406,7 +1406,7 @@ def identify_manifest_fonts(asset: Any, manifest: TextManifest, registry) -> int
     return updated
 
 
-def external_catalog_match(asset: Any, manifest: TextManifest, registry) -> int:
+def external_catalog_match(asset: ImageLike, manifest: TextManifest, registry) -> int:
     """Explicit WhatFontIs adapter for commercial/free catalog recognition.
 
     This function is intentionally opt-in.  It sends only an individual text

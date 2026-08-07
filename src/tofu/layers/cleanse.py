@@ -39,7 +39,7 @@ import hashlib
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from tofu.core.types import InpaintAssessmentPolicy, TextManifest
+from tofu.core.types import ImageLike, InpaintAssessmentPolicy, TextManifest
 from tofu.utils.imaging import text_mask as _text_mask
 from tofu.utils.geometry import quad_is_usable
 from tofu.layers import inpaint_providers
@@ -63,7 +63,7 @@ GROUP_GAP_PX = 12       # nearby glyph groups share one source-grounded repair
 MIN_MASK_PIXELS = 6     # a tiny Otsu component is not safe evidence by itself
 
 
-def _load_image(asset: Any):
+def _load_image(asset: ImageLike):
     try:
         from PIL import Image
     except ImportError:
@@ -599,7 +599,7 @@ def _verify_final_cleanse(
 
 
 def erase(
-    asset: Any,
+    asset: ImageLike,
     text_manifest: TextManifest,
     candidate_observer=None,
     assessment_policy: Optional[InpaintAssessmentPolicy] = None,

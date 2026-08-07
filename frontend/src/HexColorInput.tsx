@@ -22,7 +22,7 @@ export default function HexColorInput({ value, onChange, placeholder = "#000000"
 
   return (
     <input
-      type="text" value={draft} placeholder={placeholder} aria-label="hex color"
+      type="text" value={draft} placeholder={placeholder} aria-label="Hex color"
       onChange={(event) => {
         const next = event.target.value.trim();
         setDraft(next);

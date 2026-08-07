@@ -22,6 +22,7 @@ import hashlib
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
+from tofu.core.types import ImageLike
 
 CHECKPOINT_VERSION = 1
 
@@ -135,7 +136,7 @@ def source_fingerprint(path: Any) -> str:
     return hashlib.sha256(material.encode()).hexdigest()[:32]
 
 
-def frame_fingerprint(gray: Any) -> str:
+def frame_fingerprint(gray: ImageLike) -> str:
     """64-bit difference hash (Zauner 2010) of a grayscale frame.
 
     Rows of adjacent-pixel comparisons: invariant to overall brightness and to

@@ -1,0 +1,21 @@
+# ─── paddle stage: PaddleOCR CJK detection sidecar ────────────────────────
+FROM python:3.13-slim AS paddle
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libglib2.0-0 libsm6 libxext6 libxrender1 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY server/requirements-paddle.txt /tmp/requirements-paddle.txt
+RUN pip install --no-cache-dir -r /tmp/requirements-paddle.txt
+
+COPY scripts/paddle_worker.py /app/scripts/paddle_worker.py
+
+ENV PYTHONUTF8=1
+# The paddle worker is invoked as a subprocess by the app container.
+# It reads JSON from stdin and writes results to a temp file path.
+# This image exists so the app can point TOFU_PADDLE_VENV at it — but
+# in practice the app calls it as a subprocess, so this image is used
+# as a base for a sidecar that shares a volume with the app.
+CMD ["python", "/app/scripts/paddle_worker.py"]

@@ -12,6 +12,31 @@ from .types import RenderKeyframe, TrackObservation
 ## keeping the summary O(1) in clip length.
 CONSENSUS_TOP_K = 8
 
+## When a tracked text disappears for up to this many frames and reappears at a
+## nearby position, we maintain track identity rather than spawning a new one.
+## Beyond this gap the reappearing text is treated as a new track — the
+## occluder may have been a completely different sign.
+DEFAULT_MAX_GAP_FRAMES = 15
+
+## Text similarity below this threshold between consecutive accepted OCR
+## readings on the same track triggers a track split. The old track ends at
+## the previous observation; a new track begins at the current one. This
+## catches digital signs cycling messages without averaging dissimilar text.
+## At 0.6, "SALE" → "CLOSED" (sim ≈ 0.4) splits, but "PHARMACIE" → "PHARMACLE"
+## (sim ≈ 0.89) does not.
+TEXT_CHANGE_SPLIT_THRESHOLD = 0.6
+
+## Number of consecutive observations required before a track is confirmed
+## (birth smoothing). The analyzer enforces K=2 via its `pending` set; settle()
+## drops only tracks with zero observations as a second line of defense.
+DEFAULT_MIN_CONFIRM_OBSERVATIONS = 1
+
+## Number of consecutive misses before a track is declared dead (death
+## smoothing). The default stays at 2 for backward compatibility with
+## existing checkpoints; callers can override to a higher value for
+## flicker-resistant tracking.
+DEFAULT_DEATH_MISS_FRAMES = 2
+
 
 def bbox_iou(a: Dict[str, float], b: Dict[str, float]) -> float:
     ax1, ay1 = a["x"], a["y"]
@@ -131,7 +156,27 @@ def temporal_consensus(observations: Iterable[TrackObservation]) -> Dict[str, An
     return accumulator.verdict()
 
 
-def settle(track_rows: Iterable[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+def detect_text_change(previous_text: Optional[str], current_text: Optional[str],
+                       threshold: float = TEXT_CHANGE_SPLIT_THRESHOLD) -> bool:
+    """Return True if the accepted OCR text changed enough to warrant a track split.
+
+    A digital sign cycling messages (e.g. "SALE" → "CLOSED") should produce two
+    tracks, not one averaged track. The threshold is deliberately low: a single
+    character swap in a short word is enough, while OCR noise on a long sentence
+    (one char out of 40) stays below it.
+
+    Returns False if either text is None — a missing reading is not a content
+    change, just an unobserved frame.
+    """
+    if previous_text is None or current_text is None:
+        return False
+    return text_similarity(previous_text, current_text) < threshold
+
+
+def settle(track_rows: Iterable[Dict[str, Any]],
+           *, max_gap_frames: int = DEFAULT_MAX_GAP_FRAMES,
+           min_observations: int = DEFAULT_MIN_CONFIRM_OBSERVATIONS,
+           ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     """Close consensus over persisted tracks, off the heat: no decoder, no database.
 
     Finalization must not depend on what happens to be in the analyzer's
@@ -139,12 +184,26 @@ def settle(track_rows: Iterable[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], 
     process at all -- they are rows. Reading the accumulator off the row makes
     finalization idempotent and re-runnable over a partially resumed job.
 
+    Parameters:
+      max_gap_frames:     tracks with fewer than this many frames between
+                          their last observation and the next track's first
+                          observation at a nearby position are candidates for
+                          occlusion-gap merging. (Reserved for future use;
+                          the gap-aware reconnection happens in the analyzer.)
+      min_observations:   tracks with fewer than this many observations are
+                          dropped as flicker-induced false tracks (birth
+                          smoothing).
+
     Returns (settled track dicts, review issues).
     """
     settled: List[Dict[str, Any]] = []
     issues: List[Dict[str, Any]] = []
     for row in track_rows:
         track = dict(row)
+        ## Birth smoothing: drop tracks that never accumulated enough evidence.
+        ## A single-frame detection is more likely flicker than a real sign.
+        if int(track.get("observation_count", 0)) < min_observations:
+            continue
         verdict = ConsensusAccumulator.from_dict(track.get("consensus_state")).verdict()
         track["source_text"] = verdict["text"]
         track["consensus_confidence"] = verdict["confidence"]

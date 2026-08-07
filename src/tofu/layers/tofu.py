@@ -12,6 +12,7 @@ import math
 import statistics
 import unicodedata
 from tofu.core.types import (
+    ImageLike,
     VldtnReport,
     VldtnClass,
     ScrptSpprt,
@@ -356,7 +357,7 @@ class ToFU:
 
     def validate(
         self,
-        asset: Any,          # could be an image, video, or file path
+        asset: ImageLike,          # could be an image, video, or file path
         targ_lang: str,
         context: Optional[Dict] = None,
         text_manifest: Optional[TextManifest] = None,
@@ -953,7 +954,7 @@ def get_tofu() -> ToFU:
 
 
 def validate(
-    asset: Any,
+    asset: ImageLike,
     targ_lang: str,
     context: Optional[Dict] = None,
     text_manifest: Optional[TextManifest] = None,

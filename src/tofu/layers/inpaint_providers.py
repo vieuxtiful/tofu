@@ -20,6 +20,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
+from tofu.core.types import ImageLike
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -258,7 +259,7 @@ def _preferred_neural_provider(
     return None
 
 
-def route(inst: Any, surface: Any, image: Any = None, mask: Any = None) -> RepairRoute:
+def route(inst: Any, surface: Any, image: ImageLike = None, mask: Any = None) -> RepairRoute:
     profile = getattr(inst, "background_profile", None)
     texture = getattr(profile, "texture", None)
     surface_texture = getattr(surface, "texture", None)
@@ -384,7 +385,7 @@ def _run_external_command(spec: ProviderSpec, source: Path, mask: Path, output: 
     _run(command, cwd=cwd, timeout=int(spec.config.get("timeout_seconds", 600)))
 
 
-def repair(provider_id: str, image: Any, mask: Any) -> RepairOutcome:
+def repair(provider_id: str, image: ImageLike, mask: Any) -> RepairOutcome:
     """Run one configured local provider through the stable file contract."""
     started = time.monotonic()
     spec = provider_spec(provider_id)
@@ -428,7 +429,7 @@ def repair(provider_id: str, image: Any, mask: Any) -> RepairOutcome:
         return RepairOutcome(provider_id, None, int((time.monotonic() - started) * 1000), str(exc)[:600])
 
 
-def repair_lama(image: Any, mask: Any) -> Optional[Any]:
+def repair_lama(image: ImageLike, mask: Any) -> Optional[Any]:
     """Backward-compatible convenience wrapper for direct LaMa callers."""
     return repair("lama", image, mask).image
 
@@ -470,7 +471,7 @@ def _structural_continuity_score(cv2, np, before_gray, after_gray, region) -> Op
     return float(sum(support) / len(support))
 
 
-def quality_gate(image: Any, candidate: Any, mask: Any) -> tuple[bool, dict[str, Any]]:
+def quality_gate(image: ImageLike, candidate: Any, mask: Any) -> tuple[bool, dict[str, Any]]:
     """Hard-gate, then rank a repair using provider-independent evidence."""
     try:
         import cv2
@@ -554,7 +555,7 @@ def quality_gate(image: Any, candidate: Any, mask: Any) -> tuple[bool, dict[str,
 
 
 def repair_multi_candidate(
-    image: Any,
+    image: ImageLike,
     mask: Any,
     *,
     max_candidates: int = 3,

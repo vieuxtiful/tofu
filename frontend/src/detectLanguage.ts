@@ -1,4 +1,5 @@
 import { getLanguageByCode } from "./languageData";
+import hanVariants from "./hanVariants.json";
 
 export type Script =
   | "Latin" | "Cyrillic" | "Greek" | "CJK" | "Hiragana" | "Katakana"
@@ -94,7 +95,11 @@ export const LANG_SCRIPT_MAP: Record<string, Script[]> = {
 
 export function scriptMatchesLang(script: Script, langCode: string): boolean {
   if (script === "Unknown" || script === "Latin") return true;
-  const allowed = LANG_SCRIPT_MAP[langCode];
+  const normalized = langCode.toLowerCase();
+  const parts = normalized.split("-");
+  const allowed = LANG_SCRIPT_MAP[normalized]
+    ?? LANG_SCRIPT_MAP[parts.slice(0, 2).join("-")]
+    ?? LANG_SCRIPT_MAP[parts[0]];
   if (!allowed) return true;
   return allowed.includes(script);
 }
@@ -108,18 +113,18 @@ export function textMatchesTargetLang(text: string, langCode: string): boolean {
 export const LATIN_LANG_HINTS: Record<string, RegExp[]> = {
   "es": [/ñ/i, /¿/, /¡/],
   "de": [/ä/i, /ö/i, /ü/i, /ß/i],
-  "fr": [/ç/i, /œ/i, /æ/i],
+  "fr": [/ç/i, /œ/i, /æ/i, /é/i, /è/i, /ê/i, /à/i, /ù/i, /û/i],
   "sv": [/å/i, /ä/i, /ö/i],
   "no": [/å/i, /æ/i, /ø/i],
   "da": [/å/i, /æ/i, /ø/i],
   "is": [/þ/i, /ð/i],
-  "cs": [/ř/i, /š/i, /č/i, /ž/i, /ý/i, /á/i, /é/i, /í/i, /ó/i, /ú/i, /ů/i],
+  "cs": [/ř/i, /š/i, /č/i, /ž/i, /ů/i],
   "pl": [/ł/i, /ś/i, /ż/i, /ź/i, /ć/i, /ń/i, /ą/i, /ę/i],
   "hu": [/ő/i, /ű/i],
   "ro": [/ă/i, /â/i, /î/i, /ș/i, /ț/i],
-  "tr": [/ı/i, /ş/i, /ğ/i, /ç/i, /ö/i, /ü/i],
-  "pt": [/ã/i, /õ/i, /ç/i],
-  "vi": [/[\u0103\u00E2\u0111\u00EA\u00F4\u01A1\u01B0\u00E1\u00E0\u1EA3\u00E3\u1EA1\u1EA5\u1EA7\u1EA9\u1EAB\u1EAD\u00E9\u00E8\u1EBB\u1EBD\u1EB9\u00ED\u00EC\u1EC9\u1ECB\u00F3\u00F2\u1ECF\u00F5\u1ECD\u1EDB\u1EDD\u1EDF\u1EE1\u1EE3\u00FA\u00F9\u1EE7\u0169\u1EE5\u00FD\u1EF3\u1EF7\u1EF9\u1EF5]/],
+  "tr": [/ı/i, /ş/i, /ğ/i],
+  "pt": [/ã/i, /õ/i],
+  "vi": [/[\u0103\u0111\u01A1\u01B0\u1EA3\u1EB5\u1EB9\u1EBD\u1EC9\u1ECB\u1ECF\u1EE5\u1EE7\u1EF1\u1EF3\u1EF7\u1EF9\u1EF5]/],
 };
 
 export function detectLatinLang(text: string): string | null {
@@ -135,12 +140,32 @@ export function textLangMatchesTarget(text: string, langCode: string): boolean {
   if (!text || !text.trim()) return true;
   const script = detectScript(text);
   if (script === "Unknown") return true;
-  if (!scriptMatchesLang(script, langCode)) return false;
+  const normalizedCode = langCode.toLowerCase();
+  // Source-language matching intentionally permits Latin transliterations for
+  // CJK. Target validation is stricter: Latin prose in a CJK target is a
+  // wrong-language entry, not acceptable romaji/pinyin metadata.
+  if (script === "Latin") {
+    const target = getLanguageByCode(langCode);
+    if (target && target.script !== "Latin") return false;
+  }
+  if (!scriptMatchesLang(script, normalizedCode)) return false;
+  if (script === "CJK" && normalizedCode.startsWith("zh-")) {
+    const simplified = new Set(hanVariants.simplified);
+    const traditional = new Set(hanVariants.traditional);
+    let simplifiedCount = 0;
+    let traditionalCount = 0;
+    for (const character of text) {
+      if (simplified.has(character)) simplifiedCount += 1;
+      if (traditional.has(character)) traditionalCount += 1;
+    }
+    if (["zh-cn", "zh-sg"].includes(normalizedCode) && traditionalCount > simplifiedCount) return false;
+    if (["zh-tw", "zh-hk", "zh-mo"].includes(normalizedCode) && simplifiedCount > traditionalCount) return false;
+  }
   if (script === "Latin") {
     const lang = getLanguageByCode(langCode);
     if (lang && lang.script === "Latin") {
       const detected = detectLatinLang(text);
-      if (detected && detected !== langCode) {
+      if (detected && detected !== normalizedCode.split("-")[0]) {
         const detectedLang = getLanguageByCode(detected);
         if (detectedLang && detectedLang.script === "Latin") return false;
       }

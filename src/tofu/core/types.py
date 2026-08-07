@@ -8,7 +8,11 @@ processing states, and validation results.
 """
 
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict, Any, Literal
+from typing import Optional, List, Dict, Any, Literal, Union, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import numpy as np
+    from PIL import Image as PILImage
 from enum import Enum
 from collections import defaultdict
 from pathlib import Path
@@ -69,6 +73,18 @@ def infer_asset_info(asset: Any) -> AssetInfo:
             return AssetInfo(asset_type=AssetType.VIDEO, frame_count=0, source=str(asset))
         return AssetInfo(asset_type=AssetType.IMAGE, frame_count=1, source=str(asset))
     return AssetInfo()  ## in-memory image default: static, frames=1
+
+# re:Image Asset Type
+
+## Images cross layer boundaries in several concrete forms: file paths
+## (str / Path) from the server, PIL Images after loading, numpy arrays
+## for CV operations, and occasionally raw bytes.  This Union replaces
+## the ~91 `Any` annotations that preceded it so mypy can catch image
+## type errors at layer boundaries.  Internal helpers that dispatch on
+## the concrete type (e.g. utils.imaging.load_rgb) still accept Any at
+## their entry point and narrow from there.
+ImageLike = Union[str, Path, "PILImage.Image", "np.ndarray", bytes, bytearray]
+
 
 # re:Core Data Structures
 

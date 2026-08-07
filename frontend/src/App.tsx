@@ -8,31 +8,32 @@ import {
 } from "lucide-react";
 import {
   BBox, FontFamily, FontOption, FontWeight, ImportResult, InpaintPatch, InstText, LanguageOption, Project, VideoJob,
-  RenderResult, RenderStreamEvent, SceneRegion, SemanticSubstitutionPlan, SemanticTextUnit, TextManifest, UploadResponse, ValidationReport, GlossaryStatus,
+  RenderResult, RenderStreamEvent, SceneRegion, TextManifest, UploadResponse, ValidationReport,
   addRegion, approveRender, checkDuplicateAsset, deleteProjectAsset, deleteRegion, detectAssetStream, mergeRegions,
   fetchFonts, fetchLanguages, getManifest, getProject, importFile, matchFonts, ocrRegion, putManifest,
   applyRepairCandidate, captureLocalizedBaseline, createInpaintPatch, getLocalizedBaseline, getTreatment, previewCandidateLocalized, refineRegion, renderAsset, renderAssetStream, renderPreview, restoreTreatment, scanAssetLanguage, sha256File, snapshotAsset, undoInpaint,
-  semanticSubstitution, semanticRepair, updateProject, updateAssetGroundTruth, uploadAsset, validateAsset, fetchGlossaryStatus, uploadGlossary, deleteGlossary, createVideoJob, getVideoJob, getLatestVideoJob, cancelVideoJob, resumeVideoJob, upgradeVideoJob, putVideoKeyframe, updateVideoTrack, watchVideoJob, renderVideoPreview, exportVideo,
+  updateProject, updateAssetGroundTruth, importAssetGroundTruth, uploadAsset, validateAsset, createVideoJob, getVideoJob, getLatestVideoJob, cancelVideoJob, resumeVideoJob, upgradeVideoJob, putVideoKeyframe, updateVideoTrack, watchVideoJob, renderVideoPreview, exportVideo,
 } from "./api";
 import VideoWorkspace from "./VideoWorkspace";
 import { FcCollapse } from "react-icons/fc";
 import { LiaSpellCheckSolid } from "react-icons/lia";
-import { RiCheckboxFill } from "react-icons/ri";
-import { TbBackground, TbCubePlus, TbPhoto, TbPhotoEdit, TbPhotoScan, TbScanCube, TbCircleDashedPlus, TbCircleDashedMinus } from "react-icons/tb";
+import { RiCheckboxFill, RiSaveLine, RiSaveFill } from "react-icons/ri";
+import { TbBackground, TbCubePlus, TbPhoto, TbPhotoEdit, TbPhotoScan, TbScanCube, TbCircleDashedPlus, TbCircleDashedMinus, TbFileUpload, TbFileUploadFilled, TbAlertSquare, TbAlertSquareFilled } from "react-icons/tb";
 import { FaBoxOpen, FaLink, FaUnlink, FaEyeDropper } from "react-icons/fa";
 import { FaFileImport } from "react-icons/fa6";
-import { PiWarningCircleFill, PiWarningFill, PiWarningLight, PiBoundingBoxBold, PiBoundingBoxFill, PiHandGrabbingFill, PiHandGrabbingBold, PiArrowsMergeBold, PiEyeBold, PiEyeClosedBold, PiEyeFill, PiEyeClosedFill, PiMagicWand, PiMagicWandFill } from "react-icons/pi";
+import { PiWarningCircleFill, PiWarningFill, PiWarningLight, PiBoundingBoxBold, PiBoundingBoxFill, PiHandGrabbingFill, PiHandGrabbingBold, PiEyeBold, PiEyeClosedBold, PiEyeFill, PiEyeClosedFill, PiMagicWand, PiMagicWandFill } from "react-icons/pi";
 import { MdFontDownload, MdOutlineCompare, MdOutlineFontDownload, MdTipsAndUpdates } from "react-icons/md";
 import { BiAbacus, BiSolidErrorCircle } from "react-icons/bi";
 import { TiWarning } from "react-icons/ti";
 import { HiCubeTransparent } from "react-icons/hi2";
-import { HiLockClosed, HiLockOpen } from "react-icons/hi";
+import { HiLockClosed, HiLockOpen, HiOutlineCubeTransparent } from "react-icons/hi";
 import { LuRedo2, LuSquareArrowDown, LuSquareArrowUp, LuUndo2 } from "react-icons/lu";
 import { BsArrowDownSquareFill, BsArrowUpSquareFill } from "react-icons/bs";
 import { VscDebugRestart } from "react-icons/vsc";
 import { GiCoolSpices } from "react-icons/gi";
 import { GrSelect } from "react-icons/gr";
 import { providerLabel } from "./repairLabels";
+import OcrReasonChips from "./OcrReasonChips";
 import type { LocalizedCandidatePreview, RepairCandidate, RepairReview } from "./localizedCanvasTypes";
 import SmartFillReview from "./SmartFillReview";
 import { langDisplayName, langFlag, LANGUAGE_REGIONS, REGION_ORDER } from "./languageData";
@@ -54,11 +55,15 @@ import {
 import RegionTable from "./RegionTable";
 const SemanticSubstitutionPanel = lazy(() => import("./SemanticSubstitutionPanel"));
 import { attestedFromManifest } from "./targetGuard";
+import { useSemanticUnits } from "./useSemanticUnits";
+import { useManifest } from "./useManifest";
+import { useGlossary } from "./useGlossary";
 import ExportPanel from "./ExportPanel";
 import ProjectGate from "./ProjectGate";
 import HistoryPanel from "./HistoryPanel";
 import MemoryPanel from "./MemoryPanel";
 import SplashScreen from "./SplashScreen";
+import SaveAnimIndicator from "./SaveAnimIndicator";
 import TitleScreen from "./TitleScreen";
 import ThemeToggle from "./ThemeToggle";
 import BBoxColorDropdown from "./BBoxColorDropdown";
@@ -108,6 +113,7 @@ type PreviewTransaction = {
 type LocalizedSnapshot = {
   manifest: InstText[];
   patchIds: string[];
+  label?: string;
 };
 
 const DEFAULT_GARNISH_PROFILE = {
@@ -152,6 +158,62 @@ const WARP_PATHS: Record<string, string> = {
   squeeze: "M0,13 Q25,19 50,13",
   twist: "M0,15 Q8,5 16,15 Q24,25 32,15 Q40,5 50,15",
 };
+
+const STYLE_KEY_LABELS: Record<string, string> = {
+  font_family: "font", font_weight: "font", font_size: "font size",
+  color: "fill",
+  stroke_color: "stroke", stroke_width: "stroke", stroke_position: "stroke",
+  italic: "italic",
+  underline: "underline", underline_offset: "underline", underline_width: "underline",
+  subscript: "subscript", superscript: "superscript",
+  align_h: "alignment", align_v: "alignment",
+  tracking: "tracking", leading: "leading", kerning: "kerning",
+  tsume: "tsume", baseline_shift: "baseline shift",
+  shadow: "shadow", target_orientation: "orientation", word_order: "word order",
+};
+
+/** Derive a short, human-readable label for a style_profile patch so the
+ *  undo/redo toast can say what changed (e.g. "undid thicken", "undid 'flag'
+ *  text warp").  `currentTransform` is the region's transform BEFORE the
+ *  patch, used to detect which transform sub-key actually changed. */
+function describeStylePatch(
+  patch: Partial<NonNullable<InstText["style_profile"]>>,
+  currentTransform?: NonNullable<InstText["style_profile"]>["transform"],
+): string | undefined {
+  const keys = Object.keys(patch);
+  if (keys.length === 0) return undefined;
+  if ("transform" in patch && patch.transform) {
+    const t = patch.transform;
+    const prev = currentTransform ?? {};
+    // Named preset change → "'flag' text warp"
+    if (t.preset !== prev.preset && t.preset && t.preset !== "custom") {
+      const presetLabel = WARP_PRESETS.find((p) => p.value === t.preset)?.label ?? t.preset;
+      return `'${presetLabel.toLowerCase()}' text warp`;
+    }
+    // Check specific transform sub-keys (in priority order)
+    const checks: Array<[unknown, unknown, string]> = [
+      [t.quad, prev.quad, "perspective"],
+      [t.skew_x, prev.skew_x, "skew"],
+      [t.skew_y, prev.skew_y, "skew"],
+      [t.scale_x, prev.scale_x, "stretch"],
+      [t.scale_y, prev.scale_y, "stretch"],
+      [t.offset_x, prev.offset_x, "offset"],
+      [t.offset_y, prev.offset_y, "offset"],
+      [t.rotation, prev.rotation, "rotate"],
+      [t.wrap_text, prev.wrap_text, "wrap text"],
+      [t.skew_anchor, prev.skew_anchor, "anchor"],
+      [t.arc, prev.arc, "arc"],
+      [t.amount, prev.amount, "warp amount"],
+      [t.locked_fields, prev.locked_fields, "lock"],
+    ];
+    for (const [next, previous, label] of checks) {
+      if (next !== undefined && JSON.stringify(next) !== JSON.stringify(previous)) return label;
+    }
+    return "transform";
+  }
+  const labels = [...new Set(keys.map((k) => STYLE_KEY_LABELS[k]).filter(Boolean))];
+  return labels.length > 0 ? labels[0] : "style";
+}
 
 function WarpPreview({ preset }: { preset: string }) {
   const d = WARP_PATHS[preset];
@@ -216,6 +278,14 @@ function PixelField({ label, value, onChange, min, step = 0.5, placeholder, widt
 /** total run time of the bbox arrival shimmer. Must stay in step with
  * `animation: bbox-shimmer 0.5s ... 2` in bbox.css — two passes, one second. */
 const SHIMMER_MS = 1000;
+
+/** join ground truth terms into the field string, with a trailing space so the
+ *  caret lands in the gap after the last coloured token rather than overlapping
+ *  the token's final glyph. the trailing space is harmless on save —
+ *  `.split(/\s+/).filter(Boolean)` strips it. */
+function padGroundTruth(terms: string[]): string {
+  return terms.length ? terms.join(" ") + " " : "";
+}
 
 const rangePulseTimers = new WeakMap<HTMLInputElement, number>();
 
@@ -480,15 +550,37 @@ export default function App() {
   const fullFontFetches = useRef<Set<string>>(new Set());
   const [fullFontsLoading, setFullFontsLoading] = useState(false);
   const [showFontManager, setShowFontManager] = useState(false);
+  // Preview-only font override for the Translate tab's TargetPreviewCanvas.
+  // Maps region ID → font path; never written to the manifest or persisted.
+  // The override is ephemeral: cleared on session reset, new scan, or when
+  // the user picks "auto" in the preview font manager.
+  const [previewFontOverride, setPreviewFontOverride] = useState<Record<string, string>>({});
+  const [showPreviewFontManager, setShowPreviewFontManager] = useState(false);
   const [recentFonts, setRecentFonts] = useState<RecentFont[]>(() => readRecent(localStorage));
   const [report, setReport] = useState<ValidationReport | null>(null);
   const [renderResult, setRenderResult] = useState<RenderResult | null>(null);
   const [renderSelId, setRenderSelId] = useState<string | null>(null);
   const [prevSelId, setPrevSelId] = useState<string | null>(null);
+  // tracks the replenish animation on the Text & Appearance chevron: fires
+  // when renderSelId transitions from null to a region, fading the greyed-out
+  // chevron back to its normal color.
+  const [chevronReplenish, setChevronReplenish] = useState(false);
+  const prevRenderSelRef = useRef<string | null>(null);
 
   // A Smart Fill card can disappear while its preview refreshes.  Selection
   // changes are therefore a second, independent stale-hover backstop.
   useEffect(() => { setSmartFillHoverId(null); }, [renderSelId]);
+  // trigger the chevron replenish animation when a region is first selected
+  // (null → non-null transition only, not region-to-region switches).
+  useEffect(() => {
+    const wasNull = prevRenderSelRef.current === null;
+    prevRenderSelRef.current = renderSelId;
+    if (wasNull && renderSelId) {
+      setChevronReplenish(true);
+      const t = setTimeout(() => setChevronReplenish(false), 450);
+      return () => clearTimeout(t);
+    }
+  }, [renderSelId]);
   const [styleCollapsed, setStyleCollapsed] = useState(false);
   const [canvasExpandedH, setCanvasExpandedH] = useState(false);
   const [canvasCardOrder, setCanvasCardOrder] = useState<"source-first" | "localized-first">("localized-first");
@@ -742,73 +834,12 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const cancelDetectRef = useRef<(() => void) | null>(null);
 
-  const [manifest, setManifestRaw] = useState<InstText[]>([]);
-  // undo/redo history for manifest edits
-  const manifestUndoStack = useRef<InstText[][]>([]);
-  const manifestRedoStack = useRef<InstText[][]>([]);
-  const manifestSkipHistory = useRef(false);
-  // Batch undo: during a drag or text-typing session, suppress per-pixel /
-  // per-keystroke undo entries and push a single pre-interaction snapshot
-  // when the batch ends.  One undo then returns to the state before the
-  // interaction started, not to each intermediate position.
-  const manifestBatching = useRef(false);
-  const manifestBatchAnchor = useRef<InstText[] | null>(null);
-  const [canUndo, setCanUndo] = useState(false);
-  const [canRedo, setCanRedo] = useState(false);
-  const syncUndoRedo = useCallback(() => {
-    setCanUndo(manifestUndoStack.current.length > 0);
-    setCanRedo(manifestRedoStack.current.length > 0);
-  }, []);
-  const setManifest = useCallback((updater: InstText[] | ((prev: InstText[]) => InstText[])) => {
-    setManifestRaw((prev) => {
-      const next = typeof updater === "function" ? (updater as (p: InstText[]) => InstText[])(prev) : updater;
-      if (!manifestSkipHistory.current && !manifestBatching.current) {
-        manifestUndoStack.current.push(prev);
-        if (manifestUndoStack.current.length > 50) manifestUndoStack.current.shift();
-        manifestRedoStack.current = [];
-      }
-      manifestSkipHistory.current = false;
-      syncUndoRedo();
-      return next;
-    });
-  }, [syncUndoRedo]);
-  const beginManifestBatch = useCallback(() => {
-    if (manifestBatching.current) return;
-    manifestBatchAnchor.current = manifest;
-    manifestBatching.current = true;
-  }, [manifest]);
-  const endManifestBatch = useCallback(() => {
-    if (!manifestBatching.current) return;
-    const anchor = manifestBatchAnchor.current;
-    if (anchor !== null) {
-      manifestUndoStack.current.push(anchor);
-      if (manifestUndoStack.current.length > 50) manifestUndoStack.current.shift();
-      manifestRedoStack.current = [];
-    }
-    manifestBatching.current = false;
-    manifestBatchAnchor.current = null;
-    syncUndoRedo();
-  }, [syncUndoRedo]);
-  const undoManifest = useCallback(() => {
-    setManifestRaw((prev) => {
-      const stack = manifestUndoStack.current;
-      if (stack.length === 0) return prev;
-      const previous = stack.pop()!;
-      manifestRedoStack.current.push(prev);
-      syncUndoRedo();
-      return previous;
-    });
-  }, [syncUndoRedo]);
-  const redoManifest = useCallback(() => {
-    setManifestRaw((prev) => {
-      const stack = manifestRedoStack.current;
-      if (stack.length === 0) return prev;
-      const next = stack.pop()!;
-      manifestUndoStack.current.push(prev);
-      syncUndoRedo();
-      return next;
-    });
-  }, [syncUndoRedo]);
+  const {
+    manifest, setManifest, setManifestRaw,
+    canUndo, canRedo, syncUndoRedo,
+    beginManifestBatch, endManifestBatch, undoManifest, redoManifest,
+    manifestSkipHistory, clearManifestHistory,
+  } = useManifest();
   // excluded regions stay in `manifest` (cleanse still needs to erase them),
   // but the canvas and table must never show a "deleted" region -- everything
   // rendered to the user reads from this filtered view instead of `manifest`
@@ -839,6 +870,16 @@ export default function App() {
     return (state === "review_required" || state === "unresolvable")
       && !dismissedOcrReview.has(inst.id);
   });
+  // Regions whose source text changed via a Capture-tab merge while they
+  // already carried a translation.  The merged region's old target_text no
+  // longer corresponds to the new (union-box) source read, so the user is
+  // warned to re-translate.  Dismissed individually from the Translate alert
+  // or the row icon; cleared wholesale on a fresh scan or session reset.
+  const [retranslationNeeded, setRetranslationNeeded] = useState<Set<string>>(new Set());
+  const [retranslationDismissed, setRetranslationDismissed] = useState<Set<string>>(new Set());
+  const retranslationRegions = visibleManifest.filter(
+    (inst) => retranslationNeeded.has(inst.id) && !retranslationDismissed.has(inst.id),
+  );
   // Advisory only: usable text resolution is measured from detected crops,
   // never inferred solely from this whole-image dimension.
   const tinyUploadAdvisory = Boolean(imgSize && Math.min(imgSize.width, imgSize.height) < 360);
@@ -878,23 +919,17 @@ export default function App() {
   const selectedGarnishRecommended = selectedGarnishSurface?.garnish_profile;
   const selectedGarnishProfile = selectedRenderInst?.garnish_override ?? selectedGarnishRecommended ?? DEFAULT_GARNISH_PROFILE;
   const selectedGarnishEnabled = selectedRenderInst?.garnish_enabled !== false;
-  // Basil owns semantic reading units separately from the immutable region
-  // list.  This lets target-language order differ from visual box order
-  // without making `rN` identity or geometry mutable in the editor.
-  const [semanticUnits, setSemanticUnits] = useState<SemanticTextUnit[]>([]);
-  const [semanticDrafts, setSemanticDrafts] = useState<Record<string, string>>({});
-  const [semanticPlans, setSemanticPlans] = useState<Record<string, SemanticSubstitutionPlan>>({});
-  const [semanticBusyId, setSemanticBusyId] = useState<string | null>(null);
-  const [glossaryStatus, setGlossaryStatus] = useState<GlossaryStatus | null>(null);
-  const [glossaryUploading, setGlossaryUploading] = useState(false);
-  const [glossaryUploadStep, setGlossaryUploadStep] = useState<"marinate" | "ferment" | "set" | "done" | null>(null);
-  const [glossaryUploadError, setGlossaryUploadError] = useState<string | null>(null);
   const [srcLang, setSrcLang] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [drawMode, setDrawMode] = useState(false);
   const [ocrLoading, setOcrLoading] = useState<string | null>(null);
   const [mergeLoading, setMergeLoading] = useState(false);
   const [ocrReviewOpen, setOcrReviewOpen] = useState(false);
+  // Mirrors the Verify tab's recommendationsSeen: a violet dot on the review
+  // icon marks the alert as unseen after a fresh scan; clicking the toggle to
+  // expand the list clears it.  Reset to false on every new scan so the dot
+  // reappears when the next scan produces review-worthy regions.
+  const [ocrReviewSeen, setOcrReviewSeen] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
   const [srcLangLocked, setSrcLangLocked] = useState(true);
   const [importedHash, setImportedHash] = useState<string | null>(null);
@@ -951,6 +986,12 @@ export default function App() {
   const [project, setProject] = useState<Project | null>(null);
   const [projectGroundTruth, setProjectGroundTruth] = useState("");
   const [assetGroundTruth, setAssetGroundTruth] = useState("");
+  const projectGroundTruthDirtyRef = useRef(false);
+  const assetGroundTruthDirtyRef = useRef(false);
+  const groundTruthProjectRef = useRef<string | null>(null);
+  const groundTruthAssetRef = useRef<string | null>(null);
+  const groundTruthFileRef = useRef<HTMLInputElement>(null);
+  const [groundTruthImporting, setGroundTruthImporting] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showCapabilities, setShowCapabilities] = useState(false);
   const [historyLeaving, setHistoryLeaving] = useState(false);
@@ -1038,6 +1079,26 @@ export default function App() {
     setError(msg);
     if (msg) addNotification("error", msg);
   }, [addNotification]);
+
+  // Basil owns semantic reading units separately from the immutable region
+  // list.  This lets target-language order differ from visual box order
+  // without making `rN` identity or geometry mutable in the editor.
+  const {
+    semanticUnits, setSemanticUnits, semanticDrafts, semanticPlans, semanticBusyId,
+    resetSemantic,
+    onSemanticDraftChange, onSemanticRepair, onSemanticModifyMembers,
+    onSemanticCreateUnit, onSemanticDeleteUnit, onSemanticPlan,
+  } = useSemanticUnits({
+    asset, targLang, addToast, setManifest, setImgDim, setSceneRegions,
+    importedHash, setHasEditsAfterImport,
+  });
+
+  const {
+    glossaryStatus, glossaryUploading, glossaryUploadStep, glossaryUploadError,
+    onGlossaryUpload, onGlossaryDelete,
+  } = useGlossary({
+    projectId: project?.id, srcLang, targLang, addToast,
+  });
 
   useEffect(() => {
     fetchLanguages().then(setLanguages).catch(() =>
@@ -1143,20 +1204,18 @@ export default function App() {
     }
     setNewRegionIds(null);
     setManualOrder([]);
-    manifestUndoStack.current = [];
-    manifestRedoStack.current = [];
-    syncUndoRedo();
+    clearManifestHistory();
     setImgDim(null);
     setSceneRegions([]);
-    setSemanticUnits([]);
-    setSemanticDrafts({});
-    setSemanticPlans({});
-    setSemanticBusyId(null);
+    resetSemantic();
     setSelectedId(null);
     setHoveredId(null);
     setDrawMode(false);
     setImgSize(null);
     setTinyAdvisoryDismissed(false);
+    setRetranslationNeeded(new Set());
+    setRetranslationDismissed(new Set());
+    setPreviewFontOverride({});
     setReport(null);
     setRenderResult(null);
     setVerifyBusy(null);
@@ -1205,9 +1264,7 @@ export default function App() {
         setError("This video has no resumable processing job. Re-upload it to begin analysis.");
       }
     }
-    manifestUndoStack.current = [];
-    manifestRedoStack.current = [];
-    syncUndoRedo();
+    clearManifestHistory();
     manifestSkipHistory.current = true;
     setManifest(m.instances);
     markRegionsNew(m.instances);
@@ -1270,23 +1327,34 @@ export default function App() {
   }, [project]);
 
   useEffect(() => {
-    setProjectGroundTruth((project?.ground_truth ?? []).join(" "));
+    const projectChanged = groundTruthProjectRef.current !== (project?.id ?? null);
+    if (projectChanged || !projectGroundTruthDirtyRef.current) {
+      setProjectGroundTruth(padGroundTruth(project?.ground_truth ?? []));
+      projectGroundTruthDirtyRef.current = false;
+      groundTruthProjectRef.current = project?.id ?? null;
+    }
     const activeTerms = project?.assets?.find(
       (item) => item.asset_id === asset?.asset_id
     )?.ground_truth ?? [];
-    setAssetGroundTruth(activeTerms.join(" "));
-  }, [project, asset?.asset_id]);
+    const assetChanged = groundTruthAssetRef.current !== (asset?.asset_id ?? null);
+    if (assetChanged || !assetGroundTruthDirtyRef.current) {
+      setAssetGroundTruth(padGroundTruth(activeTerms));
+      assetGroundTruthDirtyRef.current = false;
+      groundTruthAssetRef.current = asset?.asset_id ?? null;
+    }
+  }, [project?.id, project?.ground_truth, project?.assets, asset?.asset_id]);
 
-  const saveProjectGroundTruth = useCallback(async () => {
+  const saveProjectGroundTruth = useCallback(async (silent = false) => {
     if (!project) return;
     const terms = projectGroundTruth.split(/\s+/).filter(Boolean);
     const updated = await updateProject(project.id, { ground_truth: terms });
     setProject((current) => current ? { ...current, ...updated } : updated);
-    setProjectGroundTruth(updated.ground_truth.join(" "));
-    addToast("success", `saved ${updated.ground_truth.length} project Ground Truth term(s)`);
+    setProjectGroundTruth(padGroundTruth(updated.ground_truth));
+    projectGroundTruthDirtyRef.current = false;
+    if (!silent) addToast("success", `saved ${updated.ground_truth.length} project Ground Truth term(s)`);
   }, [project, projectGroundTruth, addToast]);
 
-  const saveAssetGroundTruth = useCallback(async () => {
+  const saveAssetGroundTruth = useCallback(async (silent = false) => {
     if (!asset) return;
     const terms = assetGroundTruth.split(/\s+/).filter(Boolean);
     const updated = await updateAssetGroundTruth(asset.asset_id, terms);
@@ -1295,13 +1363,47 @@ export default function App() {
       assets: current.assets?.map((item) => item.asset_id === updated.asset_id ? updated : item),
       active_asset: current.active_asset?.asset_id === updated.asset_id ? updated : current.active_asset,
     } : current);
-    setAssetGroundTruth(updated.ground_truth.join(" "));
-    addToast("success", `saved ${updated.ground_truth.length} asset Ground Truth term(s)`);
+    setAssetGroundTruth(padGroundTruth(updated.ground_truth));
+    assetGroundTruthDirtyRef.current = false;
+    if (!silent) addToast("success", `saved ${updated.ground_truth.length} asset Ground Truth term(s)`);
   }, [asset, assetGroundTruth, addToast]);
 
+  const onImportAssetGroundTruth = useCallback(async (file: File) => {
+    if (!asset) return;
+    setGroundTruthImporting(true);
+    try {
+      const result = await importAssetGroundTruth(asset.asset_id, file);
+      assetGroundTruthDirtyRef.current = false;
+      setAssetGroundTruth(padGroundTruth(result.asset.ground_truth));
+      setProject((current) => current ? {
+        ...current,
+        assets: current.assets?.map((item) => item.asset_id === result.asset.asset_id ? result.asset : item),
+        active_asset: current.active_asset?.asset_id === result.asset.asset_id ? result.asset : current.active_asset,
+      } : current);
+      addToast("success", `imported ${result.imported} Ground Truth term(s) from ${file.name}`);
+    } catch (error) {
+      addToast("error", `Ground Truth import failed: ${String(error)}`);
+    } finally {
+      setGroundTruthImporting(false);
+      if (groundTruthFileRef.current) groundTruthFileRef.current.value = "";
+    }
+  }, [asset, addToast]);
+
   useEffect(() => {
-    fetchGlossaryStatus(project?.id).then(setGlossaryStatus).catch(() => setGlossaryStatus(null));
-  }, [project?.id]);
+    if (!project || !projectGroundTruthDirtyRef.current) return;
+    const timer = window.setTimeout(() => {
+      saveProjectGroundTruth(true).catch(() => {});
+    }, 700);
+    return () => window.clearTimeout(timer);
+  }, [projectGroundTruth, project, saveProjectGroundTruth]);
+
+  useEffect(() => {
+    if (!asset || !assetGroundTruthDirtyRef.current) return;
+    const timer = window.setTimeout(() => {
+      saveAssetGroundTruth(true).catch(() => {});
+    }, 700);
+    return () => window.clearTimeout(timer);
+  }, [assetGroundTruth, asset, saveAssetGroundTruth]);
 
   const currentManifest = useCallback((instances: InstText[] = manifest): TextManifest | null => {
     if (!asset) return null;
@@ -1399,7 +1501,7 @@ export default function App() {
       try {
         const m: TextManifest = {
           asset_id: asset.asset_id,
-          total_regions: instances.length,
+          total_regions: instances.filter((i) => !i.excluded).length,
           src_lang: srcLang,
           targ_lang: targLang,
           img_dim: imgDim ?? (imgSize ? [imgSize.width, imgSize.height] : null),
@@ -1441,9 +1543,9 @@ export default function App() {
     setCanLocalizedRedo(localizedRedoStack.current.length > 0);
   }, []);
 
-  const recordLocalizedChange = useCallback(() => {
+  const recordLocalizedChange = useCallback((label?: string) => {
     if (step !== 3) return;
-    localizedUndoStack.current.push(cloneLocalizedSnapshot());
+    localizedUndoStack.current.push({ ...cloneLocalizedSnapshot(), label });
     if (localizedUndoStack.current.length > 80) localizedUndoStack.current.shift();
     localizedRedoStack.current = [];
     syncLocalizedUndoRedo();
@@ -1462,10 +1564,10 @@ export default function App() {
   const undoLocalized = useCallback(async () => {
     const previous = localizedUndoStack.current.pop();
     if (!previous) return;
-    localizedRedoStack.current.push(cloneLocalizedSnapshot());
+    localizedRedoStack.current.push({ ...cloneLocalizedSnapshot(), label: previous.label });
     try {
       await restoreLocalizedSnapshot(previous);
-      addToast("info", "undid localized canvas change");
+      addToast("info", previous.label ? `undid ${previous.label}` : "undid localized canvas change");
     } catch (error) {
       localizedUndoStack.current.push(previous);
       localizedRedoStack.current.pop();
@@ -1476,10 +1578,10 @@ export default function App() {
   const redoLocalized = useCallback(async () => {
     const next = localizedRedoStack.current.pop();
     if (!next) return;
-    localizedUndoStack.current.push(cloneLocalizedSnapshot());
+    localizedUndoStack.current.push({ ...cloneLocalizedSnapshot(), label: next.label });
     try {
       await restoreLocalizedSnapshot(next);
-      addToast("info", "redid localized canvas change");
+      addToast("info", next.label ? `redid ${next.label}` : "redid localized canvas change");
     } catch (error) {
       localizedRedoStack.current.push(next);
       localizedUndoStack.current.pop();
@@ -1490,7 +1592,8 @@ export default function App() {
   const updateSelectedStyle = useCallback((patch: Partial<NonNullable<InstText["style_profile"]>>) => {
     const selected = renderSelId ?? prevSelId;
     if (!selected) return;
-    recordLocalizedChange();
+    const currentTransform = manifest.find((inst) => inst.id === selected)?.style_profile?.transform;
+    recordLocalizedChange(describeStylePatch(patch, currentTransform));
     const next = manifest.map((inst): InstText => inst.id === selected ? {
       ...inst,
       style_profile: { ...(inst.style_profile ?? {}), ...patch } as NonNullable<InstText["style_profile"]>,
@@ -1514,7 +1617,7 @@ export default function App() {
   }, [renderSelId, prevSelId]);
 
   const beginQuadGesture = useCallback(() => {
-    recordLocalizedChange();
+    recordLocalizedChange("perspective");
     quadGestureManifest.current = manifest;
   }, [manifest, recordLocalizedChange]);
 
@@ -1543,7 +1646,7 @@ export default function App() {
   const clearSelectedQuad = useCallback(() => {
     const selected = renderSelId ?? prevSelId;
     if (!selected) return;
-    recordLocalizedChange();
+    recordLocalizedChange("reset perspective");
     const next = manifest.map((inst): InstText => {
       if (inst.id !== selected) return inst;
       const transform = { ...(inst.style_profile?.transform ?? {}) };
@@ -1573,7 +1676,7 @@ export default function App() {
     setRecentFonts(pushRecent(localStorage, { family: fam.family, path: weight.path }));
   }, [updateSelectedStyle, styleTargetInst, targLang]);
 
-  const updateSelectedGarnish = useCallback((patch: Partial<NonNullable<InstText["garnish_override"]>>) => {
+  const updateSelectedGarnish = useCallback((patch: Partial<NonNullable<InstText["garnish_override"]>>, label?: string) => {
     const selected = renderSelId ?? prevSelId;
     if (!selected) return;
     const selectedInst = manifest.find((inst) => inst.id === selected);
@@ -1583,7 +1686,7 @@ export default function App() {
     const surface = sceneRegions.find((region) => b.x + b.width / 2 >= region.bbox.x && b.x + b.width / 2 <= region.bbox.x + region.bbox.width && b.y + b.height / 2 >= region.bbox.y && b.y + b.height / 2 <= region.bbox.y + region.bbox.height);
     const baseProfile = selectedInst.garnish_override ?? surface?.garnish_profile ?? DEFAULT_GARNISH_PROFILE;
     const profile = { ...baseProfile, source_confidence: 1, ...patch };
-    recordLocalizedChange();
+    recordLocalizedChange(label);
     const next = manifest.map((inst) => {
       if (allRegions) {
         if (inst.excluded || !inst.target_text || inst.dnt) return inst;
@@ -1603,7 +1706,7 @@ export default function App() {
     const inst = manifest.find((item) => item.id === selected);
     if (!inst) return;
     const allRegions = inst.garnish_scope !== "per_region";
-    recordLocalizedChange();
+    recordLocalizedChange("garnish");
     const next = manifest.map((item) => {
       if (allRegions) {
         if (item.excluded || !item.target_text || item.dnt) return item;
@@ -1623,7 +1726,7 @@ export default function App() {
     const inst = manifest.find((item) => item.id === selected);
     if (!inst) return;
     const allRegions = inst.garnish_scope !== "per_region";
-    recordLocalizedChange();
+    recordLocalizedChange("AI preset");
     const next = manifest.map((item) => {
       if (allRegions) {
         if (item.excluded || !item.target_text || item.dnt) return item;
@@ -1645,7 +1748,7 @@ export default function App() {
       addToast("error", "No text selected to apply garnish scope.");
       return;
     }
-    recordLocalizedChange();
+    recordLocalizedChange("garnish scope");
     const next = manifest.map((item) => item.id === selected ? { ...item, garnish_scope: scope } : item);
     setManifest(next);
     queueLocalizedPreview(next, "garnish");
@@ -1678,7 +1781,7 @@ export default function App() {
     const baseline = localizedBaseline.current;
     if (!baseline) return;
     if (!confirm("Reset text placement, appearance, transforms, and treatment edits to the Render-entry baseline?")) return;
-    recordLocalizedChange();
+    recordLocalizedChange("reset");
     try {
       await restoreLocalizedSnapshot(baseline);
       addToast("info", "restored the localized canvas baseline");
@@ -1816,7 +1919,7 @@ export default function App() {
         addToast("warning", "waiting for the current treatment preview before applying this repair");
         return;
       }
-      recordLocalizedChange();
+      recordLocalizedChange("smart fill");
       const result = await applyRepairCandidate(asset.asset_id, candidate.id, candidate.cacheKey);
       syncTreatmentPatches(result.patches);
       setPatchRevision((revision) => revision + 1);
@@ -1835,7 +1938,7 @@ export default function App() {
         continue;
       }
       try {
-        recordLocalizedChange();
+        recordLocalizedChange("smart fill");
         const result = await applyRepairCandidate(asset.asset_id, candidate.id, candidate.cacheKey);
         syncTreatmentPatches(result.patches);
         setPatchRevision((revision) => revision + 1);
@@ -1920,7 +2023,7 @@ export default function App() {
     if (!asset || (!brushStrokes.length && lassoPoints.length < 3) || brushApplying) return;
     setBrushApplying(true);
     try {
-      recordLocalizedChange();
+      recordLocalizedChange("cleanup");
       const snapshot = await flushCurrentManifest();
       let remaining = [...brushStrokes];
       for (const stroke of brushStrokes) {
@@ -2078,7 +2181,7 @@ export default function App() {
       addToast("info", "No other region could take this transform — they are all locked or excluded");
       return;
     }
-    recordLocalizedChange();
+    recordLocalizedChange("apply all");
     setManifest(next);
     queueLocalizedPreview(next, "style");
     autoSave(next);
@@ -2390,6 +2493,10 @@ export default function App() {
         setManifest(m.instances);
         markRegionsNew(m.instances);
         setDismissedOcrReview(new Set());
+        setOcrReviewSeen(false);
+        setRetranslationNeeded(new Set());
+        setRetranslationDismissed(new Set());
+        setPreviewFontOverride({});
         setTinyAdvisoryDismissed(false);
         setImgDim(m.img_dim);
         setSceneRegions(m.scene_regions ?? []);
@@ -2545,7 +2652,42 @@ export default function App() {
     if (!asset || ids.length < 2) return;
     setMergeLoading(true);
     try {
-      const res = await mergeRegions(asset.asset_id, ids);
+      // Flush any pending autosave so the merge endpoint loads the
+      // latest text corrections from disk, not stale OCR text.
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current);
+        saveTimer.current = null;
+        setSaveStatus("saving");
+        const flushM: TextManifest = {
+          asset_id: asset.asset_id,
+          total_regions: manifest.filter((i) => !i.excluded).length,
+          src_lang: srcLang,
+          targ_lang: targLang,
+          img_dim: imgDim ?? (imgSize ? [imgSize.width, imgSize.height] : null),
+          scene_regions: sceneRegions,
+          semantic_units: semanticUnits,
+          asset_type: asset.asset_info.asset_type,
+          frame_count: asset.asset_info.frame_count,
+          fps: asset.asset_info.fps,
+          duration: asset.asset_info.duration,
+          prcssng_time: null,
+          instances: manifest,
+        };
+        await putManifest(asset.asset_id, flushM);
+        setSaveStatus("saved");
+      }
+      // Also send texts as a belt-and-suspenders measure.
+      const idToText = new Map(manifest.map((i) => [i.id, i.text ?? ""]));
+      const texts = ids.map((id) => idToText.get(id) ?? "");
+      // Before merging, check whether any member already carries a
+      // translation.  The merged region's source text changes (union box →
+      // re-read or joined parts), so any prior target_text is stale and the
+      // user should be warned to re-translate in the Translate tab.
+      const hadTranslations = ids.some((id) => {
+        const inst = manifest.find((i) => i.id === id);
+        return inst && inst.target_text;
+      });
+      const res = await mergeRegions(asset.asset_id, ids, texts);
       // Same shape as onDeleteRegion: the absorbed regions stay in the
       // array marked excluded rather than being spliced out, or the next
       // autosave PUT would undo the excluded flag the server just wrote.
@@ -2560,15 +2702,34 @@ export default function App() {
         return next;
       });
       setSelectedId(res.region.id);
-      addToast("success", res.source === "reread"
-        ? `Merged ${ids.length} regions and re-read them as one`
-        : `Merged ${ids.length} regions — kept the existing text, the re-read did not improve on it`);
+      addToast("success", `merged ${ids.join(", ")} into ${res.region.id}`);
+      if (hadTranslations) {
+        // Compute the row number (# column) of the surviving region among
+        // non-excluded regions in reading order, matching what the table
+        // will display.
+        const merged = new Set(res.merged_ids);
+        const survivors = manifest
+          .map((i) => merged.has(i.id) ? { ...i, excluded: true } : i.id === res.region.id ? { ...i, ...res.region } : i)
+          .filter((i) => !i.excluded)
+          .sort((a, b) => {
+            const order = (a.reading_order ?? Number.MAX_SAFE_INTEGER) - (b.reading_order ?? Number.MAX_SAFE_INTEGER);
+            return order || manifest.indexOf(a) - manifest.indexOf(b);
+          });
+        const rowNum = survivors.findIndex((i) => i.id === res.region.id) + 1;
+        setRetranslationNeeded((prev) => new Set(prev).add(res.region.id));
+        setRetranslationDismissed((prev) => {
+          const next = new Set(prev);
+          next.delete(res.region.id);
+          return next;
+        });
+        addToast("warning", `re-translation needed: ${rowNum}`);
+      }
     } catch (e) {
       setErrorWithNotif(String(e));
     } finally {
       setMergeLoading(false);
     }
-  }, [asset, autoSave, addToast, setErrorWithNotif]);
+  }, [asset, manifest, srcLang, targLang, imgDim, imgSize, sceneRegions, semanticUnits, autoSave, addToast, setErrorWithNotif]);
 
   const onReorder = useCallback((fromId: string, toId: string) => {
     // Always start from the list the user can currently see.  A cached manual
@@ -2615,17 +2776,6 @@ export default function App() {
     });
   }, [autoSave, importedHash, targLang]);
 
-  const onSemanticDraftChange = useCallback((unitId: string, text: string) => {
-    setSemanticDrafts((previous) => ({ ...previous, [unitId]: text }));
-    // A changed phrase invalidates only that unit's prior plan. The existing
-    // per-region targets remain untouched until an explicit Apply.
-    setSemanticPlans((previous) => {
-      if (!(unitId in previous)) return previous;
-      const { [unitId]: _discarded, ...rest } = previous;
-      return rest;
-    });
-  }, []);
-
   // Basil colours its plating field per source region and checks the entry
   // against the source manifest, so it needs both the regions themselves and
   // the Latin strings Cicerone actually attested in this asset.
@@ -2634,87 +2784,6 @@ export default function App() {
     [manifest],
   );
   const attestedLatin = useMemo(() => attestedFromManifest(manifest), [manifest]);
-
-  const onSemanticRepair = useCallback(async (unitId: string, accepted: boolean) => {
-    if (!asset) return;
-    setSemanticBusyId(unitId);
-    try {
-      const result = await semanticRepair(asset.asset_id, unitId, accepted);
-      setSemanticUnits(result.manifest.semantic_units ?? []);
-      addToast("info", accepted ? "source reading corrected; regions untouched" : "proposal rejected; the original reading stands");
-    } catch (error) {
-      addToast("error", `could not record that decision: ${error}`);
-    } finally {
-      setSemanticBusyId(null);
-    }
-  }, [asset, addToast]);
-
-  const onSemanticPlan = useCallback(async (unitId: string, apply: boolean) => {
-    if (!asset) return;
-    const unit = semanticUnits.find((item) => item.id === unitId);
-    if (!unit) return;
-    const target = (semanticDrafts[unitId] ?? unit.substitution?.target_text ?? unit.suggestion?.target_text ?? "").trim();
-    if (!target) {
-      addToast("warning", "enter a complete target phrase before planning placement");
-      return;
-    }
-    setSemanticBusyId(unitId);
-    try {
-      const result = await semanticSubstitution(asset.asset_id, unitId, target, targLang, apply);
-      setSemanticUnits(result.manifest.semantic_units ?? []);
-      setSemanticPlans((previous) => ({ ...previous, [unitId]: result.plan }));
-      if (result.applied) {
-        // This is a normal manifest edit, so the existing Capture/Localized
-        // undo machinery can still return to the pre-substitution text.
-        setManifest(result.manifest.instances);
-        setImgDim(result.manifest.img_dim);
-        setSceneRegions(result.manifest.scene_regions ?? []);
-        setSemanticDrafts((previous) => ({ ...previous, [unitId]: target }));
-        if (importedHash) setHasEditsAfterImport(true);
-      } else if (result.plan.review_required) {
-        addToast("warning", "Basil kept this phrase in review: no verified alignment evidence was available.");
-      } else {
-        addToast("info", "plate ready; review cube placement, then apply."); /* prev.: placement plan is ready; review the spatial anchors, then apply it. */
-      }
-    } catch (error) {
-      addToast("error", `plating failed: ${error}`); /* prev.: translation substitut */
-    } finally {
-      setSemanticBusyId(null);
-    }
-  }, [asset, semanticUnits, semanticDrafts, targLang, importedHash, addToast, setManifest]);
-
-  const onGlossaryUpload = useCallback(async (file: File, scope: "global" | "project", mode: "auxiliary" | "merge" | "replace") => {
-    setGlossaryUploading(true);
-    setGlossaryUploadError(null);
-    setGlossaryUploadStep("marinate");
-    try {
-      await new Promise((resolve) => setTimeout(resolve, 150));
-      setGlossaryUploadStep("ferment");
-      await uploadGlossary(file, scope, mode, project?.id, srcLang ?? undefined, targLang ?? undefined);
-      setGlossaryUploadStep("set");
-      setGlossaryStatus(await fetchGlossaryStatus(project?.id));
-      setGlossaryUploadStep("done");
-      addToast("success", `Basil glossary set from ${file.name}`);
-      setTimeout(() => setGlossaryUploadStep(null), 1800);
-    } catch (error) {
-      const message = String(error);
-      setGlossaryUploadError(message);
-      setGlossaryUploadStep(null);
-      addToast("error", `Basil glossary upload failed: ${message}`);
-    } finally {
-      setGlossaryUploading(false);
-    }
-  }, [project?.id, srcLang, targLang, addToast]);
-
-  const onGlossaryDelete = useCallback(async (scope: "global" | "project") => {
-    try {
-      await deleteGlossary(scope, project?.id);
-      setGlossaryStatus(await fetchGlossaryStatus(project?.id));
-      addToast("success", `${scope} Basil glossary cleared`);
-    } catch (error) {
-      addToast("error", `Basil glossary could not be cleared: ${error}`);
-    }
-  }, [project?.id, addToast]);
 
   const onOcr = useCallback(async (id: string) => {
     if (!asset) return;
@@ -2731,6 +2800,10 @@ export default function App() {
         const next = prev.map((i) => i.id === id ? {
           ...i, text: result.text, confidence: result.confidence,
           detected_language: result.detected_language,
+          ocr_correction: result.ocr_correction ?? null,
+          source_override: result.source_override ?? null,
+          recognition_history: result.recognition_history ?? null,
+          ocr_provenance: result.ocr_provenance ?? null,
         } : i);
         autoSave(next);
         return next;
@@ -3052,18 +3125,34 @@ export default function App() {
     }
   }, [hasEditsAfterImport, addToast]);
 
+  // Typewriter animation should only replay when the project ID changes
+  // (i.e. switching projects), not on every project object update (e.g.
+  // saving ground truth terms creates a new project reference).
+  // Timers live in a ref so that a same-ID project object swap (openProject
+  // sets the project, then loadProjectSession re-sets it after fetching the
+  // full record) does not cancel the in-flight animation — returning a
+  // cleanup here would clear the timers on that second render, and the
+  // early-return guard would then skip re-creating them, leaving nameTyped
+  // stuck at 0.
+  const projectNameRef = useRef<string | null>(null);
+  const projectTypewriterTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   useEffect(() => {
+    const projectId = project?.id ?? null;
+    if (projectNameRef.current === projectId) return;
+    projectNameRef.current = projectId;
+    projectTypewriterTimersRef.current.forEach(clearTimeout);
+    projectTypewriterTimersRef.current = [];
     setNameTyped(0);
     setNameDone(false);
     if (!project) return;
     const name = project.name;
-    const timers: ReturnType<typeof setTimeout>[] = [];
     for (let i = 1; i <= name.length; i++) {
-      timers.push(setTimeout(() => setNameTyped(i), 200 + i * 80));
+      projectTypewriterTimersRef.current.push(setTimeout(() => setNameTyped(i), 200 + i * 80));
     }
-    timers.push(setTimeout(() => setNameDone(true), 200 + name.length * 80 + 200));
-    return () => timers.forEach(clearTimeout);
+    projectTypewriterTimersRef.current.push(setTimeout(() => setNameDone(true), 200 + name.length * 80 + 200));
   }, [project]);
+  // clear any pending typewriter timers on unmount
+  useEffect(() => () => projectTypewriterTimersRef.current.forEach(clearTimeout), []);
 
   const onValidate = useCallback(async () => {
     if (!asset) return;
@@ -3243,11 +3332,7 @@ export default function App() {
   const translatedCount = manifest.filter((i) => !i.dnt && i.target_text).length;
   const scanBlocked = scan !== null && scan.status !== "passed";
 
-  const saveIndicator = (
-    <span className={`subtext text-xs ${saveStatus === "saving" ? "text-amber-500 dark:text-amber-400" : saveStatus === "saved" ? "text-[#0f2600] dark:text-[#4f9f00]" : "text-zinc-500"}`}>
-      {saveStatus === "saving" ? "saving…" : saveStatus === "saved" ? "saved" : ""}
-    </span>
-  );
+  const saveIndicator = <SaveAnimIndicator status={saveStatus} theme={theme} />;
 
   // --- screens ------------------------------------------------------------
 
@@ -3596,20 +3681,68 @@ export default function App() {
                 </div>
                 {asset && (
                   <div>
-                    <p className="subtext mb-1 flex items-center gap-1 text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-600">
-                      <TbBackground size={13} /> Ground Truth
-                    </p>
-                    <GroundTruthField
-                      label="Asset Ground Truth"
-                      value={assetGroundTruth}
-                      onChange={setAssetGroundTruth}
-                      placeholder="Enter source terms"
-                    />
-                    <div className="mt-1.5 flex items-start justify-between gap-2">
-                      <p className="subtext text-[10px] text-zinc-500">
-                        Optional. {new Set([...projectGroundTruth.split(/\s+/), ...assetGroundTruth.split(/\s+/)].filter(Boolean)).size} effective term(s). Primes the next detection; it does not rewrite the current manifest.
-                      </p>
-                      <button type="button" onClick={() => saveAssetGroundTruth().catch((e) => setErrorWithNotif(String(e)))} className="shrink-0 rounded border border-zinc-300 px-2 py-1 text-[10px] hover:border-cyan-500 dark:border-zinc-700">save</button>
+                    <div className="subtext mb-1 flex items-center justify-between text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-600">
+                      <span className="flex items-center gap-1">
+                        <TbBackground size={13} /> Ground Truth
+                        {(() => {
+                          const effectiveCount = new Set([...projectGroundTruth.split(/\s+/), ...assetGroundTruth.split(/\s+/)].filter(Boolean)).size;
+                          if (effectiveCount === 0) return null;
+                          // Gradient: green (hue 140) at 0 terms → red (hue 0) at ~18 terms.
+                          // Reversed from confidence score: low N = green, high N = red.
+                          const hue = Math.max(0, 140 - effectiveCount * 8);
+                          return (
+                            <span
+                              className="text-[10px] font-medium normal-case tracking-normal"
+                              style={{ color: `hsl(${hue}, 70%, 45%)` }}
+                              title={`${effectiveCount} effective term${effectiveCount === 1 ? "" : "s"}`}
+                            >
+                              {effectiveCount}
+                            </span>
+                          );
+                        })()}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => groundTruthFileRef.current?.click()}
+                        disabled={groundTruthImporting}
+                        aria-label="Import Ground Truth file"
+                        title={"Import file"} /*.txt, XLIFF, TMX, CSV, TSV, or VTM Ground Truth*/
+                        className="inline-flex h-[15px] w-[15px] items-center justify-center rounded-[2px] p-px text-zinc-500 transition hover:bg-zinc-200 hover:text-cyan-600 disabled:opacity-40 dark:text-zinc-500 dark:hover:bg-zinc-800 dark:hover:text-cyan-400"
+                      >
+                        {groundTruthImporting
+                          ? <Loader2 size={13} className="animate-spin" />
+                          : theme === "dark" ? <TbFileUploadFilled size={13} /> : <TbFileUpload size={13} />}
+                      </button>
+                      <input
+                        ref={groundTruthFileRef}
+                        type="file"
+                        className="hidden"
+                        accept=".txt,.xlf,.xliff,.sdlxliff,.mxliff,.mqxliff,.txlf,.tmx,.csv,.tsv,.vtm,text/plain,application/xml,text/xml"
+                        onChange={(event) => {
+                          const file = event.currentTarget.files?.[0];
+                          if (file) void onImportAssetGroundTruth(file);
+                        }}
+                      />
+                    </div>
+                    <div className="ground-truth-row mt-2 flex items-stretch gap-2">
+                      <div className="min-w-0 flex-1">
+                        <GroundTruthField
+                          label="Asset Ground Truth"
+                          language={srcLang}
+                          value={assetGroundTruth}
+                          onChange={(value) => {
+                            assetGroundTruthDirtyRef.current = true;
+                            setAssetGroundTruth(value);
+                          }}
+                          onBlur={() => {
+                            if (assetGroundTruthDirtyRef.current) {
+                              saveAssetGroundTruth().catch(() => {});
+                            }
+                          }}
+                          placeholder="Enter asset terms to prime capture."
+                        />
+                      </div>
+                      <button type="button" onClick={() => saveAssetGroundTruth().catch((e) => setErrorWithNotif(String(e)))} className="shrink-0 self-stretch rounded border border-zinc-300 px-2 text-[10px] hover:border-cyan-500 dark:border-zinc-700">{theme === "dark" ? <RiSaveFill size={12} /> : <RiSaveLine size={12} />}</button>
                     </div>
                   </div>
                 )}
@@ -3618,7 +3751,7 @@ export default function App() {
                     <p className="subtext mb-1 text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-600">
                       assets ({project.assets!.length})
                     </p>
-                    <div className="max-h-40 space-y-1 overflow-y-auto">
+                    <div className="max-h-40 space-y-1 overflow-y-auto" style={{ scrollBehavior: "smooth" }}>
                       {project.assets!.map((a) => {
                         const isCurrent = a.asset_id === asset?.asset_id;
                         const isScanning = scan?.assetId === a.asset_id && scan.status === "scanning";
@@ -3772,12 +3905,16 @@ export default function App() {
               <div className="flex w-full items-center gap-2 font-medium">
                 <button
                   type="button"
-                  onClick={() => setOcrReviewOpen((v) => !v)}
+                  onClick={() => setOcrReviewOpen((v) => { if (!v) setOcrReviewSeen(true); return !v; })}
                   className="flex flex-1 cursor-pointer items-center gap-2"
                   aria-expanded={ocrReviewOpen}
                 >
-                  {theme === "dark" ? <PiBoundingBoxFill size={16} style={{ width: 16, height: 16 }} className="shrink-0" /> : <PiBoundingBoxBold size={16} style={{ width: 16, height: 16 }} className="shrink-0" />}
-                  Review: {qualityReviewRegions.length} block{qualityReviewRegions.length === 1 ? "" : "s"}
+                  <span className="relative inline-flex shrink-0">
+                    {theme === "dark" ? <PiBoundingBoxFill size={16} style={{ width: 16, height: 16 }} /> : <PiBoundingBoxBold size={16} style={{ width: 16, height: 16 }} />}
+                    {!ocrReviewSeen && <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-violet-500 ring-1 ring-white dark:ring-zinc-900" />}
+                  </span>
+                  {qualityReviewRegions.length} region{qualityReviewRegions.length === 1 ? "" : "s"} need review
+                  {!ocrReviewSeen && <span className="normal-case text-[10px] font-medium tracking-normal text-violet-600 dark:text-violet-300">new</span>}
                 </button>
                 <button
                   type="button"
@@ -3790,14 +3927,14 @@ export default function App() {
               </div>
               <div className={`ocr-review-content${ocrReviewOpen ? " expanded" : ""}`}>
                 <div className="min-h-0">
-                  <p className="mt-2 text-[11px] opacity-85">Blocks were withheld in some cases.</p> {/*Detection is retained. Automatic OCR corrections were withheld where the crop cannot support them reliably.*/}
+                  <p className="mt-2 text-[11px] opacity-85">Detection is kept, but automatic corrections were withheld where the crop can't support them reliably.</p>
                   <div className="mt-2 space-y-1.5">
                     {qualityReviewRegions.map((inst) => {
                       const quality = inst.ocr_quality!;
                       return (
                         <div key={inst.id} className="flex flex-wrap items-center gap-2 rounded bg-white/50 px-2 py-1.5 dark:bg-black/15">
                           <button onClick={() => { setSelectedId(inst.id); setStep(1); }} className="font-mono underline underline-offset-2 hover:no-underline">{inst.id}</button>
-                          <span className="max-w-[28rem] truncate">{quality.reasons.map((reason) => reason.replace(/_/g, " ")).join(" · ")}</span>
+                          <OcrReasonChips reasons={quality.reasons} />
                           <button onClick={() => { setSelectedId(inst.id); void onOcr(inst.id); }} disabled={ocrLoading === inst.id} className="ml-auto rounded bg-amber-700 px-1.5 py-0.5 text-[10px] text-white hover:bg-amber-800 disabled:opacity-50">
                             {ocrLoading === inst.id ? "re-reading…" : "re-read"}
                           </button>
@@ -3880,6 +4017,7 @@ export default function App() {
               languages={languages}
               defaultTargLang={targLang}
               defaultSrcLang={srcLang}
+              sourceSuggestions={Array.from(new Set([...projectGroundTruth.split(/\s+/), ...assetGroundTruth.split(/\s+/)].filter(Boolean)))}
               fontsByLang={fontsByLang}
               familiesByLang={familiesByLang}
               onNeedFonts={onNeedFonts}
@@ -3894,6 +4032,7 @@ export default function App() {
                   targLang={targLang}
                   disabled={translatableCount === 0}
                   embedded
+                  projectName={project?.name}
                 />
               ) : undefined}
             />
@@ -3907,6 +4046,7 @@ export default function App() {
               assetId={asset?.asset_id ?? ""}
               targLang={targLang}
               disabled={translatableCount === 0}
+              projectName={project?.name}
             />
             </div>
           )}
@@ -4203,6 +4343,7 @@ export default function App() {
                 familiesByLang={familiesByLang}
                 defaultTargLang={targLang}
                 label="target"
+                fontOverride={previewFontOverride}
                 linked={canvasesLinked}
                 showZoom={!canvasesLinked}
                 controlledZoom={canvasesLinked ? sharedZoom : undefined}
@@ -4213,7 +4354,7 @@ export default function App() {
                 onHeightChange={canvasesLinked ? setSharedCanvasH : undefined}
                 onDoubleClickExpand={canvasesLinked ? toggleLinkedCanvasHeight : undefined}
               />
-              <div className="relative z-10 mt-2 flex justify-center">
+              <div className="relative z-10 mt-2 flex items-center justify-center gap-2">
                 <button
                   onClick={() => { setCanvasesLinked((v) => !v); setSharedCanvasH(null); }}
                   className={`flex items-center rounded-lg px-3 py-1.5 text-xs font-medium transition ${
@@ -4254,6 +4395,9 @@ export default function App() {
                 onDraftChange={onSemanticDraftChange}
                 onPlan={onSemanticPlan}
                 onRepair={onSemanticRepair}
+                onModifyMembers={onSemanticModifyMembers}
+                onCreateUnit={onSemanticCreateUnit}
+                onDeleteUnit={onSemanticDeleteUnit}
                 theme={theme}
                 projectId={project?.id ?? null}
                 targLang={targLang}
@@ -4265,7 +4409,55 @@ export default function App() {
                 glossaryUploading={glossaryUploading}
                 glossaryUploadStep={glossaryUploadStep}
                 glossaryUploadError={glossaryUploadError}
+                sourceSuggestions={Array.from(new Set([...projectGroundTruth.split(/\s+/), ...assetGroundTruth.split(/\s+/)].filter(Boolean)))}
               /></Suspense>
+              {retranslationRegions.length > 0 && (
+                <div role="alert" className="alert alert-warning alert-dash subtext flex-col items-stretch">
+                  <div className="flex w-full items-center gap-2 font-medium">
+                    <span className="flex flex-1 items-center gap-2">
+                      {theme === "dark"
+                        ? <TbAlertSquareFilled size={16} className="shrink-0" />
+                        : <TbAlertSquare size={16} className="shrink-0" />}
+                      Re-translation needed: {retranslationRegions.length} region{retranslationRegions.length === 1 ? "" : "s"}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setRetranslationDismissed((prev) => {
+                        const next = new Set(prev);
+                        retranslationRegions.forEach((r) => next.add(r.id));
+                        return next;
+                      })}
+                      className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-normal opacity-80 hover:opacity-100"
+                      title={retranslationRegions.length <= 1 ? "dismiss" : "dismiss all"}
+                    >
+                      {retranslationRegions.length <= 1 ? "dismiss" : "dismiss all"}
+                    </button>
+                  </div>
+                  <div className="mt-1 space-y-1">
+                    {retranslationRegions.map((inst) => {
+                      const rowNum = visibleManifest.findIndex((i) => i.id === inst.id) + 1;
+                      return (
+                        <div key={inst.id} className="flex flex-wrap items-center gap-2 rounded bg-white/50 px-2 py-1.5 dark:bg-black/15">
+                          <button
+                            onClick={() => { setSelectedId(inst.id); }}
+                            className="font-mono underline underline-offset-2 hover:no-underline"
+                          >
+                            #{rowNum} ({inst.id})
+                          </button>
+                          <span className="max-w-[28rem] truncate opacity-85">source text changed by a merge — previous translation may be stale</span>
+                          <button
+                            onClick={() => setRetranslationDismissed((prev) => new Set(prev).add(inst.id))}
+                            className="ml-auto rounded p-0.5 opacity-60 hover:opacity-100"
+                            title={`dismiss ${inst.id}`}
+                          >
+                            <X size={12} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               {/* No merge handlers here. RegionTable renders that control
                   under mode === "capture" only, so passing them to the
                   translate instance only made them look wired -- and merging
@@ -4294,6 +4486,7 @@ export default function App() {
                 languages={languages}
                 defaultTargLang={targLang}
                 defaultSrcLang={srcLang}
+                sourceSuggestions={Array.from(new Set([...projectGroundTruth.split(/\s+/), ...assetGroundTruth.split(/\s+/)].filter(Boolean)))}
                 fontsByLang={fontsByLang}
                 familiesByLang={familiesByLang}
                 onNeedFonts={onNeedFonts}
@@ -4307,6 +4500,12 @@ export default function App() {
                 targLang={targLang}
                 onBatchBegin={beginManifestBatch}
                 onBatchEnd={endManifestBatch}
+                retranslationNeededIds={retranslationRegions.map((r) => r.id)}
+                onDismissRetranslation={(id) => setRetranslationDismissed((prev) => new Set(prev).add(id))}
+                onOpenPreviewFontManager={selectedId ? () => { onNeedFullFonts(targLang); setShowPreviewFontManager(true); } : undefined}
+                previewFontOverride={previewFontOverride}
+                onClearPreviewFont={(id) => setPreviewFontOverride((prev) => { const next = { ...prev }; delete next[id]; return next; })}
+                fullFamiliesByLang={fullFamiliesByLang}
               />
             </div>
           </div>
@@ -4407,9 +4606,14 @@ export default function App() {
                     ))}
                   </div>
                   <button
-                    onClick={() => setStyleCollapsed((v) => !v)}
-                    className="rounded-sm p-1 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800 transition"
-                    title={styleCollapsed ? "expand" : "collapse"}
+                    onClick={() => { if (renderSelId) setStyleCollapsed((v) => !v); }}
+                    className={`rounded-sm p-1 transition hover:bg-zinc-200 dark:hover:bg-zinc-800 ${
+                      renderSelId
+                        ? `text-zinc-500 ${chevronReplenish ? "style-chevron-replenish" : ""}`
+                        : "style-chevron-greyed"
+                    }`}
+                    title={renderSelId ? (styleCollapsed ? "expand" : "collapse") : "select region"}
+                    aria-label={renderSelId ? (styleCollapsed ? "Expand" : "Collapse") : "Select region"}
                   >
                     <FcCollapse style={{ transform: styleCollapsed ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
                   </button>
@@ -4473,7 +4677,7 @@ export default function App() {
                         <button
                           onClick={() => { onNeedFullFonts(langForInst); setShowFontManager(true); }}
                           title="browse every installed font"
-                          aria-label="open font manager"
+                          aria-label="Open font manager"
                           className="shrink-0 rounded-sm border border-transparent p-1 text-zinc-500 transition hover:border-zinc-300 hover:bg-zinc-200 hover:text-zinc-700 dark:hover:border-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
                         >
                           {theme === "dark" ? <MdFontDownload size={13} /> : <MdOutlineFontDownload size={13} />}
@@ -4662,7 +4866,7 @@ export default function App() {
                         >auto</button>
                         <button onClick={() => setColorPickMode((mode) => mode ? null : "active")}
                           className={`subtext flex items-center gap-1 rounded-sm px-2 py-0.5 text-xs ${colorPickMode ? "bg-cyan-600 text-white" : "text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800"}`}
-                          title="pick color" aria-label="pick color"><FaEyeDropper size={11} /></button>
+                          title="pick color" aria-label="Pick color"><FaEyeDropper size={11} /></button>
                         <HexColorInput value={currentColor} onChange={(color) => updateStyle({ color })} />
                       </div>
                     </div>
@@ -4670,7 +4874,7 @@ export default function App() {
                     {/* Stroke */}
                     <div className="grid grid-rows-[auto_1fr]">
                       <label className="subtext mb-1 block text-xs text-zinc-500">stroke</label>
-                      <div className="grid min-h-14 grid-cols-[2.5rem_6rem_minmax(0,7rem)_1fr] items-center gap-2">
+                      <div className="flex min-h-14 items-center gap-2">
                         <input
                           type="color"
                           value={currentStrokeColor ?? "#000000"}
@@ -4679,59 +4883,61 @@ export default function App() {
                         />
                         <HexColorInput value={currentStrokeColor} onChange={(color) => updateStyle({ stroke_color: color })} />
                         <PixelField label="weight" min={0} value={sp?.stroke_width} onChange={(value) => updateStyle({ stroke_width: value })} width="7rem" />
-                        <div className="ml-auto grid grid-cols-2 gap-1 self-center justify-self-end" role="group" aria-label="stroke position">
-                          {([
-                            { value: "none", label: "no stroke", icon: CircleOff },
-                            { value: "outer", label: "outer stroke", icon: Circle },
-                            { value: "center", label: "center stroke", icon: CircleDashed },
-                            { value: "inner", label: "inner stroke", icon: CircleDot },
-                          ] as const).map(({ value, label, icon: Icon }) => {
-                            const strokeEnabled = Boolean(sp?.stroke_color && sp?.stroke_width && sp.stroke_width > 0);
-                            const active = value === "none"
-                              ? !strokeEnabled
-                              : strokeEnabled && (sp?.stroke_position ?? "outer") === value;
-                            return <button
-                              key={value}
-                              type="button"
-                              onClick={() => value === "none"
-                                ? updateStyle({ stroke_color: null, stroke_width: null, stroke_position: null })
-                                : updateStyle({
-                                    stroke_color: sp?.stroke_color ?? currentStrokeColor ?? "#000000",
-                                    stroke_width: sp?.stroke_width && sp.stroke_width > 0 ? sp.stroke_width : 1,
-                                    stroke_position: value,
-                                  })}
-                              className={`flex items-center justify-center rounded-sm p-1.5 transition ${active ? "bg-cyan-600 text-white" : "bg-zinc-200 text-zinc-600 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"}`}
-                              title={label}
-                              aria-label={label}
-                              aria-pressed={active}
-                            ><Icon size={14} /></button>;
-                          })}
-                        </div>
                       </div>
                     </div>
 
                     {/* Toggle buttons: underline, italic, subscript, superscript */}
-                    <div className="flex flex-wrap gap-1">
+                    <div className="flex flex-wrap gap-1" role="group" aria-label="Text style toggles">
                       <button
                         onClick={() => updateStyle({ underline: !sp?.underline ? true : null })}
                         className={`flex items-center gap-1 rounded-sm px-2 py-1 text-xs transition ${sp?.underline ? "bg-cyan-600 text-white" : "bg-zinc-200 text-zinc-600 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"}`}
                         title="underline"
-                      aria-label="underline"><Underline size={14} /></button>
+                      aria-label="Underline"><Underline size={14} /></button>
                       <button
                         onClick={() => updateStyle({ italic: !sp?.italic ? true : null })}
                         className={`flex items-center gap-1 rounded-sm px-2 py-1 text-xs transition ${sp?.italic ? "bg-cyan-600 text-white" : "bg-zinc-200 text-zinc-600 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"}`}
                         title="italic"
-                      aria-label="italic"><Italic size={14} /></button>
+                      aria-label="Italic"><Italic size={14} /></button>
                       <button
                         onClick={() => updateStyle({ subscript: !sp?.subscript ? true : null })}
                         className={`flex items-center gap-1 rounded-sm px-2 py-1 text-xs transition ${sp?.subscript ? "bg-cyan-600 text-white" : "bg-zinc-200 text-zinc-600 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"}`}
                         title="subscript"
-                      aria-label="subscript"><Subscript size={14} /></button>
+                      aria-label="Subscript"><Subscript size={14} /></button>
                       <button
                         onClick={() => updateStyle({ superscript: !sp?.superscript ? true : null })}
                         className={`flex items-center gap-1 rounded-sm px-2 py-1 text-xs transition ${sp?.superscript ? "bg-cyan-600 text-white" : "bg-zinc-200 text-zinc-600 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"}`}
                         title="superscript"
-                      aria-label="superscript"><Superscript size={14} /></button>
+                      aria-label="Superscript"><Superscript size={14} /></button>
+                    </div>
+
+                    {/* Stroke position buttons (paired with toggle row) */}
+                    <div className="flex flex-wrap gap-1" role="group" aria-label="Stroke position">
+                      {([
+                        { value: "none", label: "no stroke", icon: CircleOff },
+                        { value: "outer", label: "outer stroke", icon: Circle },
+                        { value: "center", label: "center stroke", icon: CircleDashed },
+                        { value: "inner", label: "inner stroke", icon: CircleDot },
+                      ] as const).map(({ value, label, icon: Icon }) => {
+                        const strokeEnabled = Boolean(sp?.stroke_color && sp?.stroke_width && sp.stroke_width > 0);
+                        const active = value === "none"
+                          ? !strokeEnabled
+                          : strokeEnabled && (sp?.stroke_position ?? "outer") === value;
+                        return <button
+                          key={value}
+                          type="button"
+                          onClick={() => value === "none"
+                            ? updateStyle({ stroke_color: null, stroke_width: null, stroke_position: null })
+                            : updateStyle({
+                                stroke_color: sp?.stroke_color ?? currentStrokeColor ?? "#000000",
+                                stroke_width: sp?.stroke_width && sp.stroke_width > 0 ? sp.stroke_width : 1,
+                                stroke_position: value,
+                              })}
+                          className={`flex items-center justify-center rounded-sm px-2 py-1 text-xs transition ${active ? "bg-cyan-600 text-white" : "bg-zinc-200 text-zinc-600 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"}`}
+                          title={label}
+                          aria-label={label}
+                          aria-pressed={active}
+                        ><Icon size={14} /></button>;
+                      })}
                     </div>
                     {sp?.underline && <div className="mt-2 flex flex-wrap items-center gap-2">
                       <PixelField label="underline offset" value={sp.underline_offset} onChange={(value) => updateStyle({ underline_offset: value })} placeholder="detected" width="9rem" />
@@ -4741,7 +4947,26 @@ export default function App() {
                 </div>
 
                 {!brushMode && selectedRenderInst && (preRenderUrl || previewUrl || previewPending || previewRenderError) && <div className="border-t border-zinc-200 pt-3 dark:border-zinc-800">
-                  <p className="subtext mb-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Text Warp</p>
+                  <div className="mb-2 flex items-center gap-2">
+                    <p className="subtext text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Text Warp</p>
+                    {(() => {
+                      const t = selectedRenderInst.style_profile?.transform ?? {};
+                      const count = ([
+                        ["skew_x", 0], ["skew_y", 0], ["scale_x", 1], ["scale_y", 1],
+                        ["offset_x", 0], ["offset_y", 0], ["rotation", 0], ["arc", 0],
+                      ] as const).filter(([key, base]) => Number(t[key] ?? base) !== base).length
+                        + (hasActivePerspective(selectedRenderInst) ? 1 : 0);
+                      if (count === 0) return null;
+                      return (
+                        <span
+                          className="rounded-full bg-cyan-100 px-1.5 py-0.5 text-[10px] font-medium text-cyan-800 dark:bg-cyan-950 dark:text-cyan-300"
+                          title={`${count} transform value${count === 1 ? "" : "s"} differ${count === 1 ? "s" : ""} from default on this region`}
+                        >
+                          {count} changed
+                        </span>
+                      );
+                    })()}
+                  </div>
                   <div ref={setTextWarpHost} />
                 </div>}
 
@@ -4792,7 +5017,8 @@ export default function App() {
                 icon={<GiCoolSpices size={14} />}
                 flat
                 className={`${stackClass(1)} flex-1 overflow-auto p-5`}
-                headerExtra={selectedRenderInst && <input type="checkbox" checked={selectedGarnishEnabled} onChange={(event) => setSelectedGarnishEnabled(event.target.checked)} aria-label="enable garnish" title={selectedGarnishEnabled ? "disable garnish" : "enable garnish"} className="toggle garnish-activation-toggle h-4 w-7 shrink-0 border-violet-500 bg-violet-400 checked:border-violet-500 checked:bg-violet-800 checked:text-violet-900" />}
+                sectionStyle={{ scrollBehavior: "smooth" }}
+                headerExtra={selectedRenderInst && <input type="checkbox" checked={selectedGarnishEnabled} onChange={(event) => setSelectedGarnishEnabled(event.target.checked)} aria-label="Enable garnish" title={selectedGarnishEnabled ? "disable garnish" : "enable garnish"} className="toggle garnish-activation-toggle h-4 w-7 shrink-0 border-violet-500 bg-violet-400 checked:border-violet-500 checked:bg-violet-800 checked:text-violet-900" />}
                 rightSideHandle={
                   <div className="title-drag-handle absolute right-0 top-1/2 z-20 shrink-0 -translate-y-1/2" style={{ cursor: "pointer", padding: "2px 4px" }} onClick={onGarnishExpandClick} title={garnishCardExpandedH ? "double-click to return to standard" : "double-click to expand to full width"}>
                     <svg width="14" height="42" viewBox="0 0 14 42" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="1" y="0.5" width="4.5" height="41" rx="2.25" fill="currentColor" /><rect x="8" y="11" width="4.5" height="20" rx="2.25" fill="currentColor" /></svg>
@@ -4806,7 +5032,7 @@ export default function App() {
                   const recommended = selectedGarnishRecommended;
                   const slider = (label: string, field: keyof NonNullable<InstText["garnish_override"]>, min: number, max: number, step: number, suffix = "", digits = 1) => {
                     const marker = recommended ? Math.max(0, Math.min(100, (Number(recommended[field]) - min) * 100 / (max - min))) : null;
-                    return <GarnishSliderField key={field} label={label} value={Number(g[field])} min={min} max={max} step={step} suffix={suffix} digits={digits} marker={marker} markerLabel={recommended ? `scene recommendation: ${Number(recommended[field]).toFixed(digits)}${suffix}` : undefined} sceneLabel={recommended ? `scene: ${Number(recommended[field]).toFixed(digits)}${suffix}` : undefined} disabled={!selectedGarnishEnabled} onChange={(value) => updateSelectedGarnish({ [field]: value })} />;
+                    return <GarnishSliderField key={field} label={label} value={Number(g[field])} min={min} max={max} step={step} suffix={suffix} digits={digits} marker={marker} markerLabel={recommended ? `scene recommendation: ${Number(recommended[field]).toFixed(digits)}${suffix}` : undefined} sceneLabel={recommended ? `scene: ${Number(recommended[field]).toFixed(digits)}${suffix}` : undefined} disabled={!selectedGarnishEnabled} onChange={(value) => updateSelectedGarnish({ [field]: value }, label)} />;
                   };
                   return <div className="space-y-2">
                     <div className="relative flex flex-wrap items-center gap-2 pr-7">
@@ -4849,7 +5075,8 @@ export default function App() {
                           <span className="flex items-center gap-2">{theme === "dark" ? <PiMagicWandFill size={13} /> : <PiMagicWand size={13} />}Cleanup</span>
                           <ChevronDown size={13} className={`transition ${cleanupOpen ? "rotate-180" : ""}`} />
                         </button>
-                        {cleanupOpen && <div className="mt-2 space-y-3 rounded-lg border border-zinc-300/80 bg-white/30 p-3 dark:border-zinc-700/80 dark:bg-zinc-950/20">
+                        <div className={`style-panel-morph${cleanupOpen ? " expanded" : ""}`}>
+                        <div className="mt-2 space-y-3 rounded-lg border border-zinc-300/80 bg-white/30 p-3 dark:border-zinc-700/80 dark:bg-zinc-950/20">
                           <div className="flex items-center justify-between gap-2">
                             <span className="text-[10px] uppercase tracking-wider text-zinc-500">Canvas cleanup</span>
                             <button type="button" onClick={() => setShowLocalizedText((show) => !show)} className="rounded-sm p-1.5 text-violet-700 transition hover:bg-violet-100 dark:text-violet-300 dark:hover:bg-zinc-800" title={showLocalizedText ? "Hide localized text" : "Show localized text"} aria-label={showLocalizedText ? "Hide localized text" : "Show localized text"}>
@@ -4880,7 +5107,8 @@ export default function App() {
                             <button type="button" onClick={() => { setBrushStrokes([]); setLassoPoints([]); }} disabled={!brushStrokes.length && !lassoPoints.length} className="rounded px-2 py-1 text-[10px] text-zinc-500 disabled:opacity-40">Clear mask</button>
                             <button type="button" onClick={applyCleanup} disabled={brushApplying || (!brushStrokes.length && lassoPoints.length < 3)} className="rounded bg-violet-700 px-3 py-1 text-[10px] text-white disabled:opacity-40">{brushApplying ? "Applying…" : "Apply cleanup"}</button>
                           </div>
-                        </div>}
+                        </div>
+                        </div>
                       </div>
                     </div>
                   </div>;
@@ -4925,7 +5153,7 @@ export default function App() {
                   <p className="text-xs text-zinc-500">Modify, place, and warp text.</p>
                 </div>
                 <div className="relative">
-                <div ref={localizedScrollRef} className="max-h-[68vh] max-w-full overflow-auto rounded-lg" style={{ cursor: localizedDragMode ? (localizedPanRef.current ? "grabbing" : "grab") : undefined }} onMouseDown={(e) => { if (!localizedDragMode) return; const el = localizedScrollRef.current; if (!el) return; localizedPanRef.current = { startX: e.clientX, startY: e.clientY, scrollLeft: el.scrollLeft, scrollTop: el.scrollTop }; e.preventDefault(); }} onMouseMove={(e) => { if (!localizedPanRef.current) return; const el = localizedScrollRef.current; if (!el) return; el.scrollLeft = localizedPanRef.current.scrollLeft - (e.clientX - localizedPanRef.current.startX); el.scrollTop = localizedPanRef.current.scrollTop - (e.clientY - localizedPanRef.current.startY); }} onMouseUp={() => { localizedPanRef.current = null; }} onMouseLeave={() => { localizedPanRef.current = null; }}>
+                <div ref={localizedScrollRef} className="max-h-[68vh] max-w-full overflow-auto rounded-lg" style={{ scrollBehavior: "smooth", cursor: localizedDragMode ? (localizedPanRef.current ? "grabbing" : "grab") : undefined }} onMouseDown={(e) => { if (!localizedDragMode) return; const el = localizedScrollRef.current; if (!el) return; localizedPanRef.current = { startX: e.clientX, startY: e.clientY, scrollLeft: el.scrollLeft, scrollTop: el.scrollTop }; e.preventDefault(); }} onMouseMove={(e) => { if (!localizedPanRef.current) return; const el = localizedScrollRef.current; if (!el) return; el.scrollLeft = localizedPanRef.current.scrollLeft - (e.clientX - localizedPanRef.current.startX); el.scrollTop = localizedPanRef.current.scrollTop - (e.clientY - localizedPanRef.current.startY); }} onMouseUp={() => { localizedPanRef.current = null; }} onMouseLeave={() => { localizedPanRef.current = null; }}>
                 <div className="relative inline-block min-w-full touch-none select-none" style={{ width: `${localizedZoom * 100}%` }}>
                   <img ref={localizedImageRef} src={preRenderUrl || previewUrl || "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="} alt="localized treatment canvas" draggable={false} className={`block w-full max-w-none touch-none select-none rounded-lg border border-zinc-300 dark:border-zinc-800 ${localizedDragMode ? "pointer-events-none" : nearFirstPoint ? "cursor-pointer" : (brushMode || lassoMode || colorPickMode) ? "cursor-crosshair" : ""}`}
                     style={{ touchAction: "none", WebkitUserDrag: "none" } as React.CSSProperties}
@@ -5129,16 +5357,9 @@ export default function App() {
                             ? "There is no other region to apply it to"
                             : "Give every other region this skew, rotation, stretch and offset. Perspective corners stay per-region, and locked values are left alone."}
                       >
-                        <PiArrowsMergeBold size={11} /> apply to all
+                        <HiOutlineCubeTransparent size={11} /> apply all
                       </button>
-                      {changedCount > 0 && (
-                        <span
-                          className="rounded-full bg-cyan-100 px-1.5 py-0.5 text-[10px] font-medium text-cyan-800 dark:bg-cyan-950 dark:text-cyan-300"
-                          title={`${changedCount} transform value${changedCount === 1 ? "" : "s"} differ${changedCount === 1 ? "s" : ""} from default on this region`}
-                        >
-                          {changedCount} changed
-                        </span>
-                      )}
+                      <label className="subtext flex items-center gap-0.5 text-[10px] text-zinc-400" title="When off, keep one glyph run even when it crosses the cube edge. When on, wrap only after the measured text exceeds the cube width."><input type="checkbox" checked={transform?.wrap_text ?? false} onChange={(e) => updateSelectedStyle({ transform: { ...transform, wrap_text: e.target.checked } })} /> wrap text</label>
                       <button onClick={() => setWarpCollapsed((value) => !value)} className="ml-auto shrink-0 rounded-sm p-1 text-zinc-500 transition hover:bg-zinc-200 dark:hover:bg-zinc-800" title={warpCollapsed ? "expand" : "collapse"}><FcCollapse style={{ transform: warpCollapsed ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} /></button>
                       <div className={`style-panel-morph style-panel-overflow-visible flex-1 ${!warpCollapsed ? "expanded" : ""}`}>
                         <div className="flex flex-wrap items-center gap-2 pt-1">
@@ -5192,7 +5413,7 @@ export default function App() {
                           </span>
                         );
                       })()}
-                      {transform?.preset && transform.preset !== "none" && transform.preset !== "custom" && <label className="subtext flex items-center gap-1 text-xs text-zinc-500">amount<span className="warp-slider" style={{ "--warp-default": 0.74 } as React.CSSProperties}><input aria-label="warp amount" type="range" min="-25" max="25" step="0.5" value={transform.amount ?? 12} onPointerDown={(e) => snapRangePointer(e, (value) => updateSelectedStyle({ transform: { ...transform, amount: value } }))} onChange={(e) => { pulseRangeStep(e.currentTarget); updateSelectedStyle({ transform: { ...transform, amount: Number(e.target.value) } }); }} onDoubleClick={() => updateSelectedStyle({ transform: { ...transform, amount: 12 } })} title="double-click to return to the preset baseline" /></span><span className="min-w-9 text-right font-mono text-[10px]">{Number(transform.amount ?? 12).toFixed(1)}</span></label>}
+                      {transform?.preset && transform.preset !== "none" && transform.preset !== "custom" && <label className="subtext flex items-center gap-1 text-xs text-zinc-500">amount<span className="warp-slider" style={{ "--warp-default": 0.74 } as React.CSSProperties}><input aria-label="Warp amount" type="range" min="-25" max="25" step="0.5" value={transform.amount ?? 12} onPointerDown={(e) => snapRangePointer(e, (value) => updateSelectedStyle({ transform: { ...transform, amount: value } }))} onChange={(e) => { pulseRangeStep(e.currentTarget); updateSelectedStyle({ transform: { ...transform, amount: Number(e.target.value) } }); }} onDoubleClick={() => updateSelectedStyle({ transform: { ...transform, amount: 12 } })} title="double-click to return to the preset baseline" /></span><span className="min-w-9 text-right font-mono text-[10px]">{Number(transform.amount ?? 12).toFixed(1)}</span></label>}
                       {([['skew_x', 'X'], ['skew_y', 'Y']] as const).map(([key, label]) => {
                         const hist = transformHistoryRef.current[key];
                         const locked = isTransformLocked(key);
@@ -5202,8 +5423,7 @@ export default function App() {
                       })}
                       {([['scale_x', 'width'], ['scale_y', 'height']] as const).map(([key, label]) => { const hist = transformHistoryRef.current[key]; const locked = isTransformLocked(key); const canUndoT = !!(hist && hist.undoStack.length > 0); const canRedoT = !!(hist && hist.redoStack.length > 0); return <label key={key} className="subtext flex items-center gap-1 text-xs text-zinc-500">{label}<span className="text-[10px]">0.5x</span><span className="warp-slider" style={{ "--warp-default": 0.5 } as React.CSSProperties}><input aria-label={`${label} stretch`} type="range" min="0.5" max="1.5" step="0.01" value={transform?.[key] ?? 1} disabled={locked} onPointerDown={(e) => snapRangePointer(e, (v) => { trackTransformChange(key, transform?.[key] ?? 1, v); updateCanvasTransform(key, v); })} onChange={(e) => { const v = Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 1, v); updateCanvasTransform(key, v); }} onDoubleClick={() => { trackTransformChange(key, transform?.[key] ?? 1, 1); updateCanvasTransform(key, 1); }} title="double-click to reset to 1.00x" /></span><input type="number" min="0.5" max="1.5" step="0.01" value={transform?.[key] ?? 1} disabled={locked} onChange={(e) => { const v = e.target.value === "" ? 1 : Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 1, v); updateCanvasTransform(key, v); }} className="w-12 rounded-sm border border-zinc-300 bg-white px-1 py-0.5 text-right font-mono text-[10px] disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900" /><span className="text-[10px]">x</span><button type="button" onClick={() => undoTransformKey(key, 1)} disabled={!canUndoT || locked} className="rounded-sm p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="undo"><LuUndo2 size={10} /></button><button type="button" onClick={() => redoTransformKey(key)} disabled={!canRedoT || locked} className="rounded-sm p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="redo"><LuRedo2 size={10} /></button><button type="button" onClick={() => toggleTransformLock(key)} className={`rounded-sm p-0.5 transition ${locked ? "text-cyan-600 dark:text-cyan-400" : "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"}`} title={locked ? "Unlock" : "Lock"}>{locked ? <HiLockClosed size={10} /> : <HiLockOpen size={10} />}</button></label>; })}
                       {([['offset_x', 'pos X'], ['offset_y', 'pos Y']] as const).map(([key, label]) => { const hist = transformHistoryRef.current[key]; const locked = isTransformLocked(key); const canUndoT = !!(hist && hist.undoStack.length > 0); const canRedoT = !!(hist && hist.redoStack.length > 0); return <span key={key} className="subtext flex items-center gap-1 text-xs text-zinc-500"><label className="flex items-center gap-1">{label}<span className="text-[10px]">−50</span><span className="warp-slider" style={{ "--warp-default": 0.5 } as React.CSSProperties}><input aria-label={`${label} position`} type="range" min="-50" max="50" step="1" value={transform?.[key] ?? 0} disabled={locked} onPointerDown={(e) => snapRangePointer(e, (v) => { trackTransformChange(key, transform?.[key] ?? 0, v); updateCanvasTransform(key, v); })} onChange={(e) => { const v = Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 0, v); updateCanvasTransform(key, v); }} onDoubleClick={() => { trackTransformChange(key, transform?.[key] ?? 0, 0); updateCanvasTransform(key, 0); }} title="double-click to snap to original position" /></span><input type="number" min="-50" max="50" step="1" value={transform?.[key] ?? 0} disabled={locked} onChange={(e) => { const v = e.target.value === "" ? 0 : Number(e.target.value); trackTransformChange(key, transform?.[key] ?? 0, v); updateCanvasTransform(key, v); }} className="w-12 rounded-sm border border-zinc-300 bg-white px-1 py-0.5 text-right font-mono text-[10px] disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900" /><span className="text-[10px]">px</span></label><button type="button" onClick={() => undoTransformKey(key, 0)} disabled={!canUndoT || locked} className="rounded-sm p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="undo"><LuUndo2 size={10} /></button><button type="button" onClick={() => redoTransformKey(key)} disabled={!canRedoT || locked} className="rounded-sm p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="redo"><LuRedo2 size={10} /></button><button type="button" onClick={() => toggleTransformLock(key)} className={`rounded-sm p-0.5 transition ${locked ? "text-cyan-600 dark:text-cyan-400" : "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"}`} title={locked ? "Unlock" : "Lock"}>{locked ? <HiLockClosed size={10} /> : <HiLockOpen size={10} />}</button></span>; })}
-                      <label className="subtext flex items-center gap-0.5 text-[10px] text-zinc-400" title="When off, keep one glyph run even when it crosses the cube edge. When on, wrap only after the measured text exceeds the cube width."><input type="checkbox" checked={transform?.wrap_text ?? false} onChange={(e) => updateSelectedStyle({ transform: { ...transform, wrap_text: e.target.checked } })} /> wrap</label>
-                      {(() => { const key = "rotation" as const; const current = Number(transform?.rotation ?? 0); const hist = transformHistoryRef.current[key]; const locked = isTransformLocked(key); return <span className="subtext flex items-center gap-1 text-xs text-zinc-500" title="Drag, click, or type to rotate text. Double-click the dial or value to reset."><span>rotate</span><span className="flex items-center gap-0.5"><RotationDial value={current} disabled={locked} onChange={(value) => { trackTransformChange(key, current, value); updateCanvasTransform(key, value); }} onReset={() => { trackTransformChange(key, current, 0); updateCanvasTransform(key, 0); }} /><button type="button" onClick={() => toggleTransformLock(key)} className={`self-center rounded-sm p-0.5 transition ${locked ? "text-cyan-600 dark:text-cyan-400" : "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"}`} title={locked ? "Unlock rotation" : "Lock rotation"}>{locked ? <HiLockClosed size={10} /> : <HiLockOpen size={10} />}</button></span><button type="button" onClick={() => undoTransformKey(key, 0)} disabled={!hist.undoStack.length || locked} className="rounded-sm p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="undo"><LuUndo2 size={10} /></button><button type="button" onClick={() => redoTransformKey(key)} disabled={!hist.redoStack.length || locked} className="rounded-sm p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="redo"><LuRedo2 size={10} /></button></span>; })()}
+                      <div className="basis-full flex items-center gap-2 pt-1">
                       <span className={`subtext flex items-center gap-1 text-xs text-zinc-500 ${perspectiveActive ? "opacity-40" : ""}`} title={perspectiveActive ? "Perspective corners replace the affine anchor" : "Choose the point that stays fixed while skewing or stretching."}>
                         <span>anchor</span>
                         <span className="grid grid-cols-3 gap-px rounded-sm border border-zinc-300 p-0.5 dark:border-zinc-700">
@@ -5212,6 +5432,8 @@ export default function App() {
                           ))}
                         </span>
                       </span>
+                      {(() => { const key = "rotation" as const; const current = Number(transform?.rotation ?? 0); const hist = transformHistoryRef.current[key]; const locked = isTransformLocked(key); return <span className="subtext ml-4 flex items-center gap-1 text-xs text-zinc-500" title="Drag, click, or type to rotate text. Double-click the dial or value to reset."><span>rotate</span><span className="flex items-center gap-0.5"><RotationDial value={current} disabled={locked} onChange={(value) => { trackTransformChange(key, current, value); updateCanvasTransform(key, value); }} onReset={() => { trackTransformChange(key, current, 0); updateCanvasTransform(key, 0); }} /><button type="button" onClick={() => toggleTransformLock(key)} className={`self-center rounded-sm p-0.5 transition ${locked ? "text-cyan-600 dark:text-cyan-400" : "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"}`} title={locked ? "Unlock rotation" : "Lock rotation"}>{locked ? <HiLockClosed size={10} /> : <HiLockOpen size={10} />}</button></span><button type="button" onClick={() => undoTransformKey(key, 0)} disabled={!hist.undoStack.length || locked} className="rounded-sm p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="undo"><LuUndo2 size={10} /></button><button type="button" onClick={() => redoTransformKey(key)} disabled={!hist.redoStack.length || locked} className="rounded-sm p-0.5 text-zinc-400 hover:text-zinc-700 disabled:opacity-20 dark:hover:text-zinc-200" title="redo"><LuRedo2 size={10} /></button></span>; })()}
+                      </div>
                         </div>
                       </div>
                     </div>
@@ -5299,7 +5521,7 @@ export default function App() {
                     </button>
                   </div>
                   <div className={`style-panel-morph${renderLogsOpen ? " expanded" : ""}`}>
-                    <div className="mt-1 max-h-56 overflow-auto rounded-lg bg-zinc-100 p-3 font-mono text-xs leading-5 dark:bg-zinc-950">
+                    <div className="mt-1 max-h-56 overflow-auto rounded-lg bg-zinc-100 p-3 font-mono text-xs leading-5 dark:bg-zinc-950" style={{ scrollBehavior: "smooth" }}>
                       {renderResult.logs.map((l, i) => (
                         <div
                           key={i}
@@ -5987,6 +6209,22 @@ export default function App() {
         onLibraryChanged={onFontLibraryChanged}
       /></Suspense>
 
+      <Suspense fallback={null}><FontManager
+        open={showPreviewFontManager}
+        onClose={() => setShowPreviewFontManager(false)}
+        families={fullFamiliesByLang[targLang] ?? []}
+        loading={fullFontsLoading}
+        value={selectedId ? previewFontOverride[selectedId] ?? null : null}
+        targLang={targLang}
+        recent={recentFonts}
+        onPick={(fam, weight) => {
+          if (!selectedId) return;
+          setPreviewFontOverride((prev) => ({ ...prev, [selectedId]: weight.path }));
+          setRecentFonts(pushRecent(localStorage, { family: fam.family, path: weight.path }));
+        }}
+        onLibraryChanged={onFontLibraryChanged}
+      /></Suspense>
+
       {showCapabilities && <Suspense fallback={null}><SystemCapabilitiesPanel onClose={() => setShowCapabilities(false)} /></Suspense>}
 
       {showSettings && (
@@ -6028,8 +6266,17 @@ export default function App() {
                   <p className="subtext mb-2 flex items-center gap-1 text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-600"><TbBackground size={13} /> Ground Truth</p>
                   <GroundTruthField
                     label="Project Ground Truth"
+                    language={srcLang}
                     value={projectGroundTruth}
-                    onChange={setProjectGroundTruth}
+                    onChange={(value) => {
+                      projectGroundTruthDirtyRef.current = true;
+                      setProjectGroundTruth(value);
+                    }}
+                    onBlur={() => {
+                      if (projectGroundTruthDirtyRef.current) {
+                        saveProjectGroundTruth().catch(() => {});
+                      }
+                    }}
                     placeholder="Enter reusable source terms"
                   />
                   <div className="mt-2 flex items-start justify-between gap-3">

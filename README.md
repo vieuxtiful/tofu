@@ -288,6 +288,93 @@ Memory stores accepted (source region, target render, style, QA score) tuples fo
 
 QA gating is enforced here as well as in the pipeline: a visual TM poisoned with bad localizations is worse than no TM, so `update()` refuses to store results below the threshold regardless of caller. The module is storage-agnostic by design — `update()` returns draft records (plus a ready-to-save thumbnail crop) and `lookup()` matches against a caller-supplied candidate pool. `server/main.py` owns the actual SQLite writes and thumbnail-file saves, keeping this module pure and testable with plain Python objects.
 
+## Video Pipeline
+
+ToFU's video pipeline extends the image localization workflow to video files (MP4 and other FFmpeg-supported formats). It runs the same 7-layer pipeline (scene → cicerone → cleanse → scribe → verify) but adds temporal tracking to carry text regions across frames, and a compositor to render the translated video frame-by-frame.
+
+### Architecture
+
+The video pipeline has four stages, each a module in `src/tofu/video/`:
+
+```
+ingest      probe the video, create a proxy, chunk the frame range
+analysis    Braise tracker: adaptive keyframe OCR + temporal linking
+review      track-level text editing, keyframe overrides, preview render
+export      compositor: erase source text, render target text, write MP4
+```
+
+### Braise — adaptive keyframe OCR and temporal tracking (`src/tofu/video/analysis.py`)
+
+Braise is the video analyzer. It runs a long, low-heat analysis that survives being taken off the burner and put back on — the property that makes video jobs resumable. The tracker state (active tracks, missed counters, appearance histograms, optical-flow history) is captured at chunk boundaries as a `TrackerCheckpoint` and reconstructed on resume, so a job interrupted at frame 10,000 continues exactly as if it had never stopped.
+
+**Adaptive OCR triggering**: rather than running OCR on every frame (prohibitively expensive), Braise runs OCR only when a trigger fires — keyframe interval, scene cut, track birth, confidence decay, visual change, or forced re-read. Between OCR frames, tracks are carried forward by sparse optical flow (Lucas-Kanade).
+
+**Temporal tracking** (`src/tofu/video/temporal.py`): observations are linked to tracks by a combined score of bounding-box IoU (0.65 weight) and text similarity (0.35 weight), with an absolute shot-boundary barrier. A `ConsensusAccumulator` folds OCR evidence streaming-style (Misra-Gries bounded), so the consensus text and confidence are O(1) in clip length.
+
+**Edge case handling**:
+- *Occlusion*: when a tracked text disappears for up to `MAX_GAP_FRAMES` (default 15) frames and reappears at a nearby position, the track is reconnected rather than spawning a new one. The dormant track's consensus history is preserved across the gap.
+- *Rapid text change*: when OCR text changes dramatically between consecutive keyframes on the same track (e.g., a digital sign cycling messages), the track is split — the old track ends and a new one begins, rather than averaging dissimilar observations.
+- *Birth/death smoothing*: new tracks start in a `pending` state and must accumulate `MIN_CONFIRM_OBSERVATIONS` (default 2) consecutive observations before being confirmed. Pending tracks that miss before confirming are dropped as flicker-induced false tracks.
+
+### Compositor (`src/tofu/video/compositor.py`)
+
+The compositor renders the translated video. For each frame, it:
+1. Decodes the source frame
+2. For each track observation on that frame: erases the source text (temporal background reconstruction or inpainting), renders the target text in the matched style, and composites the foreground
+3. Writes the frame to the output MP4 (or PNG sequence for preview)
+
+Keyframe overrides allow per-frame, per-range, or per-track adjustments to bounding box, opacity, style, and effects. The compositor resolves these via `resolve_keyframes()` which interpolates between adjacent frame-level keyframes and applies track/range overrides on top.
+
+Preview and export renders are byte-identical on their shared frame range — a preview is a window onto the export, not a different render. This is enforced by warming the temporal background history and motion mask from `start_frame` rather than from frame 0.
+
+### Running video jobs
+
+**Via the API**:
+```bash
+# Create a video job
+curl -X POST http://localhost:8000/api/video/jobs \
+  -H "Content-Type: application/json" \
+  -d '{"asset_id": "your-asset-id", "chunk_size": 240}'
+
+# Poll for status
+curl http://localhost:8000/api/video/jobs/{job_id}
+
+# Get the timeline (tracks, observations, keyframes)
+curl "http://localhost:8000/api/video/jobs/{job_id}/timeline?start=0&end=300"
+
+# Update a track's target text
+curl -X PATCH http://localhost:8000/api/video/jobs/{job_id}/tracks/{track_id} \
+  -H "Content-Type: application/json" \
+  -d '{"target_text": "Hola", "status": "translated"}'
+
+# Render a preview (frame range)
+curl -X POST http://localhost:8000/api/video/jobs/{job_id}/preview \
+  -H "Content-Type: application/json" \
+  -d '{"start_frame": 0, "end_frame": 150}'
+
+# Export the full video
+curl -X POST http://localhost:8000/api/video/jobs/{job_id}/export
+```
+
+**Via the frontend**: the VideoWorkspace component (`frontend/src/VideoWorkspace.tsx`) provides a full editing interface with:
+- Timeline scrubber with keyframe and issue markers
+- Track list with confidence, keyframe count, and enable/disable toggles
+- Per-track source/target text editing with style overrides (opacity, color)
+- Side-by-side preview comparison (original vs. localized)
+- Progress indicator with frame count and cancel/resume controls
+
+### Cancel and resume
+
+Video jobs are long-running and can be cancelled at any time. The worker checks a `cancel_requested` flag between frames and stops cleanly. A cancelled job can be resumed from its last checkpoint — the `OverlapReconciler` replays the overlap frames to verify the checkpoint is still valid, then continues analysis from where it left off.
+
+### Testing
+
+- `tests/test_video_analysis.py` — Braise tracker unit tests (temporal tracking, resume, checkpoint)
+- `tests/test_video_temporal.py` — Pure temporal decision tests (association, consensus, text-change detection)
+- `tests/test_video_compositor.py` — Compositor tests (preview/export parity, warmup, region replacement)
+- `tests/test_video_integration.py` — End-to-end server lifecycle (create job → timeline → track update → keyframe → cancel/resume)
+- `tests/regression/test_video_regression.py` — SSIM-based regression baselines for compositor output
+
 ### Savor — post-recognition glyph correction (`src/tofu/layers/savor.py`)
 
 Savor is Cicerone's quality-control taste tester. Before recognized text leaves the detection pipeline, Savor samples every suspicious bite and only swallows a correction when the evidence backs it up. It runs alongside Cicerone's other post-recognition passes (second_look, prune_hallucinations, zoom, adaptive) as one more QC step on the same raw output.
@@ -385,25 +472,76 @@ Open http://localhost:5173.
 
 ## LLM Comparison
 
+General-purpose LLM image generators (Gemini, ChatGPT/DALL-E) can produce
+visually striking localized images, but they do so by *regenerating* the entire
+image from a prompt — the underlying scene is fabricated, not preserved. ToFU
+takes the opposite approach: it detects, erases, and re-renders only the text
+regions, leaving the rest of the image pixel-identical.
+
+The comparison below uses `images/gemini-street.png`, an AI-generated street
+scene with 18 ground-truth text regions (Korean and Japanese signage, mixed
+horizontal and vertical). Ground truth is annotated in
+`images/gemini-street.gt.json` and scored with `scripts/eval_detect.py`.
+
+### Detection and Recognition
+
+| Metric | Gemini (image gen) | ChatGPT (image gen) | ToFU (pipeline) |
+|--------|--------------------|---------------------|-----------------|
+| **Approach** | Regenerate entire image from prompt | Regenerate entire image from prompt | Detect → erase → re-render text only |
+| **Scene preservation** | No — fabricated scene | No — fabricated scene | Yes — pixel-identical outside text regions |
+| **Text regions detected** | N/A (no detection step) | N/A (no detection step) | 27 regions (16 surfaces) |
+| **Recall (IoU ≥ 0.5)** | N/A | N/A | 0.333 (6/18 GT matched) |
+| **Mean normalized edit distance** | N/A | N/A | 0.267 |
+| **Garbage fraction** | Unknown | Unknown | 0.185 (pruned by ToFU validation) |
+| **Source language inferred** | N/A | N/A | ko (correct) |
+
+### Per-Region Comparison
+
+The 6 ground-truth regions ToFU matched, with recognition accuracy:
+
+| GT text | ToFU read | IoU | Norm. edit dist. | Status |
+|---------|-----------|-----|------------------|--------|
+| 대박식당 | 대박식당 | 0.734 | 0.000 | Exact match |
+| 라면·국수 | 라면·국수 | 0.554 | 0.000 | Exact match |
+| 전주삼겹살 | 전주삼겹살 | 0.519 | 0.000 | Exact match |
+| 포차 | 감접포 차 | 0.686 | 0.600 | Over-merge (adjacent signs merged) |
+| 피시개방 | 시게방 | 0.548 | 0.500 | Partial read (clipped box) |
+| 맥주 | 주 | 0.581 | 0.500 | Partial read (clipped box) |
+
+3 of 6 matches were exact text reads (norm. edit distance = 0). The 3
+imperfect matches are detection-level issues (over-merging adjacent signs,
+clipped bounding boxes), not recognition failures — the recognized characters
+are correct within the detected region.
+
+### Qualitative Comparison
+
+| Criterion | Gemini / ChatGPT | ToFU |
+|-----------|------------------|------|
+| **Scene fidelity** | Fabricated — signs, buildings, lighting all change | Preserved — only text pixels modified |
+| **Translation accuracy** | Plausible but unverifiable (no source text extraction) | Verifiable — source text extracted via OCR, target text user-editable |
+| **Style match** | Approximate — AI guesses font/weight/color | Measured — font matching via per-region style profiling |
+| **Vertical text** | Often garbled or omitted | Supported (CJK vertical detection + rendering) |
+| **Mixed scripts** | Often conflates Korean/Japanese | Distinguished (ko vs ja inferred per region) |
+| **Repeatability** | Non-deterministic (different output each run) | Deterministic (same input → same output) |
+| **Batch processing** | One image at a time, manual prompting | API-driven, project-level workflow with TM reuse |
+| **Cost** | Per-image API call | Local execution, no per-image cost |
+
+### Visual Examples
+
 <div style="image" align="center">
   <img src="images/gemini-example.png" width="90%">
 </div>
-
-
 
 <div style="image" align="center">
   <img src="images/chatgpt-example.png" width="90%">
 </div>
 
-
-
 <div style="image" align="center">
   <img src="images/tofu-example.png" width="90%">
 </div>
 
-
 <div style="image" align="left">
-  
+
 <img src="images/status-green.png" alt="#00ff07" width="12" height="12"> residual artifacts
 
 <img src="images/status-blue.png" alt="#008aff" width="12" height="12"> untranslated strings
