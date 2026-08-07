@@ -29,10 +29,8 @@ Thumbs.db
 .env
 .env.local
 
-# Generated video fixtures: the clips are large and reproducible from
-# scripts/video_fixtures.py. The .gt.json ground truth stays tracked --
-# that is the part worth reading in a diff.
-tests/fixtures/video/*.mp4
+# Tests are local-only — not tracked in the remote repo.
+tests/
 
 # Regression-harness output. These are rewritten byte-for-byte every time
 # the suite runs, so tracking them puts 100+ files of pure churn in front of
