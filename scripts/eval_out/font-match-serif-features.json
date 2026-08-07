@@ -1,0 +1,1017 @@
+{
+  "tag": "serif-features",
+  "font_dir": "C:/Windows/Fonts",
+  "fonts_loaded": 409,
+  "results": [
+    {
+      "asset": "serif-vs-sans",
+      "regions": 6,
+      "class_correct": 5,
+      "class_accuracy": 1.0,
+      "class_scorable": 5,
+      "detail": [
+        {
+          "region": "r1",
+          "text": "La rue",
+          "expected_family": "Times New Roman",
+          "expected_serif": true,
+          "top": "Mongolian Baiti",
+          "top_score": 0.9553,
+          "top_is_serif": null,
+          "expected_rank": 2,
+          "confidence": 0.6357,
+          "status": "review",
+          "candidates": [
+            [
+              "Mongolian Baiti",
+              0.9553
+            ],
+            [
+              "Times New Roman",
+              0.937
+            ],
+            [
+              "Californian FB",
+              0.8324
+            ],
+            [
+              "Baskerville Old Face",
+              0.8247
+            ],
+            [
+              "Calisto MT",
+              0.8042
+            ]
+          ]
+        },
+        {
+          "region": "r2",
+          "text": "SANS-NOM",
+          "expected_family": "Times New Roman",
+          "expected_serif": true,
+          "top": "Palatino Linotype",
+          "top_score": 0.8437,
+          "top_is_serif": true,
+          "expected_rank": 5,
+          "confidence": 0.5335,
+          "status": "review",
+          "candidates": [
+            [
+              "Palatino Linotype",
+              0.8437
+            ],
+            [
+              "Calisto MT",
+              0.8393
+            ],
+            [
+              "Book Antiqua",
+              0.8339
+            ],
+            [
+              "Eras Demi ITC",
+              0.8224
+            ],
+            [
+              "Times New Roman",
+              0.8104
+            ]
+          ]
+        },
+        {
+          "region": "r3",
+          "text": "La rue",
+          "expected_family": "Arial",
+          "expected_serif": false,
+          "top": "Corbel",
+          "top_score": 0.8953,
+          "top_is_serif": false,
+          "expected_rank": null,
+          "confidence": 0.5769,
+          "status": "review",
+          "candidates": [
+            [
+              "Corbel",
+              0.8953
+            ],
+            [
+              "MS UI Gothic",
+              0.8861
+            ],
+            [
+              "MS PGothic",
+              0.8857
+            ],
+            [
+              "Franklin Gothic",
+              0.8619
+            ],
+            [
+              "Roboto",
+              0.8517
+            ]
+          ]
+        },
+        {
+          "region": "r4",
+          "text": "SANS-NOM",
+          "expected_family": "Arial",
+          "expected_serif": false,
+          "top": "Franklin Gothic",
+          "top_score": 0.8345,
+          "top_is_serif": false,
+          "expected_rank": null,
+          "confidence": 0.6074,
+          "status": "review",
+          "candidates": [
+            [
+              "Franklin Gothic",
+              0.8345
+            ],
+            [
+              "Roboto",
+              0.7966
+            ],
+            [
+              "Candara",
+              0.7867
+            ],
+            [
+              "Bahnschrift",
+              0.7835
+            ],
+            [
+              "Gill Sans MT",
+              0.7805
+            ]
+          ]
+        },
+        {
+          "region": "r5",
+          "text": "Handgloves",
+          "expected_family": "Times New Roman",
+          "expected_serif": true,
+          "top": "Modern No. 20",
+          "top_score": 0.7262,
+          "top_is_serif": true,
+          "expected_rank": null,
+          "confidence": 0.5481,
+          "status": "review",
+          "candidates": [
+            [
+              "Modern No. 20",
+              0.7262
+            ],
+            [
+              "Microsoft Uighur",
+              0.685
+            ],
+            [
+              "Bodoni MT",
+              0.6708
+            ],
+            [
+              "Microsoft Himalaya",
+              0.6387
+            ],
+            [
+              "Bernard MT",
+              0.6366
+            ]
+          ]
+        },
+        {
+          "region": "r6",
+          "text": "Handgloves",
+          "expected_family": "Arial",
+          "expected_serif": false,
+          "top": "Gill Sans Ultra Bold",
+          "top_score": 0.7198,
+          "top_is_serif": false,
+          "expected_rank": null,
+          "confidence": 0.4522,
+          "status": "review",
+          "candidates": [
+            [
+              "Gill Sans Ultra Bold",
+              0.7198
+            ],
+            [
+              "Gill Sans MT",
+              0.7173
+            ],
+            [
+              "Tw Cen MT Condensed",
+              0.7109
+            ],
+            [
+              "Haettenschweiler",
+              0.7102
+            ],
+            [
+              "Franklin Gothic Demi Cond",
+              0.708
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "asset": "la-rue-sans-nom",
+      "asset_id": "256f0913d4ad",
+      "regions": 2,
+      "seconds": 3.11,
+      "seconds_per_region": 1.55,
+      "distinct_recommended_faces": 1,
+      "bouquets": [
+        {
+          "id": "c1",
+          "region_ids": [
+            "r1",
+            "r2"
+          ]
+        }
+      ],
+      "detail": [
+        {
+          "region": "r1",
+          "text": "La rue",
+          "own_top": "Baskerville Old Face",
+          "recommended": "Baskerville Old Face",
+          "recommended_is_serif": true,
+          "cohort": [
+            "r1",
+            "r2"
+          ],
+          "agreement": 0.8868,
+          "candidates": [
+            [
+              "Baskerville Old Face",
+              0.7795
+            ],
+            [
+              "Centaur",
+              0.7643
+            ],
+            [
+              "Garamond",
+              0.7582
+            ],
+            [
+              "Californian FB",
+              0.7303
+            ],
+            [
+              "Goudy Old Style",
+              0.7254
+            ]
+          ]
+        },
+        {
+          "region": "r2",
+          "text": "SANS-NOM",
+          "own_top": "Tw Cen MT Condensed",
+          "recommended": "Baskerville Old Face",
+          "recommended_is_serif": true,
+          "cohort": [
+            "r1",
+            "r2"
+          ],
+          "agreement": 0.8868,
+          "candidates": [
+            [
+              "Tw Cen MT Condensed",
+              0.7064
+            ],
+            [
+              "Britannic",
+              0.7039
+            ],
+            [
+              "Showcard Gothic",
+              0.7036
+            ],
+            [
+              "Lucida Sans Typewriter",
+              0.6948
+            ],
+            [
+              "Tahoma",
+              0.6938
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "asset": "gemini-street",
+      "asset_id": "bc40c1eaebfd",
+      "regions": 27,
+      "seconds": 13.49,
+      "seconds_per_region": 0.5,
+      "distinct_recommended_faces": 11,
+      "bouquets": [
+        {
+          "id": "c1",
+          "region_ids": [
+            "r14",
+            "r16",
+            "r17",
+            "r19"
+          ]
+        }
+      ],
+      "detail": [
+        {
+          "region": "r1",
+          "text": "차",
+          "own_top": null,
+          "recommended": null,
+          "recommended_is_serif": null,
+          "cohort": null,
+          "agreement": null,
+          "candidates": []
+        },
+        {
+          "region": "r2",
+          "text": "-",
+          "own_top": null,
+          "recommended": null,
+          "recommended_is_serif": null,
+          "cohort": null,
+          "agreement": null,
+          "candidates": []
+        },
+        {
+          "region": "r3",
+          "text": "비",
+          "own_top": null,
+          "recommended": null,
+          "recommended_is_serif": null,
+          "cohort": null,
+          "agreement": null,
+          "candidates": []
+        },
+        {
+          "region": "r4",
+          "text": "6",
+          "own_top": null,
+          "recommended": null,
+          "recommended_is_serif": null,
+          "cohort": null,
+          "agreement": null,
+          "candidates": []
+        },
+        {
+          "region": "r5",
+          "text": "A22S",
+          "own_top": "Microsoft YaHei",
+          "recommended": "Microsoft YaHei",
+          "recommended_is_serif": false,
+          "cohort": null,
+          "agreement": null,
+          "candidates": [
+            [
+              "Microsoft YaHei",
+              0.712
+            ],
+            [
+              "Lucida Sans",
+              0.7009
+            ],
+            [
+              "Microsoft YaHei UI",
+              0.6942
+            ],
+            [
+              "Meiryo",
+              0.6931
+            ],
+            [
+              "Malgun Gothic",
+              0.6911
+            ]
+          ]
+        },
+        {
+          "region": "r6",
+          "text": "대박식당",
+          "own_top": "Gungsuh",
+          "recommended": "Gungsuh",
+          "recommended_is_serif": true,
+          "cohort": null,
+          "agreement": null,
+          "candidates": [
+            [
+              "Gungsuh",
+              0.4471
+            ],
+            [
+              "GungsuhChe",
+              0.4463
+            ],
+            [
+              "Batang",
+              0.3811
+            ],
+            [
+              "BatangChe",
+              0.381
+            ],
+            [
+              "Noto Sans KR",
+              0.3595
+            ]
+          ]
+        },
+        {
+          "region": "r7",
+          "text": "0",
+          "own_top": null,
+          "recommended": null,
+          "recommended_is_serif": null,
+          "cohort": null,
+          "agreement": null,
+          "candidates": []
+        },
+        {
+          "region": "r8",
+          "text": "88688",
+          "own_top": "Bodoni MT",
+          "recommended": "Bodoni MT",
+          "recommended_is_serif": true,
+          "cohort": null,
+          "agreement": null,
+          "candidates": [
+            [
+              "Bodoni MT",
+              0.6307
+            ],
+            [
+              "Script MT",
+              0.5835
+            ],
+            [
+              "BIZ UDGothic",
+              0.5725
+            ],
+            [
+              "Calisto MT",
+              0.5511
+            ],
+            [
+              "Berlin Sans FB",
+              0.5488
+            ]
+          ]
+        },
+        {
+          "region": "r9",
+          "text": "f204",
+          "own_top": "Juice ITC",
+          "recommended": "Juice ITC",
+          "recommended_is_serif": null,
+          "cohort": null,
+          "agreement": null,
+          "candidates": [
+            [
+              "Juice ITC",
+              0.6968
+            ],
+            [
+              "Harlow Solid",
+              0.6833
+            ],
+            [
+              "Mistral",
+              0.672
+            ],
+            [
+              "Gloucester MT Extra",
+              0.6656
+            ],
+            [
+              "Gill Sans MT Ext Condensed",
+              0.6539
+            ]
+          ]
+        },
+        {
+          "region": "r10",
+          "text": "ESAI",
+          "own_top": "Agency FB",
+          "recommended": "Agency FB",
+          "recommended_is_serif": false,
+          "cohort": null,
+          "agreement": null,
+          "candidates": [
+            [
+              "Agency FB",
+              0.7125
+            ],
+            [
+              "BIZ UDGothic",
+              0.6977
+            ],
+            [
+              "Microsoft JhengHei",
+              0.6365
+            ],
+            [
+              "Trebuchet MS",
+              0.6361
+            ],
+            [
+              "Berlin Sans FB Demi",
+              0.6327
+            ]
+          ]
+        },
+        {
+          "region": "r11",
+          "text": "(M-X0)",
+          "own_top": "Playbill",
+          "recommended": "Playbill",
+          "recommended_is_serif": null,
+          "cohort": null,
+          "agreement": null,
+          "candidates": [
+            [
+              "Playbill",
+              0.5068
+            ],
+            [
+              "Impact",
+              0.5016
+            ],
+            [
+              "Franklin Gothic Demi Cond",
+              0.4783
+            ],
+            [
+              "GungsuhChe",
+              0.4744
+            ],
+            [
+              "Franklin Gothic Demi",
+              0.4729
+            ]
+          ]
+        },
+        {
+          "region": "r12",
+          "text": "9113",
+          "own_top": "Agency FB",
+          "recommended": "Agency FB",
+          "recommended_is_serif": false,
+          "cohort": null,
+          "agreement": null,
+          "candidates": [
+            [
+              "Agency FB",
+              0.6923
+            ],
+            [
+              "Yu Mincho",
+              0.6904
+            ],
+            [
+              "Times New Roman",
+              0.689
+            ],
+            [
+              "Perpetua Titling MT",
+              0.6847
+            ],
+            [
+              "Berlin Sans FB",
+              0.682
+            ]
+          ]
+        },
+        {
+          "region": "r13",
+          "text": "S0GS535",
+          "own_top": "Arial",
+          "recommended": "Arial",
+          "recommended_is_serif": false,
+          "cohort": null,
+          "agreement": null,
+          "candidates": [
+            [
+              "Arial",
+              0.7469
+            ],
+            [
+              "Rockwell",
+              0.7425
+            ],
+            [
+              "UD Digi Kyokasho N",
+              0.7409
+            ],
+            [
+              "Agency FB",
+              0.737
+            ],
+            [
+              "Bodoni MT",
+              0.7282
+            ]
+          ]
+        },
+        {
+          "region": "r14",
+          "text": "감접포 차",
+          "own_top": "Malgun Gothic",
+          "recommended": "Malgun Gothic",
+          "recommended_is_serif": false,
+          "cohort": [
+            "r14",
+            "r16",
+            "r17",
+            "r19"
+          ],
+          "agreement": 1.0,
+          "candidates": [
+            [
+              "Malgun Gothic",
+              0.3768
+            ],
+            [
+              "Dotum",
+              0.3595
+            ],
+            [
+              "DotumChe",
+              0.3572
+            ],
+            [
+              "Noto Sans KR",
+              0.356
+            ],
+            [
+              "GungsuhChe",
+              0.3318
+            ]
+          ]
+        },
+        {
+          "region": "r15",
+          "text": "윗",
+          "own_top": null,
+          "recommended": null,
+          "recommended_is_serif": null,
+          "cohort": null,
+          "agreement": null,
+          "candidates": []
+        },
+        {
+          "region": "r16",
+          "text": "고깃집",
+          "own_top": "Noto Serif KR",
+          "recommended": "Malgun Gothic",
+          "recommended_is_serif": false,
+          "cohort": [
+            "r14",
+            "r16",
+            "r17",
+            "r19"
+          ],
+          "agreement": 1.0,
+          "candidates": [
+            [
+              "Noto Serif KR",
+              0.4272
+            ],
+            [
+              "Malgun Gothic",
+              0.4266
+            ],
+            [
+              "DotumChe",
+              0.4237
+            ],
+            [
+              "Dotum",
+              0.42
+            ],
+            [
+              "GungsuhChe",
+              0.3926
+            ]
+          ]
+        },
+        {
+          "region": "r17",
+          "text": "라면·국수",
+          "own_top": "Dotum",
+          "recommended": "Malgun Gothic",
+          "recommended_is_serif": false,
+          "cohort": [
+            "r14",
+            "r16",
+            "r17",
+            "r19"
+          ],
+          "agreement": 1.0,
+          "candidates": [
+            [
+              "Dotum",
+              0.4038
+            ],
+            [
+              "Malgun Gothic",
+              0.3839
+            ],
+            [
+              "DotumChe",
+              0.378
+            ],
+            [
+              "Noto Sans KR",
+              0.3467
+            ],
+            [
+              "Noto Serif KR",
+              0.2914
+            ]
+          ]
+        },
+        {
+          "region": "r18",
+          "text": "IN-A",
+          "own_top": "Calisto MT",
+          "recommended": "Calisto MT",
+          "recommended_is_serif": true,
+          "cohort": null,
+          "agreement": null,
+          "candidates": [
+            [
+              "Calisto MT",
+              0.5211
+            ],
+            [
+              "Lucida Calligraphy",
+              0.5134
+            ],
+            [
+              "Lucida Handwriting",
+              0.5062
+            ],
+            [
+              "Gill Sans MT",
+              0.5046
+            ],
+            [
+              "Mistral",
+              0.4948
+            ]
+          ]
+        },
+        {
+          "region": "r19",
+          "text": "전주삼겹살",
+          "own_top": "Noto Sans KR",
+          "recommended": "Malgun Gothic",
+          "recommended_is_serif": false,
+          "cohort": [
+            "r14",
+            "r16",
+            "r17",
+            "r19"
+          ],
+          "agreement": 1.0,
+          "candidates": [
+            [
+              "Noto Sans KR",
+              0.3589
+            ],
+            [
+              "Malgun Gothic",
+              0.3375
+            ],
+            [
+              "DotumChe",
+              0.3336
+            ],
+            [
+              "Dotum",
+              0.3322
+            ],
+            [
+              "Noto Serif KR",
+              0.3082
+            ]
+          ]
+        },
+        {
+          "region": "r20",
+          "text": "줄",
+          "own_top": null,
+          "recommended": null,
+          "recommended_is_serif": null,
+          "cohort": null,
+          "agreement": null,
+          "candidates": []
+        },
+        {
+          "region": "r21",
+          "text": "꿀식",
+          "own_top": "Dotum",
+          "recommended": "Dotum",
+          "recommended_is_serif": false,
+          "cohort": null,
+          "agreement": null,
+          "candidates": [
+            [
+              "Dotum",
+              0.3119
+            ],
+            [
+              "DotumChe",
+              0.3119
+            ],
+            [
+              "Malgun Gothic",
+              0.3088
+            ],
+            [
+              "Noto Sans KR",
+              0.3022
+            ],
+            [
+              "Gungsuh",
+              0.2881
+            ]
+          ]
+        },
+        {
+          "region": "r22",
+          "text": "대박식당",
+          "own_top": "Malgun Gothic",
+          "recommended": "Malgun Gothic",
+          "recommended_is_serif": false,
+          "cohort": null,
+          "agreement": null,
+          "candidates": [
+            [
+              "Malgun Gothic",
+              0.3714
+            ],
+            [
+              "Dotum",
+              0.3671
+            ],
+            [
+              "DotumChe",
+              0.3549
+            ],
+            [
+              "Noto Sans KR",
+              0.3481
+            ],
+            [
+              "Gungsuh",
+              0.2925
+            ]
+          ]
+        },
+        {
+          "region": "r23",
+          "text": "노래방",
+          "own_top": "Gungsuh",
+          "recommended": "Gungsuh",
+          "recommended_is_serif": true,
+          "cohort": null,
+          "agreement": null,
+          "candidates": [
+            [
+              "Gungsuh",
+              0.4235
+            ],
+            [
+              "GungsuhChe",
+              0.4233
+            ],
+            [
+              "Malgun Gothic",
+              0.4183
+            ],
+            [
+              "Dotum",
+              0.4144
+            ],
+            [
+              "DotumChe",
+              0.4144
+            ]
+          ]
+        },
+        {
+          "region": "r24",
+          "text": "시게방",
+          "own_top": "Dotum",
+          "recommended": "Dotum",
+          "recommended_is_serif": false,
+          "cohort": null,
+          "agreement": null,
+          "candidates": [
+            [
+              "Dotum",
+              0.3163
+            ],
+            [
+              "DotumChe",
+              0.3137
+            ],
+            [
+              "Malgun Gothic",
+              0.3083
+            ],
+            [
+              "GungsuhChe",
+              0.3029
+            ],
+            [
+              "Gungsuh",
+              0.3028
+            ]
+          ]
+        },
+        {
+          "region": "r25",
+          "text": "주",
+          "own_top": null,
+          "recommended": null,
+          "recommended_is_serif": null,
+          "cohort": null,
+          "agreement": null,
+          "candidates": []
+        },
+        {
+          "region": "r26",
+          "text": "편의맥주",
+          "own_top": "Noto Sans KR",
+          "recommended": "Noto Sans KR",
+          "recommended_is_serif": false,
+          "cohort": null,
+          "agreement": null,
+          "candidates": [
+            [
+              "Noto Sans KR",
+              0.358
+            ],
+            [
+              "DotumChe",
+              0.355
+            ],
+            [
+              "Dotum",
+              0.3509
+            ],
+            [
+              "Malgun Gothic",
+              0.3502
+            ],
+            [
+              "Gulim",
+              0.302
+            ]
+          ]
+        },
+        {
+          "region": "r27",
+          "text": "출03tR",
+          "own_top": "Malgun Gothic",
+          "recommended": "Malgun Gothic",
+          "recommended_is_serif": false,
+          "cohort": null,
+          "agreement": null,
+          "candidates": [
+            [
+              "Malgun Gothic",
+              0.4069
+            ],
+            [
+              "GulimChe",
+              0.3932
+            ],
+            [
+              "Gungsuh",
+              0.3813
+            ],
+            [
+              "DotumChe",
+              0.3759
+            ],
+            [
+              "GungsuhChe",
+              0.3751
+            ]
+          ]
+        }
+      ]
+    }
+  ]
+}

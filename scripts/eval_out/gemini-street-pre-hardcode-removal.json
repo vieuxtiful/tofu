@@ -1,0 +1,562 @@
+{
+  "image": "images\\gemini-street.png",
+  "tag": "pre-hardcode-removal",
+  "region_count": 27,
+  "scene_surfaces": 16,
+  "garbage_fraction": 0.185,
+  "lang_distribution": {
+    "ko": 15,
+    "?": 5,
+    "en": 7
+  },
+  "inferred_src_lang": "ko",
+  "timing_s": {
+    "scene": 0.8,
+    "detect": 121.1
+  },
+  "metrics": {
+    "ground_truth_path": "images\\gemini-street.gt.json",
+    "gt_regions": 18,
+    "partial": true,
+    "tp": 6,
+    "fp": null,
+    "fn": 12,
+    "precision": null,
+    "recall": 0.333,
+    "f1": null,
+    "mean_norm_ed": 0.267,
+    "matches": [
+      {
+        "pred_idx": 5,
+        "gt_idx": 6,
+        "iou": 0.734,
+        "pred_text": "대박식당",
+        "gt_text": "대박식당",
+        "norm_ed": 0.0
+      },
+      {
+        "pred_idx": 13,
+        "gt_idx": 1,
+        "iou": 0.686,
+        "pred_text": "감접포 차",
+        "gt_text": "포차",
+        "norm_ed": 0.6
+      },
+      {
+        "pred_idx": 16,
+        "gt_idx": 4,
+        "iou": 0.554,
+        "pred_text": "라면·국수",
+        "gt_text": "라면·국수",
+        "norm_ed": 0.0
+      },
+      {
+        "pred_idx": 18,
+        "gt_idx": 8,
+        "iou": 0.519,
+        "pred_text": "전주삼겹살",
+        "gt_text": "전주삼겹살",
+        "norm_ed": 0.0
+      },
+      {
+        "pred_idx": 23,
+        "gt_idx": 15,
+        "iou": 0.548,
+        "pred_text": "시게방",
+        "gt_text": "피시개방",
+        "norm_ed": 0.5
+      },
+      {
+        "pred_idx": 24,
+        "gt_idx": 16,
+        "iou": 0.581,
+        "pred_text": "주",
+        "gt_text": "맥주",
+        "norm_ed": 0.5
+      }
+    ],
+    "threshold_sweep": [
+      {
+        "threshold": 0.0,
+        "precision": 0.222,
+        "recall": 0.333,
+        "f1": 0.267
+      },
+      {
+        "threshold": 0.05,
+        "precision": 0.222,
+        "recall": 0.333,
+        "f1": 0.267
+      },
+      {
+        "threshold": 0.1,
+        "precision": 0.222,
+        "recall": 0.333,
+        "f1": 0.267
+      },
+      {
+        "threshold": 0.15,
+        "precision": 0.222,
+        "recall": 0.333,
+        "f1": 0.267
+      },
+      {
+        "threshold": 0.2,
+        "precision": 0.222,
+        "recall": 0.333,
+        "f1": 0.267
+      },
+      {
+        "threshold": 0.25,
+        "precision": 0.222,
+        "recall": 0.333,
+        "f1": 0.267
+      },
+      {
+        "threshold": 0.3,
+        "precision": 0.222,
+        "recall": 0.333,
+        "f1": 0.267
+      },
+      {
+        "threshold": 0.35,
+        "precision": 0.231,
+        "recall": 0.333,
+        "f1": 0.273
+      },
+      {
+        "threshold": 0.4,
+        "precision": 0.24,
+        "recall": 0.333,
+        "f1": 0.279
+      },
+      {
+        "threshold": 0.45,
+        "precision": 0.24,
+        "recall": 0.333,
+        "f1": 0.279
+      },
+      {
+        "threshold": 0.5,
+        "precision": 0.24,
+        "recall": 0.333,
+        "f1": 0.279
+      },
+      {
+        "threshold": 0.55,
+        "precision": 0.25,
+        "recall": 0.333,
+        "f1": 0.286
+      },
+      {
+        "threshold": 0.6,
+        "precision": 0.286,
+        "recall": 0.333,
+        "f1": 0.308
+      },
+      {
+        "threshold": 0.65,
+        "precision": 0.278,
+        "recall": 0.278,
+        "f1": 0.278
+      },
+      {
+        "threshold": 0.7,
+        "precision": 0.333,
+        "recall": 0.278,
+        "f1": 0.303
+      },
+      {
+        "threshold": 0.75,
+        "precision": 0.286,
+        "recall": 0.222,
+        "f1": 0.25
+      },
+      {
+        "threshold": 0.8,
+        "precision": 0.333,
+        "recall": 0.222,
+        "f1": 0.267
+      },
+      {
+        "threshold": 0.85,
+        "precision": 0.364,
+        "recall": 0.222,
+        "f1": 0.276
+      },
+      {
+        "threshold": 0.9,
+        "precision": 0.4,
+        "recall": 0.222,
+        "f1": 0.286
+      },
+      {
+        "threshold": 0.95,
+        "precision": 0.333,
+        "recall": 0.167,
+        "f1": 0.222
+      }
+    ],
+    "best_threshold": 0.6,
+    "best_threshold_f1": 0.308,
+    "surface_metrics": {
+      "surface_recall": 0.778,
+      "surface_false_positive_rate": 0.438,
+      "surfaces_with_gt": 9,
+      "surfaces_without_gt": 7
+    }
+  },
+  "regions": [
+    {
+      "id": "r1",
+      "text": "차",
+      "conf": 0.999,
+      "lang": "ko",
+      "script": "hangul",
+      "bbox": [
+        357,
+        0,
+        59,
+        69
+      ]
+    },
+    {
+      "id": "r2",
+      "text": "-",
+      "conf": 0.791,
+      "lang": null,
+      "script": null,
+      "bbox": [
+        543,
+        107,
+        39,
+        14
+      ]
+    },
+    {
+      "id": "r3",
+      "text": "비",
+      "conf": 0.37,
+      "lang": "ko",
+      "script": "hangul",
+      "bbox": [
+        1019,
+        253,
+        15,
+        15
+      ]
+    },
+    {
+      "id": "r4",
+      "text": "6",
+      "conf": 0.989,
+      "lang": null,
+      "script": null,
+      "bbox": [
+        1026,
+        332,
+        7,
+        9
+      ]
+    },
+    {
+      "id": "r5",
+      "text": "A22S",
+      "conf": 0.541,
+      "lang": "en",
+      "script": "latin",
+      "bbox": [
+        1075,
+        330,
+        48,
+        14
+      ]
+    },
+    {
+      "id": "r6",
+      "text": "대박식당",
+      "conf": 0.996,
+      "lang": "ko",
+      "script": "hangul",
+      "bbox": [
+        148,
+        336,
+        105,
+        86
+      ]
+    },
+    {
+      "id": "r7",
+      "text": "0",
+      "conf": 0.664,
+      "lang": null,
+      "script": null,
+      "bbox": [
+        1172,
+        374,
+        12,
+        16
+      ]
+    },
+    {
+      "id": "r8",
+      "text": "88688",
+      "conf": 0.873,
+      "lang": null,
+      "script": null,
+      "bbox": [
+        63,
+        395,
+        31,
+        22
+      ]
+    },
+    {
+      "id": "r9",
+      "text": "f204",
+      "conf": 0.754,
+      "lang": "en",
+      "script": "latin",
+      "bbox": [
+        0,
+        450,
+        29,
+        26
+      ]
+    },
+    {
+      "id": "r10",
+      "text": "ESAI",
+      "conf": 0.819,
+      "lang": "en",
+      "script": "latin",
+      "bbox": [
+        1258,
+        487,
+        24,
+        12
+      ]
+    },
+    {
+      "id": "r11",
+      "text": "(M-X0)",
+      "conf": 0.655,
+      "lang": "en",
+      "script": "latin",
+      "bbox": [
+        216,
+        492,
+        30,
+        53
+      ]
+    },
+    {
+      "id": "r12",
+      "text": "9113",
+      "conf": 0.591,
+      "lang": null,
+      "script": null,
+      "bbox": [
+        728,
+        547,
+        20,
+        8
+      ]
+    },
+    {
+      "id": "r13",
+      "text": "S0GS535",
+      "conf": 0.685,
+      "lang": "en",
+      "script": "latin",
+      "bbox": [
+        704,
+        670,
+        44,
+        10
+      ]
+    },
+    {
+      "id": "r14",
+      "text": "감접포 차",
+      "conf": 0.95,
+      "lang": "ko",
+      "script": "hangul",
+      "bbox": [
+        25,
+        3,
+        73,
+        303
+      ]
+    },
+    {
+      "id": "r15",
+      "text": "윗",
+      "conf": 0.626,
+      "lang": "ko",
+      "script": "hangul",
+      "bbox": [
+        133,
+        520,
+        36,
+        67
+      ]
+    },
+    {
+      "id": "r16",
+      "text": "고깃집",
+      "conf": 0.986,
+      "lang": "ko",
+      "script": "hangul",
+      "bbox": [
+        234,
+        81,
+        68,
+        221
+      ]
+    },
+    {
+      "id": "r17",
+      "text": "라면·국수",
+      "conf": 0.993,
+      "lang": "ko",
+      "script": "hangul",
+      "bbox": [
+        357,
+        91,
+        59,
+        241
+      ]
+    },
+    {
+      "id": "r18",
+      "text": "IN-A",
+      "conf": 0.634,
+      "lang": "en",
+      "script": "latin",
+      "bbox": [
+        379,
+        480,
+        12,
+        23
+      ]
+    },
+    {
+      "id": "r19",
+      "text": "전주삼겹살",
+      "conf": 0.998,
+      "lang": "ko",
+      "script": "hangul",
+      "bbox": [
+        441,
+        187,
+        35,
+        158
+      ]
+    },
+    {
+      "id": "r20",
+      "text": "줄",
+      "conf": 0.558,
+      "lang": "ko",
+      "script": "hangul",
+      "bbox": [
+        447,
+        440,
+        16,
+        55
+      ]
+    },
+    {
+      "id": "r21",
+      "text": "꿀식",
+      "conf": 0.301,
+      "lang": "ko",
+      "script": "hangul",
+      "bbox": [
+        532,
+        145,
+        38,
+        163
+      ]
+    },
+    {
+      "id": "r22",
+      "text": "대박식당",
+      "conf": 1.0,
+      "lang": "ko",
+      "script": "hangul",
+      "bbox": [
+        544,
+        0,
+        34,
+        106
+      ]
+    },
+    {
+      "id": "r23",
+      "text": "노래방",
+      "conf": 0.971,
+      "lang": "ko",
+      "script": "hangul",
+      "bbox": [
+        1013,
+        17,
+        31,
+        113
+      ]
+    },
+    {
+      "id": "r24",
+      "text": "시게방",
+      "conf": 0.748,
+      "lang": "ko",
+      "script": "hangul",
+      "bbox": [
+        1068,
+        10,
+        55,
+        204
+      ]
+    },
+    {
+      "id": "r25",
+      "text": "주",
+      "conf": 0.647,
+      "lang": "ko",
+      "script": "hangul",
+      "bbox": [
+        1175,
+        9,
+        48,
+        109
+      ]
+    },
+    {
+      "id": "r26",
+      "text": "편의맥주",
+      "conf": 0.997,
+      "lang": "ko",
+      "script": "hangul",
+      "bbox": [
+        1176,
+        167,
+        46,
+        180
+      ]
+    },
+    {
+      "id": "r27",
+      "text": "출03tR",
+      "conf": 0.554,
+      "lang": "en",
+      "script": "latin",
+      "bbox": [
+        1206,
+        458,
+        20,
+        64
+      ]
+    }
+  ]
+}

@@ -1,0 +1,361 @@
+{
+  "image": "images\\china-street.png",
+  "tag": "post-w1w2w3",
+  "region_count": 11,
+  "scene_surfaces": 16,
+  "garbage_fraction": 0.0,
+  "lang_distribution": {
+    "en": 4,
+    "zh-cn": 7
+  },
+  "inferred_src_lang": "zh-cn",
+  "timing_s": {
+    "scene": 0.3,
+    "detect": 85.7
+  },
+  "metrics": {
+    "ground_truth_path": "images\\china-street.gt.json",
+    "gt_regions": 8,
+    "partial": true,
+    "tp": 7,
+    "fp": null,
+    "fn": 1,
+    "precision": null,
+    "recall": 0.875,
+    "f1": null,
+    "mean_norm_ed": 0.067,
+    "matches": [
+      {
+        "pred_idx": 2,
+        "gt_idx": 1,
+        "iou": 0.507,
+        "pred_text": "华联店",
+        "gt_text": "华联店3F",
+        "norm_ed": 0.4
+      },
+      {
+        "pred_idx": 5,
+        "gt_idx": 3,
+        "iou": 0.877,
+        "pred_text": "OPTICAL",
+        "gt_text": "OPTICAL",
+        "norm_ed": 0.0
+      },
+      {
+        "pred_idx": 6,
+        "gt_idx": 7,
+        "iou": 0.651,
+        "pred_text": "王開照相",
+        "gt_text": null,
+        "norm_ed": null
+      },
+      {
+        "pred_idx": 7,
+        "gt_idx": 5,
+        "iou": 0.511,
+        "pred_text": "上海明牌",
+        "gt_text": "上海明牌",
+        "norm_ed": 0.0
+      },
+      {
+        "pred_idx": 8,
+        "gt_idx": 0,
+        "iou": 0.841,
+        "pred_text": "美珠宝",
+        "gt_text": "美珠宝",
+        "norm_ed": 0.0
+      },
+      {
+        "pred_idx": 9,
+        "gt_idx": 6,
+        "iou": 0.554,
+        "pred_text": "大娘水饺",
+        "gt_text": "大娘水饺",
+        "norm_ed": 0.0
+      },
+      {
+        "pred_idx": 10,
+        "gt_idx": 2,
+        "iou": 0.805,
+        "pred_text": "茂昌眼镜公司",
+        "gt_text": "茂昌眼镜公司",
+        "norm_ed": 0.0
+      }
+    ],
+    "threshold_sweep": [
+      {
+        "threshold": 0.0,
+        "precision": 0.636,
+        "recall": 0.875,
+        "f1": 0.737
+      },
+      {
+        "threshold": 0.05,
+        "precision": 0.636,
+        "recall": 0.875,
+        "f1": 0.737
+      },
+      {
+        "threshold": 0.1,
+        "precision": 0.636,
+        "recall": 0.875,
+        "f1": 0.737
+      },
+      {
+        "threshold": 0.15,
+        "precision": 0.636,
+        "recall": 0.875,
+        "f1": 0.737
+      },
+      {
+        "threshold": 0.2,
+        "precision": 0.636,
+        "recall": 0.875,
+        "f1": 0.737
+      },
+      {
+        "threshold": 0.25,
+        "precision": 0.636,
+        "recall": 0.875,
+        "f1": 0.737
+      },
+      {
+        "threshold": 0.3,
+        "precision": 0.636,
+        "recall": 0.875,
+        "f1": 0.737
+      },
+      {
+        "threshold": 0.35,
+        "precision": 0.636,
+        "recall": 0.875,
+        "f1": 0.737
+      },
+      {
+        "threshold": 0.4,
+        "precision": 0.636,
+        "recall": 0.875,
+        "f1": 0.737
+      },
+      {
+        "threshold": 0.45,
+        "precision": 0.636,
+        "recall": 0.875,
+        "f1": 0.737
+      },
+      {
+        "threshold": 0.5,
+        "precision": 0.636,
+        "recall": 0.875,
+        "f1": 0.737
+      },
+      {
+        "threshold": 0.55,
+        "precision": 0.636,
+        "recall": 0.875,
+        "f1": 0.737
+      },
+      {
+        "threshold": 0.6,
+        "precision": 0.636,
+        "recall": 0.875,
+        "f1": 0.737
+      },
+      {
+        "threshold": 0.65,
+        "precision": 0.636,
+        "recall": 0.875,
+        "f1": 0.737
+      },
+      {
+        "threshold": 0.7,
+        "precision": 0.636,
+        "recall": 0.875,
+        "f1": 0.737
+      },
+      {
+        "threshold": 0.75,
+        "precision": 0.636,
+        "recall": 0.875,
+        "f1": 0.737
+      },
+      {
+        "threshold": 0.8,
+        "precision": 0.636,
+        "recall": 0.875,
+        "f1": 0.737
+      },
+      {
+        "threshold": 0.85,
+        "precision": 0.636,
+        "recall": 0.875,
+        "f1": 0.737
+      },
+      {
+        "threshold": 0.9,
+        "precision": 0.778,
+        "recall": 0.875,
+        "f1": 0.824
+      },
+      {
+        "threshold": 0.95,
+        "precision": 0.778,
+        "recall": 0.875,
+        "f1": 0.824
+      }
+    ],
+    "best_threshold": 0.9,
+    "best_threshold_f1": 0.824,
+    "surface_metrics": {
+      "surface_recall": 0.75,
+      "surface_false_positive_rate": 0.625,
+      "surfaces_with_gt": 6,
+      "surfaces_without_gt": 10
+    }
+  },
+  "regions": [
+    {
+      "id": "r1",
+      "text": "SHIMA",
+      "conf": 0.893,
+      "lang": "en",
+      "script": "latin",
+      "bbox": [
+        96,
+        238,
+        45,
+        18
+      ]
+    },
+    {
+      "id": "r2",
+      "text": "世产",
+      "conf": 0.953,
+      "lang": "zh-cn",
+      "script": "han",
+      "bbox": [
+        141,
+        228,
+        73,
+        33
+      ]
+    },
+    {
+      "id": "r3",
+      "text": "华联店",
+      "conf": 1.0,
+      "lang": "zh-cn",
+      "script": "han",
+      "bbox": [
+        356,
+        244,
+        122,
+        37
+      ]
+    },
+    {
+      "id": "r4",
+      "text": "3F",
+      "conf": 0.999,
+      "lang": "en",
+      "script": "latin",
+      "bbox": [
+        393,
+        280,
+        45,
+        27
+      ]
+    },
+    {
+      "id": "r5",
+      "text": "W",
+      "conf": 0.881,
+      "lang": "en",
+      "script": "latin",
+      "bbox": [
+        166,
+        389,
+        92,
+        71
+      ]
+    },
+    {
+      "id": "r6",
+      "text": "OPTICAL",
+      "conf": 1.0,
+      "lang": "en",
+      "script": "latin",
+      "bbox": [
+        562,
+        644,
+        101,
+        25
+      ]
+    },
+    {
+      "id": "r7",
+      "text": "王開照相",
+      "conf": 0.999,
+      "lang": "zh-cn",
+      "script": "han",
+      "bbox": [
+        32,
+        697,
+        302,
+        76
+      ]
+    },
+    {
+      "id": "r8",
+      "text": "上海明牌",
+      "conf": 1.0,
+      "lang": "zh-cn",
+      "script": "han",
+      "bbox": [
+        198,
+        482,
+        72,
+        174
+      ]
+    },
+    {
+      "id": "r9",
+      "text": "美珠宝",
+      "conf": 1.0,
+      "lang": "zh-cn",
+      "script": "han",
+      "bbox": [
+        349,
+        1,
+        133,
+        243
+      ]
+    },
+    {
+      "id": "r10",
+      "text": "大娘水饺",
+      "conf": 1.0,
+      "lang": "zh-cn",
+      "script": "han",
+      "bbox": [
+        405,
+        499,
+        68,
+        239
+      ]
+    },
+    {
+      "id": "r11",
+      "text": "茂昌眼镜公司",
+      "conf": 1.0,
+      "lang": "zh-cn",
+      "script": "han",
+      "bbox": [
+        554,
+        68,
+        114,
+        557
+      ]
+    }
+  ]
+}

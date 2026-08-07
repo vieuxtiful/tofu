@@ -1,0 +1,416 @@
+{
+  "image": "images\\japan-street.jpeg",
+  "tag": "post-w1w2w3",
+  "region_count": 17,
+  "scene_surfaces": 12,
+  "garbage_fraction": 0.118,
+  "lang_distribution": {
+    "en": 7,
+    "ja": 8,
+    "?": 2
+  },
+  "inferred_src_lang": "ja",
+  "timing_s": {
+    "scene": 0.2,
+    "detect": 69.9
+  },
+  "metrics": {
+    "ground_truth_path": "images\\japan-street.gt.json",
+    "gt_regions": 7,
+    "partial": true,
+    "tp": 4,
+    "fp": null,
+    "fn": 3,
+    "precision": null,
+    "recall": 0.571,
+    "f1": null,
+    "mean_norm_ed": 0.396,
+    "matches": [
+      {
+        "pred_idx": 4,
+        "gt_idx": 0,
+        "iou": 0.865,
+        "pred_text": "歌舞伎町一番街",
+        "gt_text": "歌舞伎町一番街",
+        "norm_ed": 0.0
+      },
+      {
+        "pred_idx": 10,
+        "gt_idx": 6,
+        "iou": 1.0,
+        "pred_text": "T",
+        "gt_text": "2F",
+        "norm_ed": 1.0
+      },
+      {
+        "pred_idx": 12,
+        "gt_idx": 1,
+        "iou": 0.774,
+        "pred_text": "劇場通",
+        "gt_text": "劇場通り",
+        "norm_ed": 0.25
+      },
+      {
+        "pred_idx": 16,
+        "gt_idx": 5,
+        "iou": 0.661,
+        "pred_text": "東南",
+        "gt_text": "東南荘",
+        "norm_ed": 0.333
+      }
+    ],
+    "threshold_sweep": [
+      {
+        "threshold": 0.0,
+        "precision": 0.235,
+        "recall": 0.571,
+        "f1": 0.333
+      },
+      {
+        "threshold": 0.05,
+        "precision": 0.235,
+        "recall": 0.571,
+        "f1": 0.333
+      },
+      {
+        "threshold": 0.1,
+        "precision": 0.235,
+        "recall": 0.571,
+        "f1": 0.333
+      },
+      {
+        "threshold": 0.15,
+        "precision": 0.235,
+        "recall": 0.571,
+        "f1": 0.333
+      },
+      {
+        "threshold": 0.2,
+        "precision": 0.235,
+        "recall": 0.571,
+        "f1": 0.333
+      },
+      {
+        "threshold": 0.25,
+        "precision": 0.235,
+        "recall": 0.571,
+        "f1": 0.333
+      },
+      {
+        "threshold": 0.3,
+        "precision": 0.235,
+        "recall": 0.571,
+        "f1": 0.333
+      },
+      {
+        "threshold": 0.35,
+        "precision": 0.188,
+        "recall": 0.429,
+        "f1": 0.261
+      },
+      {
+        "threshold": 0.4,
+        "precision": 0.188,
+        "recall": 0.429,
+        "f1": 0.261
+      },
+      {
+        "threshold": 0.45,
+        "precision": 0.188,
+        "recall": 0.429,
+        "f1": 0.261
+      },
+      {
+        "threshold": 0.5,
+        "precision": 0.188,
+        "recall": 0.429,
+        "f1": 0.261
+      },
+      {
+        "threshold": 0.55,
+        "precision": 0.188,
+        "recall": 0.429,
+        "f1": 0.261
+      },
+      {
+        "threshold": 0.6,
+        "precision": 0.188,
+        "recall": 0.429,
+        "f1": 0.261
+      },
+      {
+        "threshold": 0.65,
+        "precision": 0.2,
+        "recall": 0.429,
+        "f1": 0.273
+      },
+      {
+        "threshold": 0.7,
+        "precision": 0.154,
+        "recall": 0.286,
+        "f1": 0.2
+      },
+      {
+        "threshold": 0.75,
+        "precision": 0.154,
+        "recall": 0.286,
+        "f1": 0.2
+      },
+      {
+        "threshold": 0.8,
+        "precision": 0.154,
+        "recall": 0.286,
+        "f1": 0.2
+      },
+      {
+        "threshold": 0.85,
+        "precision": 0.167,
+        "recall": 0.286,
+        "f1": 0.211
+      },
+      {
+        "threshold": 0.9,
+        "precision": 0.2,
+        "recall": 0.286,
+        "f1": 0.235
+      },
+      {
+        "threshold": 0.95,
+        "precision": 0.222,
+        "recall": 0.286,
+        "f1": 0.25
+      }
+    ],
+    "best_threshold": 0.0,
+    "best_threshold_f1": 0.333,
+    "surface_metrics": {
+      "surface_recall": 0.714,
+      "surface_false_positive_rate": 0.667,
+      "surfaces_with_gt": 4,
+      "surfaces_without_gt": 8
+    }
+  },
+  "regions": [
+    {
+      "id": "r1",
+      "text": "PART2",
+      "conf": 0.996,
+      "lang": "en",
+      "script": "latin",
+      "bbox": [
+        538,
+        20,
+        23,
+        9
+      ]
+    },
+    {
+      "id": "r2",
+      "text": "7F",
+      "conf": 0.988,
+      "lang": "en",
+      "script": "latin",
+      "bbox": [
+        560,
+        11,
+        22,
+        18
+      ]
+    },
+    {
+      "id": "r3",
+      "text": "小松ビル",
+      "conf": 0.975,
+      "lang": "ja",
+      "script": "japanese",
+      "bbox": [
+        540,
+        33,
+        40,
+        14
+      ]
+    },
+    {
+      "id": "r4",
+      "text": "000",
+      "conf": 0.865,
+      "lang": null,
+      "script": null,
+      "bbox": [
+        144,
+        124,
+        28,
+        42
+      ]
+    },
+    {
+      "id": "r5",
+      "text": "歌舞伎町一番街",
+      "conf": 1.0,
+      "lang": "ja",
+      "script": "han",
+      "bbox": [
+        191,
+        123,
+        241,
+        41
+      ]
+    },
+    {
+      "id": "r6",
+      "text": "B1F",
+      "conf": 0.952,
+      "lang": "en",
+      "script": "latin",
+      "bbox": [
+        222,
+        248,
+        18,
+        11
+      ]
+    },
+    {
+      "id": "r7",
+      "text": "3F",
+      "conf": 0.933,
+      "lang": "en",
+      "script": "latin",
+      "bbox": [
+        186,
+        277,
+        13,
+        8
+      ]
+    },
+    {
+      "id": "r8",
+      "text": "焼皮",
+      "conf": 0.951,
+      "lang": "ja",
+      "script": "han",
+      "bbox": [
+        408,
+        268,
+        29,
+        19
+      ]
+    },
+    {
+      "id": "r9",
+      "text": "焼肉",
+      "conf": 0.986,
+      "lang": "ja",
+      "script": "han",
+      "bbox": [
+        180,
+        286,
+        25,
+        16
+      ]
+    },
+    {
+      "id": "r10",
+      "text": "制",
+      "conf": 0.871,
+      "lang": "ja",
+      "script": "han",
+      "bbox": [
+        550,
+        337,
+        14,
+        13
+      ]
+    },
+    {
+      "id": "r11",
+      "text": "T",
+      "conf": 0.305,
+      "lang": "en",
+      "script": "latin",
+      "bbox": [
+        463,
+        371,
+        19,
+        11
+      ]
+    },
+    {
+      "id": "r12",
+      "text": "DESIR",
+      "conf": 0.639,
+      "lang": "en",
+      "script": "latin",
+      "bbox": [
+        531,
+        378,
+        25,
+        11
+      ]
+    },
+    {
+      "id": "r13",
+      "text": "劇場通",
+      "conf": 0.653,
+      "lang": "ja",
+      "script": "han",
+      "bbox": [
+        53,
+        334,
+        20,
+        49
+      ]
+    },
+    {
+      "id": "r14",
+      "text": "ハンタイ",
+      "conf": 0.846,
+      "lang": "ja",
+      "script": "japanese",
+      "bbox": [
+        180,
+        212,
+        18,
+        58
+      ]
+    },
+    {
+      "id": "r15",
+      "text": "XV",
+      "conf": 0.986,
+      "lang": "en",
+      "script": "latin",
+      "bbox": [
+        292,
+        218,
+        22,
+        41
+      ]
+    },
+    {
+      "id": "r16",
+      "text": "2932",
+      "conf": 0.656,
+      "lang": null,
+      "script": null,
+      "bbox": [
+        425,
+        398,
+        11,
+        21
+      ]
+    },
+    {
+      "id": "r17",
+      "text": "東南",
+      "conf": 0.98,
+      "lang": "ja",
+      "script": "han",
+      "bbox": [
+        439,
+        221,
+        17,
+        34
+      ]
+    }
+  ]
+}

@@ -1,0 +1,3281 @@
+{
+  "tag": "calibration-applied",
+  "font_dir": "C:/Windows/Fonts",
+  "fonts_loaded": 409,
+  "langs": [
+    "en",
+    "de",
+    "fr",
+    "ru",
+    "el",
+    "ja",
+    "zh-cn",
+    "ko",
+    "ar",
+    "he",
+    "hi",
+    "th"
+  ],
+  "distribution": [
+    {
+      "label": "glyph_segmentation_score",
+      "n": 108,
+      "min": 0.4437,
+      "p10": 0.4437,
+      "median": 1.0,
+      "p90": 1.0,
+      "max": 1.0,
+      "distinct": [
+        0.4437,
+        0.8852,
+        0.95,
+        1.0
+      ]
+    },
+    {
+      "label": "render_quality_score (asset-level context)",
+      "n": 108,
+      "min": 0.7583,
+      "p10": 0.94,
+      "median": 0.94,
+      "p90": 0.94,
+      "max": 0.94,
+      "distinct": [
+        0.7583,
+        0.94
+      ]
+    },
+    {
+      "label": "render_quality_score (per-region context)",
+      "n": 888,
+      "min": 0.5183,
+      "p10": 0.79,
+      "median": 1.0,
+      "p90": 1.0,
+      "max": 1.0,
+      "distinct": [
+        0.5183,
+        0.5483,
+        0.6083,
+        0.6383,
+        0.6683,
+        0.7,
+        0.7283,
+        0.73,
+        0.7583,
+        0.7883,
+        0.79,
+        0.8183
+      ]
+    }
+  ],
+  "assets": [
+    {
+      "asset": ".\\images\\japan-street.jpeg",
+      "evidence": {
+        "regions": 17,
+        "src_lang": "ja",
+        "median_region_height_px": 18,
+        "min_region_height_px": 8,
+        "median_font_px": 13,
+        "median_stroke_ratio": 0.1032,
+        "enriched_regions": 15
+      },
+      "per_lang": [
+        {
+          "lang": "en",
+          "passed": false,
+          "codes": [
+            "ToFU_003",
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.4437,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Latn": "full"
+          },
+          "expansion": {
+            "n": 17,
+            "min": 0.536,
+            "median": 1.667,
+            "max": 7.078
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            0.7,
+            0.91,
+            0.79,
+            1.0,
+            1.0,
+            0.7,
+            0.94,
+            0.85,
+            0.79,
+            0.94,
+            0.82,
+            0.85,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "de",
+          "passed": false,
+          "codes": [
+            "ToFU_003",
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.4437,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Latn": "full"
+          },
+          "expansion": {
+            "n": 17,
+            "min": 0.723,
+            "median": 2.25,
+            "max": 9.556
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            0.7,
+            0.91,
+            0.79,
+            1.0,
+            1.0,
+            0.7,
+            0.94,
+            0.85,
+            0.79,
+            0.94,
+            0.82,
+            0.85,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "fr",
+          "passed": false,
+          "codes": [
+            "ToFU_003",
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.4437,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Latn": "full"
+          },
+          "expansion": {
+            "n": 17,
+            "min": 0.643,
+            "median": 2.0,
+            "max": 8.494
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            0.7,
+            0.91,
+            0.79,
+            1.0,
+            1.0,
+            0.7,
+            0.94,
+            0.85,
+            0.79,
+            0.94,
+            0.82,
+            0.85,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "ru",
+          "passed": false,
+          "codes": [
+            "ToFU_003",
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.4437,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Cyrl": "full"
+          },
+          "expansion": {
+            "n": 17,
+            "min": 0.616,
+            "median": 1.917,
+            "max": 8.14
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            0.7,
+            0.91,
+            0.79,
+            1.0,
+            1.0,
+            0.7,
+            0.94,
+            0.85,
+            0.79,
+            0.94,
+            0.82,
+            0.85,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "el",
+          "passed": false,
+          "codes": [
+            "ToFU_003",
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.4437,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Grek": "full"
+          },
+          "expansion": {
+            "n": 17,
+            "min": 0.616,
+            "median": 1.917,
+            "max": 8.14
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            0.7,
+            0.91,
+            0.79,
+            1.0,
+            1.0,
+            0.7,
+            0.94,
+            0.85,
+            0.79,
+            0.94,
+            0.82,
+            0.85,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "ja",
+          "passed": false,
+          "codes": [
+            "ToFU_003",
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.4437,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Jpan": "full"
+          },
+          "expansion": {
+            "n": 17,
+            "min": 0.263,
+            "median": 0.9,
+            "max": 11.111
+          },
+          "font": "BIZ-UDGothicB.ttc#0",
+          "region_render_scores": [
+            0.7,
+            0.91,
+            0.79,
+            1.0,
+            1.0,
+            0.7,
+            0.94,
+            0.85,
+            0.79,
+            0.94,
+            0.82,
+            0.85,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "zh-cn",
+          "passed": false,
+          "codes": [
+            "ToFU_003",
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.4437,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Hans": "full"
+          },
+          "expansion": {
+            "n": 17,
+            "min": 0.263,
+            "median": 0.9,
+            "max": 11.111
+          },
+          "font": "kaiu.ttf",
+          "region_render_scores": [
+            0.7,
+            0.91,
+            0.79,
+            1.0,
+            1.0,
+            0.7,
+            0.94,
+            0.85,
+            0.79,
+            0.94,
+            0.82,
+            0.85,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "ko",
+          "passed": false,
+          "codes": [
+            "ToFU_003",
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.4437,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Kore": "full"
+          },
+          "expansion": {
+            "n": 17,
+            "min": 0.526,
+            "median": 1.383,
+            "max": 14.815
+          },
+          "font": "batang.ttc#0",
+          "region_render_scores": [
+            0.7,
+            0.91,
+            0.79,
+            1.0,
+            1.0,
+            0.7,
+            0.94,
+            0.85,
+            0.79,
+            0.94,
+            0.82,
+            0.85,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "ar",
+          "passed": false,
+          "codes": [
+            "ToFU_001",
+            "ToFU_003",
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.4437,
+          "render_quality_score": 0.7583,
+          "script_support": {
+            "Arab": "unsupported"
+          },
+          "expansion": {
+            "n": 17,
+            "min": 0.553,
+            "median": 1.75,
+            "max": 8.019
+          },
+          "font": "cour.ttf",
+          "region_render_scores": [
+            0.5183,
+            0.7283,
+            0.6083,
+            0.8183,
+            0.8183,
+            0.5183,
+            0.7583,
+            0.6683,
+            0.6083,
+            0.7583,
+            0.6383,
+            0.6683,
+            0.8183,
+            0.8183,
+            0.8183,
+            0.8183,
+            0.8183
+          ]
+        },
+        {
+          "lang": "he",
+          "passed": false,
+          "codes": [
+            "ToFU_003",
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.4437,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Hebr": "full"
+          },
+          "expansion": {
+            "n": 17,
+            "min": 0.509,
+            "median": 1.583,
+            "max": 6.724
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            0.7,
+            0.91,
+            0.79,
+            1.0,
+            1.0,
+            0.7,
+            0.94,
+            0.85,
+            0.79,
+            0.94,
+            0.82,
+            0.85,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "hi",
+          "passed": false,
+          "codes": [
+            "ToFU_003",
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.4437,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Deva": "full"
+          },
+          "expansion": {
+            "n": 17,
+            "min": 0.483,
+            "median": 1.75,
+            "max": 7.204
+          },
+          "font": "Nirmala.ttc#0",
+          "region_render_scores": [
+            0.7,
+            0.91,
+            0.79,
+            1.0,
+            1.0,
+            0.7,
+            0.94,
+            0.85,
+            0.79,
+            0.94,
+            0.82,
+            0.85,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "th",
+          "passed": false,
+          "codes": [
+            "ToFU_003",
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.4437,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Thai": "full"
+          },
+          "expansion": {
+            "n": 17,
+            "min": 0.591,
+            "median": 1.917,
+            "max": 8.419
+          },
+          "font": "LeelaUIb.ttf",
+          "region_render_scores": [
+            0.7,
+            0.91,
+            0.79,
+            1.0,
+            1.0,
+            0.7,
+            0.94,
+            0.85,
+            0.79,
+            0.94,
+            0.82,
+            0.85,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      ]
+    },
+    {
+      "asset": ".\\images\\china-street.png",
+      "evidence": {
+        "regions": 11,
+        "src_lang": "zh-cn",
+        "median_region_height_px": 71,
+        "min_region_height_px": 18,
+        "median_font_px": 71,
+        "median_stroke_ratio": 0.0704,
+        "enriched_regions": 11
+      },
+      "per_lang": [
+        {
+          "lang": "en",
+          "passed": false,
+          "codes": [
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.95,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Latn": "full"
+          },
+          "expansion": {
+            "n": 11,
+            "min": 0.908,
+            "median": 1.667,
+            "max": 1.877
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            1.0,
+            0.97,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "de",
+          "passed": false,
+          "codes": [
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.95,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Latn": "full"
+          },
+          "expansion": {
+            "n": 11,
+            "min": 1.225,
+            "median": 2.25,
+            "max": 2.534
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            1.0,
+            0.97,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "fr",
+          "passed": false,
+          "codes": [
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.95,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Latn": "full"
+          },
+          "expansion": {
+            "n": 11,
+            "min": 1.089,
+            "median": 2.0,
+            "max": 2.252
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            1.0,
+            0.97,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "ru",
+          "passed": false,
+          "codes": [
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.95,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Cyrl": "full"
+          },
+          "expansion": {
+            "n": 11,
+            "min": 1.044,
+            "median": 1.917,
+            "max": 2.158
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            1.0,
+            0.97,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "el",
+          "passed": false,
+          "codes": [
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.95,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Grek": "full"
+          },
+          "expansion": {
+            "n": 11,
+            "min": 1.044,
+            "median": 1.917,
+            "max": 2.158
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            1.0,
+            0.97,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "ja",
+          "passed": false,
+          "codes": [
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.95,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Jpan": "full"
+          },
+          "expansion": {
+            "n": 11,
+            "min": 0.386,
+            "median": 0.889,
+            "max": 29.053
+          },
+          "font": "BIZ-UDGothicB.ttc#0",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            1.0,
+            0.97,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "zh-cn",
+          "passed": false,
+          "codes": [
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.95,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Hans": "full"
+          },
+          "expansion": {
+            "n": 11,
+            "min": 0.386,
+            "median": 0.889,
+            "max": 29.053
+          },
+          "font": "kaiu.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            1.0,
+            0.97,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "ko",
+          "passed": false,
+          "codes": [
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.95,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Kore": "full"
+          },
+          "expansion": {
+            "n": 11,
+            "min": 0.772,
+            "median": 1.342,
+            "max": 38.737
+          },
+          "font": "batang.ttc#0",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            1.0,
+            0.97,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "ar",
+          "passed": false,
+          "codes": [
+            "ToFU_001",
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.95,
+          "render_quality_score": 0.7583,
+          "script_support": {
+            "Arab": "unsupported"
+          },
+          "expansion": {
+            "n": 11,
+            "min": 0.81,
+            "median": 1.75,
+            "max": 1.867
+          },
+          "font": "cour.ttf",
+          "region_render_scores": [
+            0.8183,
+            0.8183,
+            0.8183,
+            0.7883,
+            0.8183,
+            0.8183,
+            0.8183,
+            0.8183,
+            0.8183,
+            0.8183,
+            0.8183
+          ]
+        },
+        {
+          "lang": "he",
+          "passed": false,
+          "codes": [
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.95,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Hebr": "full"
+          },
+          "expansion": {
+            "n": 11,
+            "min": 0.862,
+            "median": 1.583,
+            "max": 1.783
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            1.0,
+            0.97,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "hi",
+          "passed": false,
+          "codes": [
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.95,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Deva": "full"
+          },
+          "expansion": {
+            "n": 11,
+            "min": 0.839,
+            "median": 1.75,
+            "max": 1.898
+          },
+          "font": "Nirmala.ttc#0",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            1.0,
+            0.97,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "th",
+          "passed": false,
+          "codes": [
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.95,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Thai": "full"
+          },
+          "expansion": {
+            "n": 11,
+            "min": 0.98,
+            "median": 1.917,
+            "max": 2.251
+          },
+          "font": "LeelaUIb.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            1.0,
+            0.97,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      ]
+    },
+    {
+      "asset": ".\\images\\gemini-street.png",
+      "evidence": {
+        "regions": 27,
+        "src_lang": "ko",
+        "median_region_height_px": 64,
+        "min_region_height_px": 8,
+        "median_font_px": 62,
+        "median_stroke_ratio": 0.0501,
+        "enriched_regions": 25
+      },
+      "per_lang": [
+        {
+          "lang": "en",
+          "passed": false,
+          "codes": [
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.8852,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Latn": "full"
+          },
+          "expansion": {
+            "n": 27,
+            "min": 0.085,
+            "median": 1.25,
+            "max": 10.231
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0,
+            0.73,
+            0.82,
+            0.94,
+            0.85,
+            0.97,
+            0.94,
+            0.91,
+            0.94,
+            0.79,
+            1.0,
+            0.73,
+            0.82,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            0.97,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            0.97
+          ]
+        },
+        {
+          "lang": "de",
+          "passed": false,
+          "codes": [
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.8852,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Latn": "full"
+          },
+          "expansion": {
+            "n": 27,
+            "min": 0.115,
+            "median": 1.688,
+            "max": 13.812
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0,
+            0.73,
+            0.82,
+            0.94,
+            0.85,
+            0.97,
+            0.94,
+            0.91,
+            0.94,
+            0.79,
+            1.0,
+            0.73,
+            0.82,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            0.97,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            0.97
+          ]
+        },
+        {
+          "lang": "fr",
+          "passed": false,
+          "codes": [
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.8852,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Latn": "full"
+          },
+          "expansion": {
+            "n": 27,
+            "min": 0.102,
+            "median": 1.5,
+            "max": 12.278
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0,
+            0.73,
+            0.82,
+            0.94,
+            0.85,
+            0.97,
+            0.94,
+            0.91,
+            0.94,
+            0.79,
+            1.0,
+            0.73,
+            0.82,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            0.97,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            0.97
+          ]
+        },
+        {
+          "lang": "ru",
+          "passed": false,
+          "codes": [
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.8852,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Cyrl": "full"
+          },
+          "expansion": {
+            "n": 27,
+            "min": 0.098,
+            "median": 1.437,
+            "max": 11.766
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0,
+            0.73,
+            0.82,
+            0.94,
+            0.85,
+            0.97,
+            0.94,
+            0.91,
+            0.94,
+            0.79,
+            1.0,
+            0.73,
+            0.82,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            0.97,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            0.97
+          ]
+        },
+        {
+          "lang": "el",
+          "passed": false,
+          "codes": [
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.8852,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Grek": "full"
+          },
+          "expansion": {
+            "n": 27,
+            "min": 0.098,
+            "median": 1.437,
+            "max": 11.766
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0,
+            0.73,
+            0.82,
+            0.94,
+            0.85,
+            0.97,
+            0.94,
+            0.91,
+            0.94,
+            0.79,
+            1.0,
+            0.73,
+            0.82,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            0.97,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            0.97
+          ]
+        },
+        {
+          "lang": "ja",
+          "passed": false,
+          "codes": [
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.8852,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Jpan": "full"
+          },
+          "expansion": {
+            "n": 27,
+            "min": 0.077,
+            "median": 0.75,
+            "max": 7.783
+          },
+          "font": "BIZ-UDGothicB.ttc#0",
+          "region_render_scores": [
+            1.0,
+            0.73,
+            0.82,
+            0.94,
+            0.85,
+            0.97,
+            0.94,
+            0.91,
+            0.94,
+            0.79,
+            1.0,
+            0.73,
+            0.82,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            0.97,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            0.97
+          ]
+        },
+        {
+          "lang": "zh-cn",
+          "passed": false,
+          "codes": [
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.8852,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Hans": "full"
+          },
+          "expansion": {
+            "n": 27,
+            "min": 0.077,
+            "median": 0.75,
+            "max": 7.783
+          },
+          "font": "kaiu.ttf",
+          "region_render_scores": [
+            1.0,
+            0.73,
+            0.82,
+            0.94,
+            0.85,
+            0.97,
+            0.94,
+            0.91,
+            0.94,
+            0.79,
+            1.0,
+            0.73,
+            0.82,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            0.97,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            0.97
+          ]
+        },
+        {
+          "lang": "ko",
+          "passed": false,
+          "codes": [
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.8852,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Kore": "full"
+          },
+          "expansion": {
+            "n": 27,
+            "min": 0.128,
+            "median": 3.062,
+            "max": 21.429
+          },
+          "font": "batang.ttc#0",
+          "region_render_scores": [
+            1.0,
+            0.73,
+            0.82,
+            0.94,
+            0.85,
+            0.97,
+            0.94,
+            0.91,
+            0.94,
+            0.79,
+            1.0,
+            0.73,
+            0.82,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            0.97,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            0.97
+          ]
+        },
+        {
+          "lang": "ar",
+          "passed": false,
+          "codes": [
+            "ToFU_001",
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.8852,
+          "render_quality_score": 0.7583,
+          "script_support": {
+            "Arab": "unsupported"
+          },
+          "expansion": {
+            "n": 27,
+            "min": 0.162,
+            "median": 1.312,
+            "max": 16.346
+          },
+          "font": "cour.ttf",
+          "region_render_scores": [
+            0.8183,
+            0.5483,
+            0.6383,
+            0.7583,
+            0.6683,
+            0.7883,
+            0.7583,
+            0.7283,
+            0.7583,
+            0.6083,
+            0.8183,
+            0.5483,
+            0.6383,
+            0.8183,
+            0.8183,
+            0.8183,
+            0.8183,
+            0.7883,
+            0.8183,
+            0.8183,
+            0.8183,
+            0.8183,
+            0.8183,
+            0.8183,
+            0.8183,
+            0.8183,
+            0.7883
+          ]
+        },
+        {
+          "lang": "he",
+          "passed": false,
+          "codes": [
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.8852,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Hebr": "full"
+          },
+          "expansion": {
+            "n": 27,
+            "min": 0.081,
+            "median": 1.187,
+            "max": 9.72
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0,
+            0.73,
+            0.82,
+            0.94,
+            0.85,
+            0.97,
+            0.94,
+            0.91,
+            0.94,
+            0.79,
+            1.0,
+            0.73,
+            0.82,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            0.97,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            0.97
+          ]
+        },
+        {
+          "lang": "hi",
+          "passed": false,
+          "codes": [
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.8852,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Deva": "full"
+          },
+          "expansion": {
+            "n": 27,
+            "min": 0.108,
+            "median": 1.312,
+            "max": 10.249
+          },
+          "font": "Nirmala.ttc#0",
+          "region_render_scores": [
+            1.0,
+            0.73,
+            0.82,
+            0.94,
+            0.85,
+            0.97,
+            0.94,
+            0.91,
+            0.94,
+            0.79,
+            1.0,
+            0.73,
+            0.82,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            0.97,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            0.97
+          ]
+        },
+        {
+          "lang": "th",
+          "passed": false,
+          "codes": [
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.8852,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Thai": "full"
+          },
+          "expansion": {
+            "n": 27,
+            "min": 0.119,
+            "median": 1.437,
+            "max": 12.212
+          },
+          "font": "LeelaUIb.ttf",
+          "region_render_scores": [
+            1.0,
+            0.73,
+            0.82,
+            0.94,
+            0.85,
+            0.97,
+            0.94,
+            0.91,
+            0.94,
+            0.79,
+            1.0,
+            0.73,
+            0.82,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            0.97,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            0.97
+          ]
+        }
+      ]
+    },
+    {
+      "asset": ".\\tests\\fixtures\\cjk-vertical.png",
+      "evidence": {
+        "regions": 2,
+        "src_lang": "ja",
+        "median_region_height_px": 165.5,
+        "min_region_height_px": 60,
+        "median_font_px": 156.5,
+        "median_stroke_ratio": 0.0559,
+        "enriched_regions": 2
+      },
+      "per_lang": [
+        {
+          "lang": "en",
+          "passed": false,
+          "codes": [
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.95,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Latn": "full"
+          },
+          "expansion": {
+            "n": 2,
+            "min": 1.667,
+            "median": 1.667,
+            "max": 1.667
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "de",
+          "passed": false,
+          "codes": [
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.95,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Latn": "full"
+          },
+          "expansion": {
+            "n": 2,
+            "min": 2.25,
+            "median": 2.25,
+            "max": 2.25
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "fr",
+          "passed": false,
+          "codes": [
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.95,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Latn": "full"
+          },
+          "expansion": {
+            "n": 2,
+            "min": 2.0,
+            "median": 2.0,
+            "max": 2.0
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "ru",
+          "passed": false,
+          "codes": [
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.95,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Cyrl": "full"
+          },
+          "expansion": {
+            "n": 2,
+            "min": 1.917,
+            "median": 1.917,
+            "max": 1.917
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "el",
+          "passed": false,
+          "codes": [
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.95,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Grek": "full"
+          },
+          "expansion": {
+            "n": 2,
+            "min": 1.917,
+            "median": 1.917,
+            "max": 1.917
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "ja",
+          "passed": false,
+          "codes": [
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.95,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Jpan": "full"
+          },
+          "expansion": {
+            "n": 2,
+            "min": 0.862,
+            "median": 4.665,
+            "max": 8.469
+          },
+          "font": "BIZ-UDGothicB.ttc#0",
+          "region_render_scores": [
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "zh-cn",
+          "passed": false,
+          "codes": [
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.95,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Hans": "full"
+          },
+          "expansion": {
+            "n": 2,
+            "min": 0.862,
+            "median": 4.665,
+            "max": 8.469
+          },
+          "font": "kaiu.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "ko",
+          "passed": false,
+          "codes": [
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.95,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Kore": "full"
+          },
+          "expansion": {
+            "n": 2,
+            "min": 1.149,
+            "median": 6.22,
+            "max": 11.292
+          },
+          "font": "batang.ttc#0",
+          "region_render_scores": [
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "ar",
+          "passed": false,
+          "codes": [
+            "ToFU_001",
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.95,
+          "render_quality_score": 0.7583,
+          "script_support": {
+            "Arab": "unsupported"
+          },
+          "expansion": {
+            "n": 2,
+            "min": 1.75,
+            "median": 1.75,
+            "max": 1.75
+          },
+          "font": "cour.ttf",
+          "region_render_scores": [
+            0.8183,
+            0.8183
+          ]
+        },
+        {
+          "lang": "he",
+          "passed": false,
+          "codes": [
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.95,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Hebr": "full"
+          },
+          "expansion": {
+            "n": 2,
+            "min": 1.583,
+            "median": 1.583,
+            "max": 1.583
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "hi",
+          "passed": false,
+          "codes": [
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.95,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Deva": "full"
+          },
+          "expansion": {
+            "n": 2,
+            "min": 1.75,
+            "median": 1.75,
+            "max": 1.75
+          },
+          "font": "Nirmala.ttc#0",
+          "region_render_scores": [
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "th",
+          "passed": false,
+          "codes": [
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 0.95,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Thai": "full"
+          },
+          "expansion": {
+            "n": 2,
+            "min": 1.917,
+            "median": 1.917,
+            "max": 1.917
+          },
+          "font": "LeelaUIb.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0
+          ]
+        }
+      ]
+    },
+    {
+      "asset": ".\\tests\\fixtures\\expansion-en.png",
+      "evidence": {
+        "regions": 1,
+        "src_lang": "en",
+        "median_region_height_px": 50,
+        "min_region_height_px": 50,
+        "median_font_px": 30,
+        "median_stroke_ratio": 0.1092,
+        "enriched_regions": 1
+      },
+      "per_lang": [
+        {
+          "lang": "en",
+          "passed": true,
+          "codes": [],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Latn": "full"
+          },
+          "expansion": {
+            "n": 1,
+            "min": 0.713,
+            "median": 0.713,
+            "max": 0.713
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0
+          ]
+        },
+        {
+          "lang": "de",
+          "passed": true,
+          "codes": [],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Latn": "full"
+          },
+          "expansion": {
+            "n": 1,
+            "min": 0.962,
+            "median": 0.962,
+            "max": 0.962
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0
+          ]
+        },
+        {
+          "lang": "fr",
+          "passed": true,
+          "codes": [],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Latn": "full"
+          },
+          "expansion": {
+            "n": 1,
+            "min": 0.855,
+            "median": 0.855,
+            "max": 0.855
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0
+          ]
+        },
+        {
+          "lang": "ru",
+          "passed": true,
+          "codes": [],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Cyrl": "full"
+          },
+          "expansion": {
+            "n": 1,
+            "min": 0.82,
+            "median": 0.82,
+            "max": 0.82
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0
+          ]
+        },
+        {
+          "lang": "el",
+          "passed": true,
+          "codes": [],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Grek": "full"
+          },
+          "expansion": {
+            "n": 1,
+            "min": 0.82,
+            "median": 0.82,
+            "max": 0.82
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0
+          ]
+        },
+        {
+          "lang": "ja",
+          "passed": true,
+          "codes": [],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Jpan": "full"
+          },
+          "expansion": {
+            "n": 1,
+            "min": 0.47,
+            "median": 0.47,
+            "max": 0.47
+          },
+          "font": "BIZ-UDGothicB.ttc#0",
+          "region_render_scores": [
+            1.0
+          ]
+        },
+        {
+          "lang": "zh-cn",
+          "passed": true,
+          "codes": [],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Hans": "full"
+          },
+          "expansion": {
+            "n": 1,
+            "min": 0.47,
+            "median": 0.47,
+            "max": 0.47
+          },
+          "font": "kaiu.ttf",
+          "region_render_scores": [
+            1.0
+          ]
+        },
+        {
+          "lang": "ko",
+          "passed": true,
+          "codes": [],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Kore": "full"
+          },
+          "expansion": {
+            "n": 1,
+            "min": 0.611,
+            "median": 0.611,
+            "max": 0.611
+          },
+          "font": "batang.ttc#0",
+          "region_render_scores": [
+            1.0
+          ]
+        },
+        {
+          "lang": "ar",
+          "passed": false,
+          "codes": [
+            "ToFU_001"
+          ],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.7583,
+          "script_support": {
+            "Arab": "unsupported"
+          },
+          "expansion": {
+            "n": 1,
+            "min": 0.987,
+            "median": 0.987,
+            "max": 0.987
+          },
+          "font": "cour.ttf",
+          "region_render_scores": [
+            0.8183
+          ]
+        },
+        {
+          "lang": "he",
+          "passed": true,
+          "codes": [],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Hebr": "full"
+          },
+          "expansion": {
+            "n": 1,
+            "min": 0.677,
+            "median": 0.677,
+            "max": 0.677
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0
+          ]
+        },
+        {
+          "lang": "hi",
+          "passed": true,
+          "codes": [],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Deva": "full"
+          },
+          "expansion": {
+            "n": 1,
+            "min": 0.717,
+            "median": 0.717,
+            "max": 0.717
+          },
+          "font": "Nirmala.ttc#0",
+          "region_render_scores": [
+            1.0
+          ]
+        },
+        {
+          "lang": "th",
+          "passed": true,
+          "codes": [],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Thai": "full"
+          },
+          "expansion": {
+            "n": 1,
+            "min": 0.834,
+            "median": 0.834,
+            "max": 0.834
+          },
+          "font": "LeelaUIb.ttf",
+          "region_render_scores": [
+            1.0
+          ]
+        }
+      ]
+    },
+    {
+      "asset": ".\\tests\\fixtures\\flat-sign.png",
+      "evidence": {
+        "regions": 4,
+        "src_lang": "en",
+        "median_region_height_px": 44.0,
+        "min_region_height_px": 41,
+        "median_font_px": 30.5,
+        "median_stroke_ratio": 0.1576,
+        "enriched_regions": 4
+      },
+      "per_lang": [
+        {
+          "lang": "en",
+          "passed": true,
+          "codes": [],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Latn": "full"
+          },
+          "expansion": {
+            "n": 4,
+            "min": 0.691,
+            "median": 0.697,
+            "max": 0.707
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "de",
+          "passed": true,
+          "codes": [],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Latn": "full"
+          },
+          "expansion": {
+            "n": 4,
+            "min": 0.933,
+            "median": 0.941,
+            "max": 0.955
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "fr",
+          "passed": true,
+          "codes": [],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Latn": "full"
+          },
+          "expansion": {
+            "n": 4,
+            "min": 0.829,
+            "median": 0.837,
+            "max": 0.849
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "ru",
+          "passed": true,
+          "codes": [],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Cyrl": "full"
+          },
+          "expansion": {
+            "n": 4,
+            "min": 0.795,
+            "median": 0.802,
+            "max": 0.813
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "el",
+          "passed": true,
+          "codes": [],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Grek": "full"
+          },
+          "expansion": {
+            "n": 4,
+            "min": 0.795,
+            "median": 0.802,
+            "max": 0.813
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "ja",
+          "passed": true,
+          "codes": [],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Jpan": "full"
+          },
+          "expansion": {
+            "n": 4,
+            "min": 0.305,
+            "median": 0.369,
+            "max": 0.409
+          },
+          "font": "BIZ-UDGothicB.ttc#0",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "zh-cn",
+          "passed": true,
+          "codes": [],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Hans": "full"
+          },
+          "expansion": {
+            "n": 4,
+            "min": 0.305,
+            "median": 0.369,
+            "max": 0.409
+          },
+          "font": "kaiu.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "ko",
+          "passed": true,
+          "codes": [],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Kore": "full"
+          },
+          "expansion": {
+            "n": 4,
+            "min": 0.562,
+            "median": 0.593,
+            "max": 0.617
+          },
+          "font": "batang.ttc#0",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "ar",
+          "passed": false,
+          "codes": [
+            "ToFU_001"
+          ],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.7583,
+          "script_support": {
+            "Arab": "unsupported"
+          },
+          "expansion": {
+            "n": 4,
+            "min": 0.64,
+            "median": 0.773,
+            "max": 0.858
+          },
+          "font": "cour.ttf",
+          "region_render_scores": [
+            0.8183,
+            0.8183,
+            0.8183,
+            0.8183
+          ]
+        },
+        {
+          "lang": "he",
+          "passed": true,
+          "codes": [],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Hebr": "full"
+          },
+          "expansion": {
+            "n": 4,
+            "min": 0.656,
+            "median": 0.663,
+            "max": 0.672
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "hi",
+          "passed": true,
+          "codes": [],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Deva": "full"
+          },
+          "expansion": {
+            "n": 4,
+            "min": 0.632,
+            "median": 0.656,
+            "max": 0.749
+          },
+          "font": "Nirmala.ttc#0",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "th",
+          "passed": true,
+          "codes": [],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Thai": "full"
+          },
+          "expansion": {
+            "n": 4,
+            "min": 0.736,
+            "median": 0.777,
+            "max": 0.862
+          },
+          "font": "LeelaUIb.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      ]
+    },
+    {
+      "asset": ".\\tests\\fixtures\\gradient-banner.png",
+      "evidence": {
+        "regions": 3,
+        "src_lang": "en",
+        "median_region_height_px": 60,
+        "min_region_height_px": 50,
+        "median_font_px": 48,
+        "median_stroke_ratio": 0.1539,
+        "enriched_regions": 3
+      },
+      "per_lang": [
+        {
+          "lang": "en",
+          "passed": true,
+          "codes": [],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Latn": "full"
+          },
+          "expansion": {
+            "n": 3,
+            "min": 0.697,
+            "median": 0.71,
+            "max": 0.874
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "de",
+          "passed": true,
+          "codes": [
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Latn": "full"
+          },
+          "expansion": {
+            "n": 3,
+            "min": 0.941,
+            "median": 0.959,
+            "max": 1.181
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "fr",
+          "passed": true,
+          "codes": [],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Latn": "full"
+          },
+          "expansion": {
+            "n": 3,
+            "min": 0.837,
+            "median": 0.852,
+            "max": 1.049
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "ru",
+          "passed": true,
+          "codes": [],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Cyrl": "full"
+          },
+          "expansion": {
+            "n": 3,
+            "min": 0.802,
+            "median": 0.817,
+            "max": 1.006
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "el",
+          "passed": true,
+          "codes": [],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Grek": "full"
+          },
+          "expansion": {
+            "n": 3,
+            "min": 0.802,
+            "median": 0.817,
+            "max": 1.006
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "ja",
+          "passed": true,
+          "codes": [],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Jpan": "full"
+          },
+          "expansion": {
+            "n": 3,
+            "min": 0.322,
+            "median": 0.327,
+            "max": 0.68
+          },
+          "font": "BIZ-UDGothicB.ttc#0",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "zh-cn",
+          "passed": true,
+          "codes": [],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Hans": "full"
+          },
+          "expansion": {
+            "n": 3,
+            "min": 0.322,
+            "median": 0.327,
+            "max": 0.68
+          },
+          "font": "kaiu.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "ko",
+          "passed": true,
+          "codes": [],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Kore": "full"
+          },
+          "expansion": {
+            "n": 3,
+            "min": 0.583,
+            "median": 0.588,
+            "max": 0.809
+          },
+          "font": "batang.ttc#0",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "ar",
+          "passed": false,
+          "codes": [
+            "ToFU_001",
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.7583,
+          "script_support": {
+            "Arab": "unsupported"
+          },
+          "expansion": {
+            "n": 3,
+            "min": 0.676,
+            "median": 0.687,
+            "max": 1.428
+          },
+          "font": "cour.ttf",
+          "region_render_scores": [
+            0.8183,
+            0.8183,
+            0.8183
+          ]
+        },
+        {
+          "lang": "he",
+          "passed": true,
+          "codes": [],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Hebr": "full"
+          },
+          "expansion": {
+            "n": 3,
+            "min": 0.663,
+            "median": 0.675,
+            "max": 0.831
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "hi",
+          "passed": true,
+          "codes": [],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Deva": "full"
+          },
+          "expansion": {
+            "n": 3,
+            "min": 0.616,
+            "median": 0.67,
+            "max": 0.952
+          },
+          "font": "Nirmala.ttc#0",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "th",
+          "passed": true,
+          "codes": [
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Thai": "full"
+          },
+          "expansion": {
+            "n": 3,
+            "min": 0.724,
+            "median": 0.781,
+            "max": 1.147
+          },
+          "font": "LeelaUIb.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      ]
+    },
+    {
+      "asset": ".\\tests\\fixtures\\stylized-italic.png",
+      "evidence": {
+        "regions": 5,
+        "src_lang": "en",
+        "median_region_height_px": 54,
+        "min_region_height_px": 49,
+        "median_font_px": 41,
+        "median_stroke_ratio": 0.131,
+        "enriched_regions": 5
+      },
+      "per_lang": [
+        {
+          "lang": "en",
+          "passed": true,
+          "codes": [],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Latn": "full"
+          },
+          "expansion": {
+            "n": 5,
+            "min": 0.703,
+            "median": 0.897,
+            "max": 0.948
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            0.97,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "de",
+          "passed": true,
+          "codes": [
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Latn": "full"
+          },
+          "expansion": {
+            "n": 5,
+            "min": 0.949,
+            "median": 1.211,
+            "max": 1.28
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            0.97,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "fr",
+          "passed": true,
+          "codes": [
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Latn": "full"
+          },
+          "expansion": {
+            "n": 5,
+            "min": 0.844,
+            "median": 1.076,
+            "max": 1.138
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            0.97,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "ru",
+          "passed": true,
+          "codes": [
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Cyrl": "full"
+          },
+          "expansion": {
+            "n": 5,
+            "min": 0.809,
+            "median": 1.032,
+            "max": 1.09
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            0.97,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "el",
+          "passed": true,
+          "codes": [
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Grek": "full"
+          },
+          "expansion": {
+            "n": 5,
+            "min": 0.809,
+            "median": 1.032,
+            "max": 1.09
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            0.97,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "ja",
+          "passed": true,
+          "codes": [],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Jpan": "full"
+          },
+          "expansion": {
+            "n": 5,
+            "min": 0.471,
+            "median": 0.547,
+            "max": 0.598
+          },
+          "font": "BIZ-UDGothicB.ttc#0",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            0.97,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "zh-cn",
+          "passed": true,
+          "codes": [],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Hans": "full"
+          },
+          "expansion": {
+            "n": 5,
+            "min": 0.471,
+            "median": 0.547,
+            "max": 0.598
+          },
+          "font": "kaiu.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            0.97,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "ko",
+          "passed": true,
+          "codes": [],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Kore": "full"
+          },
+          "expansion": {
+            "n": 5,
+            "min": 0.604,
+            "median": 0.763,
+            "max": 0.821
+          },
+          "font": "batang.ttc#0",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            0.97,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "ar",
+          "passed": false,
+          "codes": [
+            "ToFU_001",
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.7583,
+          "script_support": {
+            "Arab": "unsupported"
+          },
+          "expansion": {
+            "n": 5,
+            "min": 0.988,
+            "median": 1.148,
+            "max": 1.257
+          },
+          "font": "cour.ttf",
+          "region_render_scores": [
+            0.8183,
+            0.8183,
+            0.7883,
+            0.8183,
+            0.8183
+          ]
+        },
+        {
+          "lang": "he",
+          "passed": true,
+          "codes": [],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Hebr": "full"
+          },
+          "expansion": {
+            "n": 5,
+            "min": 0.668,
+            "median": 0.852,
+            "max": 0.901
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            0.97,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "hi",
+          "passed": true,
+          "codes": [],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Deva": "full"
+          },
+          "expansion": {
+            "n": 5,
+            "min": 0.709,
+            "median": 0.935,
+            "max": 0.986
+          },
+          "font": "Nirmala.ttc#0",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            0.97,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "th",
+          "passed": true,
+          "codes": [
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Thai": "full"
+          },
+          "expansion": {
+            "n": 5,
+            "min": 0.834,
+            "median": 1.101,
+            "max": 1.164
+          },
+          "font": "LeelaUIb.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            0.97,
+            1.0,
+            1.0
+          ]
+        }
+      ]
+    },
+    {
+      "asset": ".\\tests\\fixtures\\textured-wall.png",
+      "evidence": {
+        "regions": 4,
+        "src_lang": "en",
+        "median_region_height_px": 67.5,
+        "min_region_height_px": 39,
+        "median_font_px": 52.0,
+        "median_stroke_ratio": 0.1469,
+        "enriched_regions": 4
+      },
+      "per_lang": [
+        {
+          "lang": "en",
+          "passed": true,
+          "codes": [],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Latn": "full"
+          },
+          "expansion": {
+            "n": 4,
+            "min": 0.551,
+            "median": 0.662,
+            "max": 0.834
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "de",
+          "passed": true,
+          "codes": [
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Latn": "full"
+          },
+          "expansion": {
+            "n": 4,
+            "min": 0.743,
+            "median": 0.894,
+            "max": 1.126
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "fr",
+          "passed": true,
+          "codes": [],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Latn": "full"
+          },
+          "expansion": {
+            "n": 4,
+            "min": 0.661,
+            "median": 0.794,
+            "max": 1.001
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "ru",
+          "passed": true,
+          "codes": [],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Cyrl": "full"
+          },
+          "expansion": {
+            "n": 4,
+            "min": 0.633,
+            "median": 0.761,
+            "max": 0.959
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "el",
+          "passed": true,
+          "codes": [],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Grek": "full"
+          },
+          "expansion": {
+            "n": 4,
+            "min": 0.633,
+            "median": 0.761,
+            "max": 0.959
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "ja",
+          "passed": true,
+          "codes": [],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Jpan": "full"
+          },
+          "expansion": {
+            "n": 4,
+            "min": 0.248,
+            "median": 0.345,
+            "max": 0.513
+          },
+          "font": "BIZ-UDGothicB.ttc#0",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "zh-cn",
+          "passed": true,
+          "codes": [],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Hans": "full"
+          },
+          "expansion": {
+            "n": 4,
+            "min": 0.248,
+            "median": 0.345,
+            "max": 0.513
+          },
+          "font": "kaiu.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "ko",
+          "passed": true,
+          "codes": [],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Kore": "full"
+          },
+          "expansion": {
+            "n": 4,
+            "min": 0.468,
+            "median": 0.54,
+            "max": 0.71
+          },
+          "font": "batang.ttc#0",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "ar",
+          "passed": false,
+          "codes": [
+            "ToFU_001",
+            "ToFU_005"
+          ],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.7583,
+          "script_support": {
+            "Arab": "unsupported"
+          },
+          "expansion": {
+            "n": 4,
+            "min": 0.52,
+            "median": 0.724,
+            "max": 1.077
+          },
+          "font": "cour.ttf",
+          "region_render_scores": [
+            0.8183,
+            0.8183,
+            0.8183,
+            0.8183
+          ]
+        },
+        {
+          "lang": "he",
+          "passed": true,
+          "codes": [],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Hebr": "full"
+          },
+          "expansion": {
+            "n": 4,
+            "min": 0.523,
+            "median": 0.629,
+            "max": 0.792
+          },
+          "font": "arial.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "hi",
+          "passed": true,
+          "codes": [],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Deva": "full"
+          },
+          "expansion": {
+            "n": 4,
+            "min": 0.497,
+            "median": 0.597,
+            "max": 0.824
+          },
+          "font": "Nirmala.ttc#0",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "lang": "th",
+          "passed": true,
+          "codes": [],
+          "glyph_segmentation_score": 1.0,
+          "render_quality_score": 0.94,
+          "script_support": {
+            "Thai": "full"
+          },
+          "expansion": {
+            "n": 4,
+            "min": 0.609,
+            "median": 0.724,
+            "max": 0.952
+          },
+          "font": "LeelaUIb.ttf",
+          "region_render_scores": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      ]
+    }
+  ]
+}
