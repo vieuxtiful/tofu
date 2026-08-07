@@ -1,16 +1,22 @@
 import { Fragment, useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { FontFamily, FontOption, InstText, LanguageOption } from "./api";
-import { AlertTriangle, AlertCircle, BookmarkCheck, ChevronDown, Eye, EyeOff, GripVertical, Loader2, ScanText, Trash2, AlignLeft, AlignVerticalJustifyCenter, ArrowLeftRight } from "lucide-react";
+import { AlertTriangle, AlertCircle, BookmarkCheck, ChevronDown, ChevronLeft, ChevronRight, Eye, EyeOff, GripVertical, Loader2, ScanText, Trash2, AlignLeft, AlignVerticalJustifyCenter, ArrowLeftRight } from "lucide-react";
 import { LuReplace } from "react-icons/lu";
 import { BsTranslate } from "react-icons/bs";
 import { langDisplayName } from "./languageData";
 import { textLangMatchesTarget } from "./detectLanguage";
 import LanguageCombobox from "./LanguageCombobox";
-import { loadFontPreview, weightLabel } from "./FontCombobox";
+import { loadFontPreview, weightLabel, fontNameForPath } from "./FontCombobox";
 import { fontIdentity } from "./doppelganger";
 import { HiLockClosed, HiLockOpen } from "react-icons/hi";
 import { FaSearch } from "react-icons/fa";
+import { PiArrowsMergeBold } from "react-icons/pi";
+import { RiFunctionAiFill, RiFunctionAiLine } from "react-icons/ri";
+import { TbLanguageOff, TbLeafFilled, TbAlertSquare, TbAlertSquareFilled } from "react-icons/tb";
+import { MdFontDownload, MdOutlineFontDownload } from "react-icons/md";
+import type { Theme } from "./theme";
 import "./bbox.css";
+import AnimatedCaretTextarea from "./AnimatedCaretTextarea";
 
 /** capture: bbox/string registry (source text, source lang, OCR, delete).
  *  translate: translation work (target lang, font, target-text expansion,
@@ -33,6 +39,10 @@ interface RegionTableProps {
   onSrcLangChange: (id: string, lang: string) => void;
   onFontChange: (id: string, font: string) => void;
   onApplyTargetLang: (ids: string[], lang: string) => void;
+  /** fold several regions into one. cicerone re-reads the union box and
+   * falls back to joining the parts in reading order. */
+  onMergeRegions?: (ids: string[]) => void;
+  mergeLoading?: boolean;
   ocrLoading: string | null;
   languages: LanguageOption[];
   defaultTargLang: string;
@@ -55,8 +65,26 @@ interface RegionTableProps {
   onReorder?: (fromId: string, toId: string) => void;
   onBatchBegin?: () => void;
   onBatchEnd?: () => void;
+  /** Region IDs whose source text changed via a Capture-tab merge while they
+   *  already carried a translation.  Shown as a re-translation alert icon in
+   *  the actions column so the user knows the target text may be stale. */
+  retranslationNeededIds?: string[];
+  onDismissRetranslation?: (id: string) => void;
   bboxColor?: string;
   hideRegionCounter?: boolean;
+  /** Passed rather than read from useTheme(): that hook holds its own state
+   * per caller, so a second copy here would not follow the toggle. */
+  theme?: Theme;
+  sourceSuggestions?: string[];
+  /** Open the preview Font Manager dialog (preview-only font override).
+   *  The dialog itself lives in App.tsx; this callback opens it. */
+  onOpenPreviewFontManager?: () => void;
+  /** Current preview font overrides, keyed by region ID. */
+  previewFontOverride?: Record<string, string>;
+  /** Clear the preview font override for a region (reset to auto). */
+  onClearPreviewFont?: (id: string) => void;
+  /** Full font families by language, for resolving override labels. */
+  fullFamiliesByLang?: Record<string, FontFamily[]>;
 }
 
 function confColor(conf: number | null): string {
@@ -64,6 +92,52 @@ function confColor(conf: number | null): string {
   if (conf >= 0.8) return "text-emerald-400";
   if (conf >= 0.6) return "text-amber-400";
   return "text-red-400";
+}
+
+/** What ToFU's arbitration read for this region, when it has a reading.
+ *
+ * Arbitration scores every observation of a region -- each detection pass
+ * plus the independent verifier -- and its reading is now loaded into the
+ * manifest rather than merely recorded. This attributes it: the marker says
+ * which text came from ToFU rather than from the recogniser's first pass.
+ *
+ * The per-signal breakdown (cross_backend, confidence, stability, geometry,
+ * language, glyph, language_model) is deliberately NOT here. Six numbers in
+ * a hover tooltip is a debugging readout, not something a localiser can act
+ * on, and it buried the one line that matters. It stays where it belongs, in
+ * `ocr_provenance.hypothesis.score_breakdown` on the manifest -- written on
+ * every region, exported with the project, and readable whenever a decision
+ * has to be audited.
+ *
+ * Returns null when there is nothing to attribute, so the caller can use it
+ * as the render condition.
+ */
+export function arbitrationReading(inst: InstText): string | null {
+  if (inst.source_override?.kind === "tofu_arbitration"
+      && inst.source_override.text === inst.text && inst.text) {
+    return `ToFU read: "${inst.text}"`;
+  }
+  const correction = inst.ocr_correction;
+  const legacyTofuReason = correction?.reason === "versioned cross-engine OCR arbitration"
+    || correction?.reason === "arbitration selected the independent verifier; difference is a glyph confusion";
+  if (!correction?.applied
+      || (correction.correction_resource?.kind !== "tofu_arbitration" && !legacyTofuReason)
+      || !correction.corrected_text
+      || correction.corrected_text !== inst.text) return null;
+  return `ToFU read: "${inst.text}"`;
+}
+
+export function groundTruthReading(inst: InstText): string | null {
+  if (inst.source_override?.kind === "ground_truth"
+      && inst.source_override.text === inst.text && inst.text) {
+    return `Ground Truth override: "${inst.text}"`;
+  }
+  const correction = inst.ocr_correction;
+  if (!correction?.applied
+      || correction.correction_resource?.kind !== "ground_truth"
+      || !correction.corrected_text
+      || correction.corrected_text !== inst.text) return null;
+  return `Ground Truth override: "${inst.text}"`;
 }
 
 // column model: label collapses to `short` below `narrowAt` px
@@ -99,8 +173,9 @@ const MODE_COLS: Record<TableMode, string[]> = {
 export default function RegionTable({
   mode, regions, selectedId, hoveredId, onSelect, onHover, onTextChange, onTargetChange,
   onDelete, onOcr, onToggleDnt, onTargetLangChange, onSrcLangChange, onFontChange,
-  onApplyTargetLang, ocrLoading, languages, defaultTargLang, defaultSrcLang, fontsByLang, familiesByLang, onNeedFonts,
-  lockedLangs, onToggleLangLock, onOrientationToggle, onWordOrderToggle, onFontMatch, fontMatchingId, formerTargLang, targLang, footer, onReorder, onBatchBegin, onBatchEnd, bboxColor, hideRegionCounter,
+  onApplyTargetLang, onMergeRegions, mergeLoading, ocrLoading, languages, defaultTargLang, defaultSrcLang, fontsByLang, familiesByLang, onNeedFonts,
+  lockedLangs, onToggleLangLock, onOrientationToggle, onWordOrderToggle, onFontMatch, fontMatchingId, formerTargLang, targLang, footer, onReorder, onBatchBegin, onBatchEnd, retranslationNeededIds, onDismissRetranslation, bboxColor, hideRegionCounter, theme, sourceSuggestions = [],
+  onOpenPreviewFontManager, previewFontOverride = {}, onClearPreviewFont, fullFamiliesByLang = {},
 }: RegionTableProps) {
   const COLS = ALL_COLS.filter((c) => MODE_COLS[mode].includes(c.key));
   const rowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
@@ -113,7 +188,9 @@ export default function RegionTable({
     () => Object.fromEntries(ALL_COLS.map((c) => [c.key, c.w]))
   );
   const resizeRef = useRef<{ key: string; startX: number; startW: number } | null>(null);
-  const [rejectTooltipId, setRejectTooltipId] = useState<string | null>(null);
+  const [rejectTooltip, setRejectTooltip] = useState<{ id: string; pulse: number } | null>(null);
+  const composingTargetsRef = useRef<Set<string>>(new Set());
+  const justCommittedTargetsRef = useRef<Set<string>>(new Set());
   const [sortKey, setSortKey] = useState<"num" | "id" | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [searchQuery, setSearchQuery] = useState("");
@@ -123,9 +200,13 @@ export default function RegionTable({
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const canReorder = mode === "capture" && !!onReorder;
 
-  // pagination (translate mode only) — rows per page determined by
-  // actual table container height so pagination only appears when
-  // entries overflow the visible area
+  // pagination — Capture defaults to 15/page, Translate defaults to 10/page
+  const pageLimitOptions = mode === "translate" ? [10, 15, 20, 25, 30] : [15, 20, 25, 30];
+  const [rowsPerPage, setRowsPerPage] = useState(mode === "translate" ? 10 : 15);
+  const [currentPage, setCurrentPage] = useState(0);
+  const [rowsOpen, setRowsOpen] = useState(false);
+  const rowsDropdownRef = useRef<HTMLDivElement>(null);
+
   const sortedRegions = (() => {
     let r = regions;
     if (searchQuery.trim()) {
@@ -148,6 +229,12 @@ export default function RegionTable({
     return r;
   })();
 
+  const totalPages = Math.max(1, Math.ceil(sortedRegions.length / rowsPerPage));
+  const clampedPage = Math.min(currentPage, totalPages - 1);
+  const pageStart = clampedPage * rowsPerPage;
+  const pageEnd = Math.min(pageStart + rowsPerPage, sortedRegions.length);
+  const paginatedRegions = sortedRegions.slice(pageStart, pageEnd);
+
   const availableCodes = languages.map((l) => l.code);
 
   // Basil plating lookup: map semantic_region_id → assigned text so each
@@ -169,12 +256,38 @@ export default function RegionTable({
     }
   }, [selectedId]);
 
-  // capture mode: scroll to bottom so latest entries are visible
+  // clamp page when total pages change
   useEffect(() => {
-    if (mode === "capture" && scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    setCurrentPage((p) => Math.min(p, totalPages - 1));
+  }, [totalPages]);
+
+  // capture mode: jump to the last page when new regions are added
+  const prevCountRef = useRef(regions.length);
+  useEffect(() => {
+    if (mode === "capture" && regions.length > prevCountRef.current) {
+      setCurrentPage(Math.max(0, totalPages - 1));
     }
-  }, [mode, regions.length]);
+    prevCountRef.current = regions.length;
+  }, [mode, regions.length, totalPages]);
+
+  // jump to the page containing the selected region
+  useEffect(() => {
+    if (!selectedId) return;
+    const idx = sortedRegions.findIndex((r) => r.id === selectedId);
+    if (idx >= 0) setCurrentPage(Math.floor(idx / rowsPerPage));
+  }, [selectedId]);
+
+  // close rows-per-page dropdown on outside click
+  useEffect(() => {
+    if (!rowsOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (rowsDropdownRef.current && !rowsDropdownRef.current.contains(e.target as Node)) {
+        setRowsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [rowsOpen]);
 
   // sync horizontal scroll between table container and sticky bottom scrollbar
   useEffect(() => {
@@ -239,22 +352,145 @@ export default function RegionTable({
   };
 
   return (
-    <div className={`bezier-card soft-shadow flex h-full flex-col rounded-lg bg-white/60 dark:bg-zinc-900/60 ${footer ? "overflow-visible" : "overflow-hidden"}`}>
+    <div className={`bezier-card soft-shadow region-table-card flex h-full flex-col rounded-lg bg-white/60 dark:bg-zinc-900/60 ${footer || mode === "translate" ? "overflow-visible" : "overflow-hidden"}${hoveredId ? " region-hovering" : ""}`}>
       {mode === "translate" && (
-        <h2 className="subtext mx-3 mb-3 mt-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-          <BsTranslate size={14} />
-          Translate
-          {!hideRegionCounter && (
-            <span className="text-[10px] font-medium normal-case tracking-normal" style={{ color: bboxColor ?? "#22d3ee" }}>
-              regions: {regions.length}
-            </span>
-          )}
+        <h2 className="subtext mx-3 mb-3 mt-3 flex items-center justify-between text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+          <span className="flex items-center gap-2">
+            <BsTranslate size={14} />
+            Translate
+          </span>
+          <span className="flex items-center gap-2 normal-case tracking-normal">
+            <div className="relative" ref={rowsDropdownRef}>
+              <button
+                type="button"
+                onClick={() => setRowsOpen((v) => !v)}
+                className="flex items-center gap-1 rounded-md border border-zinc-300 bg-white px-1.5 py-0.5 text-[10px] text-zinc-600 transition hover:border-cyan-600 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400"
+                title="Rows per page"
+              >
+                {rowsPerPage}/page
+                <ChevronDown size={10} className={`transition-transform duration-200 ${rowsOpen ? "rotate-180" : ""}`} />
+              </button>
+              <div
+                className={`dropdown-morph absolute right-0 top-full z-200 mt-1 w-20 rounded-lg border border-zinc-300 bg-white p-1 dark:border-zinc-700 dark:bg-zinc-900${rowsOpen ? " expanded" : ""}`}
+                style={rowsOpen ? { boxShadow: "1px 1px 0 var(--bc-shadow), 2px 2px 6px rgba(0,0,0,0.06)" } : undefined}
+              >
+                {pageLimitOptions.map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => { setRowsPerPage(n); setCurrentPage(0); setRowsOpen(false); }}
+                    className={`flex w-full rounded-md px-2 py-1 text-[10px] transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${rowsPerPage === n ? "bg-zinc-100 font-medium text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100" : "text-zinc-600 dark:text-zinc-400"}`}
+                  >
+                    {n}/page
+                  </button>
+                ))}
+              </div>
+            </div>
+            {totalPages > 1 && (
+              <span className="flex items-center gap-0.5">
+                <button
+                  onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}
+                  disabled={clampedPage === 0}
+                  title="Previous page"
+                  className="rounded-sm p-0.5 text-zinc-500 hover:text-cyan-600 disabled:opacity-30 dark:text-zinc-400 dark:hover:text-cyan-400"
+                >
+                  <ChevronLeft size={14} />
+                </button>
+                <span className="tabular-nums">{clampedPage + 1}/{totalPages}</span>
+                <button
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages - 1, p + 1))}
+                  disabled={clampedPage >= totalPages - 1}
+                  title="Next page"
+                  className="rounded-sm p-0.5 text-zinc-500 hover:text-cyan-600 disabled:opacity-30 dark:text-zinc-400 dark:hover:text-cyan-400"
+                >
+                  <ChevronRight size={14} />
+                </button>
+              </span>
+            )}
+          </span>
         </h2>
       )}
       {/* stats bar */}
       {mode === "capture" && (
         <div className="subtext flex items-center justify-between border-b border-zinc-300 px-3 py-2 text-xs text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
           <span>regions: {regions.length}</span>
+          <div className="flex items-center gap-2">
+            {/* Detection already joins the words of a line on its own and
+              * declines where the geometry is ambiguous (across a column
+              * gutter, over a gap wider than a word space). This is the
+              * manual door for those, and for groupings only a person knows
+              * are one unit. Two is the minimum that means anything.
+              *
+              * Reserved in a fixed-width slot (rather than only rendering
+              * when checked.size >= 2) so the page-number control beside
+              * it never jumps left/right as the button appears and
+              * disappears. */}
+            <span className="flex w-[96px] shrink-0 justify-end">
+              {onMergeRegions && checked.size >= 2 && (
+                <button
+                  onClick={() => {
+                    onMergeRegions([...checked]);
+                    setChecked(new Set());
+                  }}
+                  disabled={!!mergeLoading}
+                  title={`merge ${checked.size} regions into one`}
+                  className="flex items-center gap-1 rounded-lg bg-zinc-800 px-2 py-1 text-xs font-medium text-zinc-100 transition hover:bg-zinc-700 disabled:opacity-40 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
+                >
+                  {mergeLoading
+                    ? <Loader2 size={11} className="animate-spin" />
+                    : <PiArrowsMergeBold size={11} />}
+                  merge {checked.size}
+                </button>
+              )}
+            </span>
+            <div className="relative" ref={rowsDropdownRef}>
+              <button
+                type="button"
+                onClick={() => setRowsOpen((v) => !v)}
+                className="flex items-center gap-1 rounded-md border border-zinc-300 bg-white px-1.5 py-0.5 text-[10px] text-zinc-600 transition hover:border-cyan-600 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400"
+                title="Rows per page"
+              >
+                {rowsPerPage}/page
+                <ChevronDown size={10} className={`transition-transform duration-200 ${rowsOpen ? "rotate-180" : ""}`} />
+              </button>
+              <div
+                className={`dropdown-morph absolute right-0 top-full z-200 mt-1 w-20 rounded-lg border border-zinc-300 bg-white p-1 dark:border-zinc-700 dark:bg-zinc-900${rowsOpen ? " expanded" : ""}`}
+                style={rowsOpen ? { boxShadow: "1px 1px 0 var(--bc-shadow), 2px 2px 6px rgba(0,0,0,0.06)" } : undefined}
+              >
+                {pageLimitOptions.map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => { setRowsPerPage(n); setCurrentPage(0); setRowsOpen(false); }}
+                    className={`flex w-full rounded-md px-2 py-1 text-[10px] transition hover:bg-zinc-100 dark:hover:bg-zinc-800 ${rowsPerPage === n ? "bg-zinc-100 font-medium text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100" : "text-zinc-600 dark:text-zinc-400"}`}
+                  >
+                    {n}/page
+                  </button>
+                ))}
+              </div>
+            </div>
+            {totalPages > 1 && (
+              <span className="flex items-center gap-0.5">
+                <button
+                  onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}
+                  disabled={clampedPage === 0}
+                  title="Previous page"
+                  className="rounded-sm p-0.5 text-zinc-500 hover:text-cyan-600 disabled:opacity-30 dark:text-zinc-400 dark:hover:text-cyan-400"
+                >
+                  <ChevronLeft size={14} />
+                </button>
+                <span className="tabular-nums">{clampedPage + 1}/{totalPages}</span>
+                <button
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages - 1, p + 1))}
+                  disabled={clampedPage >= totalPages - 1}
+                  title="Next page"
+                  className="rounded-sm p-0.5 text-zinc-500 hover:text-cyan-600 disabled:opacity-30 dark:text-zinc-400 dark:hover:text-cyan-400"
+                >
+                  <ChevronRight size={14} />
+                </button>
+              </span>
+            )}
+          </div>
         </div>
       )}
 
@@ -288,7 +524,7 @@ export default function RegionTable({
       )}
 
       {/* table */}
-      <div ref={scrollRef} className="bbox-canvas-scroll flex-1 min-h-0">
+      <div ref={scrollRef} className={`bbox-canvas-scroll flex-1 min-h-0${mode === "translate" ? " region-table-scroll" : ""}`}>
        <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
           <colgroup>
             {COLS.map((c) => (
@@ -337,29 +573,46 @@ export default function RegionTable({
                       {headerLabel(c)}
                     </span>
                   ) : c.key === "num" || c.key === "id" ? (
-                    <button
-                      onClick={() => {
-                        if (sortKey === c.key) {
-                          setSortDir((d) => d === "asc" ? "desc" : "asc");
-                        } else {
-                          setSortKey(c.key as "num" | "id");
-                          setSortDir("asc");
-                        }
-                      }}
-                      className="group flex items-center gap-0.5 hover:text-zinc-700 dark:hover:text-zinc-300"
-                      title={`sort by ${c.label}`}
-                    >
-                      {headerLabel(c)}
-                      <ChevronDown
-                        size={10}
-                        className={`transition-opacity ${
-                          sortKey === c.key
-                            ? "opacity-100"
-                            : "opacity-0 group-hover:opacity-50"
-                        }`}
-                        style={{ transform: sortKey === c.key && sortDir === "desc" ? "rotate(180deg)" : "none" }}
-                      />
-                    </button>
+                    // The region count rides beside ID rather than up in the
+                    // Translate heading, alongside the other header readouts
+                    // (Source/Target, font detected, average confidence). It
+                    // sits OUTSIDE the sort button on purpose: it is a
+                    // readout, and clicking a number to re-sort the table by
+                    // something else reads as a bug.
+                    <span className="flex items-center gap-1">
+                      <button
+                        onClick={() => {
+                          if (sortKey === c.key) {
+                            setSortDir((d) => d === "asc" ? "desc" : "asc");
+                          } else {
+                            setSortKey(c.key as "num" | "id");
+                            setSortDir("asc");
+                          }
+                        }}
+                        className="group flex items-center gap-0.5 hover:text-zinc-700 dark:hover:text-zinc-300"
+                        title={`sort by ${c.label}`}
+                      >
+                        {headerLabel(c)}
+                        <ChevronDown
+                          size={10}
+                          className={`transition-opacity ${
+                            sortKey === c.key
+                              ? "opacity-100"
+                              : "opacity-0 group-hover:opacity-50"
+                          }`}
+                          style={{ transform: sortKey === c.key && sortDir === "desc" ? "rotate(180deg)" : "none" }}
+                        />
+                      </button>
+                      {c.key === "id" && mode === "translate" && !hideRegionCounter && (
+                        <span
+                          className="text-[10px] font-medium normal-case tracking-normal"
+                          style={{ color: bboxColor ?? "#22d3ee" }}
+                          title={`${regions.length} region${regions.length === 1 ? "" : "s"}`}
+                        >
+                          {regions.length}
+                        </span>
+                      )}
+                    </span>
                   ) : c.key === "source" || c.key === "srctgt" ? (
                     <span className="flex items-center gap-1">
                       <button
@@ -403,7 +656,8 @@ export default function RegionTable({
             </tr>
           </thead>
           <tbody>
-            {sortedRegions.map((inst, rowIndex) => {
+            {paginatedRegions.map((inst, pageRowIndex) => {
+              const rowIndex = pageStart + pageRowIndex;
               const isSel = inst.id === selectedId;
               const isHovered = inst.id === hoveredId;
               const isExpanded = inst.id === expandedId;
@@ -413,6 +667,16 @@ export default function RegionTable({
               // still belong to the asset's source language
               const effectiveSrc = inst.language ?? inst.detected_language ?? defaultSrcLang ?? null;
               const srcInherited = inst.language == null && inst.detected_language == null;
+              const sourceProvenanceIcon = groundTruthReading(inst)
+                ? <TbLeafFilled size={11} className="shrink-0 text-emerald-600 dark:text-emerald-400" />
+                : arbitrationReading(inst)
+                  ? (theme === "dark"
+                    ? <RiFunctionAiFill size={11} className="shrink-0 text-amber-600 dark:text-amber-400" />
+                    : <RiFunctionAiLine size={11} className="shrink-0 text-amber-600 dark:text-amber-400" />)
+                  : null;
+              const sourceProvenanceTitle = groundTruthReading(inst) ?? arbitrationReading(inst) ?? undefined;
+              const wrongTargetLanguage = mode === "translate"
+                && Boolean(inst.target_text?.trim() && effectiveTarg && !textLangMatchesTarget(inst.target_text, effectiveTarg));
               const fonts = fontsByLang[effectiveTarg] ?? [];
               const currentFont = inst.style_profile?.font_family ?? null;
               return (
@@ -453,6 +717,8 @@ export default function RegionTable({
                     onMouseEnter={() => onHover(inst.id)}
                     onMouseLeave={() => onHover(null)}
                     className={`cursor-pointer border-b border-zinc-200 dark:border-zinc-800/50 ${
+                      mode === "translate" ? "region-row " : ""
+                    }${
                       draggedId === inst.id
                         ? "opacity-40"
                         : dragOverId === inst.id
@@ -490,25 +756,62 @@ export default function RegionTable({
                             <BookmarkCheck size={11} className="shrink-0 text-cyan-600 dark:text-cyan-400" />
                           </span>
                         )}
+                        {mode === "capture" && groundTruthReading(inst) && (
+                          <span title={groundTruthReading(inst)!}>
+                            <TbLeafFilled size={11} className="shrink-0 text-emerald-600 dark:text-emerald-400" />
+                          </span>
+                        )}
+                        {mode === "capture" && !groundTruthReading(inst) && arbitrationReading(inst) && (
+                          <span title={arbitrationReading(inst)!}>
+                            {theme === "dark"
+                              ? <RiFunctionAiFill size={11} className="shrink-0 text-amber-600 dark:text-amber-400" />
+                              : <RiFunctionAiLine size={11} className="shrink-0 text-amber-600 dark:text-amber-400" />}
+                          </span>
+                        )}
+                        {mode === "translate" && wrongTargetLanguage && (
+                          <span title="Target text is in the wrong language">
+                            <TbLanguageOff size={12} className="shrink-0 text-red-500 dark:text-red-400" />
+                          </span>
+                        )}
                       </span>
                     </td>
                     <td className="px-2 py-1">
                       {mode === "capture" ? (
-                        <input
+                        <div className="flex min-w-0 items-center gap-1">
+                        <AnimatedCaretTextarea
+                          label={`Source text for ${inst.id}`}
                           value={inst.text ?? ""}
-                          onChange={(e) => onTextChange(inst.id, e.target.value)}
+                          onChange={(text) => onTextChange(inst.id, text)}
                           onFocus={onBatchBegin}
                           onBlur={onBatchEnd}
-                          onClick={(e) => e.stopPropagation()}
-                          className="w-full rounded-sm bg-transparent px-1 py-0.5 text-xs text-zinc-800 outline-hidden focus:bg-zinc-200 dark:text-zinc-200 dark:focus:bg-zinc-800"
+                          onClick={(event) => event.stopPropagation()}
+                          rows={1}
+                          expandable
+                          suggestions={/^(ja|zh|ko)(-|$)/i.test(effectiveSrc ?? "") ? sourceSuggestions : []}
+                          language={effectiveSrc}
+                          className={`capture-source-caret min-w-0 flex-1 text-xs ${
+                            groundTruthReading(inst)
+                              ? "ground-truth-value source-override-ground-truth"
+                              : arbitrationReading(inst)
+                              ? "tofu-value source-override-tofu"
+                              : ""
+                          }`}
                           placeholder="—"
                         />
+                        </div>
                       ) : (
                         // source (read-only outside Capture) with target
                         // text stacked beneath — click to expand and edit
                         <div className="min-w-0 px-1 py-0.5">
-                          <span className="block truncate text-xs text-zinc-700 dark:text-zinc-300" title={inst.text ?? ""}>
-                            {inst.text || <span className="text-zinc-600">—</span>}
+                          <span className={`flex items-center gap-1 text-xs ${
+                            groundTruthReading(inst)
+                              ? "source-override-ground-truth rounded-sm px-1 text-emerald-600 dark:text-emerald-400"
+                              : arbitrationReading(inst)
+                              ? "source-override-tofu rounded-sm px-1 text-amber-600 dark:text-amber-400"
+                              : "text-zinc-700 dark:text-zinc-300"
+                          }`} title={inst.text ?? ""}>
+                            <span className="min-w-0 flex-1 truncate">{inst.text || <span className="text-zinc-600">—</span>}</span>
+                            {sourceProvenanceIcon && <span title={sourceProvenanceTitle}>{sourceProvenanceIcon}</span>}
                           </span>
                           {inst.semantic_assignment && inst.semantic_assignment.semantic_region_id && inst.semantic_assignment.semantic_region_id !== inst.id ? (
                             <span className="block truncate text-xs text-emerald-600 dark:text-emerald-300" title={inst.target_text ?? ""}>
@@ -641,20 +944,50 @@ export default function RegionTable({
                             <Trash2 size={12} />
                           </button>
                         )}
+                        {retranslationNeededIds?.includes(inst.id) && (
+                          <button
+                            onClick={() => onDismissRetranslation?.(inst.id)}
+                            title="re-translation needed — source text changed by a merge; click to dismiss"
+                            className="rounded-sm p-1 text-amber-600 hover:bg-amber-100 dark:text-amber-400 dark:hover:bg-amber-900/30"
+                          >
+                            {theme === "dark"
+                              ? <TbAlertSquareFilled size={12} className="shrink-0" />
+                              : <TbAlertSquare size={12} className="shrink-0" />}
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
-                  {mode === "translate" && isExpanded && (
-                    <tr className="border-b border-zinc-200 bg-zinc-100/80 dark:border-zinc-800/50 dark:bg-zinc-950/60">
-                      <td colSpan={COLS.length} className="px-4 py-2">
+                  {mode === "translate" && (
+                    <tr className={`translate-detail-row ${isExpanded ? "expanded border-b border-zinc-200 dark:border-zinc-800/50" : ""}`}>
+                      <td colSpan={COLS.length} className="p-0">
+                        <div className={`translate-detail-morph bg-zinc-100/80 dark:bg-zinc-950/60${isExpanded ? " expanded" : ""}`}>
+                        <div className="px-4 py-2">
                         <div className="grid gap-2 md:grid-cols-2">
                           <div>
                             <p className="subtext mb-1 text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-600">
                               source · {effectiveSrc ? langDisplayName(effectiveSrc) : "unknown"}
                             </p>
-                            <div className="rounded-sm bg-white px-2 py-1.5 text-xs text-zinc-700 dark:bg-zinc-900 dark:text-zinc-300">
-                              {inst.text || <span className="text-zinc-600">no source text</span>}
-                            </div>
+                            <AnimatedCaretTextarea
+                              label={`Source text for ${inst.id}`}
+                              value={inst.text ?? ""}
+                              onChange={(text) => onTextChange(inst.id, text)}
+                              onFocus={onBatchBegin}
+                              onBlur={onBatchEnd}
+                              onClick={(event) => event.stopPropagation()}
+                              rows={1}
+                              placeholder="no source text"
+                              suggestions={/^(ja|zh|ko)(-|$)/i.test(effectiveSrc ?? "") ? sourceSuggestions : []}
+                              language={effectiveSrc}
+                              trailingIcon={sourceProvenanceIcon ? <span title={sourceProvenanceTitle}>{sourceProvenanceIcon}</span> : null}
+                              className={
+                                groundTruthReading(inst)
+                                  ? "ground-truth-value source-override-ground-truth"
+                                  : arbitrationReading(inst)
+                                  ? "tofu-value source-override-tofu"
+                                  : ""
+                              }
+                            />
                           </div>
                           <div>
                             <div className="mb-1 flex items-center justify-between">
@@ -696,32 +1029,53 @@ export default function RegionTable({
                               </div>
                             </div>
                             <div className="relative">
-                              <textarea
+                              <AnimatedCaretTextarea
+                                label={`Target text for ${inst.id}`}
                                 value={inst.target_text ?? ""}
                                 onFocus={onBatchBegin}
-                                onBlur={onBatchEnd}
-                                onChange={(e) => {
-                                  const val = e.target.value;
+                                onBlur={() => {
+                                  if (rejectTooltip?.id === inst.id) setRejectTooltip(null);
+                                  onBatchEnd?.();
+                                }}
+                                onChange={(val, meta) => {
                                   // Flag a wrong-language entry, never delete it.
                                   // This used to clear the field on mismatch,
                                   // which threw away real typing on a heuristic.
                                   onTargetChange(inst.id, val);
-                                  if (val.trim() && targLang && !textLangMatchesTarget(val, targLang)) {
-                                    setRejectTooltipId(inst.id);
-                                    setTimeout(() => setRejectTooltipId((cur) => cur === inst.id ? null : cur), 2500);
-                                  } else if (rejectTooltipId === inst.id) {
-                                    setRejectTooltipId(null);
+                                  if (meta?.isComposing || composingTargetsRef.current.has(inst.id)) return;
+                                  if (justCommittedTargetsRef.current.delete(inst.id)) return;
+                                  if (val.trim() && effectiveTarg && !textLangMatchesTarget(val, effectiveTarg)) {
+                                    setRejectTooltip((current) => ({ id: inst.id, pulse: (current?.pulse ?? 0) + 1 }));
+                                  } else if (rejectTooltip?.id === inst.id) {
+                                    setRejectTooltip(null);
                                   }
                                 }}
                                 onClick={(e) => e.stopPropagation()}
                                 rows={1}
                                 placeholder="enter translation…"
-                                className={`w-full resize-y rounded border px-2 py-1.5 text-xs outline-hidden ${
+                                language={effectiveTarg}
+                                statusMessage={rejectTooltip?.id === inst.id ? "incorrect target language" : null}
+                                statusPulse={rejectTooltip?.id === inst.id ? rejectTooltip.pulse : 0}
+                                onCompositionStateChange={(composing, committedValue) => {
+                                  if (composing) {
+                                    composingTargetsRef.current.add(inst.id);
+                                    return;
+                                  }
+                                  composingTargetsRef.current.delete(inst.id);
+                                  justCommittedTargetsRef.current.add(inst.id);
+                                  setTimeout(() => justCommittedTargetsRef.current.delete(inst.id), 0);
+                                  if (committedValue.trim() && effectiveTarg && !textLangMatchesTarget(committedValue, effectiveTarg)) {
+                                    setRejectTooltip((current) => ({ id: inst.id, pulse: (current?.pulse ?? 0) + 1 }));
+                                  } else if (rejectTooltip?.id === inst.id) {
+                                    setRejectTooltip(null);
+                                  }
+                                }}
+                                className={`${
                                   formerTargLang && inst.target_text && inst.target_language === formerTargLang
-                                    ? "border-red-400 bg-red-50 dark:border-red-800/60 dark:bg-red-950/30"
-                                    : "border-zinc-300 bg-white dark:border-zinc-800 dark:bg-zinc-900"
-                                } focus:border-cyan-600 dark:focus:border-cyan-800 ${
-                                  inst.target_text ? "text-emerald-600 dark:text-emerald-300" : "text-zinc-600 dark:text-zinc-400"
+                                    ? "stale-target"
+                                    : ""
+                                } ${
+                                  inst.target_text ? "has-value" : ""
                                 }`}
                               />
                               {formerTargLang && inst.target_text && inst.target_language === formerTargLang && (
@@ -735,14 +1089,41 @@ export default function RegionTable({
                                   </div>
                                 </div>
                               )}
-                              {rejectTooltipId === inst.id && (
-                                <div className="lang-reject-tooltip pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 whitespace-nowrap rounded-lg border border-red-300 bg-white px-3 py-2 text-xs text-red-700 shadow-lg dark:border-red-800 dark:bg-zinc-900 dark:text-red-300">
-                                  incorrect target language.
-                                </div>
-                              )}
                             </div>
                           </div>
                         </div>
+                        {/* Font preview: show the target text rendered in the
+                            resolved font, mirroring the Render step's preview.
+                            If a preview font override is set for this region,
+                            it takes precedence so the user sees what they're
+                            trying. */}
+                        {(() => {
+                          const sp = inst.style_profile;
+                          const overridePath = previewFontOverride[inst.id];
+                          const identity = fontIdentity(inst, { familiesByLang: familiesByLang ?? {}, defaultTargLang: targLang ?? "en" });
+                          const fontPath = overridePath ?? identity.path;
+                          const fontFamily = fontPath ? fontNameForPath(fontPath) : identity.cssFontFamily;
+                          if (fontPath) loadFontPreview(fontPath);
+                          const previewStyle: CSSProperties = {
+                            fontFamily: fontFamily ?? undefined,
+                            color: sp?.color ?? undefined,
+                            fontStyle: sp?.italic ? "italic" : undefined,
+                            textDecoration: sp?.underline ? "underline" : undefined,
+                          };
+                          if (sp?.font_weight) {
+                            const fw = sp.font_weight.toLowerCase();
+                            if (fw.includes("bold")) previewStyle.fontWeight = 700;
+                            else if (fw.includes("light")) previewStyle.fontWeight = 300;
+                          }
+                          return (
+                            <div className="mt-2 rounded-sm bg-zinc-100 p-2 dark:bg-zinc-950">
+                              <p className="subtext mb-0.5 text-[10px] uppercase tracking-wider text-zinc-500">preview</p>
+                              <p className="text-sm text-zinc-800 dark:text-zinc-200" style={previewStyle}>
+                                {inst.target_text || "(no translation)"}
+                              </p>
+                            </div>
+                          );
+                        })()}
                         {(() => {
                           const match = inst.font_match;
                           const licensed = [
@@ -752,7 +1133,7 @@ export default function RegionTable({
                           const substitute = match?.recommended_substitute;
                           const matching = fontMatchingId === inst.id;
                           return (
-                            <div className="mt-2 rounded-sm border border-zinc-200 bg-white/70 px-2 py-1.5 dark:border-zinc-800 dark:bg-zinc-900/60">
+                            <div className="mt-2 rounded-sm border border-zinc-200 bg-white/70 px-2 py-1.5 dark:border-zinc-800 dark:bg-[#202021]">
                               <div className="flex flex-wrap items-center justify-between gap-2">
                                 <div className="flex min-w-0 items-center gap-1.5 text-[10px]">
                                   <ScanText size={12} className="shrink-0 text-cyan-600 dark:text-cyan-400" />
@@ -764,6 +1145,16 @@ export default function RegionTable({
                                   ) : <span className="text-zinc-500 dark:text-zinc-500">not analyzed</span>}
                                 </div>
                                 <div className="flex items-center gap-1">
+                                  {onOpenPreviewFontManager && (
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); onOpenPreviewFontManager(); }}
+                                      title="Preview font from Font Manager (preview only)"
+                                      aria-label="Open preview Font Manager"
+                                      className="shrink-0 rounded-sm border border-transparent p-1 text-zinc-500 transition hover:border-zinc-300 hover:bg-zinc-200 hover:text-zinc-700 dark:hover:border-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
+                                    >
+                                      {theme === "dark" ? <MdFontDownload size={13} /> : <MdOutlineFontDownload size={13} />}
+                                    </button>
+                                  )}
                                   <button
                                     onClick={(e) => { e.stopPropagation(); onFontMatch?.(inst.id, false); }}
                                     disabled={matching || !onFontMatch}
@@ -792,6 +1183,35 @@ export default function RegionTable({
                                   >Use recommendation</button>
                                 </div>
                               )}
+                              {previewFontOverride[inst.id] && (() => {
+                                const overridePath = previewFontOverride[inst.id];
+                                const allFamilies = [...(fullFamiliesByLang[targLang ?? ""] ?? []), ...(familiesByLang ?? {})[targLang ?? ""] ?? []];
+                                const fam = allFamilies.find((f) => f.weights.some((w) => w.path === overridePath) || f.best_path === overridePath);
+                                const weight = fam?.weights.find((w) => w.path === overridePath) ?? null;
+                                const label = fam
+                                  ? `${fam.family}${weight && weight.subfamily && weight.subfamily !== "Regular" ? ` ${weight.subfamily}` : ""}`
+                                  : overridePath.split(/[\\/]/).pop()?.replace(/\.(ttf|otf|ttc|otc)$/i, "") ?? overridePath;
+                                loadFontPreview(overridePath);
+                                return (
+                                  <div className="mt-1 flex items-center gap-1.5 text-[10px] text-zinc-600 dark:text-zinc-400">
+                                    <ScanText size={11} className="shrink-0 text-cyan-600 dark:text-cyan-400" />
+                                    <span
+                                      className="truncate"
+                                      style={{ fontFamily: fontNameForPath(overridePath) }}
+                                      title={`${label} — preview only; the render is unaffected`}
+                                    >
+                                      {label}<span className="ml-0.5 text-amber-600 dark:text-amber-500">~</span>
+                                    </span>
+                                    {onClearPreviewFont && (
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); onClearPreviewFont(inst.id); }}
+                                        title="reset to auto"
+                                        className="rounded-sm bg-cyan-500/15 px-1.5 py-0.5 text-cyan-700 transition hover:bg-cyan-500/25 dark:text-cyan-300"
+                                      >auto</button>
+                                    )}
+                                  </div>
+                                );
+                              })()}
                               {licensed.map((candidate, index) => (
                                 <div key={`${candidate.family}-${index}`} className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-amber-700 dark:text-amber-300">
                                   <AlertTriangle size={11} className="shrink-0" />
@@ -806,6 +1226,8 @@ export default function RegionTable({
                             </div>
                           );
                         })()}
+                        </div>
+                        </div>
                       </td>
                     </tr>
                   )}
@@ -820,8 +1242,8 @@ export default function RegionTable({
               </tr>
             )}
             {/* ghost rows to fill remaining space for UI seamlessness */}
-            {sortedRegions.length > 0 && sortedRegions.length < 20 && (
-              Array.from({ length: Math.max(3, 20 - sortedRegions.length) }).map((_, i) => (
+            {paginatedRegions.length > 0 && paginatedRegions.length < rowsPerPage && (
+              Array.from({ length: Math.max(3, rowsPerPage - paginatedRegions.length) }).map((_, i) => (
                 <tr key={`ghost-${i}`} className="border-b border-zinc-100 dark:border-zinc-900/30" style={{ opacity: 0.3 }}>
                   {COLS.map((c) => (
                     <td key={c.key} className="px-2 py-1 text-xs text-zinc-300 dark:text-zinc-700">&nbsp;</td>
@@ -832,10 +1254,12 @@ export default function RegionTable({
           </tbody>
         </table>
       </div>
-      {/* synced horizontal scrollbar — pinned to the bottom of the card */}
+      {/* synced horizontal scrollbar — pinned to the bottom of the card.
+          contain:paint isolates it from the card's box-shadow transition
+          so it doesn't flicker on row hover. */}
       <div
         ref={syncBarRef}
-        style={{ overflowX: "auto", overflowY: "hidden", flexShrink: 0 }}
+        style={{ overflowX: "auto", overflowY: "hidden", flexShrink: 0, contain: "paint" }}
       >
         <div style={{ width: tableWidth, height: 1 }} />
       </div>

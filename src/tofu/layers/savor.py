@@ -78,7 +78,7 @@ from statistics import median
 import unicodedata
 from typing import Any, List, Optional
 
-from tofu.core.types import BBox, InstText
+from tofu.core.types import BBox, ImageLike, InstText
 from tofu.utils.imaging import load_rgb, text_mask
 from tofu.utils.correction_resources import (
     diacritic_entries,
@@ -359,7 +359,7 @@ def _mark_zone_verdict(scan: Optional[dict], position: int) -> Optional[bool]:
     return False if (y1 - y0) * .12 >= mark_floor else None
 
 
-def _plate_clusters(asset: Any, inst: InstText):
+def _plate_clusters(asset: ImageLike, inst: InstText):
     """Return one stable mask/component/cluster view for Savor courses.
 
     Case and detached-mark verification must inspect exactly the same plate.
@@ -390,7 +390,7 @@ def _plate_clusters(asset: Any, inst: InstText):
     return mask, raw_components, clusters
 
 
-def assess_ocr_quality(asset: Any, inst: InstText, plate=None,
+def assess_ocr_quality(asset: ImageLike, inst: InstText, plate=None,
                        engine: Optional[Any] = None) -> dict:
     """Produce a deterministic, per-region OCR observability record.
 
@@ -494,7 +494,7 @@ def assess_ocr_quality(asset: Any, inst: InstText, plate=None,
     return {"state": state, "reasons": list(dict.fromkeys(reasons)), **evidence}
 
 
-def chew_case(asset: Any, inst: InstText, plate=None) -> tuple[Optional[str], dict]:
+def chew_case(asset: ImageLike, inst: InstText, plate=None) -> tuple[Optional[str], dict]:
     """Measure the physical case signature of one Latin token/region."""
     text = inst.text or ""
     if not text or len(text.split()) != 1:
@@ -665,7 +665,7 @@ def sniff_clumps(text: str, plate, language: Optional[str],
     return [morsel], evidence
 
 
-def _reread_span(asset: Any, engine: Any, bbox: BBox, span: tuple) -> Optional[str]:
+def _reread_span(asset: ImageLike, engine: Any, bbox: BBox, span: tuple) -> Optional[str]:
     """Re-read ONE clump's own pixels as an isolated crop.
 
     The recognizer that produced the clump saw it inside a full line, where
@@ -691,7 +691,7 @@ def _reread_span(asset: Any, engine: Any, bbox: BBox, span: tuple) -> Optional[s
     return (composed.text or "").strip() if composed else None
 
 
-def chew_clump(asset: Any, inst: InstText, morsel: ClumpMorsel, plate,
+def chew_clump(asset: ImageLike, inst: InstText, morsel: ClumpMorsel, plate,
                engine: Optional[Any] = None,
                font_registry: Optional[Any] = None) -> tuple[Optional[bool], dict]:
     """course 0's bite: does the clump really separate into the proposed
@@ -1148,7 +1148,7 @@ def _flavor_match(np, cv2, a, b) -> float:
     return inter / union if union > 0 else 0.0
 
 
-def chew_on(asset: Any, inst: InstText, morsel: Morsel) -> Optional[bool]:
+def chew_on(asset: ImageLike, inst: InstText, morsel: Morsel) -> Optional[bool]:
     """course 2: take a real bite. isolates the ambiguous glyph's actual
     pixels and compares their SHAPE against reference renders of both
     candidate characters.
@@ -1243,7 +1243,7 @@ def _cluster_to_n_glyphs(plated, n: int, vertical: bool):
     return [tuple(c) for c in clusters]
 
 
-def chew_swaps(asset: Any, inst: InstText, positions: List[tuple],
+def chew_swaps(asset: ImageLike, inst: InstText, positions: List[tuple],
                 lang: Optional[str],
                 font_registry: Optional[Any] = None) -> "dict[int, Optional[bool]]":
     """generic per-position glyph-swap verification: does the pixel
@@ -1336,7 +1336,7 @@ def chew_swaps(asset: Any, inst: InstText, positions: List[tuple],
     return verdicts
 
 
-def chew_dakuten(asset: Any, inst: InstText, morsel: DakutenMorsel,
+def chew_dakuten(asset: ImageLike, inst: InstText, morsel: DakutenMorsel,
                   font_registry: Optional[Any] = None) -> "dict[int, Optional[bool]]":
     """course 4's bite: verifies EACH position in `morsel.positions`
     independently against its own pixels -- a thin wrapper over
@@ -1355,7 +1355,7 @@ def chew_dakuten(asset: Any, inst: InstText, morsel: DakutenMorsel,
     return chew_swaps(asset, inst, morsel.positions, morsel.lang, font_registry)
 
 
-def taste(asset: Any, instances: List[InstText], font_registry: Optional[Any] = None,
+def taste(asset: ImageLike, instances: List[InstText], font_registry: Optional[Any] = None,
           engine: Optional[Any] = None) -> int:
     """the full tasting menu, all courses, run across every instance.
 

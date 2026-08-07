@@ -126,7 +126,7 @@ export default function HistoryPanel({ project, currentAssetId, onRestored, onCl
           ))}
         </div>
 
-        <div className="flex-1 overflow-y-auto p-5">
+        <div className="pantry-scroll flex-1 overflow-y-auto p-5">
           {error && (
             <div className="subtext mb-3 rounded-lg border border-red-300 bg-red-100 px-3 py-2 text-xs text-red-700 dark:border-red-800 dark:bg-red-950/50 dark:text-red-300">
               {error}
@@ -139,7 +139,7 @@ export default function HistoryPanel({ project, currentAssetId, onRestored, onCl
           )}
 
           {history && tab === "snapshots" && (
-            <div className="space-y-2">
+            <div key="snapshots" className="step-fade space-y-2">
               {history.snapshots.length === 0 && (
                 <p className="subtext py-6 text-center text-sm text-zinc-500">
                   No saves yet. Autosave records a snapshot whenever your regions change.
@@ -184,7 +184,7 @@ export default function HistoryPanel({ project, currentAssetId, onRestored, onCl
           )}
 
           {history && tab === "events" && (
-            <div className="space-y-1.5">
+            <div key="events" className="step-fade space-y-1.5">
               {history.events.length === 0 && (
                 <p className="subtext py-6 text-center text-sm text-zinc-500">No activity recorded yet.</p>
               )}

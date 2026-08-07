@@ -2,16 +2,19 @@
 ## vieuxtiful
 
 from typing import Any, Dict, List, Tuple
+from tofu.core.types import ImageLike
 
 
 def make_patch(
-    base_img: Any,
+    base_img: ImageLike,
     polygon: List[Tuple[int, int]] | None = None,
     mode: str = "auto",
     points: List[Tuple[int, int]] | None = None,
     radius: int = 18,
     hardness: float = 0.85,
     blur_strength: float = 0.5,
+    opacity: float = 1.0,
+    clone_source: Tuple[int, int] | None = None,
 ):
     """Return an RGBA treatment crop, bbox, and applied strategy.
 
@@ -57,7 +60,20 @@ def make_patch(
     # pixels: connected edge structure favours Navier--Stokes propagation;
     # otherwise Telea is the more conservative local heal.  The explicit
     # modes remain API-compatible for old persisted patches and tests.
-    if mode == "blur":
+    if mode == "clone":
+        if clone_source is None or not points:
+            raise ValueError("clone requires a source anchor and destination stroke")
+        dx, dy = int(clone_source[0] - points[0][0]), int(clone_source[1] - points[0][1])
+        yy, xx = np.indices(mask.shape)
+        sx, sy = xx + dx, yy + dy
+        valid = (mask > 0) & (sx >= 0) & (sx < image.width) & (sy >= 0) & (sy < image.height)
+        cloned = arr.copy()
+        cloned[valid] = arr[sy[valid], sx[valid]]
+        crop = cloned[y0:y1, x0:x1]
+        # Do not composite pixels whose aligned sample falls outside the asset.
+        mask[~valid] = 0
+        strategy = "aligned_clone"
+    elif mode == "blur":
         intensity = max(0.0, min(1.0, float(blur_strength)))
         sigma = max(1.0, float(radius) * max(0.1, intensity))
         blurred = cv2.GaussianBlur(arr, (0, 0), sigma)
@@ -76,7 +92,7 @@ def make_patch(
                   blurred.astype(np.float32) * text_weight)
         crop = np.clip(result, 0, 255).astype(np.uint8)[y0:y1, x0:x1]
         strategy = "text_blur"
-    elif mode == "auto":
+    elif mode in {"auto", "heal", "context_fill"}:
         expanded = cv2.dilate(mask, np.ones((5, 5), np.uint8), iterations=2)
         ring = (expanded > 0) & ~(mask > 0)
         gray = cv2.cvtColor(arr, cv2.COLOR_RGB2GRAY)
@@ -95,6 +111,7 @@ def make_patch(
     # stamped edge.  It never changes the actual treatment pixels.
     blur = max(0, int((1.0 - max(0.0, min(1.0, hardness))) * radius))
     alpha = cv2.GaussianBlur(mask, (0, 0), blur) if blur else mask
+    alpha = np.clip(alpha.astype(np.float32) * max(0.0, min(1.0, float(opacity))), 0, 255).astype(np.uint8)
     alpha = alpha[y0:y1, x0:x1]
     rgba = np.dstack([crop, alpha])
     return (Image.fromarray(rgba, "RGBA"),

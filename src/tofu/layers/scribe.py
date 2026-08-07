@@ -33,8 +33,9 @@ region, unrelated to cleanse and traced here).
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from tofu.core.types import TextManifest, RenderParams, BBox, StyleProfil
+from tofu.core.types import ImageLike, TextManifest, RenderParams, BBox, StyleProfil
 from tofu.layers.fonts import faces_of
+from tofu.utils.geometry import quad_is_usable
 
 FALLBACK_FONTS = ("arial.ttf", "DejaVuSans.ttf", "segoeui.ttf")
 MIN_FONT_PX = 6
@@ -185,25 +186,11 @@ def _denormalise_quad(
     ]
 
 
-def _quad_is_usable(corners: List[Tuple[float, float]]) -> bool:
-    """Convex, correctly wound and non-degenerate.
-
-    A self-intersecting or collinear quad makes getPerspectiveTransform
-    singular, and a singular solve raises in the middle of a render.  The
-    sign of the cross product at each corner catches both: a convex polygon
-    turns the same way at every vertex, and a collinear triple turns not at
-    all.  Callers fall back to the affine path rather than failing.
-    """
-    signs = []
-    for index in range(4):
-        ax, ay = corners[index]
-        bx, by = corners[(index + 1) % 4]
-        cx, cy = corners[(index + 2) % 4]
-        cross = (bx - ax) * (cy - by) - (by - ay) * (cx - bx)
-        if abs(cross) < 1e-9:
-            return False
-        signs.append(cross > 0)
-    return all(signs) or not any(signs)
+## Shared with Cleanse and Verify rather than restated here: whichever
+## layer accepts a quad the others reject ends up warping an image nobody
+## else saw. Kept as a module-level name because verify.py and the
+## perspective tests reach for `scribe._quad_is_usable`.
+_quad_is_usable = quad_is_usable
 
 
 def _perspective_coefficients(
@@ -489,7 +476,7 @@ def _apply_style_transform(layer: Any, bbox: BBox, transform: Optional[Dict[str,
         return layer
 
 
-def _load_image(asset: Any):
+def _load_image(asset: ImageLike):
     """accept a PIL image, file path, or bytes; return RGBA image or None."""
     try:
         from PIL import Image
@@ -1447,7 +1434,7 @@ def _capture_text_mask(masks: Dict[str, Any], inst_id: str, layer: Any) -> None:
 
 
 def render(
-    cleansed_asset: Any,
+    cleansed_asset: ImageLike,
     text_manifest: TextManifest,
     targ_lang: str,
     render_params: Optional[Dict[str, RenderParams]] = None,

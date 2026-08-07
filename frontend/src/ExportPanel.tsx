@@ -8,6 +8,7 @@ interface ExportPanelProps {
   targLang: string;
   disabled: boolean;
   embedded?: boolean;
+  projectName?: string;
 }
 
 const FORMATS = [
@@ -33,7 +34,7 @@ const VARIANT_ICONS: Record<string, string> = {
   memoq: "memoq-icon.png",
 };
 
-export default function ExportPanel({ assetId, targLang, disabled, embedded }: ExportPanelProps) {
+export default function ExportPanel({ assetId, targLang, disabled, embedded, projectName }: ExportPanelProps) {
   const [format, setFormat] = useState("xliff");
   const [variant, setVariant] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -65,7 +66,8 @@ export default function ExportPanel({ assetId, targLang, disabled, embedded }: E
       const a = document.createElement("a");
       a.href = url;
       const ext = format === "xliff" ? "xliff" : format;
-      a.download = `${assetId}.${ext}`;
+      const base = (projectName || assetId || "export").replace(/[<>:"/\\|?*\x00-\x1f]/g, "").trim() || "export";
+      a.download = `${base}.${ext}`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (e) {

@@ -1,5 +1,21 @@
 // 🍢 ToFU — API client (mirrors server/main.py contracts)
 
+/**
+ * API base URL for cross-origin deployments. In development and nginx-reverse-
+ * proxy setups, this is empty and all requests use relative /api/ paths. For
+ * custom deployments where the frontend is served from a different origin:
+ *
+ *   VITE_API_URL=https://api.example.com npm run build
+ */
+const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? "";
+if (API_BASE) {
+  const _fetch = window.fetch.bind(window);
+  window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
+    if (typeof input === "string" && input.startsWith("/")) input = API_BASE + input;
+    return _fetch(input, init);
+  };
+}
+
 export interface AssetInfo {
   asset_type: string;
   frame_count: number;
@@ -25,6 +41,7 @@ export interface ProjectAsset {
   is_active: number;
   asset_url?: string | null;
   has_manifest?: boolean;
+  ground_truth: string[];
 }
 
 export type AssetKind = "image" | "video";
@@ -91,6 +108,7 @@ export interface Project {
   created_at: number;
   updated_at: number;
   archived_at?: number | null;
+  ground_truth: string[];
   asset_count?: number;
   snapshot_count?: number;
   assets?: ProjectAsset[];
@@ -254,6 +272,52 @@ export interface InstText {
   translation_decision?: TranslationDecision | null;
   translation_history?: TranslationDecision[];
   recognition_history?: Array<{ stage: string; engine: string; candidate_text?: string; candidate_confidence?: number; primary_text?: string; primary_confidence?: number; accepted: boolean; reason: string }> | null;
+  ocr_correction?: {
+    applied: boolean;
+    original_text?: string;
+    candidate_text?: string;
+    corrected_text?: string;
+    reason?: string;
+    policy_version?: string;
+    correction_resource?: {
+      kind?: string;
+      scope?: string;
+      terms?: string[];
+      revision?: string;
+      [key: string]: unknown;
+    } | null;
+  } | null;
+  source_override?: {
+    kind: "tofu_arbitration" | "ground_truth" | string;
+    text: string;
+    icon?: "tofu" | "leaf";
+    color?: "amber" | "emerald";
+    resource?: Record<string, unknown> | null;
+  } | null;
+  // Arbitration's own reading of the region, scored across every observation
+  // rather than the last two. `agrees_with_pairwise` is false when it would
+  // have chosen differently from the text actually shown -- the region is
+  // still the pairwise decision's, because every baseline is calibrated
+  // against that, so this is offered for review rather than applied.
+  ocr_provenance?: {
+    hypothesis?: {
+      verified: boolean;
+      observations_scored: number;
+      selected_text: string | null;
+      transcription_score?: number | null;
+      geometry_score?: number | null;
+      auto_accepted: boolean;
+      review_required: boolean;
+      reason_codes?: string[];
+      // Kept for audit, not for display: six per-signal numbers are a
+      // debugging readout, and the workspace shows only the reading.
+      score_breakdown?: Record<string, number | null>;
+      agrees_with_pairwise: boolean;
+      // set when arbitration's reading was taken into the manifest, so an
+      // attributed region is distinguishable from one that merely differs
+      promoted?: boolean;
+    } | null;
+  } | null;
   ocr_quality?: OcrQuality | null;
   repair_provenance?: {
     requested_provider: string;
@@ -643,7 +707,15 @@ export interface RenderResult {
 }
 
 export interface DetectStreamEvent {
-  stage: "scene" | "cicerone" | "finalize" | "refine" | "zoom" | "vertical_split" | "paddle_rescue" | "polish" | "savor" | "wasabi" | "menu" | "enrich" | "memory" | "complete" | "error";
+  /** Every stage cicerone.detect() reports through its on_stage callback,
+   *  plus the server-only ones the endpoint adds around it (scene, enrich,
+   *  font_match, memory, complete, error). App.tsx handles a subset via an
+   *  if/else chain, so an unlisted stage is inert rather than fatal -- but
+   *  this union is the contract, and it drifted once already. */
+  stage: "scene" | "cicerone" | "finalize" | "refine" | "zoom" | "vertical_split"
+    | "line_assembly" | "paddle_rescue" | "polish" | "arbitration" | "hybrid_audit"
+    | "skim" | "savor" | "wasabi" | "menu" | "ordinal" | "enrich" | "font_match"
+    | "memory" | "complete" | "error";
   status?: "running" | "complete";
   pass?: number;
   regions?: SceneRegion[] | number;  // scene: region list; cicerone/refine: running count
@@ -661,6 +733,10 @@ export interface OcrRegionResult {
   confidence: number;
   detected_language: string | null;
   engine_missing?: boolean;  // OCR engine absent on the server (config issue)
+  ocr_correction?: InstText["ocr_correction"];
+  source_override?: InstText["source_override"];
+  recognition_history?: InstText["recognition_history"];
+  ocr_provenance?: InstText["ocr_provenance"];
 }
 
 export interface RefineRegionResult {
@@ -806,13 +882,40 @@ export async function getProject(id: string): Promise<Project> {
 
 export async function updateProject(
   id: string,
-  updates: Partial<{ name: string; target_lang: string; source_lang: string; archived: boolean }>
+  updates: Partial<{ name: string; target_lang: string; source_lang: string; ground_truth: string[]; archived: boolean }>
 ): Promise<Project> {
   return json(
     await fetch(`/api/projects/${encodeURIComponent(id)}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(updates),
+    })
+  );
+}
+
+export async function updateAssetGroundTruth(
+  assetId: string,
+  groundTruth: string[]
+): Promise<ProjectAsset> {
+  return json(
+    await fetch(`/api/assets/${encodeURIComponent(assetId)}/ground-truth`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ground_truth: groundTruth }),
+    })
+  );
+}
+
+export async function importAssetGroundTruth(
+  assetId: string,
+  file: File
+): Promise<{ asset: ProjectAsset; imported: number; total: number; filename: string }> {
+  const form = new FormData();
+  form.append("file", file);
+  return json(
+    await fetch(`/api/assets/${encodeURIComponent(assetId)}/ground-truth/import`, {
+      method: "POST",
+      body: form,
     })
   );
 }
@@ -1056,6 +1159,44 @@ export async function semanticRepair(
   );
 }
 
+export async function semanticModifyMembers(
+  assetId: string,
+  unitId: string,
+  options: { addRegionId?: string; removeRegionId?: string },
+): Promise<{ manifest: TextManifest }> {
+  return json(
+    await fetch(`/api/semantic-units/${encodeURIComponent(assetId)}/${encodeURIComponent(unitId)}/members`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(options),
+    })
+  );
+}
+
+export async function semanticCreateUnit(
+  assetId: string,
+  regionIds?: string[],
+): Promise<{ manifest: TextManifest }> {
+  return json(
+    await fetch(`/api/semantic-units/${encodeURIComponent(assetId)}/create`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ region_ids: regionIds ?? [] }),
+    })
+  );
+}
+
+export async function semanticDeleteUnit(
+  assetId: string,
+  unitId: string,
+): Promise<{ manifest: TextManifest }> {
+  return json(
+    await fetch(`/api/semantic-units/${encodeURIComponent(assetId)}/${encodeURIComponent(unitId)}`, {
+      method: "DELETE",
+    })
+  );
+}
+
 export async function uploadGlossary(
   file: File,
   scope: "global" | "project",
@@ -1102,6 +1243,26 @@ export async function addRegion(
 export async function deleteRegion(assetId: string, regionId: string): Promise<{ ok: boolean; total_regions: number }> {
   return json(
     await fetch(`/api/manifest/${assetId}/regions/${regionId}`, { method: "DELETE" })
+  );
+}
+
+/** Fold several regions into one. The first in reading order survives and
+ *  keeps its id; the rest are excluded the same way deleteRegion excludes
+ *  a region, so cleanse still erases their pixels. `source` reports
+ *  whether the text came from re-reading the union box or from joining
+ *  the parts. */
+export async function mergeRegions(
+  assetId: string, regionIds: string[], texts?: string[],
+): Promise<{
+  ok: boolean; region: InstText; source: "reread" | "joined";
+  merged_ids: string[]; total_regions: number;
+}> {
+  return json(
+    await fetch(`/api/manifest/${assetId}/regions/merge`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ region_ids: regionIds, texts }),
+    })
   );
 }
 
@@ -1198,12 +1359,13 @@ export async function renderAsset(
 }
 
 export async function renderPreview(
-  assetId: string, targLang: string, manifest: TextManifest, signal?: AbortSignal, fastPath = false
+  assetId: string, targLang: string, manifest: TextManifest, signal?: AbortSignal, fastPath = false,
+  showLocalizedText = true,
 ): Promise<{ output_url: string; text_manifest: TextManifest; cleanse_cache_key: string }> {
   return json(await fetch("/api/preview/render", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ asset_id: assetId, targ_lang: targLang, manifest, fast_path: fastPath }),
+    body: JSON.stringify({ asset_id: assetId, targ_lang: targLang, manifest, fast_path: fastPath, show_localized_text: showLocalizedText }),
     signal,
   }));
 }
@@ -1215,7 +1377,16 @@ export async function previewCandidateLocalized(assetId: string, candidateId: st
 }
 
 export interface InpaintPatch { id: string; bbox: BBox; polygon: number[][]; points?: number[][]; mode: string; strategy?: string; radius?: number; hardness?: number; candidate_id?: string; }
-export interface TreatmentRequest { polygon?: number[][]; points?: number[][]; mode?: "blur"; radius?: number; hardness?: number; blur_strength?: number; }
+export interface TreatmentRequest {
+  polygon?: number[][];
+  points?: number[][];
+  mode?: "blur" | "heal" | "clone" | "context_fill";
+  radius?: number;
+  hardness?: number;
+  blur_strength?: number;
+  opacity?: number;
+  clone_source?: number[];
+}
 export async function createInpaintPatch(assetId: string, treatment: TreatmentRequest, manifest?: TextManifest) {
   return json(await fetch("/api/inpaint", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ asset_id: assetId, ...treatment, manifest }) })) as Promise<{ id: string; bbox: BBox; patches: InpaintPatch[]; revision: string }>;
 }

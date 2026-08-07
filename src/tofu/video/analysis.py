@@ -8,11 +8,12 @@ from dataclasses import asdict
 from typing import Any, Callable, Deque, Dict, List, Optional, Sequence, Set, Tuple
 
 from tofu.layers import cicerone
-from tofu.core.types import AssetInfo, AssetType
+from tofu.core.types import AssetInfo, AssetType, ImageLike
 from .checkpoint import (OVERLAP_FRAMES, OverlapReconciler, ResumeMismatch,
                          TrackSnapshot, TrackerCheckpoint, frame_fingerprint)
-from .temporal import (ConsensusAccumulator, association_score, settle,
-                       should_run_ocr)
+from .temporal import (ConsensusAccumulator, DEFAULT_DEATH_MISS_FRAMES,
+                       DEFAULT_MAX_GAP_FRAMES, association_score, detect_text_change,
+                       settle, should_run_ocr)
 from .types import OCRCandidate, TextTrack, TrackObservation, VideoManifest
 
 ## Bumped whenever a change here would make a stored checkpoint describe state
@@ -35,7 +36,18 @@ CONFIDENCE_DECAY = .03
 CONFIDENCE_RECOVERY = .02
 CONFIDENCE_CEILING = .99
 FLOW_FAILURE_PENALTY = .6
-MISSED_KEYFRAMES_BEFORE_RETIREMENT = 2
+MISSED_KEYFRAMES_BEFORE_RETIREMENT = DEFAULT_DEATH_MISS_FRAMES
+
+## Occlusion handling: when a track disappears and reappears within this many
+## frames at a nearby position, we reconnect it to the original track rather
+## than spawning a new one. The `dormant` dict holds retired tracks indexed by
+## track_id, with their last observation and the frame they were retired.
+MAX_GAP_FRAMES = DEFAULT_MAX_GAP_FRAMES
+
+## Birth smoothing: a track must accumulate this many consecutive observations
+## before it is confirmed. Pending (unconfirmed) tracks are kept in a separate
+## dict and dropped if they miss before reaching the threshold.
+MIN_CONFIRM_OBSERVATIONS = 2
 
 
 class Braise:
@@ -80,6 +92,18 @@ class Braise:
         ## enough to checkpoint, distinctive enough to tell "the decoder gave us
         ## the frame we expected" from "it gave us a different one".
         self.appearance: Dict[str, List[float]] = {}
+
+        ## Occlusion handling: tracks retired due to missed frames are held
+        ## here for MAX_GAP_FRAMES so a reappearing detection at a nearby
+        ## position can reconnect to the original track instead of spawning
+        ## a new one. Maps track_id → (last_observation, retired_at_frame,
+        ## consensus_state, shot_id).
+        self.dormant: Dict[str, Tuple[TrackObservation, int, Dict[str, Any], str]] = {}
+
+        ## Birth smoothing: tracks that have not yet accumulated
+        ## MIN_CONFIRM_OBSERVATIONS consecutive observations. If they miss
+        ## before confirming, they are dropped as flicker-induced false tracks.
+        self.pending: Set[str] = set()
 
         ## Only tracks touched since the last drain are written. Sending every
         ## track every chunk made the write O(chunks^2) over a long clip.
@@ -151,7 +175,7 @@ class Braise:
     def shot_id(self) -> str:
         return f"shot-{self.shot_index:05d}"
 
-    def _histogram(self, gray: Any) -> Any:
+    def _histogram(self, gray: ImageLike) -> Any:
         import cv2
         hist = cv2.calcHist([gray], [0], None, [32], [0, 256])
         cv2.normalize(hist, hist)
@@ -168,7 +192,7 @@ class Braise:
         pts = self.manifest.frame_pts
         return pts[frame] if frame < len(pts) else frame / (self.manifest.fps or 30)
 
-    def _crop_appearance(self, gray: Any, box: Dict[str, float]) -> Optional[List[float]]:
+    def _crop_appearance(self, gray: ImageLike, box: Dict[str, float]) -> Optional[List[float]]:
         x, y, w, h = (int(box[k]) for k in ("x", "y", "width", "height"))
         crop = gray[max(0, y):max(0, y + h), max(0, x):max(0, x + w)]
         if not crop.size:
@@ -177,7 +201,7 @@ class Braise:
 
     # -- the loop body -----------------------------------------------------
 
-    def warm(self, image: Any) -> Dict[str, Any]:
+    def warm(self, image: ImageLike) -> Dict[str, Any]:
         """Replay an already-analyzed frame: refresh derived state, emit nothing.
 
         This is how `previous_gray` comes back after a resume instead of being
@@ -200,12 +224,12 @@ class Braise:
         return {"frame_index": replayed, "visual_change": change, "cut": cut,
                 "histogram": [float(v) for v in hist.reshape(-1)], "gray": gray}
 
-    def _remember(self, gray: Any, cut: bool) -> None:
+    def _remember(self, gray: ImageLike, cut: bool) -> None:
         self.recent.append({"frame_index": self.frame,
                             "fingerprint": frame_fingerprint(gray),
                             "cut": bool(cut)})
 
-    def step(self, image: Any) -> None:
+    def step(self, image: ImageLike) -> None:
         """Analyze one new frame, appending to `self.observations`."""
         import cv2
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -220,6 +244,8 @@ class Braise:
             self.active = {}
             self.missed.clear()
             self.appearance.clear()
+            self.dormant.clear()
+            self.pending.clear()
         self.previous_hist = hist
         self._remember(gray, cut)
 
@@ -242,7 +268,7 @@ class Braise:
         self.frame += 1
         self.previous_gray = gray
 
-    def _read(self, image: Any, gray: Any, trigger: str, change: float) -> None:
+    def _read(self, image: ImageLike, gray: ImageLike, trigger: str, change: float) -> None:
         """Run OCR on this frame and re-associate detections to active tracks."""
         import cv2
         ## an ndarray, not a PIL Image: the backend forwards any non-str asset
@@ -273,9 +299,24 @@ class Braise:
         for track_id in list(unmatched):
             self.missed[track_id] = self.missed.get(track_id, 0) + 1
             if self.missed[track_id] >= MISSED_KEYFRAMES_BEFORE_RETIREMENT:
-                self.active.pop(track_id, None)
+                ## Death smoothing: move to dormant instead of deleting outright.
+                ## A reappearing detection within MAX_GAP_FRAMES can reconnect.
+                last_obs = self.active.pop(track_id, None)
                 self.appearance.pop(track_id, None)
                 self.missed.pop(track_id, None)
+                self.pending.discard(track_id)
+                if last_obs is not None:
+                    track = self.tracks.get(track_id)
+                    self.dormant[track_id] = (
+                        last_obs, self.frame,
+                        track.consensus_state if track else {},
+                        track.shot_id if track else self.shot_id)
+
+        ## Expire dormant tracks whose gap has exceeded MAX_GAP_FRAMES.
+        expired = [tid for tid, (_, retired_at, _, _) in self.dormant.items()
+                   if self.frame - retired_at > MAX_GAP_FRAMES]
+        for tid in expired:
+            self.dormant.pop(tid, None)
 
     def _associate(self, observation: TrackObservation, unmatched: Set[str]) -> str:
         """Pick the best surviving track for a detection, or open a new one.
@@ -284,8 +325,25 @@ class Braise:
         absolute shot barrier -- rather than overlap alone. The IoU floor keeps
         the text term from matching a region on the far side of the frame just
         because it reads the same.
+
+        Three edge case handlers run after the primary association:
+
+        1. **Occlusion reconnection**: if no active track matches, check
+           dormant tracks (recently retired within MAX_GAP_FRAMES). A
+           reappearing detection at a nearby position reconnects to the
+           original track, preserving its consensus history.
+
+        2. **Text-change splitting**: if the best active match has good bbox
+           overlap but the text changed dramatically (digital sign cycling
+           messages), end the old track and start a new one rather than
+           averaging dissimilar observations.
+
+        3. **Birth smoothing**: new tracks start in `pending` and must
+           accumulate MIN_CONFIRM_OBSERVATIONS consecutive observations before
+           being confirmed. Pending tracks that miss before confirming are
+           dropped as flicker-induced false tracks.
         """
-        from .temporal import bbox_iou
+        from .temporal import bbox_iou, text_similarity
         best, best_score = None, 0.0
         for track_id in unmatched:
             previous = self.active[track_id]
@@ -294,15 +352,63 @@ class Braise:
             score = association_score(previous, observation)
             if score > best_score:
                 best, best_score = track_id, score
+
+        ## Text-change splitting: if the best match has strong bbox overlap
+        ## but the text changed beyond TEXT_CHANGE_SPLIT_THRESHOLD, split the
+        ## track rather than folding dissimilar text into the old consensus.
+        if best is not None and best_score >= ASSOCIATION_THRESHOLD:
+            previous = self.active[best]
+            old_text = next((c.text for c in previous.ocr_candidates if c.accepted), None)
+            new_text = next((c.text for c in observation.ocr_candidates if c.accepted), None)
+            if old_text is not None and new_text is not None and detect_text_change(old_text, new_text):
+                ## End the old track: do NOT put it in dormant — a text change
+                ## is a genuine content change, not an occlusion. The old track
+                ## is simply ended and a new one begins.
+                unmatched.discard(best)
+                self.active.pop(best, None)
+                self.missed.pop(best, None)
+                self.appearance.pop(best, None)
+                self.pending.discard(best)
+                best, best_score = None, 0.0  # fall through to dormant/new
+
         if best is not None and best_score >= ASSOCIATION_THRESHOLD:
             unmatched.discard(best)
+            self.pending.discard(best)  # confirmed by re-association
             return best
+
+        ## Occlusion reconnection: check dormant tracks for a nearby match.
+        best_dormant, best_dormant_score = None, 0.0
+        for track_id, (dormant_obs, retired_at, _, dormant_shot) in self.dormant.items():
+            if self.frame - retired_at > MAX_GAP_FRAMES:
+                continue
+            if dormant_shot != observation.shot_id:
+                continue
+            if bbox_iou(dormant_obs.bbox, observation.bbox) < ASSOCIATION_MIN_IOU:
+                continue
+            score = association_score(dormant_obs, observation)
+            if score > best_dormant_score:
+                best_dormant, best_dormant_score = track_id, score
+        if best_dormant is not None and best_dormant_score >= ASSOCIATION_THRESHOLD:
+            dormant_obs, _, dormant_consensus, dormant_shot = self.dormant.pop(best_dormant)
+            self.pending.discard(best_dormant)  # already confirmed before
+            ## Recreate the track (it was evicted from self.tracks by drain()).
+            ## Carry forward its consensus history so the reconnected track
+            ## preserves its OCR evidence.
+            track = TextTrack(best_dormant, dormant_shot,
+                              dormant_obs.frame_index, self.frame)
+            track.consensus_state = dormant_consensus
+            track.observation_count = 1  # will be incremented by _record
+            self.tracks[best_dormant] = track
+            return best_dormant
+
+        ## Birth: create a new track in pending state.
         track_id = uuid.uuid4().hex[:16]
         self.tracks[track_id] = TextTrack(track_id, self.shot_id, self.frame, self.frame)
+        self.pending.add(track_id)
         self.dirty.add(track_id)
         return track_id
 
-    def _record(self, observation: TrackObservation, gray: Any) -> None:
+    def _record(self, observation: TrackObservation, gray: ImageLike) -> None:
         """Attach an OCR observation to its track and fold the evidence away."""
         track_id = observation.track_id
         self.observations.append(observation)
@@ -317,6 +423,9 @@ class Braise:
         track = self.tracks[track_id]
         track.end_frame = observation.frame_index
         track.observation_count += 1
+        ## Birth smoothing: confirm the track once it has enough observations.
+        if track_id in self.pending and track.observation_count >= MIN_CONFIRM_OBSERVATIONS:
+            self.pending.discard(track_id)
         ## fold immediately: holding every keyframe observation until the end of
         ## the clip was the one structure here that grew with duration.
         accumulator = ConsensusAccumulator.from_dict(track.consensus_state)
@@ -376,6 +485,18 @@ class Braise:
         observations = [asdict(observation) for observation in self.observations]
         self.dirty.clear()
         self.observations.clear()
+        ## Birth smoothing: drop pending (unconfirmed) tracks at drain time.
+        ## They never accumulated enough evidence to be real — flicker, not a
+        ## sign — so their observations are removed too.
+        for pending_id in list(self.pending):
+            self.tracks.pop(pending_id, None)
+            self.active.pop(pending_id, None)
+            self.missed.pop(pending_id, None)
+            self.appearance.pop(pending_id, None)
+        self.pending.clear()
+        ## Evict inactive tracks from memory. Dormant tracks (held for
+        ## occlusion reconnection) are evicted too — they are rows now, and
+        ## _associate recreates them from self.dormant if reconnected.
         for track_id in [t for t in self.tracks if t not in self.active]:
             del self.tracks[track_id]
         return tracks, observations

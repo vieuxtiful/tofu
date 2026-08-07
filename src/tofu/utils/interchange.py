@@ -515,3 +515,47 @@ def import_file(filename: str, content: str) -> Dict[str, str]:
         return import_csv(content)
     else:
         return import_txt(content)
+
+
+def extract_ground_truth(filename: str, content: str, source_lang: Optional[str] = None) -> List[str]:
+    """Extract source-side text from common localization interchange files.
+
+    This intentionally returns segments, not a translation mapping. The API's
+    Ground Truth normalizer remains responsible for whitespace tokenization,
+    Unicode preservation, and deduplication.
+    """
+    fmt = detect_format(filename)
+    if fmt == "xliff":
+        return [unit["source"].strip() for unit in _xliff_units(content) if unit["source"].strip()]
+    if fmt == "tmx":
+        root = ET.fromstring(content)
+        wanted = (source_lang or "").lower().split("-")[0]
+        values: List[str] = []
+        for tu in root.iter():
+            if _local_name(tu.tag) != "tu":
+                continue
+            tuvs = [child for child in tu if _local_name(child.tag) == "tuv"]
+            selected = None
+            if wanted:
+                selected = next((tuv for tuv in tuvs if (
+                    (_local_attr(tuv, "lang") or "").lower().split("-")[0] == wanted
+                )), None)
+            if selected is None:
+                selected = tuvs[0] if tuvs else None
+            segment = _first_descendant(selected, "seg") if selected is not None else None
+            text = _segment_text(segment).strip()
+            if text:
+                values.append(text)
+        return values
+    if fmt in {"tsv", "csv"}:
+        delimiter = "\t" if fmt == "tsv" else ","
+        rows = csv.reader(io.StringIO(content), delimiter=delimiter)
+        header = next(rows, [])
+        source_index = next((i for i, value in enumerate(header) if value.strip().lower() in {
+            "source", "source_text", "src", "term", "text",
+        }), None)
+        if source_index is None:
+            source_index = 1 if len(header) > 1 and header[0].strip().lower() in {"id", "key"} else 0
+            rows = iter([header, *rows])
+        return [row[source_index].strip() for row in rows if len(row) > source_index and row[source_index].strip()]
+    return [line.strip() for line in content.splitlines() if line.strip()]

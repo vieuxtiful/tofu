@@ -1,0 +1,54 @@
+# Git
+.git/
+.gitignore
+.github/
+
+# Python caches
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Virtual environments
+.venv/
+.venv-paddle/
+.venv-inpaint/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Test artifacts
+tests/regression/baselines/
+scripts/eval_out/
+
+# Documentation (not needed in image)
+docs/
+*.md
+!README.md
+!AGENTS.md
+!CHANGELOG.md
+!CONTRIBUTING.md
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Misc
+tofu-final-plan.txt
+images/
+playground/

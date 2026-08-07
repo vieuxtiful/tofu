@@ -19,6 +19,10 @@ interface TargetPreviewCanvasProps {
   familiesByLang?: Record<string, FontFamily[]>;
   defaultTargLang: string;
   label: string;
+  /** Preview-only font override: region ID → font path.  Stamped onto the
+   *  cloned instance's style_profile before resolution so the ladder picks
+   *  it up as "explicit" — never written back to the manifest. */
+  fontOverride?: Record<string, string>;
   // linked mode
   linked: boolean;
   showZoom?: boolean;
@@ -39,7 +43,7 @@ type PanState = { startClientX: number; startClientY: number; startScrollLeft: n
 const PLATE_MASK_MIN_CONF = 0.5;
 
 export default function TargetPreviewCanvas({
-  className, imageUrl, manifest, semanticUnits = [], imgNaturalSize, familiesByLang, defaultTargLang, label,
+  className, imageUrl, manifest, semanticUnits = [], imgNaturalSize, familiesByLang, defaultTargLang, label, fontOverride,
   linked, showZoom = true, controlledZoom, onZoomChange, controlledScroll, onScrollChange,
   controlledHeight, onHeightChange, onDoubleClickExpand,
 }: TargetPreviewCanvasProps) {
@@ -73,8 +77,18 @@ export default function TargetPreviewCanvas({
         if (assignment.text.trim()) plated.set(anchorId, assignment.text);
       }
     }
-    return manifest.map((inst) => plated.has(inst.id) ? { ...inst, target_text: plated.get(inst.id)! } : inst);
-  }, [manifest, semanticUnits]);
+    return manifest.map((inst) => {
+      let next = plated.has(inst.id) ? { ...inst, target_text: plated.get(inst.id)! } : inst;
+      // Preview-only font override: stamp it onto the clone's style_profile
+      // so resolveFontPath picks it up as "explicit" provenance.  Never
+      // written back to the manifest — the caller holds the ephemeral map.
+      const overridePath = fontOverride?.[inst.id];
+      if (overridePath) {
+        next = { ...next, style_profile: { ...(next.style_profile ?? {}), font_family: overridePath } as NonNullable<InstText["style_profile"]> };
+      }
+      return next;
+    });
+  }, [manifest, semanticUnits, fontOverride]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -117,6 +131,7 @@ export default function TargetPreviewCanvas({
   }, [onZoomChange]);
 
   const onPanStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();  // stop the drag from starting a text selection
     const el = containerRef.current;
     if (!el) return;
     setPan({
@@ -284,7 +299,9 @@ export default function TargetPreviewCanvas({
     >
       <div
         ref={containerRef}
-        className="bbox-canvas-scroll relative flex-1 mr-6"
+        // same drag-selects-the-page problem BBoxCanvas had: dragging to pan
+        // is also how the browser begins a text selection
+        className="bbox-canvas-scroll relative flex-1 mr-6 select-none"
         style={{
           cursor: pan ? "grabbing" : "grab",
           overflow: "auto",

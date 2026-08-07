@@ -15,6 +15,10 @@ interface TitleScreenProps {
   onCreateProject: () => void;
   theme: Theme;
   onToggleTheme: () => void;
+  /** id of the project currently open in the workspace, if any */
+  currentProjectId?: string | null;
+  /** fired when a project is renamed, so the caller can sync its own state (e.g. the currently open project) */
+  onProjectRenamed?: (project: Project) => void;
 }
 
 const FOOTER_TEXT = "ToFU v0.1.0.";
@@ -42,7 +46,7 @@ function brineOffsets(slot: HTMLElement | null): React.CSSProperties {
  * tray and levitate on hover; Workspace opens the four-pane main screen,
  * while Pantry (project list) and Settings (dark-mode switch) press flat into
  * a card floating in the blurred brine. */
-export default function TitleScreen({ onEnter, onSelectProject, onCreateProject, theme, onToggleTheme }: TitleScreenProps) {
+export default function TitleScreen({ onEnter, onSelectProject, onCreateProject, theme, onToggleTheme, currentProjectId, onProjectRenamed }: TitleScreenProps) {
   const [viewLeaving, setViewLeaving] = useState(false);
   const [footerTyped, setFooterTyped] = useState(0);
   const [projects, setProjects] = useState<Project[] | null>(null);
@@ -162,13 +166,29 @@ export default function TitleScreen({ onEnter, onSelectProject, onCreateProject,
     setConfirmProject(p);
   };
 
+  // The card animates in (tco-fade-in / tco-card-in) and the mirrored exit
+  // has been sitting in uikit.css unused: unmounting on the state change
+  // alone gave it no frame to play. `leaving` applies the class, and the
+  // 300ms matches the keyframes -- one duration, not a second constant.
+  const [confirmLeaving, setConfirmLeaving] = useState(false);
+
+  const dismissConfirm = (after: () => void) => {
+    setConfirmLeaving(true);
+    setTimeout(() => {
+      setConfirmLeaving(false);
+      after();
+    }, 300);
+  };
+
   const confirmYes = () => {
-    if (confirmProject) onSelectProject(confirmProject);
-    setConfirmProject(null);
+    dismissConfirm(() => {
+      if (confirmProject) onSelectProject(confirmProject);
+      setConfirmProject(null);
+    });
   };
 
   const confirmNo = () => {
-    setConfirmProject(null);
+    dismissConfirm(() => setConfirmProject(null));
   };
 
   const startRename = (e: React.MouseEvent, p: Project) => {
@@ -187,6 +207,7 @@ export default function TitleScreen({ onEnter, onSelectProject, onCreateProject,
     try {
       const updated = await updateProject(renamingProject.id, { name: renameValue.trim() });
       setProjects((prev) => prev ? prev.map((p) => p.id === updated.id ? updated : p) : prev);
+      if (updated.id === currentProjectId) onProjectRenamed?.(updated);
     } catch { /* ignore */ }
     setRenamingProject(null);
     setRenameValue("");
@@ -304,7 +325,7 @@ export default function TitleScreen({ onEnter, onSelectProject, onCreateProject,
                   <X size={14} />
                 </button>
               </div>
-              <div className="space-y-2">
+              <div className="space-y-2" style={{ scrollBehavior: "smooth" }}>
                 {morphing && projects === null && (
                   <div className="subtext step-fade flex items-center gap-4 py-4 text-[10px] text-cyan-600 dark:text-cyan-400">
                     <SquareLoader size="xs" /> simmering…
@@ -377,7 +398,7 @@ export default function TitleScreen({ onEnter, onSelectProject, onCreateProject,
                             <button
                               onClick={(e) => startRename(e, p)}
                               className="shrink-0 rounded-sm p-1 text-zinc-400 transition hover:bg-zinc-200 hover:text-cyan-600 dark:text-zinc-500 dark:hover:bg-zinc-700 dark:hover:text-cyan-400"
-                              title="rename project"
+                              title="rename"
                             >
                               <CgRename size={14} />
                             </button>
@@ -442,7 +463,7 @@ export default function TitleScreen({ onEnter, onSelectProject, onCreateProject,
                   <X size={14} />
                 </button>
               </div>
-              <div className="space-y-2">
+              <div className="space-y-2" style={{ scrollBehavior: "smooth" }}>
                 {settingsMorphing && (
                   <div
                     className="project-name-row flex w-full items-center justify-between rounded-lg border border-zinc-300 bg-zinc-100 px-3 py-2 text-sm text-zinc-800 dark:border-zinc-700 dark:bg-zinc-800/50 dark:text-zinc-200"
@@ -480,7 +501,10 @@ export default function TitleScreen({ onEnter, onSelectProject, onCreateProject,
 
       {/* CONFIRM: open project? */}
       {confirmProject && (
-        <div className="title-confirm-backdrop" onClick={confirmNo}>
+        <div
+          className={`title-confirm-backdrop${confirmLeaving ? " leaving" : ""}`}
+          onClick={confirmNo}
+        >
           <div className="bezier-card title-confirm-card" onClick={(e) => e.stopPropagation()}>
             <p className="title-confirm-message">open project?</p>
             <div className="title-confirm-actions">

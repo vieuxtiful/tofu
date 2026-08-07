@@ -298,7 +298,7 @@ export default function FontManager({
           </span>
           <button
             onClick={close}
-            aria-label="close font manager"
+            aria-label="Close font manager"
             className="ml-auto rounded-md p-1 text-zinc-500 transition hover:bg-zinc-200 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
           >
             <X size={14} />

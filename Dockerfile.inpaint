@@ -1,0 +1,25 @@
+# ─── inpaint stage: LaMa neural inpainting sidecar (CUDA) ─────────────────
+FROM python:3.13-slim AS inpaint
+
+# NOTE: For GPU acceleration, use nvidia/cuda:12.4.0-runtime-ubuntu22.04
+# as the base image instead. This CPU-only image works for testing but
+# will be very slow for real inpainting.
+#
+# FROM nvidia/cuda:12.4.0-runtime-ubuntu22.04
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libglib2.0-0 libsm6 libxext6 libxrender1 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY server/requirements-inpaint.txt /tmp/requirements-inpaint.txt
+RUN pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cu124 \
+    -r /tmp/requirements-inpaint.txt
+
+COPY scripts/inpaint_lama_runner.py /app/scripts/inpaint_lama_runner.py
+
+ENV PYTHONUTF8=1
+# The LaMa runner is invoked as a subprocess with CLI args:
+#   --model <path> --input <path> --mask <path> --output <path> --device cuda
+CMD ["python", "/app/scripts/inpaint_lama_runner.py", "--help"]

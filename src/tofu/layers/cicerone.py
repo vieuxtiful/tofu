@@ -49,11 +49,12 @@ import unicodedata
 from abc import ABC, abstractmethod
 from pathlib import Path
 from dataclasses import dataclass
-from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, FrozenSet, Iterator, List, Optional, Sequence, Tuple
 
 logger = logging.getLogger(__name__)
 
 from tofu.core.types import (
+    ImageLike,
     TextManifest,
     InstText,
     BBox,
@@ -64,6 +65,7 @@ from tofu.core.types import (
     infer_asset_info,
     OCRAssessmentPolicy,
 )
+from tofu.utils.locale_typography import apply_punctuation_spacing, resolve_locale
 
 
 _CONTEXT_CLASSES = {"sign", "poster", "billboard", "product_label", "ui_graphic"}
@@ -346,7 +348,7 @@ class OCRBackend(ABC):
         return "en"
 
     @abstractmethod
-    def detect(self, asset: Any) -> List[RawDetection]:
+    def detect(self, asset: ImageLike) -> List[RawDetection]:
         """run detection + recognition; return raw polygon/text results."""
 
 
@@ -355,7 +357,7 @@ class NullBackend(OCRBackend):
 
     name = "null"
 
-    def detect(self, asset: Any) -> List[RawDetection]:
+    def detect(self, asset: ImageLike) -> List[RawDetection]:
         return []
 
 
@@ -442,7 +444,7 @@ class EasyOCRBackend(OCRBackend):
                 )
         return self._readers[key]
 
-    def _prepare(self, asset: Any) -> Tuple[Any, Tuple[float, float]]:
+    def _prepare(self, asset: ImageLike) -> Tuple[Any, Tuple[float, float]]:
         """pre-resize oversized image files; upscale undersized ones;
         pass everything else through.
 
@@ -483,7 +485,7 @@ class EasyOCRBackend(OCRBackend):
 
     def detect(
         self,
-        asset: Any,
+        asset: ImageLike,
         text_threshold: Optional[float] = None,
         low_text: Optional[float] = None,
     ) -> List[RawDetection]:
@@ -527,7 +529,7 @@ class EasyOCRBackend(OCRBackend):
 
     def detect_in_regions(
         self,
-        asset: Any,
+        asset: ImageLike,
         regions: List[BBox],
         pad: int = 4,
         polygons: Optional[List[Optional[Polygon]]] = None,
@@ -735,7 +737,7 @@ class PaddleOCRBackend(OCRBackend):
         (which must never happen in the app process)."""
         return cls._venv_python().is_file() and cls._worker_path().is_file()
 
-    def _resolve_image_path(self, asset: Any) -> Tuple[Optional[str], Optional[str]]:
+    def _resolve_image_path(self, asset: ImageLike) -> Tuple[Optional[str], Optional[str]]:
         """asset -> (path, temp_path_to_clean_up_or_None).
 
         a path/str is used directly (no cross-venv object serialization
@@ -820,7 +822,7 @@ class PaddleOCRBackend(OCRBackend):
 
     def detect(
         self,
-        asset: Any,
+        asset: ImageLike,
         text_threshold: Optional[float] = None,
         low_text: Optional[float] = None,
     ) -> List[RawDetection]:
@@ -847,7 +849,7 @@ class PaddleOCRBackend(OCRBackend):
 
     def detect_in_regions(
         self,
-        asset: Any,
+        asset: ImageLike,
         regions: List[BBox],
         pad: int = 4,
         polygons: Optional[List[Optional[Polygon]]] = None,
@@ -1306,7 +1308,7 @@ def _scene_containment_frac(inner: BBox, region: SceneRegion) -> float:
     return hits / float(samples * samples)
 
 
-def _rectify_crop(img: Any, polygon: Polygon, target_height: int = 48) -> Any:
+def _rectify_crop(img: ImageLike, polygon: Polygon, target_height: int = 48) -> Any:
     """return a fronto-parallel crop of a quadrilateral text region.
 
     guards:
@@ -1440,7 +1442,7 @@ def _mean_rgb(img, b: BBox):
     return crop.reshape(-1, crop.shape[-1])[:, :3].mean(axis=0)
 
 
-def merge_vertical_columns(detections: List[RawDetection], asset: Any = None) -> List[RawDetection]:
+def merge_vertical_columns(detections: List[RawDetection], asset: ImageLike = None) -> List[RawDetection]:
     """merge per-character fragments of stacked vertical CJK signage into
     single column detections.
 
@@ -1624,7 +1626,7 @@ def _ink_gap_bands(row_ink: Any, gap_floor: int) -> List[Tuple[int, int]]:
     return [(a, b) for a, b in bands if (b - a) >= MIN_BAND_HEIGHT_PX]
 
 
-def _segment_vertical_bands(asset: Any, bbox: BBox) -> List[BBox]:
+def _segment_vertical_bands(asset: ImageLike, bbox: BBox) -> List[BBox]:
     """split a tall/narrow bbox into per-character horizontal bands.
 
     finds character gaps via a horizontal ink-density profile off the
@@ -1687,7 +1689,7 @@ def _segment_vertical_bands(asset: Any, bbox: BBox) -> List[BBox]:
 
 
 def _split_tall_detections(
-    asset: Any, engine: "EasyOCRBackend", detections: List[RawDetection],
+    asset: ImageLike, engine: "EasyOCRBackend", detections: List[RawDetection],
 ) -> Optional[List[RawDetection]]:
     """re-segment and re-recognize over-tall/narrow detections that are
     likely an over-merged vertical CJK stack (see module note above).
@@ -1777,6 +1779,262 @@ def _split_tall_detections(
     return out if changed else None
 
 
+# Horizontal line assembly: the mirror of merge_vertical_columns, and the
+# half this file never had.  CRAFT links characters horizontally, which is
+# why the vertical repair was the one worth building -- but width_ths was
+# tightened 0.5 -> 0.3 to stop adjacent SIGNS chaining into one box, and
+# that same tightening leaves the words of one poster LINE as separate
+# detections.  A line-level ground truth then scores every one of them a
+# miss.
+ROW_BASELINE_ALIGN = 0.5   # y-center offset tolerance, fraction of max height
+ROW_HEIGHT_RATIO = 1.7     # max height disparity between members
+
+# Horizontal gap tolerance, as a fraction of box height. This separates a
+# word space from a COLUMN GUTTER, and nothing else can: scene surfaces do
+# not model columns (serif-vs-sans yields one 46x50 surface covering
+# neither of its two), and normalizing by mean glyph width instead of
+# height gives the two cases the identical 1.18 figure.
+#
+# Typographically a word space is 1/4 to 1/3 em against a cap height of
+# ~0.7 em, so 0.36-0.48 box heights before the detector's own margin on
+# each side shrinks it further; a gutter is a layout decision an em or
+# more wide. Measured on this corpus, accepted word gaps run 0.21, 0.25,
+# 0.27, 0.31 and 0.53 (the last is 'Texte : Naïké', where the gap spans a
+# colon), and serif-vs-sans's two-column gutter sits at 0.68 -- merging
+# its two SANS-NOM specimens into one 772px box and costing recall 0.833
+# -> 0.667. The margin either side of 0.6 is ~13%, which is narrow; a
+# layout with tighter columns or looser word spacing than anything here
+# would defeat it.
+ROW_MAX_GAP = 0.6
+ROW_MIN_MEMBERS = 2
+
+# A merge trades several surviving regions for one. If that one lands
+# below the scene filter's own global bypass it is deleted downstream and
+# the trade costs everything -- measured on la-bastille, where 'la
+# Bastille' and 'ETLA' re-read as 'la Babtille BT la' at 0.433, cleared
+# the weakest-member test (its members are raw detections at 0.529 and
+# 0.387, not the instance confidences they later become) and then took
+# both regions with it, recall 0.333 -> 0.111.
+ROW_MERGE_MIN_CONFIDENCE = 0.5
+
+# Scripts written without word spaces, and routinely set vertically, have
+# nothing for this pass to assemble and everything to lose from it -- the
+# separate-signs chaining width_ths was tightened to prevent is a CJK
+# signage failure. Scoped out entirely rather than guarded case by case.
+ROW_EXCLUDED_LANGS = {"ja", "ch_sim", "ch_tra", "ko"}
+
+
+def merge_baseline_runs(
+    asset: ImageLike, engine: "EasyOCRBackend", detections: List[RawDetection],
+) -> Optional[List[RawDetection]]:
+    """Assemble same-baseline word fragments into one line, and re-read it.
+
+    Two detections belong to the same line when their y-centers align,
+    their heights are comparable, the horizontal gap between them is
+    smaller than a character height, and their crops share a colour --
+    the same five tests merge_vertical_columns applies with the axes
+    swapped.
+
+    The merged box is then RE-RECOGNIZED rather than having its members'
+    text concatenated. Concatenation would preserve each fragment's own
+    errors and invent the spacing between them; a re-read of the whole
+    line gets the recognizer's language model working across the join,
+    which is where the gain actually is (measured on decolonisons: the
+    fragments 'Pour une' + 'mémoire des luttes contre' + 'les' re-read as
+    the full line).
+
+    Two conditions gate the commit, and both are needed:
+
+    * the re-read must be at least as confident as the WEAKEST member,
+      which is what stops a merge that spans a real gap -- la-bastille's
+      'la Bastille' and 'ETLA' pass every geometric test and re-read as
+      'la Babtille BT la' at 0.433, under its weakest member's 0.529.
+      The weakest member rather than the mean, because the mean is raised
+      by short confident fragments that say nothing about the line: on
+      decolonisons the exact re-read 'Pour une mémoire des luttes contre
+      les' at 0.893 loses to a mean of 0.919, and 'Texte Naïké
+      Desquesnes' at 0.907 to a mean of 0.938 that a five-letter 'Texte'
+      at 1.000 put there. A read no worse than its worst part has not
+      degraded anything;
+    * the re-read must still contain what each member said, so a
+      confident re-read that simply LOST a fragment cannot pass.
+
+    Returns None when nothing merged, so the caller can skip a manifest
+    rebuild, or the full replacement list otherwise.
+    """
+    from tofu.utils.textmatch import best_span_similarity
+
+    primary = (engine.languages or ("en",))[0]
+    if primary in ROW_EXCLUDED_LANGS:
+        return None
+    n = len(detections)
+    if n < ROW_MIN_MEMBERS:
+        return None
+    boxes = [_polygon_bbox(d.polygon) for d in detections]
+
+    img = None
+    if asset is not None:
+        try:
+            from tofu.layers.scene import _load_rgb
+            img = _load_rgb(asset)
+        except Exception:
+            img = None
+    colors = [_mean_rgb(img, b) if img is not None else None for b in boxes]
+
+    def same_color(i: int, j: int) -> bool:
+        ci, cj = colors[i], colors[j]
+        if ci is None or cj is None:
+            return True  # fail-open, as the column merge does
+        return float(((ci - cj) ** 2).sum() ** 0.5) <= COLUMN_COLOR_MAX_DIST
+
+    def same_line(i: int, j: int) -> bool:
+        a, b = boxes[i], boxes[j]
+        if a.height <= 0 or b.height <= 0:
+            return False
+        hmax = max(a.height, b.height)
+        if abs((a.y + a.height / 2) - (b.y + b.height / 2)) > ROW_BASELINE_ALIGN * hmax:
+            return False
+        if hmax > ROW_HEIGHT_RATIO * max(1, min(a.height, b.height)):
+            return False
+        gap = max(a.x, b.x) - min(a.x + a.width, b.x + b.width)
+        # Overlapping boxes are a duplicate read of one word, not two words
+        # of a line; the zoom union already arbitrates those.
+        if gap < 0 or gap > ROW_MAX_GAP * hmax:
+            return False
+        return same_color(i, j)
+
+    parent = list(range(n))
+
+    def find(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    for i in range(n):
+        for j in range(i + 1, n):
+            if same_line(i, j):
+                ri, rj = find(i), find(j)
+                if ri != rj:
+                    parent[max(ri, rj)] = min(ri, rj)
+
+    groups: Dict[int, List[int]] = {}
+    for i in range(n):
+        groups.setdefault(find(i), []).append(i)
+
+    out: List[RawDetection] = []
+    changed = False
+    for root, members in sorted(groups.items()):
+        if len(members) < ROW_MIN_MEMBERS:
+            out.extend(detections[i] for i in members)
+            continue
+        members.sort(key=lambda i: boxes[i].x)
+        x0 = min(boxes[i].x for i in members)
+        y0 = min(boxes[i].y for i in members)
+        x1 = max(boxes[i].x + boxes[i].width for i in members)
+        y1 = max(boxes[i].y + boxes[i].height for i in members)
+        line_box = BBox(x=x0, y=y0, width=x1 - x0, height=y1 - y0)
+        try:
+            per_line = engine.detect_in_regions(asset, [line_box])
+        except Exception:
+            out.extend(detections[i] for i in members)
+            continue
+        # Spatial filter: the re-OCR crop is the union box plus a 4px pad,
+        # so a detection can land in the padded margin where no real text
+        # exists.  That is how the enLabel packaging asset's "enLabel
+        # Global Services" line acquired a phantom "0000": a confident
+        # digit read off blank margin texture, which _compose_crop_text
+        # then space-joined into "enLabel Global Services 0000".  Filter
+        # to detections whose bbox overlaps at least one original member
+        # box (with a small tolerance for re-read drift), so margin
+        # hallucinations never enter the composed string.
+        member_boxes = [boxes[i] for i in members]
+        line_h = line_box.height or 1
+        tol = line_h * 0.25
+        filtered_dets = []
+        for d in (per_line[0] if per_line else []):
+            db = _polygon_bbox(d.polygon)
+            if any(
+                db.x + db.width >= mb.x - tol
+                and db.x <= mb.x + mb.width + tol
+                and db.y + db.height >= mb.y - tol
+                and db.y <= mb.y + mb.height + tol
+                for mb in member_boxes
+            ):
+                filtered_dets.append(d)
+        if not filtered_dets:
+            out.extend(detections[i] for i in members)
+            continue
+        composed = _compose_crop_text(filtered_dets)
+        if composed is None or not (composed.text or "").strip():
+            out.extend(detections[i] for i in members)
+            continue
+        weakest = min(detections[i].confidence or 0.0 for i in members)
+        if (composed.confidence or 0.0) < max(weakest, ROW_MERGE_MIN_CONFIDENCE):
+            out.extend(detections[i] for i in members)
+            continue
+        kept_everything = all(
+            best_span_similarity((detections[i].text or "").strip(), composed.text)
+            >= LOAF_SPAN_SIMILARITY
+            for i in members if (detections[i].text or "").strip()
+        )
+        if not kept_everything:
+            out.extend(detections[i] for i in members)
+            continue
+        # Bidirectional containment: the check above verifies every
+        # member survived in the composed text.  The reverse — that the
+        # composed text introduced nothing EXTRA — catches a re-read
+        # that glued a hallucinated fragment onto the end of a real
+        # line.  The spatial filter above stops most of these, but a
+        # detection inside a member box can still read as digits the
+        # member never said (texture inside the word's own bbox), so
+        # this is the backstop.  Each whitespace-delimited token in the
+        # composed text must be explained by some member: either it
+        # matches that member via best_span_similarity, or it is a
+        # substring of the member's normalized text (a re-read that
+        # splits one word into tokens still passes).  A token no member
+        # explains — like the "0000" on the enLabel packaging asset —
+        # rejects the merge.
+        from tofu.utils.textmatch import normalize_text as _norm
+        composed_tokens = [
+            t for t in (composed.text or "").split() if t.strip()
+        ]
+        member_texts = [
+            (detections[i].text or "").strip()
+            for i in members if (detections[i].text or "").strip()
+        ]
+        member_norms = [_norm(t) for t in member_texts]
+        unexplained = False
+        for tok in composed_tokens:
+            tok_norm = _norm(tok)
+            if not tok_norm:
+                continue
+            explained = any(
+                best_span_similarity(tok, mt) >= LOAF_SPAN_SIMILARITY
+                or tok_norm in mn
+                for mt, mn in zip(member_texts, member_norms)
+            )
+            if not explained:
+                unexplained = True
+                break
+        if unexplained:
+            out.extend(detections[i] for i in members)
+            continue
+        changed = True
+        out.append(RawDetection(
+            polygon=[
+                (line_box.x, line_box.y),
+                (line_box.x + line_box.width, line_box.y),
+                (line_box.x + line_box.width, line_box.y + line_box.height),
+                (line_box.x, line_box.y + line_box.height),
+            ],
+            text=composed.text,
+            confidence=composed.confidence,
+            language=detections[members[0]].language,
+        ))
+    return out if changed else None
+
+
 def _compose_crop_text(
     dets: List[RawDetection], min_conf: float = 0.2
 ) -> Optional[RawDetection]:
@@ -1818,7 +2076,7 @@ def _compose_crop_text(
     )
 
 
-def _probe_dim(asset: Any) -> Optional[Tuple[int, int]]:
+def _probe_dim(asset: ImageLike) -> Optional[Tuple[int, int]]:
     """resolve the original (width, height) of the asset, if determinable.
 
     this is the coordinate-space contract for the manifest: every bbox and
@@ -1957,8 +2215,63 @@ def _script_bearing_conf(det: RawDetection, target_scripts: set) -> float:
     return 0.0
 
 
+def _scripts_compatible(
+    primary_script: Optional[str], alternate_script: Optional[str],
+    language: Optional[str] = None,
+) -> Optional[bool]:
+    """Return declared-language-aware compatibility for two OCR readings.
+
+    ``ScriptDetector`` labels a Japanese string containing kana as
+    ``japanese`` and a kanji-only string as ``han``. Strict label equality
+    therefore rejected perfectly valid independent readings such as
+    ``に 小坂温泉郷`` versus ``小坂温泉郷`` before confidence and geometry
+    could arbitrate them. Japanese orthography legitimately mixes both, so
+    they are one compatibility family when the region is declared Japanese.
+    Unknown scripts remain ``None`` so the arbitration layer keeps its
+    existing fail-neutral behavior.
+    """
+    if not primary_script or not alternate_script:
+        return None
+    if primary_script == alternate_script:
+        return True
+    base_language = (language or "").casefold().split("-")[0]
+    if base_language == "ja":
+        return {primary_script, alternate_script} <= {"japanese", "han"}
+    return False
+
+
+def _affix_artifact_evidence(primary: str, alternate: str) -> Optional[Dict[str, Any]]:
+    """Describe a verifier-supported core obtained by dropping a short affix.
+
+    This does not authorize a replacement—the calibrated arbitration gates do
+    that. It makes an already-authorized decision auditable instead of hiding
+    the material difference behind a generic cross-engine reason.
+    """
+    primary_compact = "".join((primary or "").split())
+    alternate_compact = "".join((alternate or "").split())
+    if not alternate_compact or primary_compact == alternate_compact:
+        return None
+    if primary_compact.endswith(alternate_compact):
+        removed = primary_compact[:-len(alternate_compact)]
+        if 0 < len(removed) <= 2:
+            return {
+                "kind": "unsupported_ocr_prefix",
+                "removed_text": removed,
+                "retained_core": alternate_compact,
+            }
+    if primary_compact.startswith(alternate_compact):
+        removed = primary_compact[len(alternate_compact):]
+        if 0 < len(removed) <= 2:
+            return {
+                "kind": "unsupported_ocr_suffix",
+                "removed_text": removed,
+                "retained_core": alternate_compact,
+            }
+    return None
+
+
 def _auto_probe_language(
-    asset: Any,
+    asset: ImageLike,
     instances: List[InstText],
     engine: "EasyOCRBackend",
     probe_regions: int = 8,
@@ -2080,7 +2393,7 @@ SURFACE_PROBE_MAX = 8
 
 
 def probe_uncovered_surfaces(
-    asset: Any,
+    asset: ImageLike,
     scene_regions: List[SceneRegion],
     instances: List[InstText],
     engine: "EasyOCRBackend",
@@ -2455,7 +2768,7 @@ def _surfaces_needing_help(
 
 
 def run_paddle_rescue(
-    asset: Any,
+    asset: ImageLike,
     detections: List[RawDetection],
     scene_regions: Optional[List[SceneRegion]],
     language: str,
@@ -2623,7 +2936,7 @@ def label_latin_languages(
 
 
 def _identify_languages(
-    asset: Any,
+    asset: ImageLike,
     instances: List[InstText],
     engine: "EasyOCRBackend",
     max_extra_readers: int = 2,
@@ -2690,7 +3003,7 @@ def _identify_languages(
 
 
 def _identify_languages_paddle(
-    asset: Any,
+    asset: ImageLike,
     instances: List[InstText],
     engine: "PaddleOCRBackend",
     max_extra_readers: int = 2,
@@ -2777,8 +3090,182 @@ def refine_langset(
     return None
 
 
+## a coarse box holds its ground against the zoom pass only when the zoom
+## reads sitting inside it are demonstrably PIECES of what it read.  0.8
+## rather than ZOOM_FRAGMENT_CONTAINMENT's 0.9: a zoom box is mapped back
+## from an upscaled crop, so its edges land a pixel or two wide of the
+## coarse box's, and at 0.9 that rounding is enough to disown a genuine
+## crumb of the very line it came from.
+LOAF_CONTAINMENT = 0.8
+
+## a zoom read this weak is not evidence of anything.  decolonisons' zoom
+## pass emits 'n' at 0.019 and 'sue' at 0.002 across the same line the
+## coarse pass read whole as 'mémoire des luttes contre' at 0.902; such
+## reads neither earn a place as crumbs nor get a vote against the loaf.
+##
+## confidence is the whole test on purpose -- an earlier version also
+## required two characters, which silently exempted every single-glyph CJK
+## read from vetoing anything.  One han character is a whole word, and
+## china-street's '娘' at 0.689 sitting inside a garbage column read is
+## precisely the several-signs case this rule must lose.
+LOAF_CRUMB_MIN_CONFIDENCE = 0.3
+
+## how much of the coarse read a contained zoom read has to look like
+## before it counts as a piece of it -- the same floor _dedup_zoom_
+## detections uses for its own similarity test, and for the same reason.
+LOAF_SPAN_SIMILARITY = 0.6
+
+## above this, two overlapping reads are not a whole and a part but the
+## same text read twice, once per pass.  the only question left is which
+## pass localized it better, and there confidence IS comparable: the two
+## sides read the identical string, so no charset is being adjudicated.
+LOAF_DUPLICATE_SIMILARITY = 0.9
+
+## ...but the fine box is usually the TIGHTER one, so handing the region
+## back to the coarse pass costs IoU, and is worth it only when the fine
+## read is about to be thrown away regardless.  0.5 is scene_filter's own
+## global bypass: below it a detection survives only on geometry, and on
+## la-bastille the fine '7789' at 0.202 was duly deleted while the coarse
+## read of the identical string sat at 0.772.  Above the floor both reads
+## would survive, the fine box is tighter, and it keeps the region --
+## measured on the ui-controls fixture, where taking the coarse box for a
+## confidence gain instead cost precision and recall 1.0 -> 0.667.
+LOAF_DUPLICATE_RESCUE_CEILING = 0.5
+
+
+def _crumbs_of_the_same_loaf(
+    whole: RawDetection,
+    pieces: Sequence[RawDetection],
+    skip: Optional[set] = None,
+) -> Optional[Tuple[List[int], float]]:
+    """Indices of ``pieces`` that are fragments of ``whole``, or None.
+
+    The zoom pass exists to break a coarse box that spans several signs
+    into one box per sign, and union_prefer_primary enforces that by
+    letting any fine box evict whatever coarse box contains it.  On dense
+    CJK signage that is exactly right: the coarse read of a six-character
+    vertical column is garbage and the per-character zoom reads are the
+    real text.
+
+    On a poster it is exactly wrong.  There the coarse pass reads a whole
+    line correctly -- 'crimes coloniaux et esclavagistes' at 0.919 -- and
+    the zoom pass returns one word of it, which then evicts the line.  The
+    line and the word are not competing readings of different pixels; the
+    word is a crumb off the same loaf.
+
+    Confidence cannot tell those two cases apart (measured: preferring the
+    more confident side recovered the poster lines but cost china-street
+    0.875->0.750 and gemini-street 0.333->0.278).  Text can.  A coarse read
+    that is the WHOLE of which the fine reads are PARTS literally contains
+    them; a coarse read that spans several signs contains nothing of what
+    the zoom pass found there.  So:
+
+    * the coarse text must be strictly longer than every crumb, OR read
+      the same string as it -- see the duplicate case below;
+    * every crumb worth listening to must read like a span of the coarse
+      text, compared on the pared skeleton so a half-Latin Cyrillic read
+      still matches the Cyrillic fragment of the same pixels.
+
+    A single credible crumb that is NOT a span of the coarse text vetoes
+    the whole thing: that is the several-signs case, and the zoom pass
+    keeps its authority there.
+
+    Only well-contained fine boxes are crumbs.  One that merely OVERLAPS
+    the coarse box is not evidence either way and is left standing beside
+    it -- decolonisons' zoom read of 'esclavagistes' sits 0.754 inside the
+    line 'crimes coloniaux et esclavagistes', and both survive, the line
+    matching its ground truth and the word answering to the ordinary
+    filters downstream.
+
+    The duplicate case is the pair reading the SAME text -- china-street's
+    '华 联店' and la-bastille's '7789' are each found by both passes.  The
+    fine box is normally the tighter of the two and keeps the region; the
+    coarse box takes it over only when the fine read sits below the scene
+    filter's confidence floor and the coarse read does not, which is the
+    narrow case where deferring to the fine box means losing the region
+    altogether (la-bastille's '7789': 0.202 against 0.772).
+
+    Returns the crumb indices together with the best confidence among the
+    crumbs that CORROBORATED the coarse read -- each one is the same text
+    re-read at higher resolution, so a coarse read they agree with is
+    better evidenced than its own raw confidence says.  Without carrying
+    that forward the fix defeats itself: on russian-billboard-2 the whole
+    slogan line reads at 0.454 while the fragments it replaces read at
+    0.961, and the scene filter's confidence floor deletes the line the
+    moment it wins.
+    """
+    from tofu.utils.textmatch import best_span_similarity, pared_similarity
+
+    whole_text = (whole.text or "").strip()
+    if not whole_text:
+        return None
+    skip = skip or set()
+    whole_box = _polygon_bbox(whole.polygon)
+    whole_conf = whole.confidence or 0.0
+    crumbs: List[int] = []
+    for index, piece in enumerate(pieces):
+        if index in skip:
+            continue
+        if _containment_frac(_polygon_bbox(piece.polygon), whole_box) >= LOAF_CONTAINMENT:
+            crumbs.append(index)
+    if not crumbs:
+        return None
+    corroboration = 0.0
+    for index in crumbs:
+        piece = pieces[index]
+        piece_text = (piece.text or "").strip()
+        piece_conf = piece.confidence or 0.0
+        credible = bool(piece_text) and piece_conf >= LOAF_CRUMB_MIN_CONFIDENCE
+        if len(piece_text) >= len(whole_text):
+            same_read = pared_similarity(piece_text, whole_text) >= LOAF_DUPLICATE_SIMILARITY
+            rescues = (
+                piece_conf < LOAF_DUPLICATE_RESCUE_CEILING
+                and whole_conf >= LOAF_DUPLICATE_RESCUE_CEILING
+            )
+            if not (same_read and rescues):
+                return None
+            continue
+        if credible:
+            if best_span_similarity(piece_text, whole_text) < LOAF_SPAN_SIMILARITY:
+                return None
+            corroboration = max(corroboration, piece_conf)
+    return crumbs, corroboration
+
+
+def _corroborated(
+    det: RawDetection, crumbs: List[int], corroboration: float
+) -> RawDetection:
+    """Raise a loaf's confidence to that of the crumbs that agreed with it.
+
+    Left at its raw value the coarse read is scored as if nothing had
+    confirmed it, and the scene filter's confidence floor then deletes the
+    very region this rule just rescued.  The raw figure is preserved in
+    provenance so the promotion is auditable rather than laundered.
+    """
+    if corroboration <= (det.confidence or 0.0):
+        return det
+    entry: Dict[str, Any] = {
+        "stage": "zoom_union",
+        "rule": "keep_the_loaf",
+        "raw_confidence": round(float(det.confidence or 0.0), 6),
+        "corroborating_crumbs": len(crumbs),
+        "corroborated_confidence": round(float(corroboration), 6),
+        "selected": True,
+    }
+    return RawDetection(
+        polygon=det.polygon,
+        text=det.text,
+        confidence=corroboration,
+        language=det.language,
+        provenance=[*(det.provenance or []), entry],
+    )
+
+
 def union_prefer_primary(
-    primary: List[RawDetection], secondary: List[RawDetection]
+    primary: List[RawDetection],
+    secondary: List[RawDetection],
+    *,
+    keep_the_loaf: bool = False,
 ) -> List[RawDetection]:
     """union of two detection sets where PRIMARY is authoritative on
     overlaps regardless of confidence.
@@ -2787,19 +3274,40 @@ def union_prefer_primary(
     wrong across charsets: an english reader recognizes a Korean glyph as
     '4' at conf 0.95, beating the tuned reader's correct '사' at 0.8.
     confidence is only comparable within one charset.
+
+    ``keep_the_loaf`` narrows that authority in the one place it is known
+    to destroy correct text: a secondary whose contained primaries are
+    demonstrably crumbs of it wins, and takes those crumbs off the table.
+    See _crumbs_of_the_same_loaf for what "demonstrably" is doing there.
+    Off by default -- the callers unioning per-surface panel reads over a
+    full-frame sweep have a different contract and are not affected.
     """
     out = list(primary)
     kept_boxes = [_polygon_bbox(d.polygon) for d in out]
+    dropped: set = set()
+    extra: List[RawDetection] = []
     for det in secondary:
         db = _polygon_bbox(det.polygon)
-        if not any(_overlap_frac(db, kb) > 0.5 for kb in kept_boxes):
-            out.append(det)
+        loaf = (
+            _crumbs_of_the_same_loaf(det, out, dropped) if keep_the_loaf else None
+        )
+        if loaf is not None:
+            crumbs, corroboration = loaf
+            dropped.update(crumbs)
+            extra.append(_corroborated(det, crumbs, corroboration))
             kept_boxes.append(db)
-    return out
+            continue
+        if not any(
+            _overlap_frac(db, kb) > 0.5
+            for index, kb in enumerate(kept_boxes) if index not in dropped
+        ):
+            extra.append(det)
+            kept_boxes.append(db)
+    return [d for index, d in enumerate(out) if index not in dropped] + extra
 
 
 def iter_multipass(
-    engine: OCRBackend, asset: Any
+    engine: OCRBackend, asset: ImageLike
 ) -> Iterator[
     Tuple[int, Optional[float], Optional[float], Optional[List[RawDetection]]]
 ]:
@@ -2834,7 +3342,7 @@ def iter_multipass(
 
 
 def run_multipass(
-    engine: OCRBackend, asset: Any
+    engine: OCRBackend, asset: ImageLike
 ) -> List[RawDetection]:
     """Run the canonical pass iterator and return its final cumulative set."""
     detections: List[RawDetection] = []
@@ -2857,7 +3365,7 @@ ZOOM_PAD = 8
 
 def zoom_detect(
     engine: OCRBackend,
-    asset: Any,
+    asset: ImageLike,
     scene_regions: List[SceneRegion],
 ) -> List[RawDetection]:
     """coarse-to-fine detection: re-detect inside each candidate scene
@@ -3038,7 +3546,7 @@ EDGE_RESCUE_CONF_SLACK = 0.10
 
 
 def rescue_clipped_edge_glyphs(
-    asset: Any,
+    asset: ImageLike,
     instances: List[InstText],
     engine: OCRBackend,
     max_regions: int = 24,
@@ -3098,7 +3606,7 @@ def rescue_clipped_edge_glyphs(
 
 
 def second_look(
-    asset: Any,
+    asset: ImageLike,
     instances: List[InstText],
     engine: OCRBackend,
     conf_threshold: float = 0.55,
@@ -3140,7 +3648,7 @@ def second_look(
     except Exception:
         img = None
 
-    def _rotated_text(crop: Any) -> Optional[str]:
+    def _rotated_text(crop: ImageLike) -> Optional[str]:
         try:
             rot = np.rot90(crop, 2) if crop is not None else None
             if rot is None:
@@ -3196,7 +3704,7 @@ def second_look(
 
 
 def detect(
-    asset: Any,
+    asset: ImageLike,
     asset_info: Optional[AssetInfo] = None,
     backend: Optional[OCRBackend] = None,
     languages: Optional[Sequence[str]] = None,
@@ -3209,13 +3717,16 @@ def detect(
     adaptive: bool = True,
     zoom: bool = True,
     vertical_split: bool = True,
+    line_assembly: bool = True,
     paddle_rescue: bool = True,
     polish: bool = True,
     ocr_assessment_policy: Optional[OCRAssessmentPolicy] = None,
     savor: bool = True,
     wasabi: bool = True,
     menu: bool = True,
+    ground_truth_pool: Optional[List[tuple]] = None,
     font_registry: Optional[Any] = None,
+    on_stage: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> TextManifest:
     """detect and localize text instances in the asset.
 
@@ -3261,6 +3772,11 @@ def detect(
             and re-recognize each individually; the resulting fragments
             flow through the normal merge_vertical_columns() reassembly.
             see `_split_tall_detections`.
+        line_assembly: join same-baseline word fragments into one line
+            box and re-recognize it, recovering poster/body lines that
+            CRAFT's deliberately tightened horizontal linking leaves as
+            separate words. skipped for CJK primaries, which have no word
+            spaces to reassemble. see `merge_baseline_runs`.
         paddle_rescue: on a CJK-dominant scene where EasyOCR's own
             passes above still leave low confidence or entirely
             undetected scene surfaces, try PaddleOCR (an isolated
@@ -3308,6 +3824,26 @@ def detect(
     start = time.time()
     asset_info = asset_info or infer_asset_info(asset)
 
+    def _stage(payload: Dict[str, Any]) -> None:
+        """Report a stage boundary to a caller that wants progress.
+
+        The SSE endpoint used to re-implement this whole function so it
+        could interleave progress events, and the two copies drifted seven
+        ways -- most seriously, the endpoint never ran
+        assess_multi_candidate_ocr at all, so every region detected through
+        the app carried no arbitration record. A callback costs one branch
+        per stage and leaves exactly one definition of the pipeline.
+
+        Never allowed to fail the detection: a consumer that raises (a
+        closed SSE connection, most likely) must not lose the manifest.
+        """
+        if on_stage is None:
+            return
+        try:
+            on_stage(payload)
+        except Exception:
+            pass
+
     # `languages` IS the project's declared source (the server passes the
     # locked source_lang through as the reader hint), so latin-language
     # labelling can hold a competing guess to the declared-source margin
@@ -3333,11 +3869,24 @@ def detect(
 
     # multi-pass detection: EasyOCR uses threshold sweeps, PaddleOCR a
     # single detect call (run_multipass dispatches internally).
-    if multipass:
+    if multipass and on_stage is not None:
+        # run_multipass is iter_multipass drained; draining it here instead
+        # lets a progress consumer see each threshold pass land, which is
+        # the one place the SSE contract is finer-grained than a stage.
+        detections = []
+        for number, _tt, _lt, cumulative in iter_multipass(engine, asset):
+            if cumulative is None:
+                _stage({"stage": "cicerone", "pass": number, "status": "running"})
+                continue
+            detections = cumulative
+            _stage({"stage": "cicerone", "pass": number, "status": "complete",
+                    "regions": len(detections)})
+    elif multipass:
         detections = run_multipass(engine, asset)
     else:
         detections = engine.detect(asset)
 
+    _stage({"stage": "finalize", "status": "running"})
     manifest = build_manifest(
         asset, detections,
         asset_info=asset_info,
@@ -3371,6 +3920,7 @@ def detect(
                 asset, scene_regions, manifest.instances, engine
             )
         if target:
+            _stage({"stage": "refine", "status": "running", "langset": list(target)})
             tuned = EasyOCRBackend(languages=target, gpu=engine.gpu)
             second = (
                 run_multipass(tuned, asset) if multipass else tuned.detect(asset)
@@ -3393,14 +3943,20 @@ def detect(
                 prune_garbage=prune_garbage,
                 start=start,
             )
+            _stage({"stage": "refine", "status": "complete",
+                    "regions": len(manifest.instances)})
 
     # coarse-to-fine zoom pass with the final engine: fine boxes are
     # authoritative — a coarse frame-scale box that spans several signs is
     # replaced by its per-sign zoom boxes. runs for any non-null backend.
+    # keep_the_loaf carves out the one case where "spans several signs" is
+    # false: a coarse box the zoom pass merely broke into pieces of its own
+    # correct reading keeps its ground, and the pieces go.
     if zoom and scene_regions and not isinstance(final_engine, NullBackend):
+        _stage({"stage": "zoom", "status": "running"})
         fine = zoom_detect(final_engine, asset, scene_regions)
         if fine:
-            detections = union_prefer_primary(fine, detections)
+            detections = union_prefer_primary(fine, detections, keep_the_loaf=True)
             manifest = build_manifest(
                 asset, detections,
                 asset_info=asset_info,
@@ -3414,12 +3970,16 @@ def detect(
                 start=start,
             )
 
+    _stage({"stage": "zoom", "status": "complete",
+            "regions": len(manifest.instances)})
+
     # vertical-stack re-split: runs LAST among the detection-refinement
     # passes, against whichever engine/detections survived every
     # earlier stage, so it benefits from the adaptive/zoom passes' own
     # language and coverage improvements rather than duplicating them.
     # see _split_tall_detections's module-level note.
     if vertical_split and isinstance(final_engine, EasyOCRBackend):
+        _stage({"stage": "vertical_split", "status": "running"})
         split = _split_tall_detections(asset, final_engine, detections)
         if split is not None:
             detections = split
@@ -3435,6 +3995,34 @@ def detect(
                 prune_garbage=prune_garbage,
                 start=start,
             )
+
+    _stage({"stage": "vertical_split", "status": "complete",
+            "regions": len(manifest.instances)})
+
+    # horizontal line assembly: the mirror of the split above, and it runs
+    # after it for the same reason -- against whatever every earlier stage
+    # settled on. the two cannot fight: one only ever splits a tall box,
+    # the other only ever joins boxes that already sit on one baseline.
+    if line_assembly and isinstance(final_engine, EasyOCRBackend):
+        _stage({"stage": "line_assembly", "status": "running"})
+        joined = merge_baseline_runs(asset, final_engine, detections)
+        if joined is not None:
+            detections = joined
+            manifest = build_manifest(
+                asset, detections,
+                asset_info=asset_info,
+                engine=final_engine,
+                scene_regions=scene_regions,
+                scene_filter=scene_filter,
+                identify_languages=identify_languages,
+                max_extra_readers=max_extra_readers,
+                declared=declared,
+                prune_garbage=prune_garbage,
+                start=start,
+            )
+
+    _stage({"stage": "line_assembly", "status": "complete",
+            "regions": len(manifest.instances)})
 
     # PaddleOCR rescue: a second, differently-architected engine for
     # whatever EasyOCR's own passes above still leave weak or entirely
@@ -3480,30 +4068,43 @@ def detect(
 
     # second-look recognition on the surviving weak regions
     if polish and manifest.instances and not isinstance(final_engine, NullBackend):
+        _stage({"stage": "polish", "status": "running"})
         second_look(asset, manifest.instances, final_engine)
         # ...then the clipped-edge pass. It runs AFTER second_look because it
         # tests whether the settled text is missing a glyph its box cut off,
         # and second_look is what settles that text.
         rescue_clipped_edge_glyphs(asset, manifest.instances, final_engine)
+        _stage({"stage": "polish", "status": "complete",
+                "regions": len(manifest.instances)})
 
     # General risk-based cross-provider assessment happens after proposal
     # generation has settled and before any correction stage mutates text.
-    assess_multi_candidate_ocr(
-        asset, manifest.instances, scene_regions, ocr_assessment_policy
+    _stage({"stage": "arbitration", "status": "running"})
+    replaced = assess_multi_candidate_ocr(
+        asset, manifest.instances, scene_regions, ocr_assessment_policy,
+        font_registry=font_registry, ground_truth_pool=ground_truth_pool,
     )
+    _stage({"stage": "arbitration", "status": "complete", "corrected": replaced})
 
     # Hybrid arbitration runs after every EasyOCR refinement has settled;
     # invoking Paddle earlier would let later EasyOCR passes overwrite the
     # independent candidate that resolves a risky read.
     if (_engine_from_env() in {"auto", "hybrid"}
             and isinstance(final_engine, EasyOCRBackend)):
-        hybrid_audit(asset, manifest.instances)
+        _stage({"stage": "hybrid_audit", "status": "running"})
+        corrected = hybrid_audit(asset, manifest.instances)
+        _stage({"stage": "hybrid_audit", "status": "complete",
+                "corrected": corrected})
         # Skim's own arbitration shares that gate and that reasoning: it
         # runs on the settled text, and it is the only place Paddle is
         # ever used to REMOVE an EasyOCR read rather than add or replace
         # one, so it must not see text a later pass would have repaired.
+        _stage({"stage": "skim", "status": "running"})
+        before_skim = len(manifest.instances)
         manifest.instances = skim_audit(asset, manifest.instances)
         manifest.total_regions = len(manifest.instances)
+        _stage({"stage": "skim", "status": "complete",
+                "removed": before_skim - len(manifest.instances)})
 
     # Savor's taste test runs LAST, once, on the FINAL text — after
     # every detection/refinement/re-read pass above has had its say.
@@ -3519,8 +4120,11 @@ def detect(
             # the only course that changes a read's character COUNT, and it
             # will not do so without an independent re-read of the disputed
             # span (see savor.chew_clump).
-            taste(asset, manifest.instances, font_registry=font_registry,
-                  engine=None if isinstance(final_engine, NullBackend) else final_engine)
+            _stage({"stage": "savor", "status": "running"})
+            swallowed = taste(
+                asset, manifest.instances, font_registry=font_registry,
+                engine=None if isinstance(final_engine, NullBackend) else final_engine)
+            _stage({"stage": "savor", "status": "complete", "corrected": swallowed})
         except Exception:
             pass
 
@@ -3531,7 +4135,10 @@ def detect(
     if wasabi and manifest.instances:
         try:
             from tofu.layers.wasabi import season
-            season(manifest.instances)
+            _stage({"stage": "wasabi", "status": "running"})
+            normalized = season(manifest.instances)
+            _stage({"stage": "wasabi", "status": "complete",
+                    "corrected": normalized})
         except Exception:
             pass
 
@@ -3541,21 +4148,30 @@ def detect(
     if menu and manifest.instances:
         try:
             from tofu.layers.menu import browse
-            browse(manifest.instances, asset=asset, font_registry=font_registry)
+            _stage({"stage": "menu", "status": "running"})
+            matched = browse(
+                manifest.instances, asset=asset,
+                font_registry=font_registry,
+                ground_truth_pool=ground_truth_pool,
+            )
+            _stage({"stage": "menu", "status": "complete", "corrected": matched})
         except Exception:
             pass
 
-    # ordinal/administrative abbreviations, offered for REVIEW only. Runs after
-    # every text-rewriting stage for the same reason they run last: the final
-    # text is the only text worth judging. It proposes and never applies, so
-    # unlike the courses above it cannot change what any later stage sees.
+    # ordinal/administrative abbreviations. Runs after every text-rewriting
+    # stage for the same reason they run last: the final text is the only text
+    # worth judging. It applies only where Savor already called the region
+    # reliable, and records a review proposal everywhere else.
     if manifest.instances:
         try:
             from tofu.layers.ordinal import propose as propose_ordinals
-            propose_ordinals(
+            _stage({"stage": "ordinal", "status": "running"})
+            proposed = propose_ordinals(
                 asset, manifest.instances,
                 language=(languages[0] if languages else manifest.src_lang),
             )
+            _stage({"stage": "ordinal", "status": "complete",
+                    "proposed": proposed})
         except Exception:
             pass
 
@@ -3578,7 +4194,52 @@ def detect(
         if label_latin_languages(manifest.instances, declared):
             manifest.src_lang = taste_the_room(manifest.instances)
 
+    # Locale typographic spacing runs LAST, after every correction pass and
+    # after the language labels settle: the rule is keyed on the region's
+    # locale, so it cannot run before anything knows what that locale is.
+    # It only ever inserts a space the locale asks for -- French (France)
+    # sets one before '!', French (Canada) does not -- so it can be applied
+    # to a settled read without re-opening what the read SAYS.
+    _apply_locale_typography(manifest)
+
     return manifest
+
+
+def _apply_locale_typography(manifest: TextManifest) -> int:
+    """Give every region the spacing its own locale puts before punctuation.
+
+    Recognition reads the ink, and a recogniser that sets "nos rues !"
+    tight as "nos rues!" has not misread anything -- it has dropped a space
+    the typography of that locale requires. Measured on decolonisons, in
+    French (France), where the mark takes a space and in Canadian French it
+    would not.
+
+    Returns the number of regions whose text changed.
+    """
+    changed = 0
+    for inst in manifest.instances:
+        text = inst.text or ""
+        if not text.strip():
+            continue
+        locale = resolve_locale(
+            inst.language or inst.detected_language, manifest.src_lang,
+        )
+        spaced = apply_punctuation_spacing(text, locale)
+        if spaced == text:
+            continue
+        inst.text = spaced
+        _history(inst, {
+            "stage": "locale_typography",
+            "engine": "rule",
+            "accepted": True,
+            "applied": True,
+            "decision": "respace",
+            "candidate_text": spaced,
+            "primary_text": text,
+            "reason": f"{locale} sets a space before this punctuation",
+        })
+        changed += 1
+    return changed
 
 
 def _disambiguate_ja_zh(instances: List[InstText]) -> None:
@@ -3643,7 +4304,7 @@ def _disambiguate_ja_zh(instances: List[InstText]) -> None:
                     inst.detected_language = "zh-cn"
 
 
-def _has_ink_support(asset: Any, bbox: BBox) -> bool:
+def _has_ink_support(asset: ImageLike, bbox: BBox) -> bool:
     """False when the bbox's own pixels show no separable ink structure
     at all -- a detection with a "real" script/digit read but literally
     nothing there is a hallucination text_mask alone can catch,
@@ -3680,7 +4341,7 @@ def _is_localizable_symbol(text: str) -> bool:
 
 
 def _prune_hallucinations(
-    instances: List[InstText], asset: Any = None
+    instances: List[InstText], asset: ImageLike = None
 ) -> List[InstText]:
     """drop symbol-noise regions and renumber the survivors.
 
@@ -3793,6 +4454,174 @@ def _prune_hallucinations(
     return kept
 
 
+## how much of a region has to sit inside another before the two are
+## competing for the same ink rather than neighbouring it.  Measured on
+## decolonisons, where the survivors sat at 0.72 ('D' against
+## 'Décolonisons', whose box starts 15px to its right) and 0.754
+## ('esclavagistes' against the line that ends with it) -- both plainly the
+## same ink, neither reaching the 0.8 the zoom union asks for.  Separate
+## neighbouring regions do not reach half.
+FRAGMENT_OVERLAP = 0.5
+
+
+def _prune_contained_fragments(instances: List[InstText]) -> List[InstText]:
+    """Drop a region whose text is already inside a longer region's text.
+
+    The zoom union's keep_the_loaf rule resolves a coarse read against the
+    fine reads it CONTAINS, and deliberately leaves a merely-overlapping
+    fragment standing on the reasoning that ordinary filtering would deal
+    with it. Nothing did. decolonisons shipped 'D' beside 'Décolonisons'
+    and 'esclavagistes' beside 'crimes coloniaux et esclavagistes' -- the
+    same ink boxed twice, so a user sees a duplicate region and a
+    translator is billed for a fragment of a line they already have.
+
+    Two conditions, and both are needed. The text must be a PROPER
+    substring of the other, normalized, so a fragment is only ever dropped
+    into a region that already says everything it said -- no information
+    is lost, which is what makes this safe to do without review. And the
+    boxes must overlap by more than half the smaller one, which is what
+    separates a fragment of one word from a neighbouring region that
+    happens to share a common short string.
+
+    Strict length ordering means two regions can never eliminate each
+    other, so no group is ever emptied.
+    """
+    from tofu.utils.textmatch import normalize_text
+
+    keyed = [
+        (inst, normalize_text(inst.text), inst.bounding_box)
+        for inst in instances
+    ]
+    survivors: List[InstText] = []
+    for inst, text, box in keyed:
+        if not text or box is None:
+            survivors.append(inst)
+            continue
+        swallowed = any(
+            other is not inst
+            and other_box is not None
+            and len(other_text) > len(text)
+            and text in other_text
+            and _overlap_frac(box, other_box) > FRAGMENT_OVERLAP
+            for other, other_text, other_box in keyed
+        )
+        if not swallowed:
+            survivors.append(inst)
+    if len(survivors) == len(instances):
+        return instances
+    for order, inst in enumerate(survivors):
+        inst.id = f"r{order + 1}"
+        inst.reading_order = order
+    return survivors
+
+
+def _fragment_reading_order(boxes: List[BBox]) -> List[int]:
+    """Indices of ``boxes`` in reading order: by line, then left to right.
+
+    The line bucket is the same tolerant baseline test
+    _reading_order_detections uses on raw detections, restated here
+    because a user merging regions is working with settled instances.
+    """
+    if not boxes:
+        return []
+    heights = sorted(b.height for b in boxes)
+    median_h = heights[len(heights) // 2] or 1
+    tolerance = max(4.0, median_h * 0.42)
+    order = sorted(range(len(boxes)), key=lambda i: boxes[i].y + boxes[i].height / 2)
+    lines: List[List[int]] = []
+    for i in order:
+        centre = boxes[i].y + boxes[i].height / 2
+        if lines and abs(centre - (boxes[lines[-1][0]].y + boxes[lines[-1][0]].height / 2)) <= tolerance:
+            lines[-1].append(i)
+        else:
+            lines.append([i])
+    out: List[int] = []
+    for line in lines:
+        out.extend(sorted(line, key=lambda i: boxes[i].x))
+    return out
+
+
+def assemble_fragments(texts: Sequence[str], boxes: List[BBox]) -> str:
+    """Join fragment texts in the order they should be read.
+
+    Geometry decides, alone: fragments are ordered by line and then left
+    to right, which is right for every ordinary case and is what the user
+    sees on the image.
+
+    A lexical tie-break used to sit here for the case geometry cannot
+    separate -- two fragments sharing a baseline AND an x-range -- scoring
+    each order by whether function words ('de', 'les', 'et') landed
+    mid-string rather than at the end. It was removed rather than fixed.
+    It swapped the first two fragments regardless of which pair had
+    actually been ambiguous, and indexed a text-filtered list with
+    unfiltered indices, so a single blank fragment misaligned it; no test
+    ever asserted a swap happened, and no measured case on the corpus
+    needed one. An untested tie-break that can reorder text is worse than
+    no tie-break. If a real case turns up, note that decolonisons' body
+    line genuinely ends 'contre les' -- the sentence continues on the line
+    below -- so ending on a function word is not by itself evidence of
+    misordering.
+    """
+    order = _fragment_reading_order(boxes)
+    ordered = [texts[i].strip() for i in order if (texts[i] or "").strip()]
+    return " ".join(ordered)
+
+
+def reread_merged_region(
+    asset: ImageLike, box: BBox, pieces: Sequence[str], piece_boxes: List[BBox],
+    engine: Optional["OCRBackend"] = None,
+) -> Tuple[str, Optional[float], str]:
+    """Read a user-merged region whole, or fall back to joining its parts.
+
+    Same trade merge_baseline_runs makes automatically, offered to a user
+    for the groupings that pass declines -- across a column gutter, over a
+    gap too wide for the automatic rule, or any unit only a person knows
+    is one. The gates are looser here on purpose: the user has asserted
+    these regions belong together, so the re-read has to beat the parts on
+    text, not re-litigate whether they are one region.
+
+    Returns ``(text, confidence, source)`` where source is 'reread' or
+    'joined', so the caller can tell the user which they got.
+    """
+    joined = assemble_fragments(list(pieces), list(piece_boxes))
+    if engine is None or asset is None:
+        return joined, None, "joined"
+    try:
+        found = engine.detect_in_regions(asset, [box])
+    except Exception:
+        return joined, None, "joined"
+    inner = [d for d in (found[0] if found else []) if (d.text or "").strip()]
+    if not inner:
+        return joined, None, "joined"
+    # Compose by READING ORDER, not by _compose_crop_text's centroid
+    # heuristic. That heuristic sorts a horizontal crop purely by x, which
+    # is right within one line and interleaves the words of two: merging
+    # decolonisons' two body lines produced 'Pour crimes coloniaux et
+    # esclavagistes une memoire des luttes contre les'. A merged region is
+    # the one place a crop is EXPECTED to span several lines.
+    inner_boxes = [_polygon_bbox(d.polygon) for d in inner]
+    order = _fragment_reading_order(inner_boxes)
+    text = " ".join(inner[i].text.strip() for i in order)
+    confidence = min(inner[i].confidence or 0.0 for i in order)
+
+    from tofu.utils.textmatch import best_span_similarity
+    # the re-read has to still contain what each part said; a confident
+    # read that simply lost a fragment is worse than the join, however
+    # good it looks on its own.
+    kept = all(
+        best_span_similarity(piece.strip(), text) >= LOAF_SPAN_SIMILARITY
+        for piece in pieces if piece and piece.strip()
+    )
+    if not kept:
+        return joined, None, "joined"
+    # A re-read that says the same words with fewer marks is not better --
+    # it is the same read with information missing. Crops differ, and the
+    # parts were recognized from tighter ones ('mémoire' -> 'memoire').
+    if _accent_fold(text) == _accent_fold(joined) and _mark_count(text) < _mark_count(joined):
+        return joined, None, "joined"
+    return text, confidence, "reread"
+
+
 _TRAILING_ARTIFACTS = "-‐‑‒–—―"
 
 
@@ -3825,7 +4654,7 @@ def _needs_paddle_audit(inst: InstText) -> bool:
     return cjk and bool(text) and text[-1:] in _TRAILING_ARTIFACTS
 
 
-def _no_terminal_dash_ink(asset: Any, bbox: Optional[BBox]) -> Optional[bool]:
+def _no_terminal_dash_ink(asset: ImageLike, bbox: Optional[BBox]) -> Optional[bool]:
     """Return True only when a crop supports removal of a trailing dash.
 
     ``None`` means the crop cannot be read reliably and deliberately blocks an
@@ -3865,7 +4694,7 @@ def _no_terminal_dash_ink(asset: Any, bbox: Optional[BBox]) -> Optional[bool]:
         return None
 
 
-def skim_audit(asset: Any, instances: List[InstText]) -> List[InstText]:
+def skim_audit(asset: ImageLike, instances: List[InstText]) -> List[InstText]:
     """Cross-engine second opinion on script-less reads skim could not judge.
 
     Skim removes a read on stroke evidence alone only when nothing
@@ -3943,7 +4772,7 @@ def skim_audit(asset: Any, instances: List[InstText]) -> List[InstText]:
     return survivors
 
 
-def hybrid_audit(asset: Any, instances: List[InstText]) -> int:
+def hybrid_audit(asset: ImageLike, instances: List[InstText]) -> int:
     """Use Paddle only to adjudicate risky CJK EasyOCR reads.
 
     This is intentionally not a second full-scene detector: EasyOCR keeps
@@ -4001,11 +4830,107 @@ def hybrid_audit(asset: Any, instances: List[InstText]) -> int:
     return changed
 
 
+def _score_region_hypothesis(
+    inst: InstText,
+    primary: "OCRCandidate",
+    alternate: Optional["OCRCandidate"] = None,
+    verification_state: str = "unavailable",
+    primary_script: Optional[str] = None,
+    alternate_script: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """Run the hypothesis scorer over every recorded reading of one region.
+
+    The observations are assembled from `recognition_history` -- one per
+    detection pass -- plus the settled primary and, where one exists, the
+    independent verifier. They all share the instance's box, so clustering
+    resolves them into the single hypothesis they are: competing readings
+    of the same pixels, which is the case score_hypothesis exists to weigh.
+
+    The verifier is optional on purpose. Paddle verification is a
+    subprocess round trip and is rightly rationed; weighing readings the
+    pipeline already produced costs nothing, so it must not inherit that
+    budget. Without a verifier the cross-backend signal simply has nothing
+    to say and auto-acceptance is withheld, which is the honest outcome.
+
+    Returns None (rather than raising) whenever the machinery cannot run,
+    because this is evidence-gathering: it must never be able to fail a
+    detection that would otherwise have succeeded.
+    """
+    try:
+        from tofu.layers.ocr_arbitration import (
+            build_hypothesis_decision, form_region_hypotheses,
+        )
+        from tofu.core.types import OCRObservation
+
+        box = inst.bounding_box
+        if box is None:
+            return None
+        observations: List[OCRObservation] = []
+        for index, item in enumerate(inst.recognition_history or []):
+            if item.get("stage") != "detection_pass":
+                continue
+            text = item.get("candidate_text")
+            if not (text or "").strip():
+                continue
+            observations.append(OCRObservation(
+                observation_id=f"{inst.id}-pass{item.get('pass', index)}-{index}",
+                backend=str(item.get("engine") or "easyocr"),
+                backend_revision=str(item.get("engine_version") or "unknown"),
+                pass_tag=f"detection_pass_{item.get('pass', index)}",
+                text=text,
+                raw_confidence=max(0.0, min(1.0, float(item.get("candidate_confidence") or 0.0))),
+                bbox=box,
+                detected_script=primary_script,
+            ))
+        observations.append(OCRObservation(
+            observation_id=f"{inst.id}-primary",
+            backend=primary.engine, backend_revision=primary.engine_version,
+            pass_tag="selected_existing_pipeline",
+            text=primary.text, raw_confidence=primary.raw_confidence,
+            bbox=box, detected_script=primary_script,
+        ))
+        has_verifier = alternate is not None and (alternate.text or "").strip()
+        if has_verifier:
+            observations.append(OCRObservation(
+                observation_id=f"{inst.id}-verifier",
+                backend=alternate.engine, backend_revision=alternate.engine_version,
+                pass_tag="independent_verifier",
+                text=alternate.text, raw_confidence=alternate.raw_confidence,
+                bbox=box, detected_script=alternate_script,
+            ))
+        if not observations:
+            return None
+        hypotheses = form_region_hypotheses(observations)
+        if not hypotheses:
+            return None
+        verifier_id = f"{inst.id}-verifier" if has_verifier else None
+        verdict = build_hypothesis_decision(
+            hypotheses[0], verification_state, verifier_id,
+        )
+        return {
+            "verified": bool(has_verifier),
+            "observations_scored": len(observations),
+            "selected_observation_id": verdict.selected_observation_id,
+            "selected_text": verdict.selected_text,
+            "transcription_score": verdict.transcription_score,
+            "geometry_score": verdict.geometry_score,
+            "auto_accepted": verdict.auto_accepted,
+            "review_required": verdict.review_required,
+            "reason_codes": list(verdict.reason_codes),
+            "score_breakdown": dict(verdict.score_breakdown),
+            "agrees_with_pairwise": (verdict.selected_text or "") == (inst.text or ""),
+        }
+    except Exception:
+        return None
+
+
 def assess_multi_candidate_ocr(
-    asset: Any,
+    asset: ImageLike,
     instances: List[InstText],
     scene_regions: Optional[List[SceneRegion]] = None,
     policy: Optional[OCRAssessmentPolicy] = None,
+    font_registry: Optional[Any] = None,
+    ground_truth_pool: Optional[List[tuple]] = None,
 ) -> int:
     """Arbitrate risky settled reads against a fresh independent OCR pass.
 
@@ -4055,7 +4980,15 @@ def assess_multi_candidate_ocr(
         if count:
             ranked.append((count, (inst.confidence or 0.0), inst, flags))
     ranked.sort(key=lambda item: (-item[0], item[1], item[2].reading_order))
-    limit = max(0, int(policy.max_region_proposals))
+    # 'exhaustive' means what it says: every region carrying any risk flag
+    # earns a verifier round trip, with no proposal budget. The mode used to
+    # only append a risk flag while still truncating here, so a caller who
+    # asked for exhaustive got risk_based with a different label on it --
+    # regions past the eighth still recorded "budget exhausted" verbatim.
+    limit = (
+        len(ranked) if policy.mode == "exhaustive"
+        else max(0, int(policy.max_region_proposals))
+    )
     selected_records = ranked[:limit] if limit else []
     for _, _, inst, flags in ranked[limit:]:
         _history(inst, {
@@ -4068,6 +5001,9 @@ def assess_multi_candidate_ocr(
         })
     selected = [record[2] for record in selected_records]
     if not selected:
+        # No region earned a verifier round trip. Every one of them still
+        # gets weighed on the readings already in hand.
+        _grade_ungraded_regions(instances)
         return 0
 
     risk_by_instance = {id(record[2]): record[3] for record in selected_records}
@@ -4186,10 +5122,8 @@ def assess_multi_candidate_ocr(
         signals = ArbitrationSignals(
             ink_support=1.0 if _has_ink_support(asset, inst.bounding_box) else 0.0,
             geometry_support=max(0.0, min(1.0, geometry_support)),
-            script_compatible=(
-                None
-                if not primary_script or not alternate_script
-                else primary_script == alternate_script
+            script_compatible=_scripts_compatible(
+                primary_script, alternate_script, language
             ),
             # Let the arbitration policy compare declared and distributed
             # engine languages.  Forcing True made a wrong verifier language
@@ -4228,6 +5162,28 @@ def assess_multi_candidate_ocr(
             },
             verification,
         ])
+        # Hypothesis scoring over EVERY reading of this region, beside the
+        # pairwise decision above rather than instead of it.
+        #
+        # arbitrate() compares exactly two candidates: the primary and the
+        # verifier. But a region is usually read several times before that
+        # -- once per CRAFT threshold pass, again by the zoom pass, again by
+        # second_look -- and those readings were only ever kept as
+        # provenance text. score_hypothesis weighs all of them together
+        # (cross-backend agreement, stability of the modal reading, geometry,
+        # language consistency, glyph evidence, and n-gram plausibility when
+        # a model is side-loaded), which is evidence the pairwise comparison
+        # structurally cannot see.
+        #
+        # It does not choose the text. The pairwise decision remains
+        # authoritative because it is what every existing gate and baseline
+        # was calibrated against; this records what a fuller reading of the
+        # same evidence concludes, and where the two disagree is where the
+        # weights should be examined before anything is promoted.
+        hypothesis_record = _score_region_hypothesis(
+            inst, primary, alternate, getattr(result, "state", "unavailable"),
+            primary_script, alternate_script,
+        )
         inst.ocr_provenance = {
             "schema": 2,
             "policy_revision": policy.calibration_revision,
@@ -4250,6 +5206,7 @@ def assess_multi_candidate_ocr(
             },
             "primary_calibrated_confidence": decision.primary.calibrated_confidence,
             "alternate_calibrated_confidence": decision.alternate.calibrated_confidence,
+            "hypothesis": hypothesis_record,
         }
         _history(inst, {
             "stage": "multi_candidate_ocr",
@@ -4269,22 +5226,380 @@ def assess_multi_candidate_ocr(
             ),
         })
         if accepted:
+            affix_evidence = _affix_artifact_evidence(primary_text, result.text)
             inst.text = result.text
             inst.confidence = float(result.confidence)
             inst.ocr_correction = {
                 "applied": True,
                 "original_text": primary_text,
                 "corrected_text": result.text,
-                "reason": "versioned cross-engine OCR arbitration",
+                "reason": (
+                    "high-confidence independent verifier retained the "
+                    "pixel-supported core and removed an unsupported OCR affix"
+                    if affix_evidence else
+                    "versioned cross-engine OCR arbitration"
+                ),
+                "evidence": {
+                    "difference": affix_evidence,
+                    "geometry_support": round(signals.geometry_support, 4),
+                    "script_compatible": signals.script_compatible,
+                    "primary_calibrated_confidence": decision.primary.calibrated_confidence,
+                    "alternate_calibrated_confidence": decision.alternate.calibrated_confidence,
+                },
                 "policy_version": decision.policy_version,
                 "calibration_registry_version": decision.calibration_registry_version,
+                "correction_resource": {
+                    "kind": "tofu_arbitration",
+                    "revision": decision.policy_version,
+                },
+            }
+            inst.source_override = {
+                "kind": "tofu_arbitration",
+                "text": result.text,
+                "icon": "tofu",
+                "color": "amber",
+                "resource": inst.ocr_correction["correction_resource"],
             }
             changed += 1
+        elif _promote_verifier_confusion(
+            inst, hypothesis_record, primary_text, asset, font_registry,
+            ground_truth_pool,
+        ):
+            changed += 1
+
+    _grade_ungraded_regions(instances)
     return changed
 
 
+## Shapes a recogniser genuinely swaps for one another at sign scale. Every
+## pair here is a SILHOUETTE confusion -- the two glyphs occupy the same
+## stroke skeleton in a tight crop -- not a semantic one. Deliberately does
+## not include letter pairs that change a word ('rn'/'m', 'cl'/'d'): those
+## alter the reading rather than one mark, and belong to Savor's courses,
+## which have pixel evidence to spend on them.
+_GLYPH_CONFUSIONS: FrozenSet[FrozenSet[str]] = frozenset({
+    frozenset({"4", "!"}),   # decolonisons r2: "nos rues 4" for "nos rues !"
+    frozenset({"1", "!"}),
+    frozenset({"l", "!"}),
+    frozenset({"i", "!"}),
+    frozenset({"0", "O"}),
+    frozenset({"0", "o"}),
+    frozenset({"5", "S"}),
+    frozenset({"1", "l"}),
+    frozenset({"1", "I"}),
+    frozenset({"8", "B"}),
+    frozenset({"2", "Z"}),
+    frozenset({"6", "G"}),
+    # Measured on japan-subs r2 across the independent verifier and the
+    # region's own ink. The terminal dash is audited separately; this pair
+    # records only the dense-kanji silhouette confusion.
+    frozenset({"獄", "嶽"}),
+})
+
+
+## How many covering faces the ink comparison renders before deciding. The
+## point is a fair comparison, not an exhaustive one: both readings are set
+## in the SAME faces, so a face that flatters one flatters the other.
+_INK_COMPARISON_FACES = 5
+
+
+def _verifier_fits_the_ink(
+    asset: ImageLike, inst: InstText, candidate: str, primary: str, registry: Any,
+) -> bool:
+    """Does the verifier's reading look more like this region's ink?
+
+    Renders both readings and scores each against the region's own glyph
+    mask, reusing the retrieval kernel in font_matching -- the same
+    template evidence the hybrid audit already reasons about, applied to
+    the one character the two engines disagree on.
+
+    This exists because the record's `glyph` signal does NOT mean what its
+    name suggests: `_glyph_evidence` in ocr_arbitration returns 1.0 when
+    every observation agrees on the SCRIPT, which two readings of the same
+    kanji region always do. It is no evidence at all about which character
+    was printed.
+
+    Fails closed. No registry, no covering face, no mask, or no usable
+    score all return False, and the region keeps the pairwise answer -- an
+    unverifiable substitution is exactly the kind this must not wave
+    through.
+    """
+    if registry is None or not candidate or not primary:
+        return False
+    try:
+        import numpy as np
+        from tofu.layers import font_matching
+        from tofu.layers.fonts import faces_of
+        from tofu.utils.imaging import load_rgb
+
+        image = np.asarray(load_rgb(asset))
+        mask = font_matching._source_mask(image, inst)
+        if mask is None:
+            return False
+        needed = {ch for ch in candidate + primary if not ch.isspace()}
+        faces = [
+            path for path, face in faces_of(registry).items()
+            if all(ord(ch) in face.codepoints for ch in needed)
+        ]
+        if not faces:
+            return False
+
+        wins = 0
+        compared = 0
+        for path in sorted(faces)[:_INK_COMPARISON_FACES]:
+            try:
+                shot = font_matching._render_mask(path, candidate, mask.shape[0])
+                held = font_matching._render_mask(path, primary, mask.shape[0])
+                if shot is None or held is None:
+                    continue
+                new_score, _ = font_matching._visual_score(mask, shot)
+                old_score, _ = font_matching._visual_score(mask, held)
+            except Exception:
+                continue
+            compared += 1
+            if new_score >= old_score:
+                wins += 1
+        # Every face that could render both has to agree. One dissenting
+        # face means the two characters are close enough that the ink is
+        # not deciding, which is not a mandate to overwrite a user's text.
+        return compared > 0 and wins == compared
+    except Exception:
+        return False
+
+
+def _language_model_prefers(candidate: str, primary: str, inst: InstText) -> bool:
+    """Is the verifier's reading the more plausible string of the two?
+
+    The only signal available that can separate two readings the pixels
+    support equally well. Returns False when no model is installed, which
+    is the default state: without it, an untabled substitution has no
+    second opinion and must not be promoted.
+    """
+    try:
+        from tofu.layers.language_models import get_scoring_provider
+
+        provider = get_scoring_provider()
+        script = ScriptDetector().detect_script(candidate or primary or "")
+        new_score = provider.score(candidate, script)
+        old_score = provider.score(primary, script)
+        if new_score is None or old_score is None:
+            return False
+        return new_score > old_score
+    except Exception:
+        return False
+
+
+def _promote_verifier_confusion(
+    inst: InstText, record: Optional[Dict[str, Any]], primary_text: str,
+    asset: ImageLike = None, registry: Any = None,
+    ground_truth_pool: Optional[List[tuple]] = None,
+) -> bool:
+    """Apply the verifier's reading when it differs only by a confused glyph.
+
+    The pairwise decision refuses these, and for a defensible reason: it
+    withholds acceptance whenever the independent verifier DISAGREES with
+    the primary, because a disagreement is usually two engines failing
+    differently. But that same flag is what fires when the verifier is
+    simply right, and arbitration -- which scores every observation rather
+    than the last two -- has already said so by selecting the verifier's
+    observation. Measured on decolonisons r2: primary "nos rues 4",
+    verifier "nos rues!", arbitration selects the verifier, geometry 1.0,
+    glyph 1.0, confidence 0.97 -- and the region shipped "4" anyway.
+
+    So this promotes exactly that case and nothing wider:
+
+      * arbitration must have selected the INDEPENDENT VERIFIER's
+        observation, not the primary's -- a second engine, not a re-reading
+        of the same one;
+      * geometry and glyph signals must both be perfect, so the two
+        readings describe the same ink in the same place;
+      * and the two texts must differ ONLY by glyph confusions from the
+        table above, compared with whitespace removed. Whitespace is
+        excluded because the very difference at issue is a mark the
+        recogniser set tight -- French spacing is a separate, locale-aware
+        pass (utils.locale_typography), not this one's business.
+
+    Anything else -- a different word, a dropped fragment, an extra
+    character -- stays with the pairwise decision and stays flagged for
+    review. Returns True when the text was replaced.
+    """
+    if not record or record.get("agrees_with_pairwise") is not False:
+        return False
+    if not str(record.get("selected_observation_id") or "").endswith("-verifier"):
+        return False
+    breakdown = record.get("score_breakdown") or {}
+    if record.get("geometry_score") != 1.0 or breakdown.get("glyph") != 1.0:
+        return False
+
+    candidate = record.get("selected_text") or ""
+    if not candidate.strip():
+        return False
+    left = "".join(candidate.split())
+    right = "".join((primary_text or "").split())
+    if not left or left == right:
+        return False
+
+    # A trailing dash the verifier does not see is the artifact class this
+    # region was flagged for in the first place -- `trailing_artifact` is
+    # what spends a verifier round trip on it. japan-subs r2 read '御獄-'
+    # where the sign says '御嶽': one spurious hyphen AND one wrong kanji,
+    # which is why an equal-length test alone refused it.
+    trimmed = False
+    if len(right) == len(left) + 1 and right[-1:] in _TRAILING_ARTIFACTS:
+        right = right[:-1]
+        trimmed = True
+    if len(left) != len(right):
+        return False
+
+    differences = [(a, b) for a, b in zip(left, right) if a != b]
+    ground_truth_match = None
+    if len(differences) > 1:
+        return False
+    if differences:
+        a, b = differences[0]
+        pair = frozenset({a, b})
+        ground_truth_match = next((
+            (term, scope or "project")
+            for term, _lang, scope in (
+                (entry if len(entry) >= 3 else (*entry, "project"))
+                for entry in (ground_truth_pool or [])
+            )
+            if term == candidate
+        ), None)
+        measured_kanji_dash_case = (
+            pair == frozenset({"獄", "嶽"})
+            and trimmed
+            and float(breakdown.get("confidence") or 0.0) >= 0.90
+        )
+        if pair not in _GLYPH_CONFUSIONS or (
+            pair == frozenset({"獄", "嶽"}) and not measured_kanji_dash_case
+        ):
+            # Not a Latin pair anyone has tabled, and a table cannot scale
+            # to kanji -- 獄 and 嶽 are one of thousands of such pairs. So
+            # the claim has to be measured, TWICE, because measuring it
+            # once is demonstrably not enough.
+            #
+            # Rendering both readings against this region's ink separates
+            # some pairs and not others. Measured on japan-subs r2, worst
+            # margin across five covering faces:
+            #
+            #     御嶽 (correct)  +0.0215
+            #     御海 (wrong)    +0.0199
+            #     御山 (wrong)    -0.0686
+            #     御一 (wrong)    -0.0817
+            #
+            # The correct reading and a plainly wrong one are 0.0016 apart.
+            # At sign scale dense kanji collapse into the same silhouette,
+            # so no threshold on this kernel can be defended -- it can veto
+            # a substitution but must not authorise one alone.
+            #
+            # The second opinion is linguistic: 御嶽 is a mountain, 御海 is
+            # not a word. That is the language model's question, and it is
+            # the one signal here that can separate two readings the pixels
+            # support equally well. Absent an n-gram artifact it returns
+            # None and this refuses -- an unverifiable substitution is
+            # exactly the kind that must not be waved through.
+            if not _verifier_fits_the_ink(asset, inst, candidate,
+                                          right if trimmed else primary_text,
+                                          registry):
+                return False
+            if not ground_truth_match and not _language_model_prefers(
+                candidate, right if trimmed else primary_text, inst
+            ):
+                return False
+    elif not trimmed:
+        return False
+
+    inst.text = candidate
+    # The record was written against the text the pairwise decision chose.
+    # That text is now arbitration's own, so leaving the flag alone would
+    # have the workspace mark this region as a disagreement forever, against
+    # a reading it no longer ships. `promoted` keeps the history of the
+    # override visible without pretending the two still differ.
+    record["agrees_with_pairwise"] = True
+    record["promoted"] = True
+    inst.ocr_correction = {
+        "applied": True,
+        "original_text": primary_text,
+        "corrected_text": candidate,
+        "reason": "arbitration selected the independent verifier; difference is a glyph confusion",
+        "policy_version": record.get("policy_revision"),
+        "correction_resource": {
+            "kind": "tofu_arbitration",
+            "revision": record.get("policy_revision"),
+            "ground_truth_support": (
+                {"term": ground_truth_match[0], "scope": ground_truth_match[1]}
+                if ground_truth_match else None
+            ),
+        },
+    }
+    inst.source_override = {
+        "kind": "tofu_arbitration",
+        "text": candidate,
+        "icon": "tofu",
+        "color": "amber",
+        "resource": inst.ocr_correction["correction_resource"],
+    }
+    _history(inst, {
+        "stage": "hypothesis_promotion",
+        "engine": "paddleocr",
+        "accepted": True,
+        "applied": True,
+        "decision": "promote",
+        "candidate_text": candidate,
+        "primary_text": primary_text,
+        "reason_codes": list(record.get("reason_codes") or []),
+        "reason": "verifier-selected hypothesis differing only by a confusable glyph",
+    })
+    return True
+
+
+def _grade_ungraded_regions(instances: List[InstText]) -> int:
+    """Score a hypothesis for every region the verification budget skipped.
+
+    Two filters upstream keep regions away from the verifier, and both are
+    right about PADDLE: a region with no risk flags does not need a
+    subprocess round trip, and neither does the ninth-riskiest region on a
+    crowded frame. Neither is a reason to leave the readings the pipeline
+    already produced unweighed -- that work is pure Python over data
+    sitting in recognition_history, and skipping it bought nothing.
+
+    So every region gets graded; only verification stays rationed. Regions
+    scored without a verifier carry ``verified: false`` and cannot
+    auto-accept (build_hypothesis_decision withholds that when the
+    verification state is 'unavailable'), which keeps the distinction
+    between "corroborated by a second engine" and "consistent with itself"
+    visible rather than collapsing them.
+    """
+    from tofu.layers.ocr_arbitration import OCRCandidate
+
+    graded = 0
+    detector = ScriptDetector()
+    for inst in instances:
+        provenance = inst.ocr_provenance or {}
+        if provenance.get("hypothesis"):
+            continue
+        if inst.bounding_box is None or not (inst.text or "").strip():
+            continue
+        script = detector.detect_script(inst.text or "")
+        primary = OCRCandidate(
+            engine="easyocr", engine_version="unknown",
+            text=inst.text or "",
+            raw_confidence=max(0.0, min(1.0, float(inst.confidence or 0.0))),
+            languages=((inst.detected_language or inst.language or "en"),),
+            script=script,
+            provenance={"region_id": inst.id, "role": "primary"},
+        )
+        record = _score_region_hypothesis(inst, primary, primary_script=script)
+        if record is None:
+            continue
+        inst.ocr_provenance = {**provenance, "hypothesis": record}
+        graded += 1
+    return graded
+
+
 def build_manifest(
-    asset: Any,
+    asset: ImageLike,
     detections: List[RawDetection],
     asset_info: Optional[AssetInfo] = None,
     engine: Optional[OCRBackend] = None,
@@ -4509,6 +5824,7 @@ def build_manifest(
     # that were salvageable got their chance first
     if prune_garbage:
         instances = _prune_hallucinations(instances, asset)
+        instances = _prune_contained_fragments(instances)
 
     manifest = TextManifest(
         # the scene's own language, voted from the regions that survived

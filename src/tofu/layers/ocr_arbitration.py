@@ -409,7 +409,47 @@ HYPOTHESIS_WEIGHTS: Dict[str, float] = {
     "geometry": 0.15,
     "language": 0.10,
     "glyph": 0.05,
+    # Linguistic plausibility, supplied by a side-loaded n-gram model. It is
+    # the only signal here that can distinguish two readings the pixels
+    # support equally well, which is precisely the gap a CTC decoder leaves
+    # (see savor.py's module note). Absent a model the signal is None and
+    # score_hypothesis renormalizes the rest, so a host with no model scores
+    # exactly as it did before this weight existed.
+    "language_model": 0.10,
 }
+
+## Mean log10 probability per token, mapped onto 0..1 for the weighted sum.
+## -6 is the floor because a token the model has never seen bottoms out
+## around there in a 5-gram model with standard backoff; below it, one
+## unknown word and ten unknown words are equally bad news and the extra
+## resolution would only add noise.
+_LM_LOG_FLOOR = -6.0
+
+
+def _language_model_score(
+    observations: Sequence[OCRObservation], scorer=None,
+) -> Optional[float]:
+    """Best per-token n-gram plausibility across a hypothesis's readings.
+
+    Returns None -- not 0.0 -- when no model is configured, which is what
+    lets the weight renormalize away rather than scoring every candidate
+    as maximally implausible.
+    """
+    if scorer is None:
+        try:
+            from tofu.layers.language_models import get_scoring_provider
+            scorer = get_scoring_provider()
+        except Exception:
+            return None
+    best: Optional[float] = None
+    for observation in observations:
+        value = scorer.score(observation.text, observation.detected_script)
+        if value is None:
+            continue
+        best = value if best is None else max(best, value)
+    if best is None:
+        return None
+    return max(0.0, min(1.0, 1.0 - (best / _LM_LOG_FLOOR)))
 
 
 def _bbox_iou(a: BBox, b: BBox) -> float:
@@ -620,6 +660,7 @@ def score_hypothesis(
     geometry = _geometry_score(valid)
     language = _language_consistency(valid)
     glyph = _glyph_evidence(valid)
+    lm = _language_model_score(valid)
 
     calibrated_confs = []
     for o in valid:
@@ -643,6 +684,7 @@ def score_hypothesis(
         "geometry": geometry,
         "language": language,
         "glyph": glyph,
+        "language_model": lm,
     }
 
     # Renormalize weights when some signals are missing

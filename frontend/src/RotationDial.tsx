@@ -57,7 +57,7 @@ export default function RotationDial({ value, onChange, onReset, disabled = fals
       <svg
         width="50" height="50" viewBox="0 0 50 50"
         className={`rounded-full border border-zinc-300 bg-zinc-50 touch-none dark:border-zinc-700 dark:bg-zinc-900 ${disabled ? "pointer-events-none cursor-not-allowed opacity-40" : "cursor-crosshair"}`}
-        role="slider" aria-label="text rotation" aria-valuemin={-360} aria-valuemax={360} aria-valuenow={value}
+        role="slider" aria-label="Text rotation" aria-valuemin={-360} aria-valuemax={360} aria-valuenow={value}
         onPointerDown={begin} onPointerMove={move} onPointerUp={end} onPointerCancel={end}
         onDoubleClick={disabled ? undefined : onReset}
       >
@@ -67,7 +67,7 @@ export default function RotationDial({ value, onChange, onReset, disabled = fals
       </svg>
       <input
         type="number" min={-360} max={360} step={1} value={value}
-        aria-label="text rotation degrees"
+        aria-label="Text rotation degrees"
         disabled={disabled}
         onChange={(event) => { if (!disabled) onChange(clamp(Number(event.target.value || 0))); }}
         onDoubleClick={disabled ? undefined : onReset}

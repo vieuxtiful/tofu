@@ -29,6 +29,7 @@ import os
 import re
 import unicodedata
 from dataclasses import asdict
+from itertools import permutations
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
@@ -151,9 +152,13 @@ _STREET_DESIGNATORS: Dict[str, set] = {
     "ru": {"улица", "проспект", "переулок", "площадь", "шоссе"},
     # CJK designators are SUFFIXES of a token, not tokens of their own --
     # _designator_position() below tests endswith for these languages.
-    "ja": {"通り", "街道", "駅", "橋", "公園", "温泉", "神社", "寺", "港", "町"},
-    "zh": {"路", "街", "站", "桥", "公园", "大道", "广场", "巷", "镇"},
-    "ko": {"로", "길", "역", "광장", "공원"},
+    # Only thoroughfare designators belong here. Stations, parks, bridges,
+    # baths and shrines are named places/facilities, not streets; treating
+    # every CJK place suffix as a road made phrases such as
+    # ``丸太造りの駅舎飛騨小坂駅`` semantically false before Basil aligned it.
+    "ja": {"通り", "街道"},
+    "zh": {"路", "街", "大道", "巷"},
+    "ko": {"로", "길"},
 }
 _MODIFIERS: Dict[str, set] = {
     "fr": {"vieux", "vieil", "vieille", "vieilles", "nouveau", "nouvelle", "grand", "grande", "petit", "petite", "haut", "haute", "bas", "basse"},
@@ -907,6 +912,142 @@ def bouquet(manifest: TextManifest) -> List[Dict[str, Any]]:
     return bundles
 
 
+def _bind(
+    eligible: Sequence[InstText],
+    scene_regions: Optional[Sequence[Any]],
+    pairwise_edge,
+    panel_edge,
+) -> List[Dict[str, Any]]:
+    """Union-find over a panel pre-pass and a pairwise pass, as bouquet does.
+
+    Written as its own function rather than by refactoring ``bouquet``,
+    which keeps its own copy: that function's groupings are pinned by a
+    long row of deliberately-measured tests, and the point of this file's
+    second cohort pass is to change nothing about the first.
+    """
+    parent: Dict[str, str] = {inst.id: inst.id for inst in eligible}
+
+    def find(node: str) -> str:
+        while parent[node] != node:
+            parent[node] = parent[parent[node]]
+            node = parent[node]
+        return node
+
+    def union(a: str, b: str) -> None:
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[rb] = ra
+
+    for region in scene_regions or []:
+        if region.semantic_label not in _PANEL_LABELS or region.confidence < _PANEL_MIN_CONFIDENCE:
+            continue
+        members = [inst for inst in eligible if _contains(region.bbox, inst.bounding_box)]
+        for i, left in enumerate(members):
+            for right in members[i + 1:]:
+                if panel_edge(left, right):
+                    union(left.id, right.id)
+
+    for i, left in enumerate(eligible):
+        for right in eligible[i + 1:]:
+            if pairwise_edge(left, right):
+                union(left.id, right.id)
+
+    order = [inst.id for inst in eligible]
+    grouped: Dict[str, List[str]] = {}
+    for region_id in order:
+        grouped.setdefault(find(region_id), []).append(region_id)
+
+    bundles: List[Dict[str, Any]] = []
+    for root in order:
+        members = grouped.get(root)
+        if not members or len(members) < 2:
+            continue
+        bundles.append({"id": f"c{len(bundles) + 1}", "region_ids": members})
+    return bundles
+
+
+def _one_hand_any_size(left: InstText, right: InstText) -> bool:
+    """Could these be the same FAMILY, at whatever size and weight?
+
+    The narrower question ``_same_hand`` asks -- same size, same ink, same
+    weight -- is the right one for claiming two regions carry the identical
+    face.  It is the wrong one for claiming they came from one family, and
+    on real signage it is wrong often.  Measured on the la-bastille poster,
+    every pair the eye reads as one hand was refused by a gate about
+    something other than the shape of the letters:
+
+      * height ratio: '80' over 'bis' is 2.33, 'en' over '1789' is 2.96.
+        A sign sets its house number large and its qualifier small in one
+        hand; glyph size is not typeface identity.
+      * colour: 'la Bastille' samples #6c3f3c and 'Rue St. Antoine'
+        #bbbda1 on the same engraving, a distance of 180 against a
+        tolerance of 90.  Ageing and uneven lighting move sampled ink
+        colour far more than a change of face does.
+      * weight bucket: a 15px 'bis' reads bold and 'Avenue' reads light
+        italic on a poster lettered by one hand.  At these sizes the
+        weight detector is guessing.
+
+    So this keeps only the two gates that survive a change of size:
+
+      * ``_nearby``, which is what holds the title block apart from the
+        address block below it -- and, on a street scene, one shopfront
+        apart from the next.  Dropping it would make a photograph into a
+        single cohort, which is not a claim anyone can defend.
+      * ``_same_language``, carried on BOTH routes here rather than only
+        the panel route.  In ``bouquet`` the typographic gates did this
+        work incidentally; with them gone, a CJK headline sitting directly
+        above its own romanisation would otherwise join it.
+
+    Italic is NOT a gate here, though it reads like one it should be.  A
+    true italic is a different drawing of the letters, so the first version
+    of this refused to pair across it -- and on la-bastille that put
+    "Avenue" and "Champs" in a cohort of their own, away from the address
+    they belong to, on a detector reading of *light italic* for lettering
+    the eye reads as upright.  At 15-40px the slant detector is guessing as
+    freely as the weight one.
+
+    Nothing is lost by dropping it, because slant is still decided -- one
+    step later and with better evidence.  ``font_matching._weight_distance``
+    ranks slant AHEAD of weight when each region picks its face within the
+    cohort's family, so an italic region in a mixed cohort takes the
+    family's Italic face while its neighbours take Regular or Bold.  Italic
+    decides the FACE, not the membership.
+    """
+    return _nearby(left, right) and _same_language(left, right)
+
+
+def mother_sauce(manifest: TextManifest) -> List[Dict[str, Any]]:
+    """Regions that share a typeface FAMILY, whatever size or weight.
+
+    The five mother sauces are the bases every daughter sauce derives
+    from; a family is the same thing for type, with the weights as its
+    daughters.  ``bouquet`` asks which regions carry the identical face
+    and is right to be strict about it.  This asks the looser question a
+    localiser actually faces -- which regions should be offered ONE family
+    to choose from -- and leaves each region its own weight within it.
+
+    Same shape as ``bouquet``: ``[{"id": "c1", "region_ids": [...]}, ...]``
+    for bundles of two or more, and a lone region is not a bundle.
+
+    Necessarily a superset of ``bouquet``'s bundles on the same manifest,
+    since every gate here is one ``bouquet`` also applies.  That is the
+    intended relationship: the strict pass settles the identical face
+    where it can, and this one covers the rest of the sign.
+    """
+    eligible = [
+        inst for inst in manifest.instances
+        if not inst.excluded and (inst.text or "").strip()
+    ]
+    return _bind(
+        eligible,
+        manifest.scene_regions,
+        _one_hand_any_size,
+        # Inside a bordered panel the architecture has already answered
+        # proximity, exactly as it does for bouquet.
+        _same_language,
+    )
+
+
 def bunch(manifest: TextManifest, verdict: str) -> List[Dict[str, Any]]:
     """Group instances into candidate sprigs, gated on actual evidence.
 
@@ -1143,6 +1284,106 @@ def accept_repair(manifest: TextManifest, unit_id: str, accepted: bool) -> Seman
     return unit
 
 
+def modify_unit_members(
+    manifest: TextManifest,
+    unit_id: str,
+    *,
+    add_region_id: Optional[str] = None,
+    remove_region_id: Optional[str] = None,
+) -> SemanticTextUnit:
+    """Add or remove a single region from a semantic unit's membership.
+
+    Only the unit's own ``region_ids``, ``source_text``, ``bbox`` and
+    ``suggestion`` change.  Region boxes, ids and OCR text are untouched,
+    so a later re-detection (``unify_manifest``) can still re-group them.
+
+    Removing a region from one unit does NOT automatically add it to
+    another; adding a region that already belongs to a different unit
+    removes it from that unit first, so a region is always in at most one
+    unit.
+    """
+    unit = next((item for item in (manifest.semantic_units or []) if item.id == unit_id), None)
+    if unit is None:
+        raise KeyError(f"semantic unit '{unit_id}' not found")
+    by_id = {inst.id: inst for inst in manifest.instances}
+
+    if remove_region_id is not None:
+        if remove_region_id not in unit.region_ids:
+            raise ValueError(f"region '{remove_region_id}' is not a member of unit '{unit_id}'")
+        new_ids = [rid for rid in unit.region_ids if rid != remove_region_id]
+    elif add_region_id is not None:
+        if add_region_id in unit.region_ids:
+            raise ValueError(f"region '{add_region_id}' is already a member of unit '{unit_id}'")
+        if add_region_id not in by_id:
+            raise ValueError(f"region '{add_region_id}' does not exist in the manifest")
+        # Remove from any other unit that currently owns it.
+        for other in (manifest.semantic_units or []):
+            if other.id != unit_id and add_region_id in other.region_ids:
+                other.region_ids = [rid for rid in other.region_ids if rid != add_region_id]
+                other_members = [by_id[rid] for rid in other.region_ids if rid in by_id]
+                other.source_text = _join([inst.text or "" for inst in other_members]) if other_members else ""
+                other.bbox = _union_box(other_members) if other_members else other.bbox
+                other.substitution = None
+                other.suggestion = suggest_plating(manifest, other, manifest.targ_lang)
+        new_ids = [*unit.region_ids, add_region_id]
+    else:
+        raise ValueError("either add_region_id or remove_region_id must be provided")
+
+    unit.region_ids = new_ids
+    members = [by_id[rid] for rid in new_ids if rid in by_id]
+    unit.source_text = _join([inst.text or "" for inst in members]) if members else ""
+    unit.bbox = _union_box(members) if members else unit.bbox
+    # Clear stale substitution; the membership change invalidates any prior plan.
+    unit.substitution = None
+    unit.suggestion = suggest_plating(manifest, unit, manifest.targ_lang)
+    return unit
+
+
+def create_unit(manifest: TextManifest, region_ids: Optional[List[str]] = None) -> SemanticTextUnit:
+    """Create a new, user-authored semantic unit (a 'plate').
+
+    Starts empty or with the given region IDs.  The unit gets the next
+    available ``uN`` id and a pairing verdict from the manifest's language
+    pair.  Region boxes, ids and OCR text are untouched.
+    """
+    existing = {unit.id for unit in (manifest.semantic_units or [])}
+    number = 1
+    while f"u{number}" in existing:
+        number += 1
+    by_id = {inst.id: inst for inst in manifest.instances}
+    member_ids = [rid for rid in (region_ids or []) if rid in by_id]
+    members = [by_id[rid] for rid in member_ids]
+    verdict = pairing(manifest.src_lang, manifest.targ_lang)
+    unit = SemanticTextUnit(
+        id=f"u{number}",
+        region_ids=member_ids,
+        source_text=_join([inst.text or "" for inst in members]) if members else "",
+        bbox=_union_box(members) if members else BBox(0, 0, 0, 0),
+        entity_type="unknown",
+        confidence=0.0,
+        analysis_provider="user_created",
+        semantic_roles={},
+        review_required=True,
+        pairing=verdict,
+    )
+    unit.suggestion = suggest_plating(manifest, unit, manifest.targ_lang)
+    manifest.semantic_units = [*manifest.semantic_units, unit]
+    return unit
+
+
+def delete_unit(manifest: TextManifest, unit_id: str) -> None:
+    """Permanently remove a semantic unit from the manifest.
+
+    Region boxes, ids and OCR text are untouched -- only the unit entry is
+    dropped, so its former members can be re-grouped by a later
+    ``unify_manifest`` re-detection or re-assigned by the user.
+    """
+    units = manifest.semantic_units or []
+    if not any(unit.id == unit_id for unit in units):
+        raise KeyError(f"semantic unit '{unit_id}' not found")
+    manifest.semantic_units = [unit for unit in units if unit.id != unit_id]
+
+
 def provider_statuses() -> List[Dict[str, Any]]:
     """Deployment-visible model seams; this never probes remote services."""
     stanza_dir = os.environ.get("TOFU_BASIL_STANZA_DIR")
@@ -1223,6 +1464,60 @@ def plan_substitution(
     if not phrase:
         base["warnings"].append("Enter the complete target phrase before planning placement.")
         return base
+
+    # Unspaced/CJK targets (ko/ja/zh/th/km/lo/my) have no word delimiter, so
+    # the glossary-verified token alignment below cannot segment the target
+    # phrase back to source regions.  The user's SlotEditor arrangement is
+    # encoded in the concatenated target_text: match it against the
+    # permutations of per-region translations, then tiebreak with the
+    # typology-derived order from suggest_plating.
+    if _script_class(phrase) == "unspaced":
+        by_id = {inst.id: inst for inst in manifest.instances}
+        region_texts = {
+            region_id: (by_id[region_id].target_text or "").strip()
+            for region_id in unit.region_ids if region_id in by_id
+        }
+        missing = [rid for rid in unit.region_ids if not region_texts.get(rid)]
+        if missing:
+            base["warnings"].append(
+                f"Translate every region before plating; missing target text for {', '.join(missing)}."
+            )
+            return base
+        candidates = [
+            list(order) for order in permutations(unit.region_ids)
+            if "".join(region_texts[rid] for rid in order) == phrase
+        ]
+        if not candidates:
+            base["warnings"].append(
+                "The target phrase does not match any arrangement of the per-region translations; "
+                "reorder the slots in the Basil panel to match your typed phrase."
+            )
+            return base
+        suggestion = unit.suggestion or {}
+        suggested_order = suggestion.get("region_order") or unit.region_ids
+        if tuple(suggested_order) in {tuple(c) for c in candidates}:
+            chosen = list(suggested_order)
+        else:
+            chosen = candidates[0]
+        assignments: List[Dict[str, Any]] = []
+        for anchor_id, region_id in zip(unit.region_ids, chosen):
+            assignments.append({
+                "region_id": region_id,
+                "text": region_texts[region_id],
+                "target_positions": [],
+                "method": "manual_slot_arrangement",
+                "confidence": 0.9,
+                "anchor_id": anchor_id,
+            })
+        base.update({
+            "assignments": assignments,
+            "target_region_order": chosen,
+            "method": "manual_slot_arrangement",
+            "confidence": 0.9,
+            "review_required": False,
+        })
+        return base
+
     effective = external_lexicon if external_lexicon is not None else _GLOSSARY
     source_locale, target_locale = _locale(manifest.src_lang), _locale(targ_lang)
     lexicon = effective.get((source_locale, target_locale))

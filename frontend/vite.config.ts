@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 
@@ -6,6 +7,7 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
     build: {
+      sourcemap: true,
       rollupOptions: {
         output: {
           // Keep the project gate/editor shell small enough to display before
@@ -30,6 +32,10 @@ export default defineConfig(({ mode }) => {
         "/outputs": backend,
         "/uploads": backend,
       },
+    },
+    test: {
+      environment: "happy-dom",
+      setupFiles: ["./src/test-setup.ts"],
     },
   };
 });

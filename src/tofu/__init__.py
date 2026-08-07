@@ -37,7 +37,7 @@ scikit-image, uharfbuzz and freetype-py degrade to reduced-quality paths
 when absent. Importing this package pulls in none of them.
 """
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"
 __author__ = "vieuxtiful"
 __license__ = "MIT"
 
@@ -50,6 +50,7 @@ from tofu.core.types import (
     BgProfil,
     CharactText,
     GarnishProfile,
+    ImageLike,
     InstText,
     LayerMode,
     Mask,
@@ -77,6 +78,7 @@ __all__ = [
     "InstText",
     "TextManifest",
     "SceneRegion",
+    "ImageLike",
     # profiles
     "StyleProfil",
     "BgProfil",

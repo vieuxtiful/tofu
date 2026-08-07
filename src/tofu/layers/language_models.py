@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import os
+import re
 from pathlib import Path
 from typing import Dict, Iterable, Optional, Protocol, Sequence
 
@@ -114,7 +115,285 @@ class DiacriticRestorationProvider:
         return ()
 
 
+## Scripts whose text is scored CHARACTER by character rather than word by
+## word. CJK is written without word spaces, and its OCR errors are
+## character substitutions rather than boundary errors, so a character
+## n-gram is both simpler (no segmenter to depend on) and better matched
+## to the failure it has to rank. Mixed kana/kanji/latin falls out of the
+## same treatment for free -- every codepoint is a token.
+## Scripts written one character per token rather than one word per token,
+## which decides which model family scores a reading.
+##
+## Two vocabularies, deliberately, because two exist in this codebase and
+## the mismatch was silent: ISO 15924 codes are what the manifest carries,
+## while cicerone's ScriptDetector emits lowercase names ("han",
+## "japanese", "hangul"). ocr_arbitration hands the DETECTOR's value
+## straight to score(), so with only the ISO half here every CJK reading
+## was quietly scored against the Latin model -- a wrong answer that looks
+## exactly like a working one.
+_CHARACTER_SCRIPTS = {
+    "Hani", "Hang", "Hira", "Kana", "Jpan", "Hans", "Hant",
+    "han", "hangul", "hiragana", "katakana", "japanese", "korean", "chinese",
+}
+
+## Punctuation is split into its own token rather than glued to the word
+## beside it, because ranking punctuation is part of the job: decolonisons'
+## 'nos rues !' comes back as 'nos rues 4', and a model that has only ever
+## seen 'rues!' as one token cannot say which of those is likelier.
+_LM_PUNCT = re.compile(r"([^\w\s]|_)", re.UNICODE)
+
+
+def tokenize_for_lm(text: str, family: str) -> list:
+    """Tokenize exactly the same way at training time and at scoring time.
+
+    Exported and used by BOTH this provider and scripts/build_kenlm_models.py.
+    Train/score skew is the quiet way an n-gram model underperforms: a model
+    trained on 'rue de la paix' scores 'RUE DE LA PAIX' as unseen, and the
+    signal degrades to noise without ever failing loudly.
+
+    Latin is case-folded because signage is routinely set in caps and the
+    model's job is the plausibility of the word sequence, not its casing --
+    which savor's case course decides from pixels anyway. CJK is one token
+    per codepoint, so no segmenter, and mixed kana/kanji/latin needs no
+    special handling.
+    """
+    if family == "cjk":
+        return [ch for ch in (text or "").strip() if not ch.isspace()]
+    spaced = _LM_PUNCT.sub(r" \1 ", (text or "").casefold())
+    return spaced.split()
+
+
+class KenLMScoringProvider:
+    """Side-loaded KenLM n-gram model for OCR candidate rescoring.
+
+    A CRNN+CTC recognizer decodes character by character with no notion of
+    whether the reading it produced is a plausible string -- savor.py's
+    module note says exactly this, and it is why the glyph-confusion
+    courses have to reason from pixels alone. An n-gram model is the
+    cheapest thing that supplies the missing signal: it cannot read the
+    image, but it can say that MAIN STREET is a likelier string than MAIN
+    STBEET.
+
+    One engine, one model file per script family, routed by the script
+    already detected upstream. A single model spanning Latin and CJK is
+    deliberately NOT supported: the vocabularies are disjoint, and mixing
+    them dilutes exactly the n-gram statistics the ranking depends on.
+
+    Like every other provider here it never downloads anything and never
+    makes a network call. Absent ``TOFU_KENLM_DIR``, an unreadable model,
+    or a missing ``kenlm`` package all resolve to "no score", and callers
+    treat that as one signal being unavailable rather than as evidence.
+    """
+    provider_id = "kenlm-ngram"
+
+    def __init__(self, model_dir: Optional[str] = None):
+        self.model_dir = Path(model_dir or os.environ.get("TOFU_KENLM_DIR", ""))
+        self._models: Dict[str, object] = {}
+        self._failed: Dict[str, str] = {}
+
+    @staticmethod
+    def _family(script: Optional[str]) -> str:
+        return "cjk" if script in _CHARACTER_SCRIPTS else "latin"
+
+    def _load(self, family: str):
+        if family in self._models:
+            return self._models[family]
+        if family in self._failed:
+            return None
+        path = self.model_dir / f"{family}.klm"
+        if not self.model_dir or not path.is_file():
+            self._failed[family] = f"no readable model at {path}"
+            return None
+        try:
+            import kenlm  # type: ignore
+            model = kenlm.Model(str(path))
+        except Exception as exc:  # optional native extension/model errors
+            self._failed[family] = f"model load failed: {type(exc).__name__}"
+            return None
+        self._models[family] = model
+        return model
+
+    def score(self, text: str, script: Optional[str] = None) -> Optional[float]:
+        """Mean log10 probability per token, or None when unavailable.
+
+        Normalized by token count so a long correct line is not ranked
+        below a short one purely for having more tokens to be charged for.
+        """
+        cleaned = (text or "").strip()
+        if not cleaned:
+            return None
+        family = self._family(script)
+        model = self._load(family)
+        if model is None:
+            return None
+        tokens = tokenize_for_lm(cleaned, family)
+        if not tokens:
+            return None
+        try:
+            total = model.score(" ".join(tokens), bos=True, eos=True)
+        except Exception:
+            return None
+        return float(total) / len(tokens)
+
+    def status(self) -> Dict[str, object]:
+        families = {}
+        for family in ("latin", "cjk"):
+            path = self.model_dir / f"{family}.klm" if self.model_dir else None
+            families[family] = bool(path and path.is_file())
+        ready = any(families.values())
+        return {
+            "id": self.provider_id, "available": ready, "ready": ready,
+            "version": str(self.model_dir) if ready else None,
+            "families": families,
+            "reason": None if ready else "no readable model configured in TOFU_KENLM_DIR",
+        }
+
+
+class KneserNeyScoringProvider:
+    """Interpolated modified Kneser-Ney n-gram, with no native toolchain.
+
+    Same job as KenLMScoringProvider and the same contract; the difference
+    is what it costs to obtain one. KenLM's ``lmplz`` and ``build_binary``
+    are C++ programs -- ``pip install kenlm`` ships the scoring module
+    only -- so having the signal at all meant a compiler and a multi-GB
+    Wikipedia dump. This trains from a local text file of tens of MB with
+    the interpreter already in hand.
+
+    Modified Kneser-Ney (Kneser & Ney 1995; Chen & Goodman 1999 for the
+    three discounts) because the thing it fixes is precisely this
+    application: a plain backoff model ranks a string by how often its
+    words appeared, so a rare-but-real word loses to a common one, and
+    ranking OCR candidates is exactly where that goes wrong. Kneser-Ney
+    ranks the lower order by CONTINUATION count -- how many distinct
+    contexts a token completes -- so a word that only ever appears in one
+    phrase stops being treated as generally likely.
+
+    Reads the artifact produced by scripts/build_ngram_models.py, which
+    shares tokenize_for_lm with this class so train and score cannot skew.
+    Absent an artifact every score is None, exactly as with KenLM, and the
+    caller renormalizes the remaining signals.
+    """
+    provider_id = "kneser-ney-ngram"
+    ## Out-of-vocabulary floor, in log10. Roughly one in ten million: low
+    ## enough that an invented word loses decisively, finite so a single
+    ## unknown token cannot make two readings incomparable.
+    OOV_LOGPROB = -7.0
+
+    def __init__(self, model_dir: Optional[str] = None):
+        self.model_dir = Path(model_dir or os.environ.get("TOFU_NGRAM_DIR", ""))
+        self._models: Dict[str, object] = {}
+        self._failed: Dict[str, str] = {}
+
+    @staticmethod
+    def _family(script: Optional[str]) -> str:
+        return "cjk" if script in _CHARACTER_SCRIPTS else "latin"
+
+    def _load(self, family: str):
+        if family in self._models:
+            return self._models[family]
+        if family in self._failed:
+            return None
+        path = self.model_dir / f"{family}.ngram.json.gz"
+        if not str(self.model_dir) or not path.is_file():
+            self._failed[family] = f"no readable model at {path}"
+            return None
+        try:
+            import gzip
+            import json as _json
+            with gzip.open(path, "rt", encoding="utf-8") as handle:
+                model = _json.load(handle)
+            if not isinstance(model, dict) or "unigram" not in model:
+                raise ValueError("not an n-gram artifact")
+        except Exception as exc:
+            self._failed[family] = f"model load failed: {type(exc).__name__}"
+            return None
+        self._models[family] = model
+        return model
+
+    def score(self, text: str, script: Optional[str] = None) -> Optional[float]:
+        """Mean log10 probability per token, or None when unavailable.
+
+        Normalized by token count for the same reason KenLM's is: a long
+        correct line must not rank below a short one purely for having
+        more tokens to be charged for.
+        """
+        cleaned = (text or "").strip()
+        if not cleaned:
+            return None
+        family = self._family(script)
+        model = self._load(family)
+        if model is None:
+            return None
+        tokens = tokenize_for_lm(cleaned, family)
+        if not tokens:
+            return None
+
+        unigram = model["unigram"]
+        bigram = model.get("bigram") or {}
+        discount = float(model.get("discount", 0.75))
+        total = 0.0
+        previous = "<s>"
+        for token in tokens:
+            total += self._token_logprob(token, previous, unigram, bigram, discount)
+            previous = token
+        return total / len(tokens)
+
+    def _token_logprob(self, token, previous, unigram, bigram, discount) -> float:
+        """Bigram probability interpolated with the continuation unigram."""
+        import math
+
+        lower = unigram.get(token)
+        if lower is None:
+            return self.OOV_LOGPROB
+        context = bigram.get(previous)
+        if not context:
+            return math.log10(max(lower, 1e-12))
+        counts, distinct, total = context["counts"], context["distinct"], context["total"]
+        seen = counts.get(token, 0)
+        # discounted bigram mass, plus the mass reserved for backoff
+        higher = max(seen - discount, 0.0) / total
+        backoff = (discount * distinct / total) * lower
+        return math.log10(max(higher + backoff, 1e-12))
+
+    def status(self) -> Dict[str, object]:
+        families = {}
+        for family in ("latin", "cjk"):
+            path = (self.model_dir / f"{family}.ngram.json.gz"
+                    if str(self.model_dir) else None)
+            families[family] = bool(path and path.is_file())
+        ready = any(families.values())
+        return {
+            "id": self.provider_id, "available": ready, "ready": ready,
+            "version": str(self.model_dir) if ready else None,
+            "families": families,
+            "reason": None if ready else "no readable model configured in TOFU_NGRAM_DIR",
+        }
+
+
+def _pick_default_scorer():
+    """Prefer whichever artifact is actually installed.
+
+    Both providers answer the same question and neither needs the other.
+    KenLM keeps precedence when its model is present, because a host that
+    went to the trouble of building one should get it.
+    """
+    kenlm_provider = KenLMScoringProvider()
+    if kenlm_provider.status().get("ready"):
+        return kenlm_provider
+    return KneserNeyScoringProvider()
+
+
 _default_provider: LanguageModelProvider = FastTextLanguageProvider()
+_default_scorer = _pick_default_scorer()
+
+
+def get_scoring_provider() -> KenLMScoringProvider:
+    return _default_scorer
+
+
+def set_scoring_provider(provider: KenLMScoringProvider) -> None:
+    global _default_scorer
+    _default_scorer = provider
 
 
 def get_language_provider() -> LanguageModelProvider:

@@ -41,7 +41,8 @@ CREATE TABLE IF NOT EXISTS projects (
   asset_kind  TEXT NOT NULL DEFAULT 'image',
   archived_at REAL,
   created_at  REAL NOT NULL,
-  updated_at  REAL NOT NULL
+  updated_at  REAL NOT NULL,
+  ground_truth TEXT NOT NULL DEFAULT '[]'
 );
 CREATE TABLE IF NOT EXISTS project_assets (
   asset_id     TEXT PRIMARY KEY,
@@ -49,7 +50,8 @@ CREATE TABLE IF NOT EXISTS project_assets (
   filename     TEXT,
   uploaded_at  REAL NOT NULL,
   is_active    INTEGER NOT NULL DEFAULT 0,
-  content_hash TEXT
+  content_hash TEXT,
+  ground_truth TEXT NOT NULL DEFAULT '[]'
 );
 CREATE TABLE IF NOT EXISTS snapshots (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -179,10 +181,14 @@ def init_db() -> None:
             )
         if "archived_at" not in cols:
             con.execute("ALTER TABLE projects ADD COLUMN archived_at REAL")
+        if "ground_truth" not in cols:
+            con.execute("ALTER TABLE projects ADD COLUMN ground_truth TEXT NOT NULL DEFAULT '[]'")
         # migration: assets uploaded before duplicate-image detection existed
         asset_cols = {r["name"] for r in con.execute("PRAGMA table_info(project_assets)")}
         if "content_hash" not in asset_cols:
             con.execute("ALTER TABLE project_assets ADD COLUMN content_hash TEXT")
+        if "ground_truth" not in asset_cols:
+            con.execute("ALTER TABLE project_assets ADD COLUMN ground_truth TEXT NOT NULL DEFAULT '[]'")
         con.execute("CREATE INDEX IF NOT EXISTS idx_assets_hash ON project_assets(content_hash)")
         operation_cols = {r["name"] for r in con.execute("PRAGMA table_info(video_operations)")}
         operation_additions = {
@@ -577,6 +583,17 @@ def requeue_abandoned_video_operations() -> int:
 
 # --- projects ---
 
+def _with_ground_truth(record: Dict[str, Any]) -> Dict[str, Any]:
+    """Expose persisted JSON as the array used by the API."""
+    out = dict(record)
+    raw = out.get("ground_truth")
+    try:
+        parsed = json.loads(raw) if isinstance(raw, str) else raw
+    except (TypeError, ValueError):
+        parsed = []
+    out["ground_truth"] = parsed if isinstance(parsed, list) else []
+    return out
+
 def create_project(name: str, target_lang: str,
                    asset_kind: str = "image") -> Dict[str, Any]:
     pid = uuid.uuid4().hex[:12]
@@ -621,7 +638,7 @@ def list_projects(*, archived: Optional[bool] = None, query: Optional[str] = Non
             + (" WHERE " + " AND ".join(where) if where else "")
             + f" ORDER BY {order}", vals
         ).fetchall()
-    return [dict(r) for r in rows]
+    return [_with_ground_truth(dict(r)) for r in rows]
 
 
 def get_project(pid: str) -> Optional[Dict[str, Any]]:
@@ -633,15 +650,18 @@ def get_project(pid: str) -> Optional[Dict[str, Any]]:
             "SELECT * FROM project_assets WHERE project_id = ?"
             " ORDER BY uploaded_at DESC", (pid,)
         ).fetchall()
-    out = dict(row)
-    out["assets"] = [dict(a) for a in assets]
-    out["active_asset"] = next((dict(a) for a in assets if a["is_active"]), None)
+    out = _with_ground_truth(dict(row))
+    out["assets"] = [_with_ground_truth(dict(a)) for a in assets]
+    out["active_asset"] = next(
+        (_with_ground_truth(dict(a)) for a in assets if a["is_active"]), None
+    )
     return out
 
 
 def update_project(pid: str, *, name: Optional[str] = None,
                    target_lang: Optional[str] = None,
                    source_lang: Optional[str] = None,
+                   ground_truth: Optional[List[str]] = None,
                    archived: Optional[bool] = None) -> Optional[Dict[str, Any]]:
     sets, vals = [], []
     if name is not None:
@@ -650,6 +670,9 @@ def update_project(pid: str, *, name: Optional[str] = None,
         sets.append("target_lang = ?"); vals.append(target_lang)
     if source_lang is not None:
         sets.append("source_lang = ?"); vals.append(source_lang)
+    if ground_truth is not None:
+        sets.append("ground_truth = ?")
+        vals.append(json.dumps(ground_truth, ensure_ascii=False))
     if archived is not None:
         sets.append("archived_at = ?")
         vals.append(time.time() if archived else None)
@@ -698,6 +721,35 @@ def link_asset(pid: str, asset_id: str, filename: Optional[str],
             (asset_id, pid, filename, now, content_hash),
         )
         con.execute("UPDATE projects SET updated_at = ? WHERE id = ?", (now, pid))
+
+
+def update_asset_ground_truth(asset_id: str, ground_truth: List[str]) -> Optional[Dict[str, Any]]:
+    now = time.time()
+    with _conn() as con:
+        row = con.execute(
+            "SELECT project_id FROM project_assets WHERE asset_id = ?", (asset_id,)
+        ).fetchone()
+        if row is None:
+            return None
+        con.execute(
+            "UPDATE project_assets SET ground_truth = ? WHERE asset_id = ?",
+            (json.dumps(ground_truth, ensure_ascii=False), asset_id),
+        )
+        con.execute(
+            "UPDATE projects SET updated_at = ? WHERE id = ?", (now, row["project_id"])
+        )
+        asset = con.execute(
+            "SELECT * FROM project_assets WHERE asset_id = ?", (asset_id,)
+        ).fetchone()
+    return _with_ground_truth(dict(asset)) if asset else None
+
+
+def asset_by_id(asset_id: str) -> Optional[Dict[str, Any]]:
+    with _conn() as con:
+        row = con.execute(
+            "SELECT * FROM project_assets WHERE asset_id = ?", (asset_id,)
+        ).fetchone()
+    return _with_ground_truth(dict(row)) if row else None
 
 
 def find_asset_by_hash(content_hash: str) -> Optional[Dict[str, Any]]:

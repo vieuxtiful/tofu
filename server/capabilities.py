@@ -158,7 +158,9 @@ def build_capabilities(
 ) -> Dict[str, Any]:
     """Return the complete, JSON-safe runtime contract."""
     from tofu.layers import cicerone, knead, scene
-    from tofu.layers.language_models import DiacriticRestorationProvider, get_language_provider
+    from tofu.layers.language_models import (
+        DiacriticRestorationProvider, get_language_provider, get_scoring_provider,
+    )
     from tofu.utils import translate
 
     easy_available = _module_available("easyocr")
@@ -197,6 +199,7 @@ def build_capabilities(
             "language_models": [
                 get_language_provider().status(),
                 DiacriticRestorationProvider().status(),
+                get_scoring_provider().status(),
             ],
         },
         "scene": {

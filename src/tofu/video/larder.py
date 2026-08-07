@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from collections import deque
 from typing import Any, Deque, Dict, List, Optional, Tuple
+from tofu.core.types import ImageLike
 
 ## Three frames is what the median needs to reject a single outlier. More would
 ## widen the window over which the background must stay still, which on real
@@ -48,7 +49,7 @@ class BackgroundLarder:
     def __contains__(self, track_id: str) -> bool:
         return bool(self._store.get(track_id))
 
-    def remember(self, track_id: str, frame_index: int, crop: Any) -> None:
+    def remember(self, track_id: str, frame_index: int, crop: ImageLike) -> None:
         if crop is None or not getattr(crop, "size", 0):
             return
         self._store.setdefault(track_id, deque(maxlen=self.depth)).append((frame_index, crop.copy()))
@@ -120,7 +121,7 @@ def _masked_mean_difference(left: Any, right: Any, mask: Optional[Any]) -> float
     return float(difference.mean())
 
 
-def _align(patch: Any, current: Any, mask: Optional[Any]) -> Tuple[Optional[Any], str]:
+def _align(patch: ImageLike, current: Any, mask: Optional[Any]) -> Tuple[Optional[Any], str]:
     """Warp `patch` into `current`'s frame using the background around the text.
 
     ECC (Evangelidis & Psarakis 2008) maximizes correlation directly, needs no
@@ -157,7 +158,7 @@ def _align(patch: Any, current: Any, mask: Optional[Any]) -> Tuple[Optional[Any]
     return warped, "euclidean"
 
 
-def _grey(patch: Any) -> Any:
+def _grey(patch: ImageLike) -> Any:
     import cv2
     import numpy as np
     if patch.ndim == 3:

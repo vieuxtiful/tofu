@@ -31,7 +31,7 @@ from threading import Lock
 from typing import Any, Dict, List, Optional, Tuple
 
 from tofu.core.types import (
-    TextManifest, StyleProfil, BgProfil, SceneRegion, BBox, CharactText, GarnishProfile,
+    ImageLike, TextManifest, StyleProfil, BgProfil, SceneRegion, BBox, CharactText, GarnishProfile,
 )
 from tofu.utils.imaging import load_rgb as _load_rgb, text_mask as _text_mask
 
@@ -98,7 +98,7 @@ class SceneBackend(ABC):
     name: str = "base"
 
     @abstractmethod
-    def analyze(self, asset: Any) -> List[SceneRegion]:
+    def analyze(self, asset: ImageLike) -> List[SceneRegion]:
         """detect candidate text-bearing surfaces in the asset."""
 
 
@@ -107,7 +107,7 @@ class NullSceneBackend(SceneBackend):
 
     name = "null"
 
-    def analyze(self, asset: Any) -> List[SceneRegion]:
+    def analyze(self, asset: ImageLike) -> List[SceneRegion]:
         return []
 
 
@@ -434,7 +434,7 @@ class ClassicalCVBackend(SceneBackend):
             ))
         return regions
 
-    def analyze(self, asset: Any) -> List[SceneRegion]:
+    def analyze(self, asset: ImageLike) -> List[SceneRegion]:
         img = _load_rgb(asset)
         if img is None:
             return []
@@ -551,7 +551,7 @@ class SAMBackend(SceneBackend):
                 self.failure_reason = f"{type(exc).__name__}: {exc}"
                 raise
 
-    def analyze(self, asset: Any) -> List[SceneRegion]:
+    def analyze(self, asset: ImageLike) -> List[SceneRegion]:
         img = _load_rgb(asset)
         if img is None:
             return []
@@ -597,7 +597,7 @@ def set_backend(backend: SceneBackend) -> None:
 # -- layer entry points -------------------------------------------------------
 
 def analyze_regions(
-    asset: Any,
+    asset: ImageLike,
     backend: Optional[SceneBackend] = None,
 ) -> List[SceneRegion]:
     """pre-pass: detect candidate text-bearing surfaces in the asset.
@@ -838,7 +838,7 @@ def _containing_region(
     return min(hits, key=lambda r: r.bbox.width * r.bbox.height)
 
 
-def analyze(asset: Any, text_manifest: TextManifest) -> TextManifest:
+def analyze(asset: ImageLike, text_manifest: TextManifest) -> TextManifest:
     """analyze scene semantics and text styling for each instance.
 
     args:

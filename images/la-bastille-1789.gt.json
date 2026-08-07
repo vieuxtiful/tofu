@@ -1,15 +1,96 @@
 {
   "partial": true,
-  "note": "PARTIAL GT: 480x638 scan of a 19th-century French lithographed poster -- the hardest asset in the corpus (ornamental display type, shadowed/outlined letterforms, aged paper, mixed small-caps). Annotated 2026-07-31 by connected-component segmentation of each display line cropped separately (dark-on-light, threshold 110); the ornate letter-spacing splits words into several component groups, so 'BASTILLE' is reassembled from four groups spanning x84-330. Boxes are glyph extent plus ~4px, i.e. DETECTOR scale rather than tight: the recognizer needs that margin (a box tight to the glyphs of a comparable plaque word reads as garbage at 0.303), and IoU-0.5 matching is against detector-scale boxes. WORD level, not line level: an earlier line-level version of this file scored recall 0.0 because the detector emits word fragments here and a full-line box cannot reach IoU 0.5 against any of them -- that measured the annotation, not the detection. DELIBERATELY INCOMPLETE: the '80bis AVENUE DE SUFFREN' / 'CHAMPS DE MARS' subtitles, the six-line programme block between y=500 and y=610, and the ~7px printer's credit at the foot are all unannotated -- readable to a human, but at 13-14px line height my box estimates carry +-3px error, large enough relative to those boxes that IoU-0.5 scoring would be noise. Being partial, detections there are neither credited nor penalised. Current failures this asset pins: 'LA BASTILLE' reads as 'IBas' at 0.392 over a box straddling the gap between 'LA' and 'BAS', and 'ET LA' reads as 'BT lA' at 0.387.",
+  "note": "PARTIAL GT: 480x638 scan of a 19th-century French lithographed poster -- the hardest asset in the corpus (ornamental display type, shadowed/outlined letterforms, aged paper, mixed small-caps). Annotated 2026-07-31 by connected-component segmentation of each display line cropped separately (dark-on-light, threshold 110); the ornate letter-spacing splits words into several component groups, so 'BASTILLE' is reassembled from four groups spanning x84-330. Boxes are glyph extent plus ~4px, i.e. DETECTOR scale rather than tight: the recognizer needs that margin (a box tight to the glyphs of a comparable plaque word reads as garbage at 0.303), and IoU-0.5 matching is against detector-scale boxes. WORD level, not line level: an earlier line-level version of this file scored recall 0.0 because the detector emits word fragments here and a full-line box cannot reach IoU 0.5 against any of them -- that measured the annotation, not the detection. DELIBERATELY INCOMPLETE: the '80bis AVENUE DE SUFFREN' / 'CHAMPS DE MARS' subtitles, the six-line programme block between y=500 and y=610, and the ~7px printer's credit at the foot are all unannotated -- readable to a human, but at 13-14px line height my box estimates carry +-3px error, large enough relative to those boxes that IoU-0.5 scoring would be noise. Being partial, detections there are neither credited nor penalised. The failures this file used to pin ('LA BASTILLE' as 'IBas' at 0.392, 'ET LA' as 'BT lA' at 0.387) are gone: line 1 now reads 'la Bastille' at 0.529 over a box matching BASTILLE at IoU 0.796. THE WORD-LEVEL PREMISE IS NOW FALSE. This file chose word level because 'the detector emits word fragments here and a full-line box cannot reach IoU 0.5 against any of them'. The detector now emits LINE-scale boxes for both display lines -- [26,11,309,63] for line 1 and [15,71,283,58] reading 'Rur 8:AntoIne' for line 2 -- so the annotation is once again fitted to a defect that no longer exists, which de3dde0 established as a mistake worth correcting. Measured 2026-08-02: recall is 0.333 with the full pipeline, and STILL 0.333 with scene_filter AND prune_garbage both disabled (23 regions instead of 16, not one extra match). No filter relaxation can recover line 2, because what exists for it is a line box and what is annotated is words; the only lever left on this asset is re-annotating both display lines at line level. Remaining recognition defects, independent of annotation: 'ETLA' over-merges ET and LA into one box, '7789' for '1789', and 'JFFREN' for 'SUFFREN' where the box is clipped left of the S.",
   "regions": [
-    { "bbox": [27, 19, 49, 53], "text": "LA", "lang": "fr" },
-    { "bbox": [80, 13, 254, 61], "text": "BASTILLE", "lang": "fr" },
-    { "bbox": [346, 27, 57, 42], "text": "ET", "lang": "fr" },
-    { "bbox": [406, 10, 63, 64], "text": "LA", "lang": "fr" },
-    { "bbox": [20, 75, 72, 49], "text": "RUE", "lang": "fr" },
-    { "bbox": [95, 78, 44, 46], "text": "St", "lang": "fr" },
-    { "bbox": [140, 78, 155, 46], "text": "ANTOINE", "lang": "fr" },
-    { "bbox": [299, 92, 36, 31], "text": "EN", "lang": "fr" },
-    { "bbox": [337, 79, 92, 47], "text": "1789", "lang": "fr" }
+    {
+      "bbox": [
+        27,
+        19,
+        49,
+        53
+      ],
+      "text": "LA",
+      "lang": "fr"
+    },
+    {
+      "bbox": [
+        80,
+        13,
+        254,
+        61
+      ],
+      "text": "BASTILLE",
+      "lang": "fr"
+    },
+    {
+      "bbox": [
+        346,
+        27,
+        57,
+        42
+      ],
+      "text": "ET",
+      "lang": "fr"
+    },
+    {
+      "bbox": [
+        406,
+        10,
+        63,
+        64
+      ],
+      "text": "LA",
+      "lang": "fr"
+    },
+    {
+      "bbox": [
+        20,
+        75,
+        72,
+        49
+      ],
+      "text": "RUE",
+      "lang": "fr"
+    },
+    {
+      "bbox": [
+        95,
+        78,
+        44,
+        46
+      ],
+      "text": "St",
+      "lang": "fr"
+    },
+    {
+      "bbox": [
+        140,
+        78,
+        155,
+        46
+      ],
+      "text": "ANTOINE",
+      "lang": "fr"
+    },
+    {
+      "bbox": [
+        299,
+        92,
+        36,
+        31
+      ],
+      "text": "EN",
+      "lang": "fr"
+    },
+    {
+      "bbox": [
+        337,
+        79,
+        92,
+        47
+      ],
+      "text": "1789",
+      "lang": "fr"
+    }
   ]
 }

@@ -12,6 +12,7 @@ import math
 import statistics
 import unicodedata
 from tofu.core.types import (
+    ImageLike,
     VldtnReport,
     VldtnClass,
     ScrptSpprt,
@@ -356,7 +357,7 @@ class ToFU:
 
     def validate(
         self,
-        asset: Any,          # could be an image, video, or file path
+        asset: ImageLike,          # could be an image, video, or file path
         targ_lang: str,
         context: Optional[Dict] = None,
         text_manifest: Optional[TextManifest] = None,
@@ -810,7 +811,8 @@ class ToFU:
         who deliberately shortened a translation must not be blocked by
         a prediction they already resolved. otherwise:
           - with font metrics: len(text) * expansion_ratio * avg_advance_em * font_px
-          - without: bbox_width * expansion_ratio (assumes source fills the box)
+          - without: approximate the string width at the region's detected
+            size and apply the target-language expansion ratio
 
         returns {region_id: fit_ratio}; fit > 1 means predicted overflow.
         """
@@ -827,15 +829,17 @@ class ToFU:
             target = inst.target_text
             fit = None
             measured = False   # did anything region-specific inform this fit?
-            if self.font_registry and font:
+            region_font = font or inst.resolved_font_family
+            font_px = (
+                (inst.characteristics.size if inst.characteristics else None)
+                or (inst.style_profile.font_size if inst.style_profile else None)
+                or (context or {}).get("font_px")
+                or bbox.height * 0.75
+            )
+            if self.font_registry and region_font:
                 measure = target or inst.text
-                adv_em = self.font_registry.avg_advance_em(font, measure)
+                adv_em = self.font_registry.avg_advance_em(region_font, measure)
                 if adv_em > 0:
-                    font_px = (
-                        (inst.characteristics.size if inst.characteristics else None)
-                        or (context or {}).get("font_px")
-                        or bbox.height * 0.75  # cap-height heuristic
-                    )
                     # actual target: measure it directly; else predict via ratio
                     predicted = len(measure) * (1.0 if target else ratio) * adv_em * font_px
                     fit = predicted / bbox.width
@@ -843,16 +847,16 @@ class ToFU:
             if fit is None:
                 if target:
                     measured = True
-                    # no metrics but an actual translation: compare the two
-                    # strings by approximate WIDTH, not character count —
-                    # a CJK glyph is one em where a latin letter is half
-                    source_em = measure_in_ems(inst.text)
-                    fit = (
-                        measure_in_ems(target) / source_em if source_em > 0 else 1.0
-                    )
+                    # No metrics but an actual translation: approximate its
+                    # occupied width at the region's detected text size.
+                    fit = measure_in_ems(target) * font_px / bbox.width
                 else:
-                    # no metrics — assume source text fills its box
-                    fit = ratio
+                    # Estimate the source string's occupied width in this
+                    # region before applying target-language expansion.  A
+                    # ratio-only fallback implicitly made every source fill
+                    # 100% of its box, yielding identical percentages.
+                    fit = measure_in_ems(inst.text) * font_px * ratio / bbox.width
+                    measured = True
 
             fits[inst.id] = round(fit, 3)
             if fit > EXPANSION_FAIL:
@@ -950,7 +954,7 @@ def get_tofu() -> ToFU:
 
 
 def validate(
-    asset: Any,
+    asset: ImageLike,
     targ_lang: str,
     context: Optional[Dict] = None,
     text_manifest: Optional[TextManifest] = None,

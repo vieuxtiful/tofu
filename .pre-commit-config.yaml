@@ -1,0 +1,61 @@
+# 🍢 ToFU — pre-commit hooks
+# vieuxtiful
+#
+# Local commits are linted and typechecked before they reach CI. Install:
+#   pip install pre-commit
+#   pre-commit install
+#   pre-commit run --all-files   # to check the whole repo once
+#
+# The hooks mirror the CI jobs in .github/workflows/ci.yml (lint, typecheck)
+# so a green local commit is a green CI lint/typecheck run. ruff reads its
+# config from [tool.ruff] in pyproject.toml; mypy reads [tool.mypy] there.
+# The tsc local hook reuses frontend/tsconfig.json (noEmit is already set).
+#
+# Revs are pinned: bump deliberately, not automatically. ruff and mypy both
+# tag their pre-commit mirrors with the same version as the PyPI release.
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      # Lint + autofix. Matches `ruff check src/ tests/ server/` in CI.
+      # `--fix` is safe: ruff only applies the rules in [tool.ruff.lint].
+      - id: ruff
+        args: [--fix]
+        files: ^(src|tests|server)/.*\.py$
+      # Format check. Matches `ruff format --check` in CI. Does NOT rewrite
+      # on commit -- a formatting failure here is a signal to run
+      # `ruff format` locally, not a silent rewrite behind your back.
+      - id: ruff-format
+        files: ^(src|tests|server)/.*\.py$
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.11.0
+    hooks:
+      # Typecheck staged Python files. mypy reads [tool.mypy] in pyproject.toml
+      # (ignore_missing_imports for cv2/easyocr/uharfbuzz, check_untyped_defs,
+      # warn_unused_ignores). additional_dependencies lets mypy resolve the
+      # first-party `tofu` package and the third-party stubs it needs without
+      # a full editable install.
+      - id: mypy
+        files: ^src/tofu/.*\.py$
+        additional_dependencies: [pydantic>=2.6, types-Pillow]
+        # MYPYPATH=src mirrors pytest's pythonpath so the src-layout package
+        # resolves without an editable install.
+        args: [--config-file=pyproject.toml]
+        pass_filenames: false   # mypy scans the package, not individual files
+
+  - repo: local
+    hooks:
+      # TypeScript typecheck on staged frontend files. Reuses
+      # frontend/tsconfig.json (noEmit: true), so this is a pure typecheck,
+      # not a build. Runs `npx tsc --noEmit` from frontend/ -- the same
+      # command the CI typecheck job runs -- but only when a .ts/.tsx file
+      # is staged, so a Python-only commit skips the Node toolchain entirely.
+      - id: tsc
+        name: tsc --noEmit (frontend)
+        entry: bash -c 'cd frontend && npx tsc --noEmit'
+        language: system
+        files: ^frontend/.*\.(ts|tsx)$
+        pass_filenames: false
+        types: [file]

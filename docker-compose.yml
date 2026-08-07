@@ -1,0 +1,92 @@
+# ToFU — full stack orchestration
+#
+# Quick start:
+#   docker compose up                    # app + frontend (EasyOCR only)
+#   docker compose --profile cjk up      # + PaddleOCR CJK detection
+#   docker compose --profile gpu up      # + LaMa neural inpainting (needs CUDA)
+#   docker compose --profile full up     # everything
+#
+# The app container degrades gracefully when paddle/inpaint are absent:
+# CJK detection falls back to EasyOCR, inpainting falls back to non-neural.
+
+services:
+  # ─── main FastAPI backend ────────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - uploads:/app/server/uploads
+      - outputs:/app/server/outputs
+      - tm_thumbs:/app/server/tm_thumbs
+      - shared-tmp:/tmp/tofu-shared
+    environment:
+      PYTHONUTF8: "1"
+      TOFU_FRONTEND_URL: "http://localhost:3000"
+      TOFU_MAX_UPLOAD_BYTES: "107374182400"
+      # Point at the paddle venv inside the paddle sidecar (via shared volume)
+      TOFU_PADDLE_VENV: "/opt/paddle-venv"
+      TOFU_LAMA_ENABLED: "1"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/capabilities')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # ─── frontend (nginx serving built React app) ────────────────────────
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ─── PaddleOCR CJK detection sidecar (optional) ──────────────────────
+  paddle:
+    build:
+      context: .
+      dockerfile: Dockerfile.paddle
+    profiles: ["cjk", "full"]
+    volumes:
+      - shared-tmp:/tmp/tofu-shared
+      - paddle-venv:/opt/paddle-venv
+    # The paddle worker is invoked as a subprocess by the app container.
+    # This sidecar exists to build the paddle venv; the app container
+    # accesses it via the shared paddle-venv volume.
+    entrypoint: ["echo", "PaddleOCR venv ready at /opt/paddle-venv"]
+    restart: "no"
+
+  # ─── LaMa neural inpainting sidecar (optional, needs CUDA) ───────────
+  inpaint:
+    build:
+      context: .
+      dockerfile: Dockerfile.inpaint
+    profiles: ["gpu", "full"]
+    volumes:
+      - shared-tmp:/tmp/tofu-shared
+    # LaMa is invoked as a subprocess with CLI args.
+    # For GPU support, add: deploy: resources: reservations: devices:
+    #   - driver: nvidia, count: 1, capabilities: [gpu]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: ["gpu"]
+    entrypoint: ["echo", "LaMa inpaint runner ready"]
+    restart: "no"
+
+volumes:
+  uploads:
+  outputs:
+  tm_thumbs:
+  shared-tmp:
+  paddle-venv:

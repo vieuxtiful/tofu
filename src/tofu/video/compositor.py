@@ -16,6 +16,7 @@ from __future__ import annotations
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
+from tofu.core.types import ImageLike
 
 from .larder import LARDER_DEPTH, BackgroundLarder
 from .plan import Downgrade, PlanInputs, ResolvedFramePlan, ResolvedRegionPlan, plate
@@ -35,7 +36,7 @@ def _keyframe(data: Dict[str, Any]) -> RenderKeyframe:
     return RenderKeyframe(**{key: value for key, value in data.items() if key in allowed})
 
 
-def _erase(frame: Any, region: ResolvedRegionPlan, mask: Any, larder: BackgroundLarder,
+def _erase(frame: ImageLike, region: ResolvedRegionPlan, mask: Any, larder: BackgroundLarder,
            frame_index: int) -> Dict[str, Any]:
     """Remove the source text, preferring corroborated temporal evidence.
 
