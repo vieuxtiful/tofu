@@ -32,6 +32,9 @@ Thumbs.db
 # Tests are local-only — not tracked in the remote repo.
 tests/
 
+# Playground Gradio demo — standalone, not wired into the app or CI.
+playground/
+
 # Regression-harness output. These are rewritten byte-for-byte every time
 # the suite runs, so tracking them puts 100+ files of pure churn in front of
 # any real change -- 21 paddle reports were dirty in the tree before anyone
