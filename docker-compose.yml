@@ -22,15 +22,24 @@ services:
       - outputs:/app/server/outputs
       - tm_thumbs:/app/server/tm_thumbs
       - shared-tmp:/tmp/tofu-shared
+      # Side-loaded n-gram / vector artifacts, built once by the operator.
+      # Absent or empty is supported: every provider reports not-ready.
+      - ./models:/app/models
     environment:
       PYTHONUTF8: "1"
       TOFU_FRONTEND_URL: "http://localhost:3000"
-      TOFU_MAX_UPLOAD_BYTES: "107374182400"
+      # Was 107374182400 (100 GB), which is not a disk-exhaustion control --
+      # it is the absence of one. Matches config.DEFAULT_MAX_UPLOAD_BYTES and
+      # the frontend proxy's client_max_body_size; all three move together.
+      TOFU_MAX_UPLOAD_BYTES: "2147483648"
       # Point at the paddle venv inside the paddle sidecar (via shared volume)
       TOFU_PADDLE_VENV: "/opt/paddle-venv"
       TOFU_LAMA_ENABLED: "1"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/capabilities')"]
+      # /api/health, not /api/capabilities -- the latter is behind the API key
+      # (it enumerates installed models and paths), so a healthcheck aimed at
+      # it reports every keyed deployment as unhealthy. See Dockerfile.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
       interval: 30s
       timeout: 10s
       retries: 3

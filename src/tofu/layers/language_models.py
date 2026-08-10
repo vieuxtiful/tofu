@@ -277,6 +277,17 @@ class KneserNeyScoringProvider:
     ## Out-of-vocabulary floor, in log10. Roughly one in ten million: low
     ## enough that an invented word loses decisively, finite so a single
     ## unknown token cannot make two readings incomparable.
+    ##
+    ## It is a FLOOR, not the OOV score. As a flat penalty it was a cliff,
+    ## and the cliff fell in the wrong place: no corpus of tens of MB
+    ## contains every proper noun on a street sign, so a real word the
+    ## corpus happens to lack scored identically to a misread of it.
+    ## RÉPUBLIQUE and RÉPUBUQUE, ORFEVRES and ORFEVBES -- exactly the pairs
+    ## this signal exists to separate -- were the pairs it could not.
+    ##
+    ## When the artifact carries a character model, an OOV token is scored
+    ## by how well-formed it is instead, and this value bounds that score
+    ## from below. See _oov_logprob.
     OOV_LOGPROB = -7.0
 
     def __init__(self, model_dir: Optional[str] = None):
@@ -307,6 +318,15 @@ class KneserNeyScoringProvider:
         except Exception as exc:
             self._failed[family] = f"model load failed: {type(exc).__name__}"
             return None
+        ## Computed once here rather than per OOV token: it is a min over the
+        ## whole vocabulary, and _oov_logprob runs per token of every
+        ## candidate reading of every region.
+        import math
+
+        values = (model.get("unigram") or {}).values()
+        model["_oov_ceiling"] = (
+            min(math.log10(max(min(values), 1e-12)), 0.0) if values else 0.0
+        )
         self._models[family] = model
         return model
 
@@ -331,20 +351,109 @@ class KneserNeyScoringProvider:
         unigram = model["unigram"]
         bigram = model.get("bigram") or {}
         discount = float(model.get("discount", 0.75))
+        charmodel = model.get("charmodel") or None
+        ceiling = float(model.get("_oov_ceiling", 0.0))
         total = 0.0
         previous = "<s>"
         for token in tokens:
-            total += self._token_logprob(token, previous, unigram, bigram, discount)
+            total += self._token_logprob(
+                token, previous, unigram, bigram, discount, charmodel, ceiling
+            )
             previous = token
         return total / len(tokens)
 
-    def _token_logprob(self, token, previous, unigram, bigram, discount) -> float:
+    ## How many standard deviations of the corpus's own per-character score
+    ## distribution span the full climb from OOV_LOGPROB to the ceiling. Two
+    ## either side: at -2 sigma a string is worse-formed than all but a few
+    ## percent of real tokens and gets no credit at all; at +2 sigma it is as
+    ## ordinary-looking as text gets and earns the whole headroom.
+    _OOV_SIGMA_SPAN = 4.0
+
+    def _oov_logprob(self, token, ceiling, charmodel) -> float:
+        """How plausible is a word the corpus never contained?
+
+        The flat floor this replaces treated every unseen token alike, which
+        is the sparsity a purely symbolic model cannot escape: it knows only
+        whether it has SEEN a string, and a vocabulary built from tens of MB
+        has not seen most of the proper nouns that appear on signage. A
+        character model asks the different question -- whether this is a
+        sequence of letters the language FORMS -- and that question has a
+        graded answer for strings the word model can only call unknown.
+
+        The two models do not speak the same units, and conflating them is
+        the trap here: the word model returns a log-probability PER TOKEN
+        while a character model returns one per character, so using the
+        character score directly makes long words look implausible and short
+        ones look certain, in proportion to nothing. What transfers between
+        them is not the score but the token's POSITION in the corpus's own
+        distribution of character scores -- recorded at build time as a mean
+        and a spread -- and that position is what selects a point in the
+        interval this token is allowed to occupy.
+
+        The interval is bounded at both ends. Below by OOV_LOGPROB, so a
+        well-formed nonsense word still cannot climb far. Above by the
+        rarest continuation probability the corpus attests, so the best an
+        unseen string can do is look as likely as the least likely word we
+        have actually seen -- appearing in a corpus is evidence of a kind
+        that being spellable is not.
+
+        Stated precisely, because the loose version of it is wrong: the
+        ceiling is the minimum UNIGRAM term, and an attested token is scored
+        through the bigram path, which can fall below its own unigram term
+        when its context is seen but it is rare within it. So this bounds an
+        OOV token against the vocabulary's floor, not against every attested
+        token in every context. The guarantee is that an unknown word cannot
+        run away with the ranking, not that it always loses.
+        """
+        import math
+
+        if not charmodel:
+            return self.OOV_LOGPROB
+
+        counts = charmodel.get("counts") or {}
+        order = int(charmodel.get("order", 3))
+        boundary = charmodel.get("boundary", "\x02")
+        alphabet = max(int(charmodel.get("alphabet_size", 0)), 1)
+        mean = charmodel.get("mean_logprob_per_char")
+        spread = charmodel.get("spread_logprob_per_char")
+        if mean is None or not spread:
+            # An artifact built before the reference existed. Its counts
+            # cannot be placed on a scale, so decline to grade rather than
+            # invent one.
+            return self.OOV_LOGPROB
+
+        padded = boundary * (order - 1) + token + boundary
+        logprob = 0.0
+        observed = 0
+        for i in range(order - 1, len(padded)):
+            context, nxt = padded[i - order + 1:i], padded[i]
+            entry = counts.get(context)
+            if entry is None:
+                # An unseen context is itself evidence against the string;
+                # add-one over the alphabet is the same estimate the build
+                # applies, with a count of zero.
+                logprob += math.log10(1.0 / (alphabet + 1))
+            else:
+                seen = entry["counts"].get(nxt, 0)
+                logprob += math.log10((seen + 1) / (entry["total"] + alphabet))
+            observed += 1
+        if not observed:
+            return self.OOV_LOGPROB
+
+        per_char = logprob / observed
+        z = (per_char - float(mean)) / float(spread)
+        quality = min(max(0.5 + z / self._OOV_SIGMA_SPAN, 0.0), 1.0)
+        headroom = max(0.0, ceiling - self.OOV_LOGPROB)
+        return self.OOV_LOGPROB + headroom * quality
+
+    def _token_logprob(self, token, previous, unigram, bigram, discount,
+                       charmodel=None, ceiling: float = 0.0) -> float:
         """Bigram probability interpolated with the continuation unigram."""
         import math
 
         lower = unigram.get(token)
         if lower is None:
-            return self.OOV_LOGPROB
+            return self._oov_logprob(token, ceiling, charmodel)
         context = bigram.get(previous)
         if not context:
             return math.log10(max(lower, 1e-12))

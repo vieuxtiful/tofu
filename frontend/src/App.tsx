@@ -14,6 +14,9 @@ import {
   applyRepairCandidate, captureLocalizedBaseline, createInpaintPatch, getLocalizedBaseline, getTreatment, previewCandidateLocalized, refineRegion, renderAsset, renderAssetStream, renderPreview, restoreTreatment, scanAssetLanguage, sha256File, snapshotAsset, undoInpaint,
   updateProject, updateAssetGroundTruth, importAssetGroundTruth, uploadAsset, validateAsset, createVideoJob, getVideoJob, getLatestVideoJob, cancelVideoJob, resumeVideoJob, upgradeVideoJob, putVideoKeyframe, updateVideoTrack, watchVideoJob, renderVideoPreview, exportVideo,
 } from "./api";
+// Reviewer outcomes, derived from the editing gestures below rather than
+// asked for. See telemetry.ts -- these calls never block or fail an edit.
+import { emit as emitReview, emitAccepted, markSeen } from "./telemetry";
 import VideoWorkspace from "./VideoWorkspace";
 import { FcCollapse } from "react-icons/fc";
 import { LiaSpellCheckSolid } from "react-icons/lia";
@@ -2620,18 +2623,56 @@ export default function App() {
     }
   }, [asset, autoSave, addToast]);
 
+  // Candidates the reviewer has acted on. Anything NOT in here at sign-off
+  // was left alone, which is what `accepted` means -- so this set is the
+  // difference between a dataset of complaints and a usable one.
+  const touchedRef = useRef<Set<string>>(new Set());
+
+  const reportReview = useCallback((
+    action: Parameters<typeof emitReview>[0],
+    id: string,
+    extra: Parameters<typeof emitReview>[3] = {},
+  ) => {
+    if (!asset) return;
+    touchedRef.current.add(id);
+    emitReview(action, id, asset.asset_id, extra);
+  }, [asset]);
+
+  // Dwell time starts when a candidate is first put in front of the reviewer,
+  // not when they act on it.
+  useEffect(() => {
+    for (const inst of manifest) markSeen(inst.id);
+  }, [manifest]);
+
   const onUpdateRegion = useCallback((id: string, bbox: BBox) => {
     setManifest((prev) => {
       const next = prev.map((i) => i.id === id ? { ...i, bounding_box: bbox } : i);
+      // dragging the handles says the detector found the text and bounded it
+      // wrongly -- the 17-region near-miss class, reported per instance
+      if (asset) {
+        const before = prev.find((i) => i.id === id);
+        reportReview("edited_geometry", id, {
+          modified_bbox: [bbox.x, bbox.y, bbox.width, bbox.height],
+          features: before?.review_features ?? null,
+          eligibility: before?.scene_eligibility ?? null,
+        });
+      }
       autoSave(next);
       return next;
     });
-  }, [autoSave]);
+  }, [autoSave, asset]);
 
   const onDeleteRegion = useCallback(async (id: string) => {
     if (!asset) return;
     try {
       await deleteRegion(asset.asset_id, id);
+      // a deleted region is one that cost review time and produced nothing --
+      // the outcome a priority ranker exists to bury
+      const removed = manifest.find((i) => i.id === id);
+      reportReview("rejected", id, {
+        features: removed?.review_features ?? null,
+        eligibility: removed?.scene_eligibility ?? null,
+      });
       // the instance stays in `manifest` (marked excluded) rather than
       // being removed outright -- autoSave below PUTs this array back to
       // the server, and dropping it here would silently undo the
@@ -2688,6 +2729,15 @@ export default function App() {
         return inst && inst.target_text;
       });
       const res = await mergeRegions(asset.asset_id, ids, texts);
+      // a merge says the pipeline over-segmented: every id that went in was
+      // a fragment, so each is reported, not just the survivor
+      for (const id of ids) {
+        const part = manifest.find((i) => i.id === id);
+        reportReview("merged", id, {
+          features: part?.review_features ?? null,
+          eligibility: part?.scene_eligibility ?? null,
+        });
+      }
       // Same shape as onDeleteRegion: the absorbed regions stay in the
       // array marked excluded rather than being spliced out, or the next
       // autosave PUT would undo the excluded flag the server just wrote.
@@ -2760,12 +2810,24 @@ export default function App() {
 
   const onTextChange = useCallback((id: string, text: string) => {
     setManifest((prev) => {
+      const before = prev.find((i) => i.id === id);
       const next = prev.map((i) => i.id === id ? { ...i, text } : i);
+      // overtyping the SOURCE transcript says localization was right and the
+      // recognizer was wrong -- the opposite diagnosis to edited_geometry.
+      // Only the source text carries that meaning: target_text is a
+      // translation choice, not a recognition correction, so it is not
+      // reported here.
+      if (asset && before && (before.text ?? "") !== text) {
+        reportReview("edited_text", id, {
+          features: before.review_features ?? null,
+          eligibility: before.scene_eligibility ?? null,
+        });
+      }
       autoSave(next);
       if (importedHash) setHasEditsAfterImport(true);
       return next;
     });
-  }, [autoSave, importedHash]);
+  }, [autoSave, importedHash, asset]);
 
   const onTargetChange = useCallback((id: string, target: string) => {
     setManifest((prev) => {
@@ -3321,12 +3383,24 @@ export default function App() {
         dnt: renderResult.qa_report.progress?.dnt,
       });
       setApproved(true);
+      // `accepted` is the only outcome with no gesture behind it -- it is the
+      // ABSENCE of one -- so it can only be derived where the reviewer has
+      // declared they are done. Sign-off is that point. Without this the
+      // table would collect nothing but complaints, and a ranker trained on
+      // complaints alone learns that every candidate is bad.
+      emitAccepted(
+        asset.asset_id,
+        manifest.filter((i) => !i.excluded).map((i) => i.id),
+        touchedRef.current,
+        (id) => (manifest.find((i) => i.id === id)?.review_features ?? null) as
+          Record<string, unknown> | null,
+      );
       addToast("success", "QA sign-off recorded in project history");
       refreshProject();
     } catch (e) {
       setErrorWithNotif(String(e));
     }
-  }, [asset, targLang, renderResult, addToast, refreshProject]);
+  }, [asset, targLang, renderResult, manifest, addToast, refreshProject]);
 
   const translatableCount = manifest.filter((i) => !i.dnt).length;
   const translatedCount = manifest.filter((i) => !i.dnt && i.target_text).length;
@@ -3382,7 +3456,7 @@ export default function App() {
           onClick={() => setShowTitleConfirm(true)}
           title="Return to title"
         />
-        <span className="title-typewriter text-zinc-500 dark:text-zinc-400" style={{ fontSize: "0.75rem" }}>v0.1.0</span>
+        <span className="title-typewriter text-zinc-500 dark:text-zinc-400" style={{ fontSize: "0.75rem" }}>v1.0.0</span>
         <div className="flex-1" />
         <div className="bezier-card flex items-center rounded-lg bg-white/60 px-3 py-2 dark:bg-zinc-900/60">
           <span style={{ transform: "scale(0.75)", transformOrigin: "center", display: "inline-block" }}>

@@ -1,0 +1,52 @@
+# 🍢 ToFU — TLS terminator
+# vieuxtiful
+#
+# Caddy obtains and renews a Let's Encrypt certificate for {$TOFU_DOMAIN} on
+# its own; there is no certbot step and no renewal cron. The only requirement
+# is that the domain's A/AAAA record already points at this host before the
+# stack first starts, because the ACME challenge is answered on port 80.
+#
+# Certificates live in ./data/caddy on the host. Losing that directory is not
+# fatal -- Caddy reissues -- but repeated reissues hit Let's Encrypt rate
+# limits, so it is in the backup set.
+
+{$TOFU_DOMAIN} {
+	encode zstd gzip
+
+	# The API, the SSE stream, and the three static mounts all live on the
+	# app container. Everything else is the built React bundle on nginx.
+	#
+	# Ordered before the catch-all because Caddy matches the most specific
+	# path, but stated explicitly so the intent survives an edit.
+	@backend path /api/* /outputs/* /uploads/* /tm_thumbs/*
+	reverse_proxy @backend app:8000 {
+		# Video job progress is an EventSource stream: buffering it means the
+		# browser sees nothing until the job ends, which looks like a hang on
+		# exactly the long operations that need a progress bar.
+		flush_interval -1
+		transport http {
+			read_timeout 24h
+		}
+	}
+
+	reverse_proxy frontend:80
+
+	# HSTS. Only meaningful once the domain is confidently serving TLS --
+	# a browser that caches this cannot be told to fall back to http, so
+	# leave it commented until the deployment is settled.
+	# header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+
+	log {
+		output file /data/access.log {
+			roll_size 10MiB
+			roll_keep 5
+		}
+	}
+}

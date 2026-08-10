@@ -1,0 +1,66 @@
+## 🍢 ToFU — nginx in front of the built React app
+## vieuxtiful
+##
+## Rendered by nginx:alpine's entrypoint (envsubst over /etc/nginx/templates).
+## ${NGINX_MAX_BODY} is the only substitution; see Dockerfile.frontend for why
+## that one value is not a literal.
+
+server {
+    listen 80;
+    server_name _;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # SPA fallback: serve index.html for client-side routes
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Proxy API requests to the backend container
+    location /api/ {
+        proxy_pass http://app:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # Has to agree with the server's TOFU_MAX_UPLOAD_BYTES. The default
+        # (2g) matches config.DEFAULT_MAX_UPLOAD_BYTES; raising one without
+        # the other either shadows the app's limit or lets a body it will
+        # refuse cross the wire in full first.
+        client_max_body_size ${NGINX_MAX_BODY};
+        # SSE support for video job events
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 24h;
+    }
+
+    # Proxy static file serving from the backend. These carry the session
+    # cookie -- server/security.py guards them now, so the Cookie header has
+    # to survive the hop or every image in the app 401s.
+    location /outputs/ {
+        proxy_pass http://app:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /uploads/ {
+        proxy_pass http://app:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /tm_thumbs/ {
+        proxy_pass http://app:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Gzip compression for static assets
+    gzip on;
+    gzip_types text/css application/javascript application/json image/svg+xml;
+    gzip_min_length 256;
+}

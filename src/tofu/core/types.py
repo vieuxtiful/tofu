@@ -17,6 +17,10 @@ from enum import Enum
 from collections import defaultdict
 from pathlib import Path
 
+if TYPE_CHECKING:
+    import numpy as np
+    from PIL import Image as PILImage
+
 # re:Enums
 
 class ScrptSpprt(str, Enum): 
@@ -84,7 +88,6 @@ def infer_asset_info(asset: Any) -> AssetInfo:
 ## the concrete type (e.g. utils.imaging.load_rgb) still accept Any at
 ## their entry point and narrow from there.
 ImageLike = Union[str, Path, "PILImage.Image", "np.ndarray", bytes, bytearray]
-
 
 # re:Core Data Structures
 
@@ -158,56 +161,6 @@ class InpaintAssessmentPolicy:
     calibration_revision: str = "inpaint-v1"
 
 @dataclass
-class OCRObservation:
-    """One backend's reading of one candidate region, before arbitration.
-
-    Deliberately NOT frozen, unlike the policies above: scoring writes
-    `calibrated_confidence` back onto the observation once the backend's
-    calibration curve has been applied (ocr_arbitration.score_hypothesis).
-
-    Field order matters -- the first six are constructed positionally.
-    `bbox` sits ahead of the optional evidence because clustering
-    dereferences it on every pair; an observation without geometry cannot
-    join a region hypothesis at all.
-    """
-    observation_id: str
-    backend: str
-    backend_revision: str
-    pass_tag: str
-    text: str
-    raw_confidence: float
-    bbox: BBox
-    calibrated_confidence: Optional[float] = None
-    polygon: Optional[Polygon] = None
-    language_hint: Optional[str] = None
-    detected_script: Optional[str] = None
-    runtime_ms: Optional[int] = None
-    error: Optional[str] = None
-
-@dataclass
-class OCRHypothesisDecision:
-    """Arbitration outcome for one region hypothesis.
-
-    The scores and their per-signal breakdown travel with the decision so a
-    later reviewer can see WHY a reading was accepted, not just which one
-    won -- `score_breakdown` carries a None for every signal that had no
-    evidence, which is what distinguishes "scored zero" from "not measured".
-    """
-    region_id: str
-    member_observation_ids: List[str]
-    selected_observation_id: Optional[str]
-    selected_text: Optional[str]
-    geometry_score: float
-    transcription_score: float
-    verification_state: Literal["agree", "disagree", "no_text", "unavailable", "error"]
-    verification_observation_id: Optional[str]
-    auto_accepted: bool
-    review_required: bool
-    reason_codes: List[str]
-    score_breakdown: Dict[str, Optional[float]]
-    policy_revision: str = "ocr-v1"
-
-@dataclass
 class ReconstructionProfile:
     material_class: str = "unknown"
     material_confidence: float = 0.0
@@ -216,6 +169,42 @@ class ReconstructionProfile:
     perspective_quad: Optional[Polygon] = None
     perspective_confidence: float = 0.0
     evidence: Dict[str, Any] = field(default_factory=dict)
+
+@dataclass
+class OCRObservation:
+    """One raw OCR read from a single backend pass, preserved before union."""
+    observation_id: str
+    backend: str
+    backend_revision: str
+    pass_tag: str
+    text: str
+    raw_confidence: float
+    calibrated_confidence: Optional[float] = None
+    bbox: BBox = field(default_factory=lambda: BBox(0, 0, 0, 0))
+    polygon: Optional[Polygon] = None
+    language_hint: Optional[str] = None
+    detected_script: Optional[str] = None
+    runtime_ms: Optional[int] = None
+    error: Optional[str] = None
+
+
+@dataclass
+class OCRHypothesisDecision:
+    """Arbitration result for one region hypothesis formed from observations."""
+    region_id: str
+    member_observation_ids: List[str]
+    selected_observation_id: Optional[str]
+    selected_text: Optional[str]
+    geometry_score: float
+    transcription_score: float
+    verification_state: str  # agree | disagree | no_text | unavailable | error
+    verification_observation_id: Optional[str]
+    auto_accepted: bool
+    review_required: bool
+    reason_codes: List[str]
+    score_breakdown: Dict[str, Optional[float]]
+    policy_revision: str
+
 
 @dataclass
 class InstText:
@@ -241,7 +230,7 @@ class InstText:
     temporal_span: Optional[tuple[int, int]] = None  ## video: (first_frame, last_frame) the instance persists
     track_id: Optional[str] = None               ## video: links per-frame instances into one tracked text entity
     dnt: bool = False                            ## do-not-translate flag: excluded from export and scribe
-    excluded: bool = False                       ## user-removed from the workspace: still cleansed/erased, never rendered/exported (unlike dnt, which leaves source text untouched)
+    excluded: bool = False                       ## user-removed from the workspace: source text left untouched (cleanse skips it, like dnt), never rendered/exported
     target_language: Optional[str] = None        ## per-region override of target language (None = use manifest default)
     glyph_fallback: Optional[bool] = None         ## True: scribe swapped the requested font for a codepoint-covering one
     tm_suggestion: Optional[Dict[str, Any]] = None  ## Memory lookup match: {target_text, score, method, source_asset_id, record_id}
@@ -249,6 +238,19 @@ class InstText:
     translation_decision: Optional[Dict[str, Any]] = None
     translation_history: List[Dict[str, Any]] = field(default_factory=list)
     ocr_correction: Optional[Dict[str, Any]] = None  ## recognition_correct: {applied, original_text/candidate_text, corrected_text?, reason}
+    ## Scene-surface attribution, recorded whether or not it was acted on:
+    ## {surface_overlap, surface_label, confidence, outside_surfaces,
+    ##  would_veto, vetoed}. `would_veto` is the eligibility gate's verdict,
+    ## `vetoed` whether the deployment let it discard. Kept because scene
+    ## non-membership is a useful NEGATIVE signal for review ordering even
+    ## where it is a bad reason to discard -- see cicerone.SCENE_FILTER_VETOES.
+    scene_eligibility: Optional[Dict[str, Any]] = None
+    ## Review-priority feature vector, written by layers/ticket.py. Logged
+    ## before any ranker exists so that reviewer outcomes, when the frontend
+    ## starts reporting them, join against features already recorded rather
+    ## than starting a collection period from zero. Purely descriptive: no
+    ## stage may order, hide or discard on it.
+    review_features: Optional[Dict[str, Any]] = None
     source_override: Optional[Dict[str, Any]] = None  ## durable applied-source attribution: {kind, text, icon, color, resource}; independent of the correction scratch slot
     recognition_history: Optional[List[Dict[str, Any]]] = None  ## immutable audit trail of engine candidates and accepted/rejected corrections
     ocr_provenance: Optional[Dict[str, Any]] = None  ## multi-provider observations, arbitration and independent verification
@@ -367,6 +369,13 @@ class TextManifest: ## loc task manifest via cicerone
     semantic_units: List[SemanticTextUnit] = field(default_factory=list)
     asset_class: Optional[str] = None
     asset_classification: Optional[Dict[str, Any]] = None
+    ## Append-only DAG of every proposal and every merge/prune between the
+    ## detector's raw output and this manifest (layers/okara.py). Present so
+    ## a region absorbed by a merge stays retrievable with its ORIGINAL
+    ## geometry: measured on la-bastille, CRAFT's `RUE` arrives at IoU 0.735
+    ## and ships at 0.215 inside a box 4.65x too large, and without lineage
+    ## the only record of the good box is gone.
+    candidate_lineage: Optional[Dict[str, Any]] = None
     prcssng_time: Optional[float] = None
     asset_type: AssetType = AssetType.IMAGE
     frame_count: int = 1                  ## static image == 1; video == n frames

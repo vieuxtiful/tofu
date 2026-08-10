@@ -77,3 +77,18 @@ server/tm_thumbs/
 server/tofu.db
 server/inpainting-providers.json
 server/models/
+
+# Deployment state — the bind mount docker-compose.prod.yml keeps everything
+# in. This is the backup set, not the repository.
+/data/
+
+# Side-loaded language artifacts and the corpora they are built from. Both are
+# large and both are reproducible: corpora.lock.json records the exact
+# packages, and the build scripts are deterministic given them. That lockfile
+# IS tracked, which is what makes the models' provenance answerable without
+# carrying tens of MB of derived data in git.
+/models/
+/corpora/
+*.ngram.json.gz
+*.vectors.npz
+*.klm

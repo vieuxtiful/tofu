@@ -18,6 +18,15 @@ function applyToDom(theme: Theme) {
 // apply before first paint so the app never flashes the wrong theme
 applyToDom(readStored());
 
+/** the persisted theme, without subscribing to changes.
+ *
+ * For components that render before the app owns any state -- KeyGate is the
+ * one -- and only need to pick an asset. Calling useTheme() there would stand
+ * up a second copy of the theme state that the in-app toggle never reaches. */
+export function storedTheme(): Theme {
+  return readStored();
+}
+
 /** persistent light/dark theme. `dark` class on <html> drives Tailwind's
  * class strategy; the `light`/`dark` classes also drive raw CSS in
  * index.css/uikit.css. */

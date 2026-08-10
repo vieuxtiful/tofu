@@ -210,6 +210,38 @@ def evaluate(image_path: Path, manifest, gt_path: Path | None, scene_regions=Non
     scored = [m["norm_ed"] for m in matches if m["norm_ed"] is not None]
     mean_ed = sum(scored) / len(scored) if scored else 0.0
 
+    ## ── localization quality, measured continuously ──────────────────────
+    ##
+    ## recall counts a region only once a detection clears IoU 0.5, and
+    ## mean_norm_ed is computed only over regions that cleared it. Between
+    ## them they are blind to the whole band below the threshold: a change
+    ## that moves a box from IoU 0.28 to 0.48 registers as ZERO improvement
+    ## on both, and a change that moves it from 0.48 to 0.52 registers as a
+    ## whole region recovered. Measured on gemini-street, nine of the twelve
+    ## missed regions sit at IoU 0.20-0.43 -- so the harness could not see
+    ## the quantity a detector-threshold sweep is actually moving.
+    ##
+    ## mean_best_iou is that quantity: for every GT region, the best overlap
+    ## any detection achieves, averaged. It is a localization score and
+    ## nothing else -- it says how well the boxes sit, not whether the text
+    ## was read, which is mean_norm_ed's job. Report and optimize the two
+    ## separately: a recognizer will happily return a confident read from a
+    ## geometrically wrong crop.
+    best_ious = []
+    for g in gt:
+        best_ious.append(max((_iou(p["bbox"], g["bbox"]) for p in preds), default=0.0))
+    mean_best_iou = sum(best_ious) / len(best_ious) if best_ious else 0.0
+    ## Where the misses actually are. A region at 0.35 is one merge or one
+    ## threshold away from counting; a region at 0.02 was never found at all,
+    ## and no amount of boundary calibration will recover it. These need
+    ## different work, so they are counted separately rather than summed into
+    ## one recall number that cannot distinguish them.
+    localization = {
+        "matched": sum(1 for v in best_ious if v >= 0.5),
+        "near_miss": sum(1 for v in best_ious if 0.1 <= v < 0.5),
+        "undetected": sum(1 for v in best_ious if v < 0.1),
+    }
+
     surface_metrics = None
     if gt:
         surface_regions = scene_regions or []
@@ -231,6 +263,8 @@ def evaluate(image_path: Path, manifest, gt_path: Path | None, scene_regions=Non
         "recall": round(recall, 3),
         "f1": round(f1, 3) if not partial else None,
         "mean_norm_ed": round(mean_ed, 3),
+        "mean_best_iou": round(mean_best_iou, 3),
+        "localization": localization,
         "matches": matches,
         "threshold_sweep": [
             {"threshold": t, "precision": round(p, 3), "recall": round(r, 3), "f1": round(f, 3)}
@@ -286,7 +320,22 @@ def main() -> None:
     # hybrid_audit or the skim Paddle veto at all: it sets OCR_ENGINE
     # unconditionally below, so the literal "easyocr" default silently
     # disabled arbitration that the server enables by default.
-    ap.add_argument("--engine", default="easyocr",
+    ap.add_argument("--decoder", default=None, choices=("greedy", "beamsearch"),
+                    help="CTC decoding strategy (EasyOCR default: greedy). "
+                         "'beamsearch' keeps several hypotheses alive but carries "
+                         "no language model, so it only finds a higher-probability "
+                         "path through the same distribution.")
+    ap.add_argument("--beam-width", type=int, default=5)
+    ap.add_argument("--no-scene-filter", action="store_true",
+                    help="keep the scene pre-pass GUIDING detection but stop it "
+                         "DISCARDING detections that fall outside a surface. The "
+                         "constraint can add regions; the filter can only remove "
+                         "them, so the two halves have different risk profiles.")
+    ap.add_argument("--link-threshold", type=float, default=None,
+                    help="CRAFT affinity threshold (default 0.4). Lower links "
+                         "adjacent characters more readily; raise it to stop "
+                         "neighbouring instances merging.")
+    ap.add_argument("--engine", default="hybrid",
                     choices=("easyocr", "paddleocr", "auto", "hybrid"),
                     help="OCR backend, or auto/hybrid to enable cross-engine arbitration")
     args = ap.parse_args()
@@ -305,8 +354,38 @@ def main() -> None:
     detect_kwargs = {}
     if args.no_probe:
         detect_kwargs["identify_languages"] = False
+    if args.no_scene_filter:
+        detect_kwargs["scene_filter"] = False
     if args.lang:
         detect_kwargs["languages"] = [l.strip() for l in args.lang.split(",") if l.strip()]
+
+    ## CRAFT's third threshold, and the only one this codebase has never
+    ## moved. PASS_THRESHOLDS sweeps text_threshold and low_text -- both of
+    ## which govern how much of the CHARACTER-region map survives -- across a
+    ## three-rung ladder. link_threshold governs the AFFINITY map, which is
+    ## what decides whether two adjacent characters belong to one instance,
+    ## and it has sat at its constructor default of 0.4 for every run ever
+    ## measured here.
+    ##
+    ## Sweeping it needs a constructed backend, because detect() builds its
+    ## own from `languages` and there is no threshold argument to thread
+    ## through. That is also why this is a harness flag rather than a
+    ## pipeline parameter: it is a calibration instrument, not a knob the
+    ## server should be turning per request.
+    if args.link_threshold is not None or args.decoder is not None:
+        langset = (
+            cicerone.expand_langset(detect_kwargs["languages"])
+            if detect_kwargs.get("languages") else ("en",)
+        )
+        tuning = {}
+        if args.link_threshold is not None:
+            tuning["link_threshold"] = args.link_threshold
+        if args.decoder is not None:
+            tuning["decoder"] = args.decoder
+            tuning["beam_width"] = args.beam_width
+        detect_kwargs["backend"] = cicerone.EasyOCRBackend(
+            languages=langset, gpu=False, **tuning,
+        )
     t1 = time.time()
     manifest = cicerone.detect(
         str(image_path), scene_regions=scene_regions,
@@ -341,6 +420,10 @@ def main() -> None:
             "lang": i.detected_language, "script": script,
             "bbox": [b.x, b.y, b.width, b.height],
             "ocr_quality": quality or None,
+            # what the scene eligibility gate decided, acted on or not --
+            # the fields a downstream ranker would consume, and the record
+            # that makes a veto's recall cost auditable
+            "scene_eligibility": i.scene_eligibility,
         })
 
     gt_path = Path(args.ground_truth) if args.ground_truth else None
@@ -382,7 +465,24 @@ def main() -> None:
     print(f"OCR quality: {report['ocr_quality']['states']}  review rate: {report['ocr_quality']['review_rate']}")
     print(f"inferred src_lang: {report['inferred_src_lang']}")
     print(f"precision: {metrics['precision']}  recall: {metrics['recall']}  f1: {metrics['f1']}")
+    # localization and recognition, reported side by side and never merged:
+    # a confident read from a geometrically wrong crop is a recognition
+    # success and a localization failure, and one number cannot say so.
+    loc = metrics.get("localization") or {}
+    print(f"mean best IoU: {metrics.get('mean_best_iou')}  "
+          f"(matched {loc.get('matched')}, near-miss {loc.get('near_miss')}, "
+          f"undetected {loc.get('undetected')})")
     print(f"mean norm edit distance: {metrics['mean_norm_ed']}")
+    # how much of the candidate set the eligibility gate would have removed:
+    # the review-burden side of the recall/precision trade, which mean IoU
+    # does not price
+    flagged = sum(1 for r in report["regions"]
+                  if (r.get("scene_eligibility") or {}).get("would_veto"))
+    dropped = sum(1 for r in report["regions"]
+                  if (r.get("scene_eligibility") or {}).get("vetoed"))
+    print(f"scene eligibility: {flagged} of {len(report['regions'])} would be vetoed, "
+          f"{dropped} actually dropped "
+          f"(veto {'ON' if cicerone.SCENE_FILTER_VETOES else 'OFF'})")
     print(f"best threshold (F1): {metrics.get('best_threshold')}  f1: {metrics.get('best_threshold_f1')}")
     print(f"timing: scene {report['timing_s']['scene']}s, detect {report['timing_s']['detect']}s")
     print(f"report:  {report_path}")

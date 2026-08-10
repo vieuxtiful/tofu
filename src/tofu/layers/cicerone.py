@@ -42,6 +42,7 @@ OCRBackend adapter remains the eventual upgrade path.
 """
 
 import logging
+import os
 import re
 import time
 import uuid
@@ -413,6 +414,8 @@ class EasyOCRBackend(OCRBackend):
         # there was no symmetric path for images that start too SMALL.
         min_upscale_dim: int = 850,
         upscale_factor: float = 2.0,
+        decoder: str = "greedy",
+        beam_width: int = 5,
     ):
         self.languages = tuple(_to_easyocr_lang(l) for l in languages)
         self.gpu = gpu
@@ -429,6 +432,39 @@ class EasyOCRBackend(OCRBackend):
         self.contrast_ths = contrast_ths
         self.min_upscale_dim = min_upscale_dim
         self.upscale_factor = upscale_factor
+        ## CTC decoding strategy. EasyOCR defaults to 'greedy' -- argmax at
+        ## every timestep -- and this codebase has never passed anything
+        ## else, so the softmax that recognition.py computes
+        ## (preds_prob = F.softmax(preds, dim=2)) has always been collapsed
+        ## immediately and discarded.
+        ##
+        ## MEASURED DEAD END -- 'beamsearch' is worse here, do not adopt it.
+        ##
+        ## Swept across all eleven ground-truth fixtures at beamWidth=5.
+        ## Ten are byte-identical to greedy; decolonisons-nos-rues regresses
+        ## from NED 0.017 to 0.164, and the corpus mean goes 0.146 -> 0.159.
+        ## The failure is truncation of long reads:
+        ##
+        ##   greedy  'Pour une mémoire des luttes contre les'   NED 0.000
+        ##   beam    'Pour une mémoire des lutt'                NED 0.342
+        ##   greedy  'crimes coloniaux et esclavagistes'        NED 0.000
+        ##   beam    'crimes coloniaux et '                     NED 0.394
+        ##
+        ## Both were PERFECT under greedy. EasyOCR's decode_beamsearch is a
+        ## thin wrapper over a vendored ctcBeamSearch with no language model
+        ## and no top-k output -- it returns one string, so there is nothing
+        ## to rescore even if a model were installed.
+        ##
+        ## The consequence for the language-model track: EasyOCR's own
+        ## decoder is not a usable path to shallow fusion. Reaching the
+        ## softmax means extracting preds_prob from recognizer_predict and
+        ## running a decoder ToFU owns, which is a fork of a pinned
+        ## dependency -- no longer an optimization, the only option.
+        ##
+        ## Kept as a parameter so the measurement is reproducible. The
+        ## default stays greedy.
+        self.decoder = decoder
+        self.beam_width = beam_width
 
     def _reader(self):
         import easyocr  # deferred: heavy import
@@ -508,6 +544,8 @@ class EasyOCRBackend(OCRBackend):
             add_margin=self.add_margin,
             width_ths=self.width_ths,
             contrast_ths=self.contrast_ths,
+            decoder=self.decoder,
+            beamWidth=self.beam_width,
         )
         primary_lang = self.languages[0] if self.languages else None
         return [
@@ -533,6 +571,7 @@ class EasyOCRBackend(OCRBackend):
         regions: List[BBox],
         pad: int = 4,
         polygons: Optional[List[Optional[Polygon]]] = None,
+        allowlist: Optional[str] = None,
     ) -> List[List[RawDetection]]:
         """detect + recognize inside bbox crops of the asset.
 
@@ -542,6 +581,14 @@ class EasyOCRBackend(OCRBackend):
         for a region, the crop is perspective-rectified before recognition.
         returns one list per input region (parallel order); polygons are
         expressed in full-image coordinates.
+
+        `allowlist` restricts the DECODE alphabet for this call: EasyOCR
+        turns it into `ignore_char = set(character) - set(allowlist)` and
+        zeroes those logits before the CTC head runs, so an excluded
+        character is unreachable rather than merely unlikely. None leaves
+        the reader's own language charset in force, which is what every
+        caller wants today -- it is plumbed for the constrained-decoding
+        work and has no caller yet.
         """
         from tofu.utils.imaging import load_rgb
         img = load_rgb(asset)
@@ -594,6 +641,9 @@ class EasyOCRBackend(OCRBackend):
                 add_margin=self.add_margin,
                 width_ths=self.width_ths,
                 contrast_ths=self.contrast_ths,
+                decoder=self.decoder,
+                beamWidth=self.beam_width,
+                **({"allowlist": allowlist} if allowlist else {}),
             )
             out.append([
                 RawDetection(
@@ -1287,6 +1337,68 @@ def _point_in_polygon(x: float, y: float, polygon: Polygon) -> bool:
     return inside
 
 
+## Whether scene membership may VETO a detection, as opposed to merely
+## guiding where the detector looks. Default off, which is the recall path.
+##
+## Measured across all eleven ground-truth fixtures, keeping the surfaces as
+## a detection prior but removing their power to discard:
+##
+##                        mean best IoU        matched GT
+##   surfaces guide+veto        0.710              47
+##   surfaces guide only        0.738              51      <- default
+##   no surfaces at all         0.678              48
+##
+## Non-regressive on every fixture -- eight are bit-identical, three improve
+## (gemini-street 0.381->0.477, russian-billboard 0.649->0.763 and 8->10
+## matched, la-bastille 0.267->0.365). Full removal is worse than either,
+## which is why the surfaces stay: quai-des-orfevres scores 1.000 with them
+## and 0.720 without.
+##
+## The veto is what the evidence indicts specifically. CRAFT's raw proposals
+## were already correct for the regions it discarded -- la-bastille's RUE at
+## IoU 0.735 arrived at 0.001, EN at 0.604 arrived at 0.012 -- so a hard
+## eligibility gate at this point is throwing away work the detector had
+## finished. See scripts/eval_detector_evidence.py.
+##
+## Not free, and the cost is not in the metric above: the corpus goes from 99
+## candidate regions to 134, and review rate on the dense scenes rises with
+## it (gemini-street 0.444 -> 0.622). Garbage fraction barely moves
+## (0.043 -> 0.049), so those are real detections rather than junk -- they are
+## work a human must now triage. Suppression belongs downstream of recall, as
+## ranking rather than as a veto here; until that exists this trades reviewer
+## time for coverage, deliberately.
+SCENE_FILTER_VETOES = os.environ.get("TOFU_SCENE_FILTER_VETO", "").strip().lower() in {
+    "1", "true", "yes", "on",
+}
+
+
+def _scene_verdict(bbox: BBox, confidence: float,
+                   scene_regions: Optional[List[SceneRegion]]) -> Dict[str, Any]:
+    """What the scene filter WOULD decide about this candidate, and why.
+
+    Computed whether or not the veto is enabled, so the decision is on the
+    record either way. That is what lets a downstream ranker use scene
+    membership as a negative signal without this stage having to act on it,
+    and what makes the veto's cost auditable rather than invisible.
+    """
+    best_overlap = 0.0
+    best_label = None
+    for region in scene_regions or ():
+        frac = _scene_containment_frac(bbox, region)
+        if frac > best_overlap:
+            best_overlap, best_label = frac, region.semantic_label
+    confident = (confidence or 0) >= 0.5
+    inside = best_overlap > 0.5
+    return {
+        "surface_overlap": round(best_overlap, 3),
+        "surface_label": best_label,
+        "confidence": round(float(confidence or 0), 4),
+        "outside_surfaces": not inside,
+        # the veto's own rule: kept only when confident OR inside a surface
+        "would_veto": not (confident or inside),
+    }
+
+
 def _scene_containment_frac(inner: BBox, region: SceneRegion) -> float:
     """Fraction of ``inner`` inside a scene region.
 
@@ -1366,10 +1478,32 @@ def _rectify_crop(img: ImageLike, polygon: Polygon, target_height: int = 48) -> 
         return img
 
 
+def _record_raw(det: RawDetection, stage: str = "raw_craft") -> Optional[str]:
+    """Put a detector proposal on the lineage graph, if one is recording.
+
+    Every later transform is answerable to these nodes: they are the
+    geometry the detector actually produced, before anything here could
+    absorb or reshape it. See layers/okara.py.
+    """
+    from tofu.layers import okara
+
+    graph = okara.active()
+    if graph is None:
+        return None
+    box = _polygon_bbox(det.polygon)
+    return graph.add(
+        stage, (box.x, box.y, box.width, box.height),
+        polygon=det.polygon, text=det.text, confidence=det.confidence,
+    )
+
+
 def merge_detections(
     base: List[RawDetection], extra: List[RawDetection]
 ) -> List[RawDetection]:
     """NMS across passes, retaining both candidates as audit evidence."""
+    from tofu.layers import okara
+
+    graph = okara.active()
     for det in extra:
         db = _polygon_bbox(det.polygon)
         dup_idx = None
@@ -1377,9 +1511,31 @@ def merge_detections(
             if _overlap_frac(db, _polygon_bbox(kept.polygon)) > 0.5:
                 dup_idx = i
                 break
+        if graph is not None:
+            _record_raw(det)
         if dup_idx is None:
             base.append(det)
         else:
+            ## The losing pass's geometry is retained and marked, not
+            ## dropped. This is NMS -- one of the two boxes stops being a
+            ## candidate -- and the discarded one is frequently the better
+            ## localized of the pair, so it has to remain selectable.
+            if graph is not None:
+                kb = _polygon_bbox(base[dup_idx].polygon)
+                lose = det if det.confidence <= base[dup_idx].confidence else base[dup_idx]
+                lb = _polygon_bbox(lose.polygon)
+                lid = graph.add(
+                    "raw_craft", (lb.x, lb.y, lb.width, lb.height),
+                    polygon=lose.polygon, text=lose.text, confidence=lose.confidence,
+                )
+                graph.suppress(lid, "replaced", "lost cross-pass NMS on confidence")
+                graph.add(
+                    "merge_detections", (kb.x, kb.y, kb.width, kb.height),
+                    parents=[lid], reason="cross-pass NMS kept the more confident read",
+                    features=okara.merge_features(
+                        (db.x, db.y, db.width, db.height),
+                        (kb.x, kb.y, kb.width, kb.height)),
+                )
             previous = base[dup_idx]
             winner, loser = (
                 (det, previous)
@@ -1576,7 +1732,7 @@ def merge_vertical_columns(detections: List[RawDetection], asset: ImageLike = No
                 continue
             parts.append(piece)
             accumulated += piece
-        out.append(RawDetection(
+        merged = RawDetection(
             polygon=[(x0, y0), (x1, y0), (x1, y1), (x0, y1)],
             text="".join(parts),
             confidence=sum(confs) / len(confs),
@@ -1584,7 +1740,42 @@ def merge_vertical_columns(detections: List[RawDetection], asset: ImageLike = No
                 (detections[i].language for i in members
                  if detections[i].language), None
             ),
-        ))
+        )
+        ## Every member survives as a selectable node with its own geometry.
+        ## Measured on la-bastille, this is the operation that turns CRAFT's
+        ## correctly-sized LA (IoU 0.866) into a rectangle 7.5x too large --
+        ## so the parts have to remain retrievable, or the only repair left
+        ## is inventing them back out of the union.
+        from tofu.layers import okara
+
+        graph = okara.active()
+        if graph is not None:
+            parent_ids = []
+            for i in members:
+                b = boxes[i]
+                pid = graph.add(
+                    "raw_craft", (b.x, b.y, b.width, b.height),
+                    polygon=detections[i].polygon, text=detections[i].text,
+                    confidence=detections[i].confidence,
+                )
+                graph.suppress(pid, "merged", "absorbed into a vertical column")
+                parent_ids.append(pid)
+            graph.add(
+                "merge_vertical_columns", (x0, y0, x1 - x0, y1 - y0),
+                polygon=merged.polygon, parents=parent_ids,
+                text=merged.text, confidence=merged.confidence,
+                reason=f"{len(members)} x-aligned char-like boxes unified into one column",
+                features={
+                    "members": len(members),
+                    "area_before": round(sum(boxes[i].width * boxes[i].height
+                                             for i in members), 1),
+                    "area_after": round(float((x1 - x0) * (y1 - y0)), 1),
+                    "inflation": round(
+                        (x1 - x0) * (y1 - y0)
+                        / max(1.0, sum(boxes[i].width * boxes[i].height for i in members)), 2),
+                },
+            )
+        out.append(merged)
     return out
 
 
@@ -3261,6 +3452,17 @@ def _corroborated(
     )
 
 
+def _union_bbox(boxes: List[BBox]) -> Optional[BBox]:
+    """Tightest box covering all of `boxes`, or None when empty."""
+    if not boxes:
+        return None
+    x0 = min(b.x for b in boxes)
+    y0 = min(b.y for b in boxes)
+    x1 = max(b.x + b.width for b in boxes)
+    y1 = max(b.y + b.height for b in boxes)
+    return BBox(x=x0, y=y0, width=x1 - x0, height=y1 - y0)
+
+
 def union_prefer_primary(
     primary: List[RawDetection],
     secondary: List[RawDetection],
@@ -3282,6 +3484,9 @@ def union_prefer_primary(
     Off by default -- the callers unioning per-surface panel reads over a
     full-frame sweep have a different contract and are not affected.
     """
+    from tofu.layers import okara
+
+    graph = okara.active()
     out = list(primary)
     kept_boxes = [_polygon_bbox(d.polygon) for d in out]
     dropped: set = set()
@@ -3293,16 +3498,92 @@ def union_prefer_primary(
         )
         if loaf is not None:
             crumbs, corroboration = loaf
+            ## How much bigger is the coarse box than the extent of the fine
+            ## boxes it claims to be the whole of? Above the ceiling it is not
+            ## the same loaf, it is a box that happens to contain them --
+            ## measured on la-bastille, where this transform takes a correct
+            ## `EN` at IoU 0.736 and ships a region 5.4x its ground-truth area
+            ## at 0.186. The crumbs' own union is the right denominator: it is
+            ## the tightest box covering every part, so the ratio measures
+            ## exactly the surplus the coarse read brings with it.
+            spread = _union_bbox([kept_boxes[i] for i in crumbs])
+            inflation = (
+                (db.width * db.height) / max(1.0, float(spread.width * spread.height))
+                if spread is not None else 1.0
+            )
+            if graph is not None:
+                ## Recorded, not acted on. Rejecting a loaf above an
+                ## inflation ceiling was measured and reverted (see the dead
+                ## end noted below); the ratio stays on the graph because a
+                ## hypothesis selector wants it as a feature even though it
+                ## is a bad decision rule on its own.
+                parent_ids = []
+                for i in crumbs:
+                    kb = kept_boxes[i]
+                    pid = graph.add(
+                        "raw_craft", (kb.x, kb.y, kb.width, kb.height),
+                        text=out[i].text if i < len(out) else None,
+                        confidence=out[i].confidence if i < len(out) else None,
+                    )
+                    graph.suppress(pid, "merged", "absorbed by a coarse zoom read")
+                    parent_ids.append(pid)
+                graph.add(
+                    "zoom", (db.x, db.y, db.width, db.height),
+                    polygon=det.polygon, parents=parent_ids,
+                    text=det.text, confidence=det.confidence,
+                    reason="coarse zoom read stood for the fine reads it contains",
+                    features={"inflation": round(inflation, 2), "crumbs": len(crumbs)},
+                )
             dropped.update(crumbs)
             extra.append(_corroborated(det, crumbs, corroboration))
             kept_boxes.append(db)
             continue
+        ## MEASURED DEAD END -- an area-ratio gate here, do not retry.
+        ##
+        ## The defect is real and precisely located. "Prefer primary" is an
+        ## unconditional preference and the zoom pass supplies the primaries,
+        ## so a coarse zoom read suppresses an existing detection of the same
+        ## ink with no comparison of the two. Traced on la-bastille: the
+        ## existing box at `EN` sits at IoU 0.736 reading 'EO'; the zoom box
+        ## over it sits at 0.186 reading "'oInG €0"; the union keeps the zoom
+        ## box. It is the only verified raw-to-final loss in the corpus.
+        ##
+        ## Refusing the suppression when the swallower is more than N times
+        ## the swallowed area fixes exactly that region and costs more
+        ## elsewhere. Measured across the eleven ground-truth fixtures, mean
+        ## best IoU 0.738 -> 0.706 and matched 51 -> 48: +1 on la-bastille
+        ## against -2 on decolonisons, -1 on gemini-street and -1 on
+        ## russian-billboard-2.
+        ##
+        ## And no threshold separates them -- decolonisons degrades BEFORE
+        ## la-bastille improves:
+        ##
+        ##     ceiling   la-bastille   decolonisons   russian-billboard-2
+        ##       off       3/9 0.365     5/5 0.775        3/3 0.756
+        ##       8.0x      3/9 0.365     4/5 0.682        3/3 0.756
+        ##       5.0x      3/9 0.365     3/5 0.565        3/3 0.756
+        ##       3.5x      4/9 0.426     3/5 0.565        3/3 0.756
+        ##       2.5x      4/9 0.441     3/5 0.565        2/3 0.538
+        ##
+        ## So area alone cannot tell "a coarse box swallowing a good read"
+        ## from "a whole-line read legitimately absorbing a fragment". The
+        ## signal that would is which of the two is the better READING, and
+        ## that is a hypothesis-selection question -- the lattice's, not a
+        ## threshold's. The lineage graph now records this transition, so the
+        ## suppressed candidate survives as a selectable alternative.
         if not any(
             _overlap_frac(db, kb) > 0.5
             for index, kb in enumerate(kept_boxes) if index not in dropped
         ):
             extra.append(det)
             kept_boxes.append(db)
+        elif graph is not None:
+            cid = graph.add(
+                "zoom", (db.x, db.y, db.width, db.height),
+                polygon=det.polygon, text=det.text, confidence=det.confidence,
+                reason="suppressed by an overlapping zoom primary, uncompared",
+            )
+            graph.suppress(cid, "replaced", "zoom_primary_preference")
     return [d for index, d in enumerate(out) if index not in dropped] + extra
 
 
@@ -3850,6 +4131,20 @@ def detect(
     # instead of letting a bare stopword win relabel the whole asset.
     declared = languages[0] if languages else None
 
+    ## Open the candidate lineage graph for this run. Every merge, NMS
+    ## replacement and prune below records its inputs into it, and every node
+    ## re-evaluates its own scene eligibility against this run's surfaces --
+    ## a parent's verdict describes a different box and must never be
+    ## inherited. See layers/okara.py.
+    try:
+        from tofu.layers import okara
+        okara.begin(
+            str(getattr(asset, "name", asset))[-80:],
+            eligibility=okara.scene_evaluator(scene_regions, scene_filter),
+        )
+    except Exception as exc:
+        logger.debug("lineage graph not opened: %s", exc)
+
     engine = backend
     if engine is None:
         if languages:
@@ -4076,6 +4371,48 @@ def detect(
         rescue_clipped_edge_glyphs(asset, manifest.instances, final_engine)
         _stage({"stage": "polish", "status": "complete",
                 "regions": len(manifest.instances)})
+
+    # Close the lineage graph and hang it off the manifest. Every merge and
+    # prune above has recorded its inputs, so an over-merged region can be
+    # traced back to the detector geometry it absorbed -- which is what makes
+    # "do not merge this" a selection rather than a reconstruction. See
+    # layers/okara.py.
+    try:
+        from tofu.layers import okara
+        graph = okara.end()
+        if graph is not None and graph._eligibility is None and scene_regions:
+            # A graph begun without an evaluator has every node marked
+            # not_evaluated. Say so rather than letting a consumer read the
+            # absence as eligibility.
+            logger.debug("lineage graph carries no scene evaluator; "
+                         "%d nodes are not_evaluated", len(graph))
+        if graph is not None and manifest.instances:
+            for inst in manifest.instances:
+                box = inst.bounding_box
+                if box is None:
+                    continue
+                graph.add(
+                    "final", (box.x, box.y, box.width, box.height),
+                    text=inst.text, confidence=inst.confidence, salt=inst.id,
+                )
+            manifest.candidate_lineage = graph.to_dict()
+    except Exception as exc:
+        logger.debug("lineage recording skipped: %s", exc)
+
+    # Write each candidate's review-feature ticket. Runs on the settled
+    # candidate set, changes nothing, and exists so that reviewer outcomes
+    # have features to join against when the frontend starts reporting them.
+    # See layers/ticket.py for why this precedes the ranker rather than
+    # arriving with it.
+    if manifest.instances:
+        try:
+            from tofu.layers.ticket import write_tickets
+            write_tickets(
+                manifest.instances, asset,
+                getattr(final_engine, "languages", ()) or (),
+            )
+        except Exception as exc:
+            logger.debug("ticket writing skipped: %s", exc)
 
     # General risk-based cross-provider assessment happens after proposal
     # generation has settled and before any correction stage mutates text.
@@ -4492,21 +4829,48 @@ def _prune_contained_fragments(instances: List[InstText]) -> List[InstText]:
         (inst, normalize_text(inst.text), inst.bounding_box)
         for inst in instances
     ]
+    from tofu.layers import okara
+
+    graph = okara.active()
     survivors: List[InstText] = []
     for inst, text, box in keyed:
         if not text or box is None:
             survivors.append(inst)
             continue
-        swallowed = any(
-            other is not inst
-            and other_box is not None
-            and len(other_text) > len(text)
-            and text in other_text
-            and _overlap_frac(box, other_box) > FRAGMENT_OVERLAP
-            for other, other_text, other_box in keyed
+        swallower = next(
+            (
+                (other, other_box) for other, other_text, other_box in keyed
+                if other is not inst
+                and other_box is not None
+                and len(other_text) > len(text)
+                and text in other_text
+                and _overlap_frac(box, other_box) > FRAGMENT_OVERLAP
+            ),
+            None,
         )
-        if not swallowed:
+        if swallower is None:
             survivors.append(inst)
+        elif graph is not None:
+            ## A pruned region leaves the manifest, so without this it
+            ## leaves no record at all -- the "no silent pruning" rule. The
+            ## node is retained and marked, with the region that swallowed
+            ## it named, so a later hypothesis can offer the fragment back.
+            other, other_box = swallower
+            pid = graph.add(
+                "raw_craft", (box.x, box.y, box.width, box.height),
+                text=inst.text, confidence=inst.confidence, salt=inst.id,
+            )
+            graph.suppress(pid, "pruned",
+                           f"text is a proper substring of {other.id!r} and boxes overlap")
+            graph.add(
+                "prune_contained_fragments",
+                (other_box.x, other_box.y, other_box.width, other_box.height),
+                parents=[pid], text=other.text, confidence=other.confidence,
+                reason="fragment dropped into the longer region that already said it",
+                features={"overlap_frac": round(_overlap_frac(box, other_box), 3),
+                          "swallowed_by": other.id},
+                salt=other.id,
+            )
     if len(survivors) == len(instances):
         return instances
     for order, inst in enumerate(survivors):
@@ -5646,7 +6010,7 @@ def build_manifest(
     # at confidence 0.015, LOWER than the wrong-charset English read's
     # garbage at 0.087. pruning by confidence before rescue has run
     # discards exactly the candidates rescue exists to save.
-    if scene_filter and scene_regions:
+    if scene_filter and SCENE_FILTER_VETOES and scene_regions:
         detections = [
             det for det in detections
             if det.confidence >= 0.5
@@ -5805,20 +6169,71 @@ def build_manifest(
     _HIGH_CONTAINMENT_LABELS = {"panel", "bordered_region"}
     if scene_filter and scene_regions:
         _SCENE_CONF = {"panel": 0.30, "text_cluster": 0.30, "bordered_region": 0.40}
-        instances = [
-            inst for inst in instances
-            if (inst.confidence or 0) >= 0.5
-            or any(
-                _scene_containment_frac(inst.bounding_box, region) > 0.5
-                and (inst.confidence or 0) >= _SCENE_CONF.get(region.semantic_label, 0.50)
-                for region in scene_regions
+
+        def _survives(inst: InstText) -> bool:
+            return bool(
+                (inst.confidence or 0) >= 0.5
+                or any(
+                    _scene_containment_frac(inst.bounding_box, region) > 0.5
+                    and (inst.confidence or 0) >= _SCENE_CONF.get(region.semantic_label, 0.50)
+                    for region in scene_regions
+                )
+                or any(
+                    region.semantic_label in _HIGH_CONTAINMENT_LABELS
+                    and _scene_containment_frac(inst.bounding_box, region) > 0.70
+                    for region in scene_regions
+                )
             )
-            or any(
-                region.semantic_label in _HIGH_CONTAINMENT_LABELS
-                and _scene_containment_frac(inst.bounding_box, region) > 0.70
-                for region in scene_regions
-            )
-        ]
+
+        ## The verdict is recorded on every candidate whether or not it is
+        ## acted on. A veto that leaves no trace is a recall loss nobody can
+        ## audit: la-bastille's RUE went from a 0.735 raw proposal to 0.001 in
+        ## the final manifest and nothing in the output said why. Downstream
+        ## ranking needs the same fields -- surface overlap is a good negative
+        ## signal for review ORDER even where it is a bad reason to discard.
+        ##
+        ## pre_veto_bbox is recorded because this attribution has to survive
+        ## the merge and dedup stages that run after it. Once two candidates
+        ## are joined, the surviving instance's geometry is no longer the one
+        ## the verdict was computed against, and an audit that cannot say
+        ## which box was judged cannot check the verdict.
+        for inst in instances:
+            verdict = _scene_verdict(inst.bounding_box, inst.confidence or 0.0, scene_regions)
+            verdict["state"] = "evaluated"
+            verdict["candidate_id"] = inst.id
+            box = inst.bounding_box
+            verdict["pre_veto_bbox"] = [box.x, box.y, box.width, box.height]
+            verdict["would_veto"] = not _survives(inst)
+            verdict["vetoed"] = verdict["would_veto"] and SCENE_FILTER_VETOES
+            inst.scene_eligibility = verdict
+
+        if SCENE_FILTER_VETOES:
+            instances = [inst for inst in instances if _survives(inst)]
+
+    ## Completeness, stated rather than assumed. An instance can reach here
+    ## without a verdict in three ways: the caller disabled scene_filter, the
+    ## scene pre-pass returned no surfaces, or a later stage (merge, repair,
+    ## rescue) minted a candidate after the block above ran.
+    ##
+    ## All three record an explicit state instead of leaving the field None.
+    ## A consumer that finds no attribution cannot tell "this was judged
+    ## eligible" from "this was never judged", and defaulting that ambiguity
+    ## to eligible is how a ranker silently starts trusting a signal that was
+    ## never computed.
+    for inst in instances:
+        if inst.scene_eligibility is None:
+            inst.scene_eligibility = {
+                "state": ("no_surfaces" if not scene_regions
+                          else "filter_disabled" if not scene_filter
+                          else "not_evaluated"),
+                "candidate_id": inst.id,
+                "surface_overlap": None,
+                "surface_label": None,
+                "confidence": round(float(inst.confidence or 0), 4),
+                "outside_surfaces": None,
+                "would_veto": None,
+                "vetoed": False,
+            }
 
     # hallucination pruning runs AFTER rescue/identification so regions
     # that were salvageable got their chance first

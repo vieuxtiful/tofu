@@ -25,7 +25,19 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional
 
-DB_PATH = Path(__file__).resolve().parent / "tofu.db"
+## Beside the uploads it describes, wherever those live.
+##
+## This used to be Path(__file__).parent / "tofu.db" -- next to the source,
+## not next to the data. In a container that is inside the image layer while
+## uploads/, outputs/ and tm_thumbs/ follow TOFU_DATA_DIR onto the volume, so
+## a rebuild silently discarded every project, snapshot and translation memory
+## while leaving all the files those rows pointed at sitting on disk. The
+## database and the data it indexes have to move together or neither is a
+## backup of anything.
+from config import settings  # noqa: E402  (settings reads the environment once)
+
+DB_PATH = settings.data_dir / "tofu.db"
+DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 # snapshots kept per asset; oldest autosaves pruned first, but protected
 # reasons (pre-erase, import, manual) are never auto-pruned
@@ -72,6 +84,36 @@ CREATE TABLE IF NOT EXISTS events (
   created_at REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_events_project ON events(project_id, created_at DESC);
+-- What a reviewer actually did with each detected candidate.
+--
+-- The measurement gap this closes: removing the scene-membership veto
+-- recovered four ground-truth regions and grew the candidate set from 99 to
+-- 134 across the fixture corpus. Whether those 35 extra candidates are worth
+-- the review effort is a question about REVIEWER TIME, and no metric the
+-- pipeline computes -- mean IoU, garbage fraction, edit distance -- can
+-- answer it. A ranker built without this table would be as unmeasurable as
+-- the veto it replaces.
+--
+-- `features` and `eligibility` are SNAPSHOTS taken at emit time, not foreign
+-- keys into a manifest. Deliberate: a manifest is edited continuously, so a
+-- join resolved later would describe the candidate as it ended up rather
+-- than as it was when the reviewer judged it -- which inverts cause and
+-- effect for the exact question being asked.
+CREATE TABLE IF NOT EXISTS review_events (
+  id           TEXT PRIMARY KEY,
+  project_id   TEXT REFERENCES projects(id) ON DELETE CASCADE,
+  asset_id     TEXT NOT NULL,
+  session_id   TEXT,
+  candidate_id TEXT NOT NULL,
+  action_type  TEXT NOT NULL,     -- accepted|rejected|edited_geometry|edited_text|merged
+  dwell_ms     INTEGER,
+  modified_bbox TEXT,             -- JSON [x,y,w,h], only when geometry changed
+  features     TEXT,              -- JSON snapshot of InstText.review_features
+  eligibility  TEXT,              -- JSON snapshot of InstText.scene_eligibility
+  created_at   REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_review_asset ON review_events(asset_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_review_action ON review_events(action_type);
 CREATE TABLE IF NOT EXISTS tm_records (
   id                INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id        TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -881,6 +923,93 @@ def list_events(pid: str, limit: int = 200) -> List[Dict[str, Any]]:
             (pid, limit),
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+# --- review telemetry (feeds the review-priority ranker) ---
+
+## Actions a reviewer can take on a candidate, and what each one indicts.
+## Derived from ordinary editing gestures rather than asked for explicitly:
+## a reviewer who has to grade every region is doing the ranker's data entry,
+## and would stop.
+##
+##   accepted          left untouched through to save/export -- pipeline was right
+##   rejected          region deleted -- a candidate that cost review time and
+##                     produced nothing, which is what a ranker should bury
+##   edited_geometry   handles dragged -- localization wrong, recognition may
+##                     have been fine (the gemini-street near-miss class)
+##   edited_text       transcript overtyped -- localization right, recognizer wrong
+##   merged            two regions joined -- over-segmentation upstream
+REVIEW_ACTIONS = ("accepted", "rejected", "edited_geometry", "edited_text", "merged")
+
+
+def record_review_events(events: List[Dict[str, Any]]) -> int:
+    """Append reviewer outcomes. Returns the count actually written.
+
+    Unknown action types are dropped rather than stored: this table's whole
+    value is that a later join can trust the label, and a typo'd action that
+    silently becomes a category would corrupt exactly that.
+    """
+    rows = []
+    now = time.time()
+    for e in events:
+        action = str(e.get("action_type") or "")
+        if action not in REVIEW_ACTIONS or not e.get("candidate_id") or not e.get("asset_id"):
+            continue
+        rows.append((
+            str(uuid.uuid4()), e.get("project_id"), e["asset_id"], e.get("session_id"),
+            e["candidate_id"], action,
+            int(e["dwell_ms"]) if e.get("dwell_ms") is not None else None,
+            json.dumps(e["modified_bbox"]) if e.get("modified_bbox") else None,
+            json.dumps(e.get("features")) if e.get("features") else None,
+            json.dumps(e.get("eligibility")) if e.get("eligibility") else None,
+            float(e.get("created_at") or now),
+        ))
+    if not rows:
+        return 0
+    with _conn() as con:
+        con.executemany(
+            "INSERT OR REPLACE INTO review_events (id, project_id, asset_id, session_id,"
+            " candidate_id, action_type, dwell_ms, modified_bbox, features, eligibility,"
+            " created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            rows,
+        )
+    return len(rows)
+
+
+def review_summary(asset_id: Optional[str] = None,
+                   project_id: Optional[str] = None) -> Dict[str, Any]:
+    """The review-effort numbers a ranker has to move.
+
+    `candidates_per_accepted` is the headline: how many regions a human had
+    to look at for each one that survived. Mean IoU cannot see it, and it is
+    the metric that decides whether the candidates recovered by dropping the
+    scene veto are practically manageable.
+    """
+    where, params = [], []
+    if asset_id:
+        where.append("asset_id = ?"); params.append(asset_id)
+    if project_id:
+        where.append("project_id = ?"); params.append(project_id)
+    clause = (" WHERE " + " AND ".join(where)) if where else ""
+    with _conn() as con:
+        rows = con.execute(
+            f"SELECT action_type, COUNT(*) n FROM review_events{clause} GROUP BY action_type",
+            params,
+        ).fetchall()
+        reviewed = con.execute(
+            f"SELECT COUNT(DISTINCT candidate_id) n FROM review_events{clause}", params,
+        ).fetchone()["n"]
+    counts = {a: 0 for a in REVIEW_ACTIONS}
+    counts.update({r["action_type"]: r["n"] for r in rows})
+    accepted = counts["accepted"]
+    return {
+        "counts": counts,
+        "candidates_reviewed": reviewed,
+        "accepted": accepted,
+        # None rather than a divide-by-zero sentinel: no accepted regions
+        # means the ratio is undefined, not infinite.
+        "candidates_per_accepted": round(reviewed / accepted, 3) if accepted else None,
+    }
 
 
 # --- translation memory (visual TM: Phase 6) ---

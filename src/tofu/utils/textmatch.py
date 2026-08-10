@@ -47,6 +47,39 @@ _CYRILLIC_TO_LATIN_SKELETON = {
 }
 
 
+## Both halves of the pair, as one membership set. `pare` needs the mapping;
+## asking "could this letter have been the other script?" needs only the
+## alphabet, and both directions of it.
+CYRILLIC_LATIN_TWINS = (
+    frozenset(_CYRILLIC_TO_LATIN_SKELETON)
+    | frozenset(_CYRILLIC_TO_LATIN_SKELETON.values())
+)
+
+
+def twin_share(text: Optional[str]) -> float:
+    """What fraction of a string's letters have a twin in the other script?
+
+    The question `pare` answers is "are these two strings the same word";
+    this one is "could this string have been written in the other alphabet
+    entirely" -- which is what distinguishes a genuine Latin read inside a
+    Cyrillic scene from a Cyrillic word the joint charset spelled in Latin.
+
+    Measured on images/russian-billboard-2.jpeg:
+
+        BYAYLIEE                 0.875   is really В БУДУЩЕЕ
+        BMECTE POCCHEMI          1.000   is really ВМЕСТЕ С РОССИЕЙ!
+        Valentina Ursu (RFE/RL)  0.333   is really Latin
+
+    Non-letters are excluded from both sides rather than counted as
+    non-twins: digits and punctuation are shared by every script and would
+    otherwise dilute the share of any read that contains an address number.
+    """
+    letters = [ch for ch in (text or "") if ch.isalpha()]
+    if not letters:
+        return 0.0
+    return sum(ch in CYRILLIC_LATIN_TWINS for ch in letters) / len(letters)
+
+
 def pare(text: Optional[str]) -> str:
     """Pare a string down to its script-neutral skeleton.
 

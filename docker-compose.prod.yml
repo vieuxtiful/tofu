@@ -1,0 +1,105 @@
+# 🍢 ToFU — single-host production stack
+# vieuxtiful
+#
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Differs from docker-compose.yml in the three ways a public deployment has to:
+#
+#   1. Caddy terminates TLS on the real domain. Nothing else publishes a port,
+#      so the app and the frontend are reachable only through it -- which is
+#      also what makes TOFU_TRUSTED_PROXY_HOPS=1 true rather than hopeful.
+#   2. State is a BIND MOUNT (./data), not a named volume. A backup has to be
+#      a path an operator can tar, and a named volume is a path they have to
+#      go and find inside /var/lib/docker.
+#   3. Resource limits. One 4 MP image through detection is a genuine CPU
+#      burst, and an unbounded container on a 4-core box starves Caddy of the
+#      cycles it needs to answer the healthcheck that decides whether the
+#      container is alive.
+#
+# Read .env.example first; this file reads .env for every secret.
+
+services:
+  # ─── TLS terminator and only published port ──────────────────────────
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./data/caddy:/data          # issued certificates -- back this up
+      - ./data/caddy-config:/config
+    environment:
+      TOFU_DOMAIN: "${TOFU_DOMAIN:?set TOFU_DOMAIN in .env}"
+    depends_on:
+      - frontend
+      - app
+    restart: unless-stopped
+
+  # ─── FastAPI backend + pipeline ──────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    expose:
+      - "8000"
+    volumes:
+      # One directory holds everything that must survive a rebuild: the
+      # SQLite database, uploads, renders, and translation-memory thumbs.
+      - ./data/app:/app/data
+      # Side-loaded n-gram / vector artifacts. Empty is supported -- every
+      # provider reports not-ready and arbitration renormalizes the weight
+      # away. See docs/deployment.md for building them.
+      - ./models:/app/models:ro
+      - shared-tmp:/tmp/tofu-shared
+    environment:
+      PYTHONUTF8: "1"
+      TOFU_ENV: "production"
+      # Refuses to start if either of these is unset -- see server/config.py.
+      TOFU_API_KEYS: "${TOFU_API_KEYS:?generate one: python -c \"import secrets;print(secrets.token_urlsafe(32))\"}"
+      TOFU_CORS_ORIGINS: "https://${TOFU_DOMAIN:?set TOFU_DOMAIN in .env}"
+      TOFU_FRONTEND_URL: "https://${TOFU_DOMAIN}"
+      TOFU_DATA_DIR: "/app/data"
+      TOFU_NGRAM_DIR: "/app/models/ngram"
+      TOFU_VECTOR_DIR: "/app/models/vectors"
+      # Exactly one reverse proxy (caddy) sits in front, so the rate limiter
+      # reads the last X-Forwarded-For entry as the caller. Wrong here and
+      # every user shares one bucket, or an attacker forges their own.
+      TOFU_TRUSTED_PROXY_HOPS: "1"
+      # Matches the nginx client_max_body_size in Dockerfile.frontend and
+      # config.DEFAULT_MAX_UPLOAD_BYTES. All three move together.
+      TOFU_MAX_UPLOAD_BYTES: "${TOFU_MAX_UPLOAD_BYTES:-2147483648}"
+      # Lower than the 120/min production default: this is a CPU-bound OCR
+      # pipeline, not a CRUD API, and 120 detections a minute is not a
+      # workload a 4-core box has. Raise it knowingly.
+      TOFU_RATE_LIMIT_REQUESTS: "${TOFU_RATE_LIMIT_REQUESTS:-40}"
+      TOFU_RATE_LIMIT_WINDOW_SECONDS: "60"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: "${TOFU_APP_CPUS:-3.0}"
+          memory: "${TOFU_APP_MEMORY:-6g}"
+    restart: unless-stopped
+
+  # ─── static frontend, proxying /api to app ───────────────────────────
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    expose:
+      - "80"
+    environment:
+      NGINX_MAX_BODY: "${TOFU_NGINX_MAX_BODY:-2g}"
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  shared-tmp:

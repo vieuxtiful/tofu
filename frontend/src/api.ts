@@ -8,12 +8,109 @@
  *   VITE_API_URL=https://api.example.com npm run build
  */
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? "";
-if (API_BASE) {
+
+/**
+ * API key transport.
+ *
+ * A deployment with TOFU_API_KEYS set rejects every /api call without a key,
+ * and this module is the only place that knows it. The key rides on the same
+ * window.fetch interceptor that already rewrites relative paths for API_BASE:
+ * there are ~90 exported call sites in this file and each one calls the global
+ * fetch, so patching once covers all of them and cannot be forgotten by the
+ * next endpoint someone adds.
+ *
+ * Images are a separate problem. An <img src="/uploads/…"> is loaded by the
+ * browser, not by this code, so no header can be attached to it — the server
+ * mints an HttpOnly cookie at POST /api/session and the browser replays that
+ * on subresource loads by itself. See server/security.py.
+ */
+const KEY_STORAGE = "tofu.apiKey";
+
+let apiKey: string | null = null;
+try {
+  apiKey = window.localStorage.getItem(KEY_STORAGE);
+} catch {
+  // private browsing / storage disabled — the key lives in memory for the
+  // session instead, which still works, it just does not survive a reload.
+}
+
+/** Called when the server rejects the stored key, so the UI can re-prompt. */
+let onUnauthorized: (() => void) | null = null;
+export function setUnauthorizedHandler(handler: (() => void) | null): void {
+  onUnauthorized = handler;
+}
+
+export function getApiKey(): string | null {
+  return apiKey;
+}
+
+export function setApiKey(key: string | null): void {
+  apiKey = key && key.trim() ? key.trim() : null;
+  try {
+    if (apiKey) window.localStorage.setItem(KEY_STORAGE, apiKey);
+    else window.localStorage.removeItem(KEY_STORAGE);
+  } catch {
+    // see above — in-memory only
+  }
+}
+
+{
   const _fetch = window.fetch.bind(window);
   window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
-    if (typeof input === "string" && input.startsWith("/")) input = API_BASE + input;
-    return _fetch(input, init);
+    const path = typeof input === "string" ? input : input instanceof URL ? input.pathname : input.url;
+    const relative = typeof input === "string" && input.startsWith("/");
+    if (API_BASE && relative) input = API_BASE + input;
+    // Only our own backend gets the key. A relative path is ours by
+    // definition; anything absolute is someone else's origin and must not
+    // be handed a credential.
+    if (apiKey && relative) {
+      const headers = new Headers(init?.headers ?? {});
+      // An explicit header wins: openSession() is validating a key the user
+      // just typed, which is precisely the case where the stored one is
+      // stale or absent and must not overwrite it.
+      if (!headers.has("X-API-Key")) headers.set("X-API-Key", apiKey);
+      init = { ...init, headers };
+    }
+    return _fetch(input, init).then((res) => {
+      // /api/session is excluded: a 401 there is the key gate testing a
+      // candidate key and reporting the answer itself, not a live session
+      // going stale underneath the user.
+      const stale = res.status === 401 && path.startsWith("/api") && !path.startsWith("/api/session");
+      if (stale && onUnauthorized) {
+        setApiKey(null);
+        onUnauthorized();
+      }
+      return res;
+    });
   };
+}
+
+/**
+ * Hand the key to the server so it can mint the image cookie.
+ *
+ * Resolves true when the key was accepted, false when it was rejected. A
+ * deployment with no keys configured accepts anything and reports
+ * auth_enabled: false, which is what keeps local development promptless.
+ */
+export async function openSession(key: string): Promise<boolean> {
+  const res = await fetch("/api/session", {
+    method: "POST",
+    credentials: "include",
+    headers: { "X-API-Key": key },
+  });
+  return res.ok;
+}
+
+/** Whether this deployment demands a key at all. Unauthenticated by design. */
+export async function authRequired(): Promise<boolean> {
+  try {
+    const res = await fetch("/api/health");
+    if (!res.ok) return false;
+    const body = (await res.json()) as { auth_enabled?: boolean };
+    return Boolean(body.auth_enabled);
+  } catch {
+    return false;
+  }
 }
 
 export interface AssetInfo {
@@ -264,7 +361,7 @@ export interface InstText {
   language?: string | null;  // user-confirmed per-region source language
   reading_order: number | null;
   dnt: boolean;
-  excluded?: boolean;  // removed from the workspace UI/export; still erased on render, unlike dnt
+  excluded?: boolean;  // user-removed from the workspace: source text left untouched (cleanse skips it, like dnt), never rendered/exported
   target_language: string | null;
   glyph_fallback?: boolean | null;  // scribe swapped fonts: the requested face lacked codepoints for this text
   tm_suggestion?: TMSuggestion | null;  // translation-memory match from a prior approved render
@@ -272,6 +369,13 @@ export interface InstText {
   translation_decision?: TranslationDecision | null;
   translation_history?: TranslationDecision[];
   recognition_history?: Array<{ stage: string; engine: string; candidate_text?: string; candidate_confidence?: number; primary_text?: string; primary_confidence?: number; accepted: boolean; reason: string }> | null;
+  /** What the scene eligibility gate decided about this candidate, acted on
+   *  or not. Carried to the client so a reviewer outcome can be reported
+   *  with the evidence that was true when they judged it. */
+  scene_eligibility?: Record<string, unknown> | null;
+  /** Review-priority feature vector (layers/ticket.py). Descriptive only —
+   *  nothing orders, hides or discards on it. */
+  review_features?: Record<string, unknown> | null;
   ocr_correction?: {
     applied: boolean;
     original_text?: string;
@@ -1240,6 +1344,26 @@ export async function addRegion(
   );
 }
 
+/** Report reviewer outcomes for detected candidates.
+ *
+ *  Fire-and-forget: telemetry must never block or fail an edit, so callers
+ *  should not await this and it swallows nothing on the server side either —
+ *  unknown candidate ids are accepted, because a manifest can be re-detected
+ *  between a region being shown and being reported on, and dropping those
+ *  events would bias the dataset toward sessions that never re-ran detection.
+ *  See frontend/src/telemetry.ts. */
+export async function postReviewEvents(
+  events: unknown[],
+): Promise<{ recorded: number; submitted: number }> {
+  return json(
+    await fetch("/api/telemetry/review", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ events }),
+    })
+  );
+}
+
 export async function deleteRegion(assetId: string, regionId: string): Promise<{ ok: boolean; total_regions: number }> {
   return json(
     await fetch(`/api/manifest/${assetId}/regions/${regionId}`, { method: "DELETE" })
@@ -1572,6 +1696,7 @@ export async function removeFontPack(name: string): Promise<{ removed: string; f
 
 export interface CapabilityStatus {
   id: string;
+  label?: string | null;
   available: boolean;
   ready: boolean;
   version: string | null;

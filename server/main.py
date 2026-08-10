@@ -46,7 +46,7 @@ from typing import Any, Dict, List, Optional, Tuple
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
+from fastapi import BackgroundTasks, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -78,10 +78,13 @@ from tofu.video.temporal import settle as settle_tracks
 from tofu.video.types import VideoManifest
 
 import db
+from config import settings
+from security import APIKeyMiddleware, RateLimitMiddleware, SESSION_COOKIE
 
-UPLOAD_DIR = ROOT / "server" / "uploads"
-OUTPUT_DIR = ROOT / "server" / "outputs"
-TM_THUMB_DIR = ROOT / "server" / "tm_thumbs"
+DATA_DIR = settings.data_dir
+UPLOAD_DIR = DATA_DIR / "uploads"
+OUTPUT_DIR = DATA_DIR / "outputs"
+TM_THUMB_DIR = DATA_DIR / "tm_thumbs"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 TM_THUMB_DIR.mkdir(parents=True, exist_ok=True)
@@ -527,23 +530,145 @@ app = FastAPI(
         "translation memory, and video localization."
     ),
 )
+## Middleware order is the reverse of registration: the LAST registered runs
+## first. Rate limiting is registered after auth so it runs before it, which
+## means an unauthenticated flood is rejected by the cheap counter instead of
+## paying for a constant-time comparison against every configured key.
+if settings.rate_limit_enabled:
+    app.add_middleware(
+        RateLimitMiddleware,
+        max_requests=settings.rate_limit_requests,
+        window_seconds=settings.rate_limit_window_seconds,
+        trusted_proxy_hops=settings.trusted_proxy_hops,
+    )
+app.add_middleware(APIKeyMiddleware, api_keys=settings.api_keys)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=list(settings.cors_origins),
     allow_methods=["*"],
     allow_headers=["*"],
+    ## Needed only so a cross-origin POST /api/session can have its
+    ## Set-Cookie honoured; the ordinary API calls authenticate with a
+    ## header and would work without it. Safe to enable here because
+    ## config.load_settings() refuses to start production with '*' in the
+    ## origin list, which is the combination the spec forbids.
+    allow_credentials=True,
 )
 app.mount("/outputs", StaticFiles(directory=OUTPUT_DIR), name="outputs")
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 app.mount("/tm_thumbs", StaticFiles(directory=TM_THUMB_DIR), name="tm_thumbs")
 
-FRONTEND_URL = os.environ.get("TOFU_FRONTEND_URL", "http://localhost:5173")
+FRONTEND_URL = settings.frontend_url
 
 
 @app.get("/", include_in_schema=False)
 def root() -> RedirectResponse:
     """opening the API port in a browser lands on the app, not a JSON 404."""
     return RedirectResponse(FRONTEND_URL)
+
+
+@app.get("/api/health")
+def health():
+    """Unauthenticated liveness probe for containers and load balancers.
+
+    Separate from /api/capabilities on purpose: a healthcheck has to answer
+    before any key is configured, while the capability inventory enumerates
+    installed models, versions, and filesystem paths and therefore stays
+    behind auth. The Dockerfile HEALTHCHECK targets this route.
+    """
+    return {"status": "ok", **settings.public_summary()}
+
+
+## Long enough that a working session is not interrupted by a re-prompt,
+## short enough that a shared machine forgets. The cookie holds the key
+## itself and every request re-validates it, so rotating TOFU_API_KEYS
+## invalidates outstanding cookies immediately rather than after this
+## expires -- the lifetime is a convenience bound, not the revocation story.
+SESSION_COOKIE_MAX_AGE = 30 * 24 * 3600
+
+
+@app.post("/api/session")
+def open_session(request: Request, response: Response):
+    """Exchange a validated key for a cookie the browser can replay itself.
+
+    By the time this route runs, APIKeyMiddleware has already accepted the
+    key from the request header -- an invalid one never reaches here. All
+    that is left is to hand the same credential back in a form <img> and
+    <video> can use, because those are subresource loads the application
+    code never gets to attach a header to, and they are how every uploaded
+    photograph and every render is displayed.
+
+    A deployment with no keys configured (local development) answers the
+    same shape with no cookie, so the frontend runs one code path.
+    """
+    if not settings.auth_enabled:
+        return {"session": "unauthenticated", "auth_enabled": False}
+    from security import presented_key
+
+    response.set_cookie(
+        SESSION_COOKIE,
+        presented_key(request) or "",
+        max_age=SESSION_COOKIE_MAX_AGE,
+        httponly=True,
+        secure=settings.cookie_secure,
+        samesite="lax",
+        path="/",
+    )
+    return {"session": "open", "auth_enabled": True}
+
+
+@app.delete("/api/session")
+def close_session(response: Response):
+    """Drop the cookie. The caller drops its own copy of the key."""
+    response.delete_cookie(SESSION_COOKIE, path="/")
+    return {"session": "closed"}
+
+
+class ReviewEvent(BaseModel):
+    """One reviewer action on one detected candidate."""
+    candidate_id: str
+    asset_id: str
+    action_type: str
+    project_id: Optional[str] = None
+    session_id: Optional[str] = None
+    dwell_ms: Optional[int] = None
+    modified_bbox: Optional[List[float]] = None
+    features: Optional[Dict[str, Any]] = None
+    eligibility: Optional[Dict[str, Any]] = None
+    created_at: Optional[float] = None
+
+
+class ReviewEventBatch(BaseModel):
+    events: List[ReviewEvent]
+
+
+@app.post("/api/telemetry/review")
+def record_review(batch: ReviewEventBatch):
+    """Record what a reviewer did with each candidate.
+
+    Batched because the client emits on ordinary editing gestures -- a delete,
+    a handle drag, an overtyped transcript -- and one request per gesture
+    would put telemetry in the interaction path. Nothing here blocks or
+    validates the edit itself; the edit already happened through its own
+    endpoint and this only describes it.
+
+    Accepts unknown candidate ids without complaint. A manifest can be
+    re-detected between the client observing a region and reporting on it,
+    and losing the event would bias the dataset toward sessions that never
+    re-ran detection.
+    """
+    written = db.record_review_events([e.model_dump() for e in batch.events])
+    return {"recorded": written, "submitted": len(batch.events)}
+
+
+@app.get("/api/telemetry/review/summary")
+def review_summary(asset_id: Optional[str] = None, project_id: Optional[str] = None):
+    """Review-effort numbers, chiefly candidates reviewed per accepted region.
+
+    The metric a review-priority ranker has to move, and the one no
+    pipeline-side score can compute.
+    """
+    return db.review_summary(asset_id=asset_id, project_id=project_id)
 
 
 @app.get("/api/capabilities")
@@ -835,7 +960,7 @@ async def upload_asset(file: UploadFile = File(...), project_id: Optional[str] =
     asset_id = uuid.uuid4().hex[:12]
     dest = UPLOAD_DIR / f"{asset_id}{suffix}"
     hasher = hashlib.sha256(); uploaded_bytes = 0
-    max_upload = int(os.environ.get("TOFU_MAX_UPLOAD_BYTES", str(100 * 1024**3)))
+    max_upload = settings.max_upload_bytes
     try:
         with dest.open("wb") as output:
             while chunk := await file.read(1024 * 1024):
@@ -3388,7 +3513,8 @@ def _cleanse_cache_key(asset_id: str, manifest: TextManifest) -> str:
         geometry.append({"id": inst.id, "bbox": dataclasses.asdict(b) if b else None,
                          "polygon": inst.segmentation_mask.polygon if inst.segmentation_mask else None,
                          "background": dataclasses.asdict(inst.background_profile) if inst.background_profile else None,
-                         "dnt": inst.dnt})
+                         "dnt": inst.dnt,
+                         "excluded": inst.excluded})
     payload = {
         "schema": "cleanse-provider-router-v4",
         "asset": [path.stat().st_mtime_ns, path.stat().st_size],
