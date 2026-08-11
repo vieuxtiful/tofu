@@ -10,11 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added — ToFU Vision 2, first increment
 - **`cicerone.detect(seed_detections=...)`** — replace the detector with
   supplied geometry and run the normal recognition pipeline over it. Built for
-  the Guided oracle, which cannot be answered by re-reading crops: two
-  crop-based attempts scored 42.3% and 57.1%, both *below* the Auto arm they
-  were meant to bound, because the crop path skips multipass, zoom, surface
-  probes, edge rescue and the correction layers. On CJK that machinery is
-  nearly the whole read (22% from a crop vs 65–78% from the pipeline).
+  the Guided oracle. It is the right seam — crop-based attempts measured the
+  crop path rather than the pipeline, and on CJK that machinery is nearly the
+  whole read (22% from a crop vs 65–78% from the pipeline) — though the oracle
+  itself turned out not to be answerable; see "Measured and rejected".
 - **`layers/decant.py`** — evidence survival, kept separate from candidate
   ranking. Answers "is there enough here to justify choosing *any* reading?",
   which a ranking cannot: a candidate can lead because every alternative was
@@ -112,12 +111,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exact binomial, no scipy. First result: Guided 74.6% vs Auto 67.2%, **+7.4
   pts, 14 discordant wins and 0 losses, p = 0.00012**. Not certified: the margin
   is 0.6 pts under the declared +8.0 and the corpus is still `machine_derived`.
-  See `docs/gate2-status.md`. The oracle ceiling arm ran twice: `pad=0` scored
-  42.3% (a 14.8-point measurement artefact), and the corrected pipeline-crop
-  version 57.1% — still below both arms, because no crop-based oracle can bound
-  a pipeline whose recognition depends on multipass and zoom. Where it *is*
-  trustworthy it beats Auto by only +1.8/+4.9 points, so the residual loss on
-  those strata is recognition rather than localization.
+  See `docs/gate2-status.md`, and "Measured and rejected" above for the oracle
+  arm's three runs and why it does not yield a ceiling.
 - **`docs/guided-corpus-review-protocol.md`** — the two-annotator review that
   unblocks certification, with the occurrence budget that constrains it (9 to
   spare before the corpus falls below its own declared minimums).
