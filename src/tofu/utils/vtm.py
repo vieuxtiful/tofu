@@ -41,6 +41,8 @@ third-party tooling, and :func:`validate` exists so ToFU can check documents
 without asking anyone to install anything.
 """
 
+import hashlib
+import json
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -207,7 +209,55 @@ def export_vtm(
         "asset": {"id": manifest.asset_id, "width": width, "height": height},
         "entries": entries,
     }
+
+    ## Additive, and deliberately under an `x-` vendor key: the published
+    ## spec's rule is that a 1.x reader MUST accept any 1.y and ignore keys it
+    ## does not recognise, and the schema already declares
+    ## additionalProperties plus an `^x-` extension pattern.  So this rides
+    ## along in an unmodified 1.0 document rather than forcing a version bump
+    ## -- ToFU has not shipped 1.0 yet, and the version string moves at
+    ## release, not every time a field is added.
+    extension = _plate_extension(manifest)
+    if extension:
+        document["x-tofu"] = extension
     return document
+
+
+def _plate_extension(manifest: TextManifest) -> Dict[str, Any]:
+    """Plate membership and lineage REFERENCE for a VTM document.
+
+    Carries what a consumer needs to reassemble reading units, and no more.
+    The candidate-lineage DAG itself is deliberately NOT embedded: it
+    describes one detection run rather than portable translation memory, it
+    is large, and it is not needed to reproduce the accepted visual result.
+    A digest and run id are enough to tie a document back to the internal
+    graph that ToFU still holds.
+    """
+    extension: Dict[str, Any] = {}
+    plates = []
+    for unit in (getattr(manifest, "semantic_units", None) or []):
+        if not (unit.source_text or "").strip():
+            continue
+        plates.append({
+            "plate_uid": unit.plate_uid,
+            "display_number": unit.display_number,
+            "origin": unit.origin,
+            "revision": unit.membership_hash,
+            "source": unit.source_text,
+            "region_ids": list(unit.region_ids),
+        })
+    if plates:
+        extension["plates"] = plates
+
+    lineage = getattr(manifest, "candidate_lineage", None)
+    if isinstance(lineage, dict) and lineage:
+        payload = json.dumps(lineage, sort_keys=True, ensure_ascii=False, default=str)
+        extension["lineage_ref"] = {
+            "asset_id": manifest.asset_id,
+            "run_id": str(lineage.get("run_id") or lineage.get("id") or ""),
+            "digest": "sha256:" + hashlib.sha256(payload.encode("utf-8")).hexdigest(),
+        }
+    return extension
 
 
 def _generator_version() -> str:

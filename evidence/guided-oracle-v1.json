@@ -1,0 +1,2378 @@
+{
+  "corpus_id": "guided-corpus-v1",
+  "arm": "guided_oracle",
+  "arms": [
+    "guided_oracle"
+  ],
+  "iou": 0.5,
+  "review_status": "machine_derived",
+  "totals": {
+    "assets": 46,
+    "blocks": 162,
+    "occurrences": 189,
+    "repeat_blocks": 13,
+    "strata": 6
+  },
+  "minimums": {
+    "assets": 30,
+    "blocks": 120,
+    "occurrences": 180,
+    "strata": 6
+  },
+  "elapsed_seconds": 835.5,
+  "assets": {
+    "arabic-bilingual-panel": {
+      "stratum": "rtl_bidi",
+      "split": "dev",
+      "expected": 5,
+      "found": 3,
+      "shipped_regions": 5,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "arabic-bilingual-panel#b1",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "arabic-bilingual-panel#b2",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "arabic-bilingual-panel#b3",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "arabic-bilingual-panel#b4",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "arabic-bilingual-panel#b5",
+          "expected": 1,
+          "found": 0
+        }
+      ],
+      "occurrences": [
+        {
+          "block_id": "arabic-bilingual-panel#b1",
+          "occurrence": 0,
+          "found": true
+        },
+        {
+          "block_id": "arabic-bilingual-panel#b2",
+          "occurrence": 1,
+          "found": true
+        },
+        {
+          "block_id": "arabic-bilingual-panel#b3",
+          "occurrence": 2,
+          "found": true
+        },
+        {
+          "block_id": "arabic-bilingual-panel#b4",
+          "occurrence": 3,
+          "found": false
+        },
+        {
+          "block_id": "arabic-bilingual-panel#b5",
+          "occurrence": 4,
+          "found": false
+        }
+      ]
+    },
+    "arabic-market": {
+      "stratum": "rtl_bidi",
+      "split": "dev",
+      "expected": 8,
+      "found": 4,
+      "shipped_regions": 8,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "arabic-market#b1",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "arabic-market#b2",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "arabic-market#b3",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "arabic-market#b4",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "arabic-market#b5",
+          "expected": 4,
+          "found": 0
+        }
+      ],
+      "occurrences": [
+        {
+          "block_id": "arabic-market#b1",
+          "occurrence": 0,
+          "found": true
+        },
+        {
+          "block_id": "arabic-market#b2",
+          "occurrence": 1,
+          "found": true
+        },
+        {
+          "block_id": "arabic-market#b3",
+          "occurrence": 2,
+          "found": true
+        },
+        {
+          "block_id": "arabic-market#b4",
+          "occurrence": 3,
+          "found": true
+        },
+        {
+          "block_id": "arabic-market#b5",
+          "occurrence": 4,
+          "found": false
+        },
+        {
+          "block_id": "arabic-market#b5",
+          "occurrence": 5,
+          "found": false
+        },
+        {
+          "block_id": "arabic-market#b5",
+          "occurrence": 6,
+          "found": false
+        },
+        {
+          "block_id": "arabic-market#b5",
+          "occurrence": 7,
+          "found": false
+        }
+      ]
+    },
+    "arabic-street": {
+      "stratum": "rtl_bidi",
+      "split": "dev",
+      "expected": 5,
+      "found": 1,
+      "shipped_regions": 5,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "arabic-street#b1",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "arabic-street#b2",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "arabic-street#b3",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "arabic-street#b4",
+          "expected": 2,
+          "found": 0
+        }
+      ],
+      "occurrences": [
+        {
+          "block_id": "arabic-street#b1",
+          "occurrence": 0,
+          "found": true
+        },
+        {
+          "block_id": "arabic-street#b2",
+          "occurrence": 1,
+          "found": false
+        },
+        {
+          "block_id": "arabic-street#b3",
+          "occurrence": 2,
+          "found": false
+        },
+        {
+          "block_id": "arabic-street#b4",
+          "occurrence": 3,
+          "found": false
+        },
+        {
+          "block_id": "arabic-street#b4",
+          "occurrence": 4,
+          "found": false
+        }
+      ]
+    },
+    "avenue-de-la-république": {
+      "stratum": "latin_horizontal",
+      "split": "dev",
+      "expected": 2,
+      "found": 1,
+      "shipped_regions": 2,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "avenue-de-la-république#b1",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "avenue-de-la-république#b2",
+          "expected": 1,
+          "found": 0
+        }
+      ],
+      "occurrences": [
+        {
+          "block_id": "avenue-de-la-république#b1",
+          "occurrence": 0,
+          "found": true
+        },
+        {
+          "block_id": "avenue-de-la-république#b2",
+          "occurrence": 1,
+          "found": false
+        }
+      ]
+    },
+    "china-street": {
+      "stratum": "nonlinear_irregular",
+      "split": "dev",
+      "expected": 7,
+      "found": 1,
+      "shipped_regions": 7,
+      "unrequested_regions": 0,
+      "partial_annotation": true,
+      "blocks": [
+        {
+          "block_id": "china-street#b1",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "china-street#b2",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "china-street#b3",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "china-street#b4",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "china-street#b5",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "china-street#b6",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "china-street#b7",
+          "expected": 1,
+          "found": 0
+        }
+      ],
+      "occurrences": [
+        {
+          "block_id": "china-street#b1",
+          "occurrence": 0,
+          "found": false
+        },
+        {
+          "block_id": "china-street#b2",
+          "occurrence": 1,
+          "found": true
+        },
+        {
+          "block_id": "china-street#b3",
+          "occurrence": 2,
+          "found": false
+        },
+        {
+          "block_id": "china-street#b4",
+          "occurrence": 3,
+          "found": false
+        },
+        {
+          "block_id": "china-street#b5",
+          "occurrence": 4,
+          "found": false
+        },
+        {
+          "block_id": "china-street#b6",
+          "occurrence": 5,
+          "found": false
+        },
+        {
+          "block_id": "china-street#b7",
+          "occurrence": 6,
+          "found": false
+        }
+      ]
+    },
+    "cjk-horizontal": {
+      "stratum": "latin_horizontal",
+      "split": "dev",
+      "expected": 2,
+      "found": 2,
+      "shipped_regions": 2,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "cjk-horizontal#b1",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "cjk-horizontal#b2",
+          "expected": 1,
+          "found": 1
+        }
+      ],
+      "occurrences": [
+        {
+          "block_id": "cjk-horizontal#b1",
+          "occurrence": 0,
+          "found": true
+        },
+        {
+          "block_id": "cjk-horizontal#b2",
+          "occurrence": 1,
+          "found": true
+        }
+      ]
+    },
+    "cjk-vertical": {
+      "stratum": "japanese_vertical",
+      "split": "dev",
+      "expected": 2,
+      "found": 0,
+      "shipped_regions": 2,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "cjk-vertical#b1",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "cjk-vertical#b2",
+          "expected": 1,
+          "found": 0
+        }
+      ],
+      "occurrences": [
+        {
+          "block_id": "cjk-vertical#b1",
+          "occurrence": 0,
+          "found": false
+        },
+        {
+          "block_id": "cjk-vertical#b2",
+          "occurrence": 1,
+          "found": false
+        }
+      ]
+    },
+    "cjk-vertical-banner": {
+      "stratum": "japanese_vertical",
+      "split": "dev",
+      "expected": 4,
+      "found": 1,
+      "shipped_regions": 4,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "cjk-vertical-banner#b1",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "cjk-vertical-banner#b2",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "cjk-vertical-banner#b3",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "cjk-vertical-banner#b4",
+          "expected": 1,
+          "found": 0
+        }
+      ],
+      "occurrences": [
+        {
+          "block_id": "cjk-vertical-banner#b1",
+          "occurrence": 0,
+          "found": true
+        },
+        {
+          "block_id": "cjk-vertical-banner#b2",
+          "occurrence": 1,
+          "found": false
+        },
+        {
+          "block_id": "cjk-vertical-banner#b3",
+          "occurrence": 2,
+          "found": false
+        },
+        {
+          "block_id": "cjk-vertical-banner#b4",
+          "occurrence": 3,
+          "found": false
+        }
+      ]
+    },
+    "cjk-vertical-menu": {
+      "stratum": "japanese_vertical",
+      "split": "holdout",
+      "expected": 3,
+      "found": 0,
+      "shipped_regions": 3,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "cjk-vertical-menu#b1",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "cjk-vertical-menu#b2",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "cjk-vertical-menu#b3",
+          "expected": 1,
+          "found": 0
+        }
+      ],
+      "occurrences": [
+        {
+          "block_id": "cjk-vertical-menu#b1",
+          "occurrence": 0,
+          "found": false
+        },
+        {
+          "block_id": "cjk-vertical-menu#b2",
+          "occurrence": 1,
+          "found": false
+        },
+        {
+          "block_id": "cjk-vertical-menu#b3",
+          "occurrence": 2,
+          "found": false
+        }
+      ]
+    },
+    "decolonisons-nos-rues": {
+      "stratum": "latin_horizontal",
+      "split": "dev",
+      "expected": 5,
+      "found": 2,
+      "shipped_regions": 5,
+      "unrequested_regions": 0,
+      "partial_annotation": true,
+      "blocks": [
+        {
+          "block_id": "decolonisons-nos-rues#b1",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "decolonisons-nos-rues#b2",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "decolonisons-nos-rues#b3",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "decolonisons-nos-rues#b4",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "decolonisons-nos-rues#b5",
+          "expected": 1,
+          "found": 0
+        }
+      ],
+      "occurrences": [
+        {
+          "block_id": "decolonisons-nos-rues#b1",
+          "occurrence": 0,
+          "found": true
+        },
+        {
+          "block_id": "decolonisons-nos-rues#b2",
+          "occurrence": 1,
+          "found": false
+        },
+        {
+          "block_id": "decolonisons-nos-rues#b3",
+          "occurrence": 2,
+          "found": false
+        },
+        {
+          "block_id": "decolonisons-nos-rues#b4",
+          "occurrence": 3,
+          "found": true
+        },
+        {
+          "block_id": "decolonisons-nos-rues#b5",
+          "occurrence": 4,
+          "found": false
+        }
+      ]
+    },
+    "degraded-ink": {
+      "stratum": "latin_horizontal",
+      "split": "dev",
+      "expected": 1,
+      "found": 1,
+      "shipped_regions": 1,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "degraded-ink#b1",
+          "expected": 1,
+          "found": 1
+        }
+      ],
+      "occurrences": [
+        {
+          "block_id": "degraded-ink#b1",
+          "occurrence": 0,
+          "found": true
+        }
+      ]
+    },
+    "dense-layout": {
+      "stratum": "nonlinear_irregular",
+      "split": "dev",
+      "expected": 4,
+      "found": 2,
+      "shipped_regions": 4,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "dense-layout#b1",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "dense-layout#b2",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "dense-layout#b3",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "dense-layout#b4",
+          "expected": 1,
+          "found": 0
+        }
+      ],
+      "occurrences": [
+        {
+          "block_id": "dense-layout#b1",
+          "occurrence": 0,
+          "found": false
+        },
+        {
+          "block_id": "dense-layout#b2",
+          "occurrence": 1,
+          "found": true
+        },
+        {
+          "block_id": "dense-layout#b3",
+          "occurrence": 2,
+          "found": true
+        },
+        {
+          "block_id": "dense-layout#b4",
+          "occurrence": 3,
+          "found": false
+        }
+      ]
+    },
+    "expansion-en": {
+      "stratum": "latin_horizontal",
+      "split": "dev",
+      "expected": 1,
+      "found": 1,
+      "shipped_regions": 1,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "expansion-en#b1",
+          "expected": 1,
+          "found": 1
+        }
+      ],
+      "occurrences": [
+        {
+          "block_id": "expansion-en#b1",
+          "occurrence": 0,
+          "found": true
+        }
+      ]
+    },
+    "flat-sign": {
+      "stratum": "mixed_script_numeric",
+      "split": "dev",
+      "expected": 4,
+      "found": 2,
+      "shipped_regions": 4,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "flat-sign#b1",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "flat-sign#b2",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "flat-sign#b3",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "flat-sign#b4",
+          "expected": 1,
+          "found": 1
+        }
+      ],
+      "occurrences": [
+        {
+          "block_id": "flat-sign#b1",
+          "occurrence": 0,
+          "found": false
+        },
+        {
+          "block_id": "flat-sign#b2",
+          "occurrence": 1,
+          "found": true
+        },
+        {
+          "block_id": "flat-sign#b3",
+          "occurrence": 2,
+          "found": false
+        },
+        {
+          "block_id": "flat-sign#b4",
+          "occurrence": 3,
+          "found": true
+        }
+      ]
+    },
+    "gemini-street": {
+      "stratum": "nonlinear_irregular",
+      "split": "dev",
+      "expected": 15,
+      "found": 1,
+      "shipped_regions": 15,
+      "unrequested_regions": 0,
+      "partial_annotation": true,
+      "blocks": [
+        {
+          "block_id": "gemini-street#b1",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "gemini-street#b2",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "gemini-street#b3",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "gemini-street#b4",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "gemini-street#b5",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "gemini-street#b6",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "gemini-street#b7",
+          "expected": 2,
+          "found": 0
+        },
+        {
+          "block_id": "gemini-street#b8",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "gemini-street#b9",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "gemini-street#b10",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "gemini-street#b11",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "gemini-street#b12",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "gemini-street#b13",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "gemini-street#b14",
+          "expected": 1,
+          "found": 0
+        }
+      ],
+      "occurrences": [
+        {
+          "block_id": "gemini-street#b1",
+          "occurrence": 0,
+          "found": false
+        },
+        {
+          "block_id": "gemini-street#b2",
+          "occurrence": 1,
+          "found": false
+        },
+        {
+          "block_id": "gemini-street#b3",
+          "occurrence": 2,
+          "found": false
+        },
+        {
+          "block_id": "gemini-street#b4",
+          "occurrence": 3,
+          "found": true
+        },
+        {
+          "block_id": "gemini-street#b5",
+          "occurrence": 4,
+          "found": false
+        },
+        {
+          "block_id": "gemini-street#b6",
+          "occurrence": 5,
+          "found": false
+        },
+        {
+          "block_id": "gemini-street#b7",
+          "occurrence": 6,
+          "found": false
+        },
+        {
+          "block_id": "gemini-street#b7",
+          "occurrence": 7,
+          "found": false
+        },
+        {
+          "block_id": "gemini-street#b8",
+          "occurrence": 8,
+          "found": false
+        },
+        {
+          "block_id": "gemini-street#b9",
+          "occurrence": 9,
+          "found": false
+        },
+        {
+          "block_id": "gemini-street#b10",
+          "occurrence": 10,
+          "found": false
+        },
+        {
+          "block_id": "gemini-street#b11",
+          "occurrence": 11,
+          "found": false
+        },
+        {
+          "block_id": "gemini-street#b12",
+          "occurrence": 12,
+          "found": false
+        },
+        {
+          "block_id": "gemini-street#b13",
+          "occurrence": 13,
+          "found": false
+        },
+        {
+          "block_id": "gemini-street#b14",
+          "occurrence": 14,
+          "found": false
+        }
+      ]
+    },
+    "gradient-banner": {
+      "stratum": "latin_horizontal",
+      "split": "dev",
+      "expected": 2,
+      "found": 2,
+      "shipped_regions": 2,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "gradient-banner#b1",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "gradient-banner#b2",
+          "expected": 1,
+          "found": 1
+        }
+      ],
+      "occurrences": [
+        {
+          "block_id": "gradient-banner#b1",
+          "occurrence": 0,
+          "found": true
+        },
+        {
+          "block_id": "gradient-banner#b2",
+          "occurrence": 1,
+          "found": true
+        }
+      ]
+    },
+    "hebrew-notice": {
+      "stratum": "rtl_bidi",
+      "split": "holdout",
+      "expected": 4,
+      "found": 1,
+      "shipped_regions": 4,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "hebrew-notice#b1",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "hebrew-notice#b2",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "hebrew-notice#b3",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "hebrew-notice#b4",
+          "expected": 1,
+          "found": 0
+        }
+      ],
+      "occurrences": [
+        {
+          "block_id": "hebrew-notice#b1",
+          "occurrence": 0,
+          "found": true
+        },
+        {
+          "block_id": "hebrew-notice#b2",
+          "occurrence": 1,
+          "found": false
+        },
+        {
+          "block_id": "hebrew-notice#b3",
+          "occurrence": 2,
+          "found": false
+        },
+        {
+          "block_id": "hebrew-notice#b4",
+          "occurrence": 3,
+          "found": false
+        }
+      ]
+    },
+    "indic-shaping": {
+      "stratum": "mixed_script_numeric",
+      "split": "dev",
+      "expected": 3,
+      "found": 0,
+      "shipped_regions": 3,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "indic-shaping#b1",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "indic-shaping#b2",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "indic-shaping#b3",
+          "expected": 1,
+          "found": 0
+        }
+      ],
+      "occurrences": [
+        {
+          "block_id": "indic-shaping#b1",
+          "occurrence": 0,
+          "found": false
+        },
+        {
+          "block_id": "indic-shaping#b2",
+          "occurrence": 1,
+          "found": false
+        },
+        {
+          "block_id": "indic-shaping#b3",
+          "occurrence": 2,
+          "found": false
+        }
+      ]
+    },
+    "japan-street": {
+      "stratum": "japanese_horizontal",
+      "split": "dev",
+      "expected": 7,
+      "found": 0,
+      "shipped_regions": 7,
+      "unrequested_regions": 0,
+      "partial_annotation": true,
+      "blocks": [
+        {
+          "block_id": "japan-street#b1",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "japan-street#b2",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "japan-street#b3",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "japan-street#b4",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "japan-street#b5",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "japan-street#b6",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "japan-street#b7",
+          "expected": 1,
+          "found": 0
+        }
+      ],
+      "occurrences": [
+        {
+          "block_id": "japan-street#b1",
+          "occurrence": 0,
+          "found": false
+        },
+        {
+          "block_id": "japan-street#b2",
+          "occurrence": 1,
+          "found": false
+        },
+        {
+          "block_id": "japan-street#b3",
+          "occurrence": 2,
+          "found": false
+        },
+        {
+          "block_id": "japan-street#b4",
+          "occurrence": 3,
+          "found": false
+        },
+        {
+          "block_id": "japan-street#b5",
+          "occurrence": 4,
+          "found": false
+        },
+        {
+          "block_id": "japan-street#b6",
+          "occurrence": 5,
+          "found": false
+        },
+        {
+          "block_id": "japan-street#b7",
+          "occurrence": 6,
+          "found": false
+        }
+      ]
+    },
+    "japanese-poster": {
+      "stratum": "japanese_horizontal",
+      "split": "dev",
+      "expected": 5,
+      "found": 2,
+      "shipped_regions": 5,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "japanese-poster#b1",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "japanese-poster#b2",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "japanese-poster#b3",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "japanese-poster#b4",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "japanese-poster#b5",
+          "expected": 1,
+          "found": 0
+        }
+      ],
+      "occurrences": [
+        {
+          "block_id": "japanese-poster#b1",
+          "occurrence": 0,
+          "found": true
+        },
+        {
+          "block_id": "japanese-poster#b2",
+          "occurrence": 1,
+          "found": false
+        },
+        {
+          "block_id": "japanese-poster#b3",
+          "occurrence": 2,
+          "found": true
+        },
+        {
+          "block_id": "japanese-poster#b4",
+          "occurrence": 3,
+          "found": false
+        },
+        {
+          "block_id": "japanese-poster#b5",
+          "occurrence": 4,
+          "found": false
+        }
+      ]
+    },
+    "japanese-shopfront": {
+      "stratum": "japanese_horizontal",
+      "split": "dev",
+      "expected": 5,
+      "found": 0,
+      "shipped_regions": 5,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "japanese-shopfront#b1",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "japanese-shopfront#b2",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "japanese-shopfront#b3",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "japanese-shopfront#b4",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "japanese-shopfront#b5",
+          "expected": 1,
+          "found": 0
+        }
+      ],
+      "occurrences": [
+        {
+          "block_id": "japanese-shopfront#b1",
+          "occurrence": 0,
+          "found": false
+        },
+        {
+          "block_id": "japanese-shopfront#b2",
+          "occurrence": 1,
+          "found": false
+        },
+        {
+          "block_id": "japanese-shopfront#b3",
+          "occurrence": 2,
+          "found": false
+        },
+        {
+          "block_id": "japanese-shopfront#b4",
+          "occurrence": 3,
+          "found": false
+        },
+        {
+          "block_id": "japanese-shopfront#b5",
+          "occurrence": 4,
+          "found": false
+        }
+      ]
+    },
+    "japanese-station": {
+      "stratum": "japanese_horizontal",
+      "split": "holdout",
+      "expected": 6,
+      "found": 0,
+      "shipped_regions": 6,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "japanese-station#b1",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "japanese-station#b2",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "japanese-station#b3",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "japanese-station#b4",
+          "expected": 3,
+          "found": 0
+        }
+      ],
+      "occurrences": [
+        {
+          "block_id": "japanese-station#b1",
+          "occurrence": 0,
+          "found": false
+        },
+        {
+          "block_id": "japanese-station#b2",
+          "occurrence": 1,
+          "found": false
+        },
+        {
+          "block_id": "japanese-station#b3",
+          "occurrence": 2,
+          "found": false
+        },
+        {
+          "block_id": "japanese-station#b4",
+          "occurrence": 3,
+          "found": false
+        },
+        {
+          "block_id": "japanese-station#b4",
+          "occurrence": 4,
+          "found": false
+        },
+        {
+          "block_id": "japanese-station#b4",
+          "occurrence": 5,
+          "found": false
+        }
+      ]
+    },
+    "la-bastille-1789": {
+      "stratum": "nonlinear_irregular",
+      "split": "dev",
+      "expected": 9,
+      "found": 4,
+      "shipped_regions": 9,
+      "unrequested_regions": 0,
+      "partial_annotation": true,
+      "blocks": [
+        {
+          "block_id": "la-bastille-1789#b1",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "la-bastille-1789#b2",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "la-bastille-1789#b3",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "la-bastille-1789#b4",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "la-bastille-1789#b5",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "la-bastille-1789#b6",
+          "expected": 2,
+          "found": 2
+        },
+        {
+          "block_id": "la-bastille-1789#b7",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "la-bastille-1789#b8",
+          "expected": 1,
+          "found": 0
+        }
+      ],
+      "occurrences": [
+        {
+          "block_id": "la-bastille-1789#b1",
+          "occurrence": 0,
+          "found": false
+        },
+        {
+          "block_id": "la-bastille-1789#b2",
+          "occurrence": 1,
+          "found": true
+        },
+        {
+          "block_id": "la-bastille-1789#b3",
+          "occurrence": 2,
+          "found": true
+        },
+        {
+          "block_id": "la-bastille-1789#b4",
+          "occurrence": 3,
+          "found": false
+        },
+        {
+          "block_id": "la-bastille-1789#b5",
+          "occurrence": 4,
+          "found": false
+        },
+        {
+          "block_id": "la-bastille-1789#b6",
+          "occurrence": 5,
+          "found": true
+        },
+        {
+          "block_id": "la-bastille-1789#b6",
+          "occurrence": 6,
+          "found": true
+        },
+        {
+          "block_id": "la-bastille-1789#b7",
+          "occurrence": 7,
+          "found": false
+        },
+        {
+          "block_id": "la-bastille-1789#b8",
+          "occurrence": 8,
+          "found": false
+        }
+      ]
+    },
+    "la-rue-sans-nom-example": {
+      "stratum": "latin_horizontal",
+      "split": "dev",
+      "expected": 2,
+      "found": 2,
+      "shipped_regions": 2,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "la-rue-sans-nom-example#b1",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "la-rue-sans-nom-example#b2",
+          "expected": 1,
+          "found": 1
+        }
+      ],
+      "occurrences": [
+        {
+          "block_id": "la-rue-sans-nom-example#b1",
+          "occurrence": 0,
+          "found": true
+        },
+        {
+          "block_id": "la-rue-sans-nom-example#b2",
+          "occurrence": 1,
+          "found": true
+        }
+      ]
+    },
+    "low-confidence": {
+      "stratum": "latin_horizontal",
+      "split": "dev",
+      "expected": 1,
+      "found": 1,
+      "shipped_regions": 1,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "low-confidence#b1",
+          "expected": 1,
+          "found": 1
+        }
+      ],
+      "occurrences": [
+        {
+          "block_id": "low-confidence#b1",
+          "occurrence": 0,
+          "found": true
+        }
+      ]
+    },
+    "mixed-orientation": {
+      "stratum": "nonlinear_irregular",
+      "split": "dev",
+      "expected": 1,
+      "found": 1,
+      "shipped_regions": 1,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "mixed-orientation#b1",
+          "expected": 1,
+          "found": 1
+        }
+      ],
+      "occurrences": [
+        {
+          "block_id": "mixed-orientation#b1",
+          "occurrence": 0,
+          "found": true
+        }
+      ]
+    },
+    "mixed-script": {
+      "stratum": "mixed_script_numeric",
+      "split": "dev",
+      "expected": 2,
+      "found": 2,
+      "shipped_regions": 2,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "mixed-script#b1",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "mixed-script#b2",
+          "expected": 1,
+          "found": 1
+        }
+      ],
+      "occurrences": [
+        {
+          "block_id": "mixed-script#b1",
+          "occurrence": 0,
+          "found": true
+        },
+        {
+          "block_id": "mixed-script#b2",
+          "occurrence": 1,
+          "found": true
+        }
+      ]
+    },
+    "multicolour-text": {
+      "stratum": "latin_horizontal",
+      "split": "dev",
+      "expected": 1,
+      "found": 0,
+      "shipped_regions": 1,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "multicolour-text#b1",
+          "expected": 1,
+          "found": 0
+        }
+      ],
+      "occurrences": [
+        {
+          "block_id": "multicolour-text#b1",
+          "occurrence": 0,
+          "found": false
+        }
+      ]
+    },
+    "museum-labels": {
+      "stratum": "mixed_script_numeric",
+      "split": "dev",
+      "expected": 5,
+      "found": 5,
+      "shipped_regions": 5,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "museum-labels#b1",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "museum-labels#b2",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "museum-labels#b3",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "museum-labels#b4",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "museum-labels#b5",
+          "expected": 1,
+          "found": 1
+        }
+      ],
+      "occurrences": [
+        {
+          "block_id": "museum-labels#b1",
+          "occurrence": 0,
+          "found": true
+        },
+        {
+          "block_id": "museum-labels#b2",
+          "occurrence": 1,
+          "found": true
+        },
+        {
+          "block_id": "museum-labels#b3",
+          "occurrence": 2,
+          "found": true
+        },
+        {
+          "block_id": "museum-labels#b4",
+          "occurrence": 3,
+          "found": true
+        },
+        {
+          "block_id": "museum-labels#b5",
+          "occurrence": 4,
+          "found": true
+        }
+      ]
+    },
+    "parking-levels": {
+      "stratum": "mixed_script_numeric",
+      "split": "dev",
+      "expected": 8,
+      "found": 0,
+      "shipped_regions": 8,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "parking-levels#b1",
+          "expected": 4,
+          "found": 0
+        },
+        {
+          "block_id": "parking-levels#b2",
+          "expected": 4,
+          "found": 0
+        }
+      ],
+      "occurrences": [
+        {
+          "block_id": "parking-levels#b1",
+          "occurrence": 0,
+          "found": false
+        },
+        {
+          "block_id": "parking-levels#b1",
+          "occurrence": 1,
+          "found": false
+        },
+        {
+          "block_id": "parking-levels#b1",
+          "occurrence": 2,
+          "found": false
+        },
+        {
+          "block_id": "parking-levels#b1",
+          "occurrence": 3,
+          "found": false
+        },
+        {
+          "block_id": "parking-levels#b2",
+          "occurrence": 4,
+          "found": false
+        },
+        {
+          "block_id": "parking-levels#b2",
+          "occurrence": 5,
+          "found": false
+        },
+        {
+          "block_id": "parking-levels#b2",
+          "occurrence": 6,
+          "found": false
+        },
+        {
+          "block_id": "parking-levels#b2",
+          "occurrence": 7,
+          "found": false
+        }
+      ]
+    },
+    "perspective-sign": {
+      "stratum": "nonlinear_irregular",
+      "split": "dev",
+      "expected": 1,
+      "found": 1,
+      "shipped_regions": 1,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "perspective-sign#b1",
+          "expected": 1,
+          "found": 1
+        }
+      ],
+      "occurrences": [
+        {
+          "block_id": "perspective-sign#b1",
+          "occurrence": 0,
+          "found": true
+        }
+      ]
+    },
+    "product-label": {
+      "stratum": "mixed_script_numeric",
+      "split": "dev",
+      "expected": 3,
+      "found": 2,
+      "shipped_regions": 3,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "product-label#b1",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "product-label#b2",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "product-label#b3",
+          "expected": 1,
+          "found": 1
+        }
+      ],
+      "occurrences": [
+        {
+          "block_id": "product-label#b1",
+          "occurrence": 0,
+          "found": false
+        },
+        {
+          "block_id": "product-label#b2",
+          "occurrence": 1,
+          "found": true
+        },
+        {
+          "block_id": "product-label#b3",
+          "occurrence": 2,
+          "found": true
+        }
+      ]
+    },
+    "quai-des-orfevres": {
+      "stratum": "mixed_script_numeric",
+      "split": "dev",
+      "expected": 4,
+      "found": 3,
+      "shipped_regions": 4,
+      "unrequested_regions": 0,
+      "partial_annotation": true,
+      "blocks": [
+        {
+          "block_id": "quai-des-orfevres#b1",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "quai-des-orfevres#b2",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "quai-des-orfevres#b3",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "quai-des-orfevres#b4",
+          "expected": 1,
+          "found": 1
+        }
+      ],
+      "occurrences": [
+        {
+          "block_id": "quai-des-orfevres#b1",
+          "occurrence": 0,
+          "found": false
+        },
+        {
+          "block_id": "quai-des-orfevres#b2",
+          "occurrence": 1,
+          "found": true
+        },
+        {
+          "block_id": "quai-des-orfevres#b3",
+          "occurrence": 2,
+          "found": true
+        },
+        {
+          "block_id": "quai-des-orfevres#b4",
+          "occurrence": 3,
+          "found": true
+        }
+      ]
+    },
+    "repeated-exits": {
+      "stratum": "mixed_script_numeric",
+      "split": "dev",
+      "expected": 5,
+      "found": 1,
+      "shipped_regions": 5,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "repeated-exits#b1",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "repeated-exits#b2",
+          "expected": 4,
+          "found": 0
+        }
+      ],
+      "occurrences": [
+        {
+          "block_id": "repeated-exits#b1",
+          "occurrence": 0,
+          "found": true
+        },
+        {
+          "block_id": "repeated-exits#b2",
+          "occurrence": 1,
+          "found": false
+        },
+        {
+          "block_id": "repeated-exits#b2",
+          "occurrence": 2,
+          "found": false
+        },
+        {
+          "block_id": "repeated-exits#b2",
+          "occurrence": 3,
+          "found": false
+        },
+        {
+          "block_id": "repeated-exits#b2",
+          "occurrence": 4,
+          "found": false
+        }
+      ]
+    },
+    "repeated-platform": {
+      "stratum": "latin_horizontal",
+      "split": "dev",
+      "expected": 6,
+      "found": 6,
+      "shipped_regions": 6,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "repeated-platform#b1",
+          "expected": 6,
+          "found": 6
+        }
+      ],
+      "occurrences": [
+        {
+          "block_id": "repeated-platform#b1",
+          "occurrence": 0,
+          "found": true
+        },
+        {
+          "block_id": "repeated-platform#b1",
+          "occurrence": 1,
+          "found": true
+        },
+        {
+          "block_id": "repeated-platform#b1",
+          "occurrence": 2,
+          "found": true
+        },
+        {
+          "block_id": "repeated-platform#b1",
+          "occurrence": 3,
+          "found": true
+        },
+        {
+          "block_id": "repeated-platform#b1",
+          "occurrence": 4,
+          "found": true
+        },
+        {
+          "block_id": "repeated-platform#b1",
+          "occurrence": 5,
+          "found": true
+        }
+      ]
+    },
+    "rtl-sign": {
+      "stratum": "latin_horizontal",
+      "split": "dev",
+      "expected": 1,
+      "found": 1,
+      "shipped_regions": 1,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "rtl-sign#b1",
+          "expected": 1,
+          "found": 1
+        }
+      ],
+      "occurrences": [
+        {
+          "block_id": "rtl-sign#b1",
+          "occurrence": 0,
+          "found": true
+        }
+      ]
+    },
+    "rue-des-martyrs": {
+      "stratum": "latin_horizontal",
+      "split": "dev",
+      "expected": 3,
+      "found": 3,
+      "shipped_regions": 3,
+      "unrequested_regions": 0,
+      "partial_annotation": true,
+      "blocks": [
+        {
+          "block_id": "rue-des-martyrs#b1",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "rue-des-martyrs#b2",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "rue-des-martyrs#b3",
+          "expected": 1,
+          "found": 1
+        }
+      ],
+      "occurrences": [
+        {
+          "block_id": "rue-des-martyrs#b1",
+          "occurrence": 0,
+          "found": true
+        },
+        {
+          "block_id": "rue-des-martyrs#b2",
+          "occurrence": 1,
+          "found": true
+        },
+        {
+          "block_id": "rue-des-martyrs#b3",
+          "occurrence": 2,
+          "found": true
+        }
+      ]
+    },
+    "russian-billboard": {
+      "stratum": "mixed_script_numeric",
+      "split": "dev",
+      "expected": 8,
+      "found": 5,
+      "shipped_regions": 8,
+      "unrequested_regions": 0,
+      "partial_annotation": true,
+      "blocks": [
+        {
+          "block_id": "russian-billboard#b1",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "russian-billboard#b2",
+          "expected": 3,
+          "found": 1
+        },
+        {
+          "block_id": "russian-billboard#b3",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "russian-billboard#b4",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "russian-billboard#b5",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "russian-billboard#b6",
+          "expected": 1,
+          "found": 1
+        }
+      ],
+      "occurrences": [
+        {
+          "block_id": "russian-billboard#b1",
+          "occurrence": 0,
+          "found": false
+        },
+        {
+          "block_id": "russian-billboard#b2",
+          "occurrence": 1,
+          "found": false
+        },
+        {
+          "block_id": "russian-billboard#b2",
+          "occurrence": 2,
+          "found": true
+        },
+        {
+          "block_id": "russian-billboard#b2",
+          "occurrence": 3,
+          "found": false
+        },
+        {
+          "block_id": "russian-billboard#b3",
+          "occurrence": 4,
+          "found": true
+        },
+        {
+          "block_id": "russian-billboard#b4",
+          "occurrence": 5,
+          "found": true
+        },
+        {
+          "block_id": "russian-billboard#b5",
+          "occurrence": 6,
+          "found": true
+        },
+        {
+          "block_id": "russian-billboard#b6",
+          "occurrence": 7,
+          "found": true
+        }
+      ]
+    },
+    "russian-billboard-2": {
+      "stratum": "mixed_script_numeric",
+      "split": "dev",
+      "expected": 3,
+      "found": 1,
+      "shipped_regions": 3,
+      "unrequested_regions": 0,
+      "partial_annotation": true,
+      "blocks": [
+        {
+          "block_id": "russian-billboard-2#b1",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "russian-billboard-2#b2",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "russian-billboard-2#b3",
+          "expected": 1,
+          "found": 0
+        }
+      ],
+      "occurrences": [
+        {
+          "block_id": "russian-billboard-2#b1",
+          "occurrence": 0,
+          "found": false
+        },
+        {
+          "block_id": "russian-billboard-2#b2",
+          "occurrence": 1,
+          "found": true
+        },
+        {
+          "block_id": "russian-billboard-2#b3",
+          "occurrence": 2,
+          "found": false
+        }
+      ]
+    },
+    "serif-vs-sans": {
+      "stratum": "latin_horizontal",
+      "split": "dev",
+      "expected": 6,
+      "found": 6,
+      "shipped_regions": 6,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "serif-vs-sans#b1",
+          "expected": 2,
+          "found": 2
+        },
+        {
+          "block_id": "serif-vs-sans#b2",
+          "expected": 2,
+          "found": 2
+        },
+        {
+          "block_id": "serif-vs-sans#b3",
+          "expected": 2,
+          "found": 2
+        }
+      ],
+      "occurrences": [
+        {
+          "block_id": "serif-vs-sans#b1",
+          "occurrence": 0,
+          "found": true
+        },
+        {
+          "block_id": "serif-vs-sans#b1",
+          "occurrence": 1,
+          "found": true
+        },
+        {
+          "block_id": "serif-vs-sans#b2",
+          "occurrence": 2,
+          "found": true
+        },
+        {
+          "block_id": "serif-vs-sans#b2",
+          "occurrence": 3,
+          "found": true
+        },
+        {
+          "block_id": "serif-vs-sans#b3",
+          "occurrence": 4,
+          "found": true
+        },
+        {
+          "block_id": "serif-vs-sans#b3",
+          "occurrence": 5,
+          "found": true
+        }
+      ]
+    },
+    "shadow-effects": {
+      "stratum": "latin_horizontal",
+      "split": "dev",
+      "expected": 2,
+      "found": 0,
+      "shipped_regions": 2,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "shadow-effects#b1",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "shadow-effects#b2",
+          "expected": 1,
+          "found": 0
+        }
+      ],
+      "occurrences": [
+        {
+          "block_id": "shadow-effects#b1",
+          "occurrence": 0,
+          "found": false
+        },
+        {
+          "block_id": "shadow-effects#b2",
+          "occurrence": 1,
+          "found": false
+        }
+      ]
+    },
+    "stylized-italic": {
+      "stratum": "nonlinear_irregular",
+      "split": "holdout",
+      "expected": 4,
+      "found": 3,
+      "shipped_regions": 4,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "stylized-italic#b1",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "stylized-italic#b2",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "stylized-italic#b3",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "stylized-italic#b4",
+          "expected": 1,
+          "found": 0
+        }
+      ],
+      "occurrences": [
+        {
+          "block_id": "stylized-italic#b1",
+          "occurrence": 0,
+          "found": true
+        },
+        {
+          "block_id": "stylized-italic#b2",
+          "occurrence": 1,
+          "found": true
+        },
+        {
+          "block_id": "stylized-italic#b3",
+          "occurrence": 2,
+          "found": true
+        },
+        {
+          "block_id": "stylized-italic#b4",
+          "occurrence": 3,
+          "found": false
+        }
+      ]
+    },
+    "textured-wall": {
+      "stratum": "mixed_script_numeric",
+      "split": "dev",
+      "expected": 2,
+      "found": 0,
+      "shipped_regions": 2,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "textured-wall#b1",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "textured-wall#b2",
+          "expected": 1,
+          "found": 0
+        }
+      ],
+      "occurrences": [
+        {
+          "block_id": "textured-wall#b1",
+          "occurrence": 0,
+          "found": false
+        },
+        {
+          "block_id": "textured-wall#b2",
+          "occurrence": 1,
+          "found": false
+        }
+      ]
+    },
+    "tight-space": {
+      "stratum": "latin_horizontal",
+      "split": "dev",
+      "expected": 1,
+      "found": 1,
+      "shipped_regions": 1,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "tight-space#b1",
+          "expected": 1,
+          "found": 1
+        }
+      ],
+      "occurrences": [
+        {
+          "block_id": "tight-space#b1",
+          "occurrence": 0,
+          "found": true
+        }
+      ]
+    },
+    "transit-board": {
+      "stratum": "mixed_script_numeric",
+      "split": "holdout",
+      "expected": 8,
+      "found": 2,
+      "shipped_regions": 8,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "transit-board#b1",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "transit-board#b2",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "transit-board#b3",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "transit-board#b4",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "transit-board#b5",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "transit-board#b6",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "transit-board#b7",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "transit-board#b8",
+          "expected": 1,
+          "found": 1
+        }
+      ],
+      "occurrences": [
+        {
+          "block_id": "transit-board#b1",
+          "occurrence": 0,
+          "found": false
+        },
+        {
+          "block_id": "transit-board#b2",
+          "occurrence": 1,
+          "found": false
+        },
+        {
+          "block_id": "transit-board#b3",
+          "occurrence": 2,
+          "found": false
+        },
+        {
+          "block_id": "transit-board#b4",
+          "occurrence": 3,
+          "found": false
+        },
+        {
+          "block_id": "transit-board#b5",
+          "occurrence": 4,
+          "found": false
+        },
+        {
+          "block_id": "transit-board#b6",
+          "occurrence": 5,
+          "found": true
+        },
+        {
+          "block_id": "transit-board#b7",
+          "occurrence": 6,
+          "found": false
+        },
+        {
+          "block_id": "transit-board#b8",
+          "occurrence": 7,
+          "found": true
+        }
+      ]
+    },
+    "ui-controls": {
+      "stratum": "latin_horizontal",
+      "split": "holdout",
+      "expected": 3,
+      "found": 3,
+      "shipped_regions": 3,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "ui-controls#b1",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "ui-controls#b2",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "ui-controls#b3",
+          "expected": 1,
+          "found": 1
+        }
+      ],
+      "occurrences": [
+        {
+          "block_id": "ui-controls#b1",
+          "occurrence": 0,
+          "found": true
+        },
+        {
+          "block_id": "ui-controls#b2",
+          "occurrence": 1,
+          "found": true
+        },
+        {
+          "block_id": "ui-controls#b3",
+          "occurrence": 2,
+          "found": true
+        }
+      ]
+    }
+  }
+}

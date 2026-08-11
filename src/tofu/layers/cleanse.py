@@ -575,8 +575,17 @@ def _verify_final_cleanse(
                 provenance["auto_accepted"] = False
                 provenance["review_required"] = True
                 provenance["residual_verification"] = decision.state
+                # Distinguish "still dirty and out of budget" from every other
+                # reason a region wants review. Verify gates on this one
+                # (P1.29): the source text was never PROVEN gone, which is a
+                # different claim from "a check was inconclusive". Without the
+                # marker both arrive as review_required and the stronger
+                # finding is indistinguishable from the weaker.
+                if attempt >= policy.retry_budget:
+                    provenance["retries_exhausted"] = True
             else:
                 provenance["residual_verification"] = "passed"
+                provenance.pop("retries_exhausted", None)
             inst.repair_provenance = provenance
             if decision.retry:
                 retry.append(plan)
@@ -645,7 +654,7 @@ def erase(
     # model-routing must never depend on pixels invented by an earlier repair.
     plans: List[Dict[str, Any]] = []
     for inst in text_manifest.instances:
-        if getattr(inst, "dnt", False):
+        if getattr(inst, "dnt", False) or getattr(inst, "excluded", False):
             continue
         bbox = inst.bounding_box
         if bbox is None or bbox.width <= 0 or bbox.height <= 0:
@@ -853,7 +862,7 @@ def _erase_pil_fallback(base, text_manifest: TextManifest) -> Any:
     import statistics
 
     for inst in text_manifest.instances:
-        if getattr(inst, "dnt", False):
+        if getattr(inst, "dnt", False) or getattr(inst, "excluded", False):
             continue
         bbox = inst.bounding_box
         if bbox is None or bbox.width <= 0 or bbox.height <= 0:

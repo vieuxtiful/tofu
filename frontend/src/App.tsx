@@ -4,7 +4,7 @@ import InputAdornment from "@mui/material/InputAdornment";
 import TextField from "@mui/material/TextField";
 import {
   AlertTriangle, AlignCenter, AlignEndHorizontal, AlignEndVertical, AlignJustify, AlignLeft, AlignRight, AlignStartHorizontal, AlignStartVertical, ArrowLeft, ArrowLeftRight, ArrowUpFromLine, Baseline, Bold, BookmarkCheck, Box, Check, ChevronDown, Circle, CircleDashed, CircleDot, CircleOff, FileImage, FolderOpen, Hexagon, History, Home, Italic, Languages, Loader2,
-  Play, Plus, RotateCcw, ScanText, ShieldAlert, SquareStack, Subscript, Superscript, Trash2, Type, Underline, VectorSquare, X, Cpu,
+  Play, Plus, RotateCcw, ScanText, ShieldAlert, SquareStack, Subscript, Superscript, Trash2, Type, Underline, X, Cpu,
 } from "lucide-react";
 import {
   BBox, FontFamily, FontOption, FontWeight, ImportResult, InpaintPatch, InstText, LanguageOption, Project, VideoJob,
@@ -13,6 +13,8 @@ import {
   fetchFonts, fetchLanguages, getManifest, getProject, importFile, matchFonts, ocrRegion, putManifest,
   applyRepairCandidate, captureLocalizedBaseline, createInpaintPatch, getLocalizedBaseline, getTreatment, previewCandidateLocalized, refineRegion, renderAsset, renderAssetStream, renderPreview, restoreTreatment, scanAssetLanguage, sha256File, snapshotAsset, undoInpaint,
   updateProject, updateAssetGroundTruth, importAssetGroundTruth, uploadAsset, validateAsset, createVideoJob, getVideoJob, getLatestVideoJob, cancelVideoJob, resumeVideoJob, upgradeVideoJob, putVideoKeyframe, updateVideoTrack, watchVideoJob, renderVideoPreview, exportVideo,
+  type CaptureMode,
+  saveGuidedBlocks, getGuidedBlocks, resolveGuidedBlock, addRegionDetailed,
 } from "./api";
 // Reviewer outcomes, derived from the editing gestures below rather than
 // asked for. See telemetry.ts -- these calls never block or fail an edit.
@@ -38,6 +40,7 @@ import { GrSelect } from "react-icons/gr";
 import { providerLabel } from "./repairLabels";
 import OcrReasonChips from "./OcrReasonChips";
 import type { LocalizedCandidatePreview, RepairCandidate, RepairReview } from "./localizedCanvasTypes";
+import type { GuidedBlockRecord, GuidedState } from "./api";
 import SmartFillReview from "./SmartFillReview";
 import { langDisplayName, langFlag, LANGUAGE_REGIONS, REGION_ORDER } from "./languageData";
 import LanguageCombobox from "./LanguageCombobox";
@@ -61,7 +64,7 @@ import { attestedFromManifest } from "./targetGuard";
 import { useSemanticUnits } from "./useSemanticUnits";
 import { useManifest } from "./useManifest";
 import { useGlossary } from "./useGlossary";
-import ExportPanel from "./ExportPanel";
+import BasilExportManager from "./BasilExportManager";
 import ProjectGate from "./ProjectGate";
 import HistoryPanel from "./HistoryPanel";
 import MemoryPanel from "./MemoryPanel";
@@ -75,6 +78,13 @@ import { SquareLoader } from "./Loaders";
 import ToastSystem, { useToasts, useNotifications, type ToastType, type ToastAction } from "./ToastSystem";
 import NotificationBell from "./NotificationBell";
 import GroundTruthField from "./GroundTruthField";
+import DictionaryHint from "./DictionaryHint";
+import BlocksField from "./BlocksField";
+import GuidedProgress from "./GuidedProgress";
+import DetectionAttributionCard from "./DetectionAttributionCard";
+import { useGuidedCapture } from "./useGuidedCapture";
+import { Kbd } from "@/components/ui/kbd";
+import CaptureModeSelect from "./CaptureModeSelect";
 import Stepper, { Step } from "./Stepper";
 import { logoSrc, useTheme } from "./theme";
 const SystemCapabilitiesPanel = lazy(() => import("./SystemCapabilitiesPanel"));
@@ -338,7 +348,22 @@ function withStyle(
   };
 }
 
-function TitleConfirmOverlay({ message, onYes, onNo }: { message: string; onYes: () => void; onNo: () => void }) {
+/** The app's confirm pop-up.
+ *
+ * Was three components that differed only in their message and, in one
+ * case, a subtext line -- so a fourth confirmation meant a fourth copy of
+ * the same 300ms exit animation. `detail` is the only thing the asset-delete
+ * variant needed, and it is exactly what a destructive confirmation wants:
+ * the question on one line, the consequence underneath.
+ *
+ * `native confirm()` deliberately not used. It cannot carry the app's
+ * styling, and it blocks the event loop -- which matters here because
+ * recapture has to snapshot BEFORE it clears, and a blocking dialog cannot
+ * await that.
+ */
+function ConfirmOverlay({ message, detail, onYes, onNo }: {
+  message: string; detail?: string; onYes: () => void; onNo: () => void;
+}) {
   const [leaving, setLeaving] = useState(false);
 
   const handleNo = () => {
@@ -356,67 +381,17 @@ function TitleConfirmOverlay({ message, onYes, onNo }: { message: string; onYes:
       className={`title-confirm-backdrop${leaving ? " leaving" : ""}`}
       onClick={handleNo}
     >
-      <div className="title-confirm-card" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="title-confirm-card"
+        role="alertdialog"
+        aria-modal="true"
+        aria-label={detail ? `${message} ${detail}` : message}
+        onClick={(e) => e.stopPropagation()}
+      >
         <p className="title-confirm-message">{message}</p>
-        <div className="title-confirm-actions">
-          <button className="title-confirm-btn yes" onClick={handleYes}>Yes</button>
-          <button className="title-confirm-btn no" onClick={handleNo}>No</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function AssetDeleteConfirmOverlay({ filename, onYes, onNo }: { filename: string; onYes: () => void; onNo: () => void }) {
-  const [leaving, setLeaving] = useState(false);
-
-  const handleNo = () => {
-    setLeaving(true);
-    setTimeout(onNo, 300);
-  };
-
-  const handleYes = () => {
-    setLeaving(true);
-    setTimeout(onYes, 300);
-  };
-
-  return (
-    <div
-      className={`title-confirm-backdrop${leaving ? " leaving" : ""}`}
-      onClick={handleNo}
-    >
-      <div className="title-confirm-card" onClick={(e) => e.stopPropagation()}>
-        <p className="title-confirm-message">remove this asset?</p>
-        <p className="subtext mt-1 text-center text-xs text-zinc-500">Snapshots captured—nothing is permanently lost.</p>
-        <div className="title-confirm-actions">
-          <button className="title-confirm-btn yes" onClick={handleYes}>Yes</button>
-          <button className="title-confirm-btn no" onClick={handleNo}>No</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function UnsavedChangesOverlay({ onYes, onNo }: { onYes: () => void; onNo: () => void }) {
-  const [leaving, setLeaving] = useState(false);
-
-  const handleNo = () => {
-    setLeaving(true);
-    setTimeout(onNo, 300);
-  };
-
-  const handleYes = () => {
-    setLeaving(true);
-    setTimeout(onYes, 300);
-  };
-
-  return (
-    <div
-      className={`title-confirm-backdrop${leaving ? " leaving" : ""}`}
-      onClick={handleNo}
-    >
-      <div className="title-confirm-card" onClick={(e) => e.stopPropagation()}>
-        <p className="title-confirm-message">proceed with unsaved changes?</p>
+        {detail && (
+          <p className="subtext mt-1 text-center text-xs text-zinc-500">{detail}</p>
+        )}
         <div className="title-confirm-actions">
           <button className="title-confirm-btn yes" onClick={handleYes}>Yes</button>
           <button className="title-confirm-btn no" onClick={handleNo}>No</button>
@@ -925,6 +900,15 @@ export default function App() {
   const [srcLang, setSrcLang] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [drawMode, setDrawMode] = useState(false);
+  // Which capture mode a pending "begin recapture?" would run.
+  const [pendingRecapture, setPendingRecapture] = useState<string | null>(null);
+  // Capture mode is a PROJECT setting: Auto detects everything, Guided locates
+  // the Blocks the user supplies, Manual skips detection entirely.  Kept apart
+  // from the pipeline's LayerMode, whose HYBRID value is a pause checkpoint.
+  const [captureMode, setCaptureMode] = useState<CaptureMode>("auto");
+  // A draft survives a trip through Manual: switching mode must not silently
+  // discard text the user typed.
+  const [blockDraft, setBlockDraft] = useState("");
   const [ocrLoading, setOcrLoading] = useState<string | null>(null);
   const [mergeLoading, setMergeLoading] = useState(false);
   const [ocrReviewOpen, setOcrReviewOpen] = useState(false);
@@ -977,7 +961,6 @@ export default function App() {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [nameTyped, setNameTyped] = useState(0);
   const [nameDone, setNameDone] = useState(false);
-  const [showCapturePrompt, setShowCapturePrompt] = useState(false);
   const [showLangConfirm, setShowLangConfirm] = useState(false);
   const [showLangSelect, setShowLangSelect] = useState(false);
   const [langRegionFilter, setLangRegionFilter] = useState<string | null>(null);
@@ -991,6 +974,29 @@ export default function App() {
   const [assetGroundTruth, setAssetGroundTruth] = useState("");
   const projectGroundTruthDirtyRef = useRef(false);
   const assetGroundTruthDirtyRef = useRef(false);
+  // Guided cannot start without something to locate: with no Block there is
+  // nothing for guidance to be guidance TOWARD, and the run would silently
+  // degrade into Auto.
+  // Blocks a Guided capture must locate, exactly as entered: ordered,
+  // duplicates preserved, phrases whole. Loaded from /guided-blocks rather
+  // than reconstructed from asset Ground Truth, which is whitespace-split
+  // and deduplicated on the server and so cannot represent either.
+  const [guidedBlocks, setGuidedBlocks] = useState<string[]>([]);
+  const [guidedDraft, setGuidedDraft] = useState("");
+  const [guidedRecords, setGuidedRecords] = useState<GuidedBlockRecord[]>([]);
+  // Everything below comes from the SERVER's last word. Nothing advances the
+  // prompt locally: an optimistic advance the server then contradicts leaves
+  // the screen and the persisted state disagreeing.
+  const [guidedActiveId, setGuidedActiveId] = useState<string | null>(null);
+  const [guidedProgress, setGuidedProgress] = useState<GuidedState["progress"] | null>(null);
+  const [guidedSaving, setGuidedSaving] = useState(false);
+  // A ref as well as state: the guard has to hold within one event loop
+  // turn, before React has re-rendered with the new flag.
+  const guidedSavingRef = useRef(false);
+  // A draft the user has typed but not committed still counts as intent, so
+  // the Capture button is not disabled underneath them mid-entry.
+  const guidedWithoutBlocks = captureMode === "guided"
+    && guidedBlocks.length === 0 && guidedDraft.trim() === "";
   const groundTruthProjectRef = useRef<string | null>(null);
   const groundTruthAssetRef = useRef<string | null>(null);
   const groundTruthFileRef = useRef<HTMLInputElement>(null);
@@ -1245,6 +1251,7 @@ export default function App() {
     setProject(p);
     setTargLang(p.target_lang);
     setSrcLang(p.source_lang);
+    setCaptureMode(p.capture_mode ?? "auto");
     const active = p.active_asset;
     if (!active?.asset_url || !active.has_manifest) return p;
     const m = await getManifest(active.asset_id);
@@ -1292,6 +1299,7 @@ export default function App() {
     setProject(p);
     setTargLang(p.target_lang);
     setSrcLang(p.source_lang);
+    setCaptureMode(p.capture_mode ?? "auto");
     prevScreen.current = displayedScreen;
     setScreen("main");
     // The workspace is shown before the manifest arrives -- loadProjectSession
@@ -1370,6 +1378,67 @@ export default function App() {
     assetGroundTruthDirtyRef.current = false;
     if (!silent) addToast("success", `saved ${updated.ground_truth.length} asset Ground Truth term(s)`);
   }, [asset, assetGroundTruth, addToast]);
+
+  /** One place the server's Guided verdict is written into local state, so
+   *  every route that returns it (draw, resolve, reload) lands identically. */
+  const applyGuidedState = useCallback((state: GuidedState) => {
+    setGuidedRecords(state.blocks);
+    setGuidedBlocks(state.blocks.map((block) => block.raw_text));
+    setGuidedActiveId(state.active_block_id);
+    setGuidedProgress(state.progress);
+  }, []);
+
+  // Guided Blocks come from the manifest, not from the Ground Truth field.
+  // Reconstructing them from `ground_truth` would re-apply the very
+  // flattening this mode exists to avoid, and would discard each Block's
+  // language assessment and detection progress along the way.
+  useEffect(() => {
+    if (!asset || captureMode !== "guided") return;
+    let cancelled = false;
+    getGuidedBlocks(asset.asset_id).then((result) => {
+      if (cancelled) return;
+      // Restores the ACTIVE Block too, so a reload resumes where the user
+      // was rather than at the top of the list.
+      applyGuidedState(result);
+    }).catch(() => {
+      // An asset with no manifest yet has no Blocks yet; that is a normal
+      // starting state, not a failure worth a toast.
+    });
+    return () => { cancelled = true; };
+  }, [asset?.asset_id, captureMode, applyGuidedState]);
+
+  /** Persist Guided Blocks EXACTLY as entered.
+   *
+   * Deliberately not routed through `ground_truth`. That field is the
+   * recogniser's term pool, and the server normalises it by splitting on
+   * whitespace and deduplicating -- correct for biasing OCR, fatal for
+   * Blocks, which is why "la première saisie" arrived at `mise` as three
+   * separate things and "PARIS PARIS" as one. Blocks go straight to the
+   * manifest with their order and their duplicates intact.
+   *
+   * The terms are ALSO written to `ground_truth`, flattened, because
+   * detection still wants the vocabulary hint. Two vocabularies, each
+   * right for its own consumer -- not one pretending to serve both. */
+  const saveGuidedBlockList = useCallback(async (entries: string[]) => {
+    if (!asset) return;
+    try {
+      const stored = await saveGuidedBlocks(asset.asset_id, entries);
+      setGuidedRecords(stored.blocks);
+      // The list changed, so what to ask for next may have too.
+      getGuidedBlocks(asset.asset_id).then(applyGuidedState).catch(() => {});
+    } catch {
+      addToast("error", "Blocks could not be stored this time");
+      return;
+    }
+    try {
+      await updateAssetGroundTruth(
+        asset.asset_id, entries.flatMap((entry) => entry.split(/\s+/).filter(Boolean)),
+      );
+    } catch {
+      // The recogniser hint is a bonus; losing it must not fail the save
+      // the user actually asked for.
+    }
+  }, [asset, addToast, applyGuidedState]);
 
   const onImportAssetGroundTruth = useCallback(async (file: File) => {
     if (!asset) return;
@@ -2396,7 +2465,6 @@ export default function App() {
       setErrorWithNotif(`could not save Ground Truth before detection: ${String(error)}`);
       return;
     }
-    setShowCapturePrompt(false);
     setShowLangConfirm(false);
     setShowLangSelect(false);
     setError(null);
@@ -2479,7 +2547,7 @@ export default function App() {
         setDetectStage("lang");
         setDetectProgress(
           ev.status === "running"
-            ? "seasoning… (style & background analysis)"
+            ? "seasoning…" /*prev: 'seasoning... (style & background analysis)'*/
             : `enriched ${regionCount} ${regionWord(regionCount)}`
         );
       } else if (ev.stage === "memory") {
@@ -2564,25 +2632,7 @@ export default function App() {
     [runDetect, srcLang]
   );
 
-  /** re-run detection from the Capture tab; existing regions are
-   * snapshotted first because detection replaces the manifest */
-  const onRerunDetect = useCallback(async () => {
-    if (!asset) return;
-    if (manifest.length > 0) {
-      const ok = confirm(
-        `Re-running detection replaces the current ${manifest.length} region(s). ` +
-        "A snapshot is saved first, so you can restore from History. Continue?"
-      );
-      if (!ok) return;
-      if (project) {
-        try { await snapshotAsset(project.id, asset.asset_id, "pre-erase"); } catch {}
-      }
-    }
-    runDetect(srcLang ? [srcLang] : undefined);
-  }, [asset, manifest.length, project, runDetect, srcLang]);
-
   const onManualDraw = useCallback(() => {
-    setShowCapturePrompt(false);
     manifestSkipHistory.current = true;
     setManifest([]);
     setStep(1);
@@ -2590,9 +2640,116 @@ export default function App() {
     addToast("info", "draw bounding boxes by clicking and dragging on the image.");
   }, [addToast]);
 
+  /** Start a fresh capture, whatever mode this project captures in.
+   *
+   * The snapshot is unconditional across modes. It used to be taken only on
+   * the detection path, so recapturing in Manual ran `setManifest([])` with
+   * no prompt and no snapshot -- a mis-click destroyed the work outright.
+   * Detection and manual draw both replace the manifest, so both owe the
+   * user a way back. */
+  const runRecapture = useCallback(async (mode: string) => {
+    if (!asset) return;
+    if (manifest.length > 0 && project) {
+      try { await snapshotAsset(project.id, asset.asset_id, "pre-erase"); } catch {}
+    }
+    if (mode === "manual") { onManualDraw(); return; }
+    if (mode === "guided") {
+      // Guided recapture clears the boxes and re-asks from the first Block;
+      // reconciliation follows from the empty manifest on the next save.
+      manifestSkipHistory.current = true;
+      setManifest([]);
+      setStep(1);
+      setDrawMode(true);
+      return;
+    }
+    runDetect(srcLang ? [srcLang] : undefined);
+  }, [asset, manifest.length, project, onManualDraw, runDetect, srcLang]);
+
+  /** Ask first -- unless there is nothing to lose. Confirming an action that
+   *  destroys no work is a dead click, and the Capture Mode selector has
+   *  already answered "how". */
+  const onRequestRecapture = useCallback((mode: string) => {
+    if (!asset) return;
+    if (manifest.length === 0) { void runRecapture(mode); return; }
+    setPendingRecapture(mode);
+  }, [asset, manifest.length, runRecapture]);
+
+  // Manual mode has already answered "how should this be captured?", so
+  // parking the user on Upload to press a button that only ever does one
+  // thing is pure latency. Route straight into Capture in draw mode.
+  // Fires on ASSET change only: re-running it on every render would fight a
+  // user who deliberately navigated back to Upload.
+  const manualRoutedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (captureMode !== "manual" || !asset) return;
+    if (manifest.length > 0) return;
+    if (manualRoutedRef.current === asset.asset_id) return;
+    manualRoutedRef.current = asset.asset_id;
+    setStep(1);
+    setDrawMode(true);
+  }, [captureMode, asset, manifest.length]);
+
+  /** Guided Capture goes straight to drawing -- it never runs detection.
+   *
+   *  This is the behaviour change the mode was missing: Guided used to fall
+   *  through to `onAutoDetect`, so pressing Capture ran an automatic pass
+   *  and the Blocks the user had just entered went unused. */
+  const onGuidedDraw = useCallback(() => {
+    setStep(1);
+    setDrawMode(true);
+  }, []);
+
+  // Guided routes into Capture on arrival, beside the Manual effect and with
+  // the same per-asset guard: re-running on every render would fight a user
+  // who deliberately navigated back to Upload.
+  const guidedRoutedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (captureMode !== "guided" || !asset) return;
+    if (guidedRecords.length === 0) return;
+    if (manifest.length > 0) return;
+    if (guidedRoutedRef.current === asset.asset_id) return;
+    guidedRoutedRef.current = asset.asset_id;
+    setStep(1);
+    setDrawMode(true);
+  }, [captureMode, asset, guidedRecords.length, manifest.length]);
+
+  /** Settle the active Block by hand, or withdraw an earlier verdict. */
+  const onResolveGuided = useCallback(async (
+    resolution: "user_complete" | "user_skipped",
+  ) => {
+    if (!asset || !guidedActiveId) return;
+    try {
+      const { guided } = await resolveGuidedBlock(asset.asset_id, guidedActiveId, resolution);
+      applyGuidedState(guided);
+    } catch (e) {
+      setErrorWithNotif(String(e));
+    }
+  }, [asset, guidedActiveId, applyGuidedState]);
+
+  const guided = useGuidedCapture({
+    enabled: captureMode === "guided",
+    blocks: guidedRecords,
+    activeBlockId: guidedActiveId,
+    progress: guidedProgress,
+    saving: guidedSaving,
+  });
+
   const onAddRegion = useCallback(async (bbox: BBox) => {
     if (!asset) return;
-    setDrawMode(false);
+    const guided = captureMode === "guided" && guidedRecords.length > 0;
+    // Guided KEEPS draw mode on between boxes: the next Block is asked for
+    // immediately, and making the user re-arm the tool every time turns one
+    // gesture into two. Auto/Manual are unchanged.
+    if (!guided) setDrawMode(false);
+    // Refine + add is two awaited round trips. Locking the pointer for the
+    // duration is what stops a second box being started mid-flight -- and
+    // the bubble says "reading…" so the lock is visible rather than felt as
+    // the canvas ignoring you.
+    if (guided) {
+      if (guidedSavingRef.current) return;
+      guidedSavingRef.current = true;
+      setGuidedSaving(true);
+    }
     let final = bbox;
     let finalText: string | undefined;
     try {
@@ -2611,17 +2768,30 @@ export default function App() {
       addToast("info", "Region added without OCR refinement.");
     }
     try {
-      const inst = await addRegion(asset.asset_id, final, finalText);
+      const { region, guided: state } = await addRegionDetailed(asset.asset_id, final, {
+        text: finalText,
+        guidedBlockId: guided ? (guidedActiveId ?? undefined) : undefined,
+        // A new key per draw. Pointer-locking stops a second deliberate
+        // box; it does nothing about a retry or a replayed click.
+        clientOperationId: guided ? crypto.randomUUID() : undefined,
+      });
       setManifest((prev) => {
-        const next = [...prev, inst];
+        const next = [...prev, region];
         autoSave(next);
         return next;
       });
-      setSelectedId(inst.id);
+      setSelectedId(region.id);
+      // Advance ONLY from what the server persisted. An optimistic advance
+      // it then contradicts leaves the prompt and the stored state
+      // disagreeing, with the user believing the wrong one.
+      if (state) applyGuidedState(state);
     } catch (e) {
       setErrorWithNotif(String(e));
+    } finally {
+      guidedSavingRef.current = false;
+      setGuidedSaving(false);
     }
-  }, [asset, autoSave, addToast]);
+  }, [asset, autoSave, addToast, captureMode, guidedRecords.length, guidedActiveId, applyGuidedState]);
 
   // Candidates the reviewer has acted on. Anything NOT in here at sign-off
   // was left alone, which is what `accepted` means -- so this set is the
@@ -3571,8 +3741,236 @@ export default function App() {
         </div>
       )}
       {step === 0 && asset?.asset_info.asset_type !== "video" && (
-        <div key="step-0" className="step-fade grid gap-6 md:grid-cols-[minmax(0,1fr)_360px]">
-          <Section title="Asset" className={stackClass(0)}>
+        <div key="step-0" className="step-fade">
+        <section className={`bezier-card soft-shadow relative rounded-xl bg-white/60 p-5 dark:bg-zinc-900/60 ${stackClass(0)}`}>
+          <div className="grid gap-6 md:grid-cols-[360px_1px_minmax(0,1fr)]">
+          <div className="min-w-0">
+          <h2 className="subtext mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Project Manager</h2>
+            {project ? (
+              <div className="space-y-4 text-sm">
+                <div>
+                  <p className="subtext text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-600">name</p>
+                  <p className="truncate font-medium text-zinc-800 dark:text-zinc-200">{project.name}</p>
+                </div>
+                <div>
+                  <p className="subtext mb-1 text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-600">target language</p>
+                  <LanguageCombobox
+                    value={targLang}
+                    onChange={onTargetLangSelect}
+                    availableCodes={languages.map((l) => l.code)}
+                  />
+                </div>
+                <div>
+                  <p className="subtext mb-1 flex items-center gap-1 text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-600">
+                    {asset && srcLang && (
+                      <button
+                        onClick={() => setSrcLangLocked((v) => !v)}
+                        className="transition hover:scale-110"
+                        title={srcLangLocked ? "Unlock to change source language" : "Lock source language"}
+                      >
+                        {srcLangLocked
+                          ? <HiLockClosed size={12} className="text-cyan-600 dark:text-cyan-400" />
+                          : <HiLockOpen size={12} className="text-zinc-400 dark:text-zinc-500" />}
+                      </button>
+                    )}
+                    source language
+                  </p>
+                  {srcLang ? (
+                    <div className="flex items-center gap-2">
+                      <LanguageCombobox
+                        value={srcLang}
+                        onChange={(code) => {
+                          setSrcLang(code);
+                          updateProject(project.id, { source_lang: code }).then(() => refreshProject()).catch(() => {});
+                        }}
+                        availableCodes={languages.map((l) => l.code)}
+                        disabled={!!(asset && srcLang && srcLangLocked)}
+                      />
+                    </div>
+                  ) : (
+                    <p className="subtext text-xs text-zinc-500">auto — locked from your first asset's scan</p>
+                  )}
+                </div>
+                <CaptureModeSelect
+                  value={captureMode}
+                  onChange={(mode) => {
+                    setCaptureMode(mode);
+                    updateProject(project.id, { capture_mode: mode })
+                      .then(() => refreshProject())
+                      .catch(() => {});
+                  }}
+                />
+                {/* The text control appears only for Auto/Guided, and only
+                    once a target language exists: entered terms are evidence
+                    about a localization that has a destination.  Switching to
+                    Manual HIDES the draft rather than discarding it. */}
+                {asset && captureMode !== "manual" && !!targLang && (
+                  <div>
+                    <div className="subtext mb-1 flex items-center justify-between text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-600">
+                      <span className="flex items-center gap-1">
+                        <TbBackground size={13} /> {captureMode === "guided" ? "Blocks" : "Ground Truth"}
+                        {(() => {
+                          const effectiveCount = new Set([...projectGroundTruth.split(/\s+/), ...assetGroundTruth.split(/\s+/)].filter(Boolean)).size;
+                          if (effectiveCount === 0) return null;
+                          // Gradient: green (hue 140) at 0 terms → red (hue 0) at ~18 terms.
+                          // Reversed from confidence score: low N = green, high N = red.
+                          const hue = Math.max(0, 140 - effectiveCount * 8);
+                          return (
+                            <span
+                              className="text-[10px] font-medium normal-case tracking-normal"
+                              style={{ color: `hsl(${hue}, 70%, 45%)` }}
+                              title={`${effectiveCount} effective term${effectiveCount === 1 ? "" : "s"}`}
+                            >
+                              {effectiveCount}
+                            </span>
+                          );
+                        })()}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => groundTruthFileRef.current?.click()}
+                        disabled={groundTruthImporting}
+                        aria-label="Import Ground Truth file"
+                        title={"Import file"} /*.txt, XLIFF, TMX, CSV, TSV, or VTM Ground Truth*/
+                        className="inline-flex h-[15px] w-[15px] items-center justify-center rounded-[2px] p-px text-zinc-500 transition hover:bg-zinc-200 hover:text-cyan-600 disabled:opacity-40 dark:text-zinc-500 dark:hover:bg-zinc-800 dark:hover:text-cyan-400"
+                      >
+                        {groundTruthImporting
+                          ? <Loader2 size={13} className="animate-spin" />
+                          : theme === "dark" ? <TbFileUploadFilled size={13} /> : <TbFileUpload size={13} />}
+                      </button>
+                      <input
+                        ref={groundTruthFileRef}
+                        type="file"
+                        className="hidden"
+                        accept=".txt,.xlf,.xliff,.sdlxliff,.mxliff,.mqxliff,.txlf,.tmx,.csv,.tsv,.vtm,text/plain,application/xml,text/xml"
+                        onChange={(event) => {
+                          const file = event.currentTarget.files?.[0];
+                          if (file) void onImportAssetGroundTruth(file);
+                        }}
+                      />
+                    </div>
+                    <div className="ground-truth-row mt-2 flex items-stretch gap-2">
+                      <div className="min-w-0 flex-1">
+                        {captureMode === "guided" ? (
+                          /* Guided gets a different SURFACE, not a different
+                             delimiter. A Block is one thing to locate, so it
+                             is committed whole and shown whole; the Auto
+                             field's per-word colouring would announce that
+                             a phrase had already been broken up. */
+                          <BlocksField
+                            blocks={guidedBlocks}
+                            onChange={(next) => {
+                              setGuidedBlocks(next);
+                              void saveGuidedBlockList(next);
+                            }}
+                            draft={guidedDraft}
+                            onDraftChange={setGuidedDraft}
+                            records={guidedRecords}
+                            language={srcLang}
+                            sourceLanguage={srcLang}
+                            capturing={busy === "detecting"}
+                          />
+                        ) : (
+                          <GroundTruthField
+                            label="Asset Ground Truth"
+                            language={srcLang}
+                            sourceLanguage={srcLang}
+                            /* Locked during CAPTURE only. The pre-flight scan
+                               ("(prepping...)") is a sniff of the uploaded
+                               asset, not a run against these Blocks -- and it
+                               is the slowest thing between upload and Capture,
+                               so locking through it froze the field exactly
+                               when the user had time to fill it in. */
+                            capturing={busy === "detecting"}
+                            value={assetGroundTruth}
+                            onChange={(value) => {
+                              assetGroundTruthDirtyRef.current = true;
+                              setAssetGroundTruth(value);
+                            }}
+                            onBlur={() => {
+                              if (assetGroundTruthDirtyRef.current) {
+                                saveAssetGroundTruth().catch(() => {});
+                              }
+                            }}
+                            placeholder="Optionally add source text known to appear in the asset."
+                          />
+                        )}
+                      </div>
+                      {captureMode !== "guided" && (
+                        /* Guided commits on Enter and persists immediately,
+                           so a save button would be a no-op with a label. */
+                        <button type="button" onClick={() => saveAssetGroundTruth().catch((e) => setErrorWithNotif(String(e)))} className="shrink-0 self-stretch rounded border border-zinc-300 px-2 text-[10px] hover:border-cyan-500 dark:border-zinc-700">{theme === "dark" ? <RiSaveFill size={12} /> : <RiSaveLine size={12} />}</button>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {(project.assets?.length ?? 0) > 0 && (
+                  <div>
+                    <p className="subtext mb-1 text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-600">
+                      assets ({project.assets!.length})
+                    </p>
+                    <div className="max-h-40 space-y-1 overflow-y-auto" style={{ scrollBehavior: "smooth" }}>
+                      {project.assets!.map((a) => {
+                        const isCurrent = a.asset_id === asset?.asset_id;
+                        const isScanning = scan?.assetId === a.asset_id && scan.status === "scanning";
+                        const justPassed = scan?.assetId === a.asset_id && scan.status === "passed";
+                        return (
+                          <div
+                            key={a.asset_id}
+                            className={`group flex items-center gap-2 rounded px-2 py-1 text-xs ${
+                              isCurrent
+                                ? "bg-cyan-100 text-cyan-800 dark:bg-cyan-950/40 dark:text-cyan-300"
+                                : "text-zinc-600 dark:text-zinc-400"
+                            }`}
+                          >
+                            <FileImage size={11} className="shrink-0" />
+                            <span className="subtext min-w-0 flex-1 truncate">{a.filename ?? a.asset_id}</span>
+                            {isScanning && <SquareLoader size="sm" className="shrink-0 text-cyan-500" />}
+                            {justPassed && (
+                              <Check size={13} className="check-fade shrink-0 text-[#0f2600] dark:text-[#4f9f00]" />
+                            )}
+                            {isCurrent && !isScanning && (
+                              <span className="subtext shrink-0 text-[10px]">active</span>
+                            )}
+                            <button
+                              onClick={() => onDeleteAsset(a.asset_id, a.filename)}
+                              title="Remove asset from project"
+                              className="shrink-0 rounded-sm p-0.5 text-zinc-400 opacity-0 transition hover:text-red-500 group-hover:opacity-100 dark:text-zinc-600 dark:hover:text-red-400"
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                <p className="bezier-impression subtext flex items-start gap-1 px-3 py-2 text-xs text-zinc-500 dark:text-zinc-600">
+                  <MdTipsAndUpdates size={14} className="mt-0.5 shrink-0 text-[#2d8cf0]" />
+                  Fonts are chosen per region in the Translate step (ranked by
+                  verified glyph coverage for each region's target language).
+                </p>
+              </div>
+            ) : (
+              <button
+                onClick={() => goPantry()}
+                className="w-full rounded-lg border border-dashed border-zinc-400 p-4 text-sm text-zinc-600 transition hover:border-cyan-600 hover:text-zinc-800 dark:border-zinc-600 dark:text-zinc-400 dark:hover:text-zinc-200"
+              >
+                Create or open a project to begin
+              </button>
+            )}
+          </div>
+          {/* One card, two halves.  The rule is 60% of the card height and
+              centred on it -- equal space above and below -- so it reads as a
+              division WITHIN one card rather than a border between two. */}
+          {/* -my-5 cancels the card's p-5 so this cell spans the FULL card
+              height.  Without it the 60% resolves against the padded content
+              box and the rule comes out at 52% of the card. */}
+          <div className="relative hidden -my-5 md:block" aria-hidden="true">
+            <span className="absolute left-1/2 top-1/2 h-[60%] w-px -translate-x-1/2 -translate-y-1/2 bg-zinc-300/90 dark:bg-zinc-700/90" />
+          </div>
+          <div className="min-w-0">
+          <h2 className="subtext mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Asset</h2>
             <label
               onDragOver={(e) => { e.preventDefault(); setDragOverAsset(true); }}
               onDragEnter={(e) => { e.preventDefault(); setDragOverAsset(true); }}
@@ -3673,11 +4071,20 @@ export default function App() {
               <div className="mt-4 flex flex-wrap items-center gap-4">
                 {manifest.length === 0 ? (
                   <PressButton
-                    onClick={() => setShowCapturePrompt(true)}
-                    disabled={scan?.status === "scanning"}
-                    title="begin capture"
+                    // Capture Mode has already answered "automatically or
+                    // manually?", so asking again in a modal is a dead click
+                    // that can also contradict the stored mode.
+                    onClick={() => captureMode === "manual"
+                      ? onManualDraw()
+                      : captureMode === "guided" ? onGuidedDraw() : onAutoDetect()}
+                    disabled={scan?.status === "scanning" || guidedWithoutBlocks}
+                    title={guidedWithoutBlocks
+                      ? "Add at least one Block for Guided capture to locate"
+                      : captureMode === "manual" ? "draw regions yourself"
+                      : captureMode === "guided" ? "locate each Block yourself"
+                      : "begin capture"}
                   >
-                    Get Capture
+                    Capture
                   </PressButton>
                 ) : (
                   <>
@@ -3688,9 +4095,19 @@ export default function App() {
                       label="recapture"
                       tooltip="start fresh capture"
                       icon={<RotateCcw size={20} />}
-                      onClick={() => setShowCapturePrompt(true)}
+                      onClick={() => onRequestRecapture(captureMode)}
                     />
                   </>
+                )}
+                {guidedWithoutBlocks && manifest.length === 0 && (
+                  /* The gate itself is right -- Guided with nothing to locate
+                     would silently degrade into Auto -- but a disabled button
+                     whose only explanation is a tooltip reads as a broken app.
+                     Say it out loud, and name both ways out. */
+                  <p className="subtext w-full text-[11px] leading-snug text-amber-600 dark:text-amber-400">
+                    Guided capture needs at least one Block: add source text above,
+                    or switch Capture Mode to Auto.
+                  </p>
                 )}
                 <div className="flex-1" />
                 <button
@@ -3705,177 +4122,9 @@ export default function App() {
                 </button>
               </div>
             )}
-          </Section>
-
-          <Section title="Project Manager" className={stackClass(1)}>
-            {project ? (
-              <div className="space-y-4 text-sm">
-                <div>
-                  <p className="subtext text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-600">name</p>
-                  <p className="truncate font-medium text-zinc-800 dark:text-zinc-200">{project.name}</p>
-                </div>
-                <div>
-                  <p className="subtext mb-1 text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-600">target language</p>
-                  <LanguageCombobox
-                    value={targLang}
-                    onChange={onTargetLangSelect}
-                    availableCodes={languages.map((l) => l.code)}
-                  />
-                </div>
-                <div>
-                  <p className="subtext mb-1 flex items-center gap-1 text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-600">
-                    {asset && srcLang && (
-                      <button
-                        onClick={() => setSrcLangLocked((v) => !v)}
-                        className="transition hover:scale-110"
-                        title={srcLangLocked ? "Unlock to change source language" : "Lock source language"}
-                      >
-                        {srcLangLocked
-                          ? <HiLockClosed size={12} className="text-cyan-600 dark:text-cyan-400" />
-                          : <HiLockOpen size={12} className="text-zinc-400 dark:text-zinc-500" />}
-                      </button>
-                    )}
-                    source language
-                  </p>
-                  {srcLang ? (
-                    <div className="flex items-center gap-2">
-                      <LanguageCombobox
-                        value={srcLang}
-                        onChange={(code) => {
-                          setSrcLang(code);
-                          updateProject(project.id, { source_lang: code }).then(() => refreshProject()).catch(() => {});
-                        }}
-                        availableCodes={languages.map((l) => l.code)}
-                        disabled={!!(asset && srcLang && srcLangLocked)}
-                      />
-                    </div>
-                  ) : (
-                    <p className="subtext text-xs text-zinc-500">auto — locked from your first asset's scan</p>
-                  )}
-                </div>
-                {asset && (
-                  <div>
-                    <div className="subtext mb-1 flex items-center justify-between text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-600">
-                      <span className="flex items-center gap-1">
-                        <TbBackground size={13} /> Ground Truth
-                        {(() => {
-                          const effectiveCount = new Set([...projectGroundTruth.split(/\s+/), ...assetGroundTruth.split(/\s+/)].filter(Boolean)).size;
-                          if (effectiveCount === 0) return null;
-                          // Gradient: green (hue 140) at 0 terms → red (hue 0) at ~18 terms.
-                          // Reversed from confidence score: low N = green, high N = red.
-                          const hue = Math.max(0, 140 - effectiveCount * 8);
-                          return (
-                            <span
-                              className="text-[10px] font-medium normal-case tracking-normal"
-                              style={{ color: `hsl(${hue}, 70%, 45%)` }}
-                              title={`${effectiveCount} effective term${effectiveCount === 1 ? "" : "s"}`}
-                            >
-                              {effectiveCount}
-                            </span>
-                          );
-                        })()}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => groundTruthFileRef.current?.click()}
-                        disabled={groundTruthImporting}
-                        aria-label="Import Ground Truth file"
-                        title={"Import file"} /*.txt, XLIFF, TMX, CSV, TSV, or VTM Ground Truth*/
-                        className="inline-flex h-[15px] w-[15px] items-center justify-center rounded-[2px] p-px text-zinc-500 transition hover:bg-zinc-200 hover:text-cyan-600 disabled:opacity-40 dark:text-zinc-500 dark:hover:bg-zinc-800 dark:hover:text-cyan-400"
-                      >
-                        {groundTruthImporting
-                          ? <Loader2 size={13} className="animate-spin" />
-                          : theme === "dark" ? <TbFileUploadFilled size={13} /> : <TbFileUpload size={13} />}
-                      </button>
-                      <input
-                        ref={groundTruthFileRef}
-                        type="file"
-                        className="hidden"
-                        accept=".txt,.xlf,.xliff,.sdlxliff,.mxliff,.mqxliff,.txlf,.tmx,.csv,.tsv,.vtm,text/plain,application/xml,text/xml"
-                        onChange={(event) => {
-                          const file = event.currentTarget.files?.[0];
-                          if (file) void onImportAssetGroundTruth(file);
-                        }}
-                      />
-                    </div>
-                    <div className="ground-truth-row mt-2 flex items-stretch gap-2">
-                      <div className="min-w-0 flex-1">
-                        <GroundTruthField
-                          label="Asset Ground Truth"
-                          language={srcLang}
-                          value={assetGroundTruth}
-                          onChange={(value) => {
-                            assetGroundTruthDirtyRef.current = true;
-                            setAssetGroundTruth(value);
-                          }}
-                          onBlur={() => {
-                            if (assetGroundTruthDirtyRef.current) {
-                              saveAssetGroundTruth().catch(() => {});
-                            }
-                          }}
-                          placeholder="Enter asset terms to prime capture."
-                        />
-                      </div>
-                      <button type="button" onClick={() => saveAssetGroundTruth().catch((e) => setErrorWithNotif(String(e)))} className="shrink-0 self-stretch rounded border border-zinc-300 px-2 text-[10px] hover:border-cyan-500 dark:border-zinc-700">{theme === "dark" ? <RiSaveFill size={12} /> : <RiSaveLine size={12} />}</button>
-                    </div>
-                  </div>
-                )}
-                {(project.assets?.length ?? 0) > 0 && (
-                  <div>
-                    <p className="subtext mb-1 text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-600">
-                      assets ({project.assets!.length})
-                    </p>
-                    <div className="max-h-40 space-y-1 overflow-y-auto" style={{ scrollBehavior: "smooth" }}>
-                      {project.assets!.map((a) => {
-                        const isCurrent = a.asset_id === asset?.asset_id;
-                        const isScanning = scan?.assetId === a.asset_id && scan.status === "scanning";
-                        const justPassed = scan?.assetId === a.asset_id && scan.status === "passed";
-                        return (
-                          <div
-                            key={a.asset_id}
-                            className={`group flex items-center gap-2 rounded px-2 py-1 text-xs ${
-                              isCurrent
-                                ? "bg-cyan-100 text-cyan-800 dark:bg-cyan-950/40 dark:text-cyan-300"
-                                : "text-zinc-600 dark:text-zinc-400"
-                            }`}
-                          >
-                            <FileImage size={11} className="shrink-0" />
-                            <span className="subtext min-w-0 flex-1 truncate">{a.filename ?? a.asset_id}</span>
-                            {isScanning && <SquareLoader size="sm" className="shrink-0 text-cyan-500" />}
-                            {justPassed && (
-                              <Check size={13} className="check-fade shrink-0 text-[#0f2600] dark:text-[#4f9f00]" />
-                            )}
-                            {isCurrent && !isScanning && (
-                              <span className="subtext shrink-0 text-[10px]">active</span>
-                            )}
-                            <button
-                              onClick={() => onDeleteAsset(a.asset_id, a.filename)}
-                              title="Remove asset from project"
-                              className="shrink-0 rounded-sm p-0.5 text-zinc-400 opacity-0 transition hover:text-red-500 group-hover:opacity-100 dark:text-zinc-600 dark:hover:text-red-400"
-                            >
-                              <X size={12} />
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-                <p className="bezier-impression subtext flex items-start gap-1 px-3 py-2 text-xs text-zinc-500 dark:text-zinc-600">
-                  <MdTipsAndUpdates size={14} className="mt-0.5 shrink-0 text-[#2d8cf0]" />
-                  Fonts are chosen per region in the Translate step (ranked by
-                  verified glyph coverage for each region's target language).
-                </p>
-              </div>
-            ) : (
-              <button
-                onClick={() => goPantry()}
-                className="w-full rounded-lg border border-dashed border-zinc-400 p-4 text-sm text-zinc-600 transition hover:border-cyan-600 hover:text-zinc-800 dark:border-zinc-600 dark:text-zinc-400 dark:hover:text-zinc-200"
-              >
-                Create or open a project to begin
-              </button>
-            )}
-          </Section>
+          </div>
+          </div>
+        </section>
         </div>
       )}
 
@@ -3898,7 +4147,7 @@ export default function App() {
               <Plus size={20} />
             </button>
             <button
-              onClick={onRerunDetect}
+              onClick={() => onRequestRecapture("auto")}
               disabled={busy !== null}
               className="bezier-card flex items-center justify-center rounded-lg bg-white/60 px-3 py-2 text-sm text-zinc-700 transition hover:bg-zinc-100 disabled:opacity-40 dark:bg-zinc-900/60 dark:text-zinc-300 dark:hover:bg-zinc-800"
               title="AI scan"
@@ -3957,6 +4206,14 @@ export default function App() {
             <div className="subtext rounded-lg border border-cyan-300 bg-cyan-50 px-4 py-2 text-xs text-cyan-800 dark:border-cyan-800 dark:bg-cyan-950/30 dark:text-cyan-300">
               Draw mode active. Click and drag on the image to create a new bounding box. Press A or Esc to exit.
             </div>
+          )}
+
+          {asset && visibleManifest.length === 0 && busy === null && (
+            /* An empty Capture tab used to say the same sentence whatever
+               had happened. Naming the rung is what separates "the detector
+               is blind here" from "it saw the text and the pipeline threw
+               it away" -- two remedies with very different costs. */
+            <DetectionAttributionCard assetId={asset.asset_id} />
           )}
 
           {tinyUploadAdvisory && !tinyAdvisoryDismissed && (
@@ -4034,13 +4291,21 @@ export default function App() {
                 <span className="text-zinc-700 dark:text-zinc-300">{imgSize.width}×{imgSize.height}</span> /* asset/image size indicator */
               )}
               {imgSize && <span className="text-zinc-400 dark:text-zinc-600">・</span>}
-              <kbd className="kbd kbd-xs">A</kbd> draw · <kbd className="kbd kbd-xs">Del</kbd> remove · <kbd className="kbd kbd-xs">Esc</kbd> deselect
+              {/* Were `.kbd .kbd-xs` — daisyUI classes, and daisyUI was
+                  removed on purpose (see index.css), so neither class has
+                  been defined for some time and these rendered as bare
+                  text. */}
+              <Kbd>A</Kbd> draw · <Kbd>Del</Kbd> remove · <Kbd>Esc</Kbd> deselect
             </p>
-            {srcLang && (
-              <span className="subtext text-[8.4px] text-zinc-500 dark:text-zinc-400">
-                source: <span className="text-zinc-700 dark:text-zinc-300">{langFlag(srcLang)} {langDisplayName(srcLang)}</span>
-              </span>
-            )}
+            <span className="flex items-center gap-3">
+              {/* Immediately left of the source-language indicator. */}
+              <GuidedProgress progress={guided.progress} />
+              {srcLang && (
+                <span className="subtext text-[8.4px] text-zinc-500 dark:text-zinc-400">
+                  source: <span className="text-zinc-700 dark:text-zinc-300">{langFlag(srcLang)} {langDisplayName(srcLang)}</span>
+                </span>
+              )}
+            </span>
           </div>
 
           <div className={stackClass(0)}>
@@ -4065,6 +4330,9 @@ export default function App() {
               newRegionIds={newRegionIds}
               onDragStart={beginManifestBatch}
               onDragEnd={endManifestBatch}
+              guidedPrompt={guided.prompt}
+              onGuidedComplete={() => void onResolveGuided("user_complete")}
+              onGuidedSkip={() => void onResolveGuided("user_skipped")}
             />
             </div>
             <div>
@@ -4100,30 +4368,10 @@ export default function App() {
               onReorder={onReorder}
               onBatchBegin={beginManifestBatch}
               onBatchEnd={endManifestBatch}
-              footer={canvasExpandedH ? (
-                <ExportPanel
-                  assetId={asset?.asset_id ?? ""}
-                  targLang={targLang}
-                  disabled={translatableCount === 0}
-                  embedded
-                  projectName={project?.name}
-                />
-              ) : undefined}
             />
             </div>
           </div>
           </div>
-
-          {!canvasExpandedH && (
-            <div className={stackClass(1)}>
-            <ExportPanel
-              assetId={asset?.asset_id ?? ""}
-              targLang={targLang}
-              disabled={translatableCount === 0}
-              projectName={project?.name}
-            />
-            </div>
-          )}
 
           {report && (
             <Section title="Preflight" icon={<ShieldAlert size={14} />} className={stackClass(2)}>
@@ -4369,6 +4617,12 @@ export default function App() {
             </PressButton>
           </div>
 
+          {/* Sits in Translate because this is where the dictionary works:
+              the Ctrl+Space popover belongs to AnimatedCaretTextarea, and
+              the region table's target-text fields are its only editing
+              surface in this step. */}
+          <DictionaryHint />
+
           <div className="flex items-center justify-end">
             <span className="subtext text-[8.4px] text-zinc-500 dark:text-zinc-400">
               target: <span className="text-zinc-700 dark:text-zinc-300">{langFlag(targLang)} {langDisplayName(targLang)}</span>
@@ -4580,6 +4834,15 @@ export default function App() {
                 previewFontOverride={previewFontOverride}
                 onClearPreviewFont={(id) => setPreviewFontOverride((prev) => { const next = { ...prev }; delete next[id]; return next; })}
                 fullFamiliesByLang={fullFamiliesByLang}
+              />
+              {/* Export sits under the text manifest it exports: the regions
+                  and their targets are right above it, so what leaves as a
+                  translation file is whatever the user is looking at. */}
+              <BasilExportManager
+                assetId={asset?.asset_id ?? ""}
+                targLang={targLang}
+                disabled={translatableCount === 0}
+                projectName={project?.name}
               />
             </div>
           </div>
@@ -6064,51 +6327,6 @@ export default function App() {
       )}
 
       {/* Capture Kickoff Modal: manual vs automatic */}
-      {showCapturePrompt && asset && (
-        <div className="title-confirm-backdrop" onClick={() => setShowCapturePrompt(false)}>
-          <div className="bezier-card title-confirm-card" style={{ maxWidth: "420px" }} onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center gap-2 mb-2">
-              <VectorSquare size={18} className="text-cyan-500 dark:text-cyan-400" />
-              <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">begin capture</p>
-            </div>
-            <p className="subtext text-sm text-zinc-600 dark:text-zinc-400 mb-4">
-              how would you like to identify the text regions in{" "}
-              <span className="font-medium text-zinc-800 dark:text-zinc-200">{asset.filename}</span>?
-            </p>
-            <div className="space-y-3 w-full">
-              <button
-                onClick={onAutoDetect}
-                disabled={busy !== null}
-                className="flex w-full items-center gap-3 rounded-lg border border-zinc-300 bg-zinc-100 p-4 text-left transition hover:border-cyan-600 dark:border-zinc-700 dark:bg-zinc-800 dark:hover:bg-zinc-800/80"
-              >
-                <HiCubeTransparent size={20} className="text-cyan-500 dark:text-cyan-400" />
-                <div>
-                  <p className="text-sm font-medium text-zinc-800 dark:text-zinc-200">automatically</p>
-                  <p className="subtext text-xs text-zinc-500">the model scans the image, draws bounding boxes around detected text, and identifies the source language.</p>
-                </div>
-                {busy === "detecting" && <SquareLoader size="sm" className="ml-auto text-cyan-400" />}
-              </button>
-              <button
-                onClick={onManualDraw}
-                className="flex w-full items-center gap-3 rounded-lg border border-zinc-300 bg-zinc-100 p-4 text-left transition hover:border-cyan-600 dark:border-zinc-700 dark:bg-zinc-800 dark:hover:bg-zinc-800/80"
-              >
-                <Plus size={20} className="text-cyan-500 dark:text-cyan-400" />
-                <div>
-                  <p className="text-sm font-medium text-zinc-800 dark:text-zinc-200">manually</p>
-                  <p className="subtext text-xs text-zinc-500">you draw the bounding boxes yourself. useful for obscured or hard-to-detect text.</p>
-                </div>
-              </button>
-            </div>
-            <button
-              onClick={() => setShowCapturePrompt(false)}
-              className="subtext mt-2 w-full text-center text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
-            >
-              cancel
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Detected Language Confirmation Card */}
       {showLangConfirm && srcLang && (
         <div className="title-confirm-backdrop" onClick={() => setShowLangConfirm(false)}>
@@ -6398,7 +6616,7 @@ export default function App() {
       )}
 
       {showTitleConfirm && (
-        <TitleConfirmOverlay
+        <ConfirmOverlay
           message="return to title?"
           onYes={() => { setShowTitleConfirm(false); prevScreen.current = displayedScreen; setScreen("title"); }}
           onNo={() => setShowTitleConfirm(false)}
@@ -6406,23 +6624,38 @@ export default function App() {
       )}
 
       {showRenderConfirm && (
-        <TitleConfirmOverlay
+        <ConfirmOverlay
           message="start render?"
           onYes={() => { setShowRenderConfirm(false); onRender(); }}
           onNo={() => setShowRenderConfirm(false)}
         />
       )}
 
+      {pendingRecapture && (
+        /* Every capture mode confirms here, including Manual -- which used
+           to clear the manifest with no prompt and no snapshot at all. */
+        <ConfirmOverlay
+          message="begin recapture?"
+          detail={manifest.length > 0
+            ? `Replaces the current ${manifest.length} region${manifest.length === 1 ? "" : "s"}. A snapshot is saved first, so you can restore from History.`
+            : undefined}
+          onYes={() => { const mode = pendingRecapture; setPendingRecapture(null); void runRecapture(mode); }}
+          onNo={() => setPendingRecapture(null)}
+        />
+      )}
+
       {pendingAssetDelete && (
-        <AssetDeleteConfirmOverlay
-          filename={pendingAssetDelete.filename ?? pendingAssetDelete.assetId}
+        <ConfirmOverlay
+          message="remove this asset?"
+          detail="Snapshots captured—nothing is permanently lost."
           onYes={() => { confirmDeleteAsset(); setPendingAssetDelete(null); }}
           onNo={() => setPendingAssetDelete(null)}
         />
       )}
 
       {pendingBackNav && (
-        <UnsavedChangesOverlay
+        <ConfirmOverlay
+          message="proceed with unsaved changes?"
           onYes={() => {
             setPendingBackNav(false);
             navGuardRef.current = true;

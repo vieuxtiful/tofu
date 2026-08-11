@@ -38,6 +38,7 @@ import tempfile
 import threading
 import time
 import uuid
+from collections import OrderedDict
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
@@ -750,6 +751,17 @@ class ExportRequest(BaseModel):
     variant: Optional[str] = "standard"
     targ_lang: Optional[str] = ""
 
+class BasilExportPrepareRequest(BaseModel):
+    ## `target_language` rather than `targ_lang`: this is the outward-facing
+    ## Basil surface, and the field names in an interchange API are read by
+    ## people integrating against it.  /api/export keeps its original spelling.
+    asset_id: str
+    format: str
+    variant: Optional[str] = "standard"
+    profile: Optional[str] = "translation"
+    target_language: Optional[str] = ""
+    include_review_units: bool = True
+
 class RenderRequest(BaseModel):
     asset_id: str
     targ_lang: str
@@ -814,7 +826,20 @@ class ProjectUpdate(BaseModel):
     target_lang: Optional[str] = None
     source_lang: Optional[str] = None
     ground_truth: Optional[List[str]] = None
+    capture_mode: Optional[str] = None   ## auto | guided | manual
     archived: Optional[bool] = None
+
+class GuidedBlocksUpdate(BaseModel):
+    ## Ordered, and duplicates preserved: two identical entries are two
+    ## occurrences to locate, not one term seen twice.
+    blocks: List[str]
+
+class LanguageAssessRequest(BaseModel):
+    ## Assessed server-side so there is ONE lexicon.  A second copy in the
+    ## frontend would drift, and the drift would be silent -- which is how
+    ## diacritic-free French went unremarked in the first place.
+    text: str
+    source_language: Optional[str] = None
 
 class SnapshotCreate(BaseModel):
     asset_id: str
@@ -827,6 +852,15 @@ class RegionCreate(BaseModel):
     height: int
     text: Optional[str] = None
     target_text: Optional[str] = None
+    ## Guided capture: the Block that was active when this box was drawn.
+    ## An EXPLICIT association -- more reliable than inferring one from the
+    ## OCR read afterwards, and it outranks inference permanently.
+    guided_block_id: Optional[str] = None
+    ## Idempotency key. Locking the pointer stops a second deliberate draw;
+    ## it does nothing about a retried request, a replayed double-click, or
+    ## a response arriving after the user navigated away. Repeating an id
+    ## returns the region the first call made.
+    client_operation_id: Optional[str] = None
 
 class RegionMerge(BaseModel):
     region_ids: List[str]
@@ -1833,17 +1867,174 @@ def get_project(pid: str):
 
 @app.patch("/api/projects/{pid}")
 def update_project(pid: str, req: ProjectUpdate):
-    project = db.update_project(
-        pid, name=req.name, target_lang=req.target_lang, source_lang=req.source_lang,
-        ground_truth=(
-            _normalize_ground_truth(req.ground_truth)
-            if req.ground_truth is not None else None
-        ),
-        archived=req.archived,
-    )
+    try:
+        project = db.update_project(
+            pid, name=req.name, target_lang=req.target_lang, source_lang=req.source_lang,
+            ground_truth=(
+                _normalize_ground_truth(req.ground_truth)
+                if req.ground_truth is not None else None
+            ),
+            capture_mode=req.capture_mode,
+            archived=req.archived,
+        )
+    except ValueError as exc:
+        # An unknown capture mode is a bad request, not a server fault.
+        raise HTTPException(422, str(exc))
     if project is None:
         raise HTTPException(404, f"project '{pid}' not found")
     return project
+
+
+def _guided_block_payload(block) -> Dict[str, Any]:
+    """One Block, over the wire, in ONE shape.
+
+    PUT used to answer with atoms and GET without them, so a reload saw
+    strictly less than the save had returned and could not restore what the
+    user was looking at.  Both routes now share this, which is also the
+    guarantee the frontend needs in order to never re-derive atoms itself:
+    `mise` is the only thing that decides what a Block is made of, so if a
+    field is missing here the UI must do without it rather than invent it.
+    """
+    return {
+        "id": block.id,
+        "raw_text": block.raw_text,
+        "normalized_text": block.normalized_text,
+        "position": block.position,
+        "scope": block.scope,
+        "find_all": block.find_all,
+        "language_assessment": block.language_assessment,
+        "detection_assessment": block.detection_assessment,
+        "atoms": [
+            {"id": a.id, "text": a.text, "position": a.position,
+             "kind": a.kind, "script": a.script, "direction": a.direction}
+            for a in block.atoms
+        ],
+    }
+
+
+@app.put("/api/assets/{asset_id}/guided-blocks")
+def set_guided_blocks(asset_id: str, req: GuidedBlocksUpdate):
+    """Persist the Blocks a Guided capture should locate.
+
+    Stored on the manifest rather than recomputed from the Ground Truth
+    field on load: each Block carries a language assessment the user may
+    already have seen and acknowledged, and re-deriving would discard it.
+    """
+    manifest = load_manifest(UPLOAD_DIR, asset_id)
+    if manifest is None:
+        raise HTTPException(404, f"no manifest for asset '{asset_id}'")
+    from tofu.layers.mise import make_blocks
+    # Entries arrive EXACTLY as typed -- `_normalize_ground_truth` is
+    # deliberately not applied here.  That normalizer splits on whitespace
+    # and deduplicates, which is right for the recogniser's term pool and
+    # fatal for Blocks: it would turn "la première saisie" into three and
+    # collapse "PARIS PARIS" into one.  Two vocabularies, each correct for
+    # its own consumer.
+    previous: Dict[str, List[Any]] = {}
+    for block in (manifest.guided_blocks or []):
+        previous.setdefault(block.raw_text, []).append(block)
+    manifest.guided_blocks = make_blocks(req.blocks, manifest.src_lang)
+    # Re-entering the field must not discard reconciliation the user has
+    # already earned.  Carried by TEXT rather than by index, so re-ordering
+    # Blocks keeps each one's progress with it -- and as a queue per text,
+    # because two identical Blocks are two separate things to find and the
+    # first must not inherit the second's progress.  A dict keyed on text
+    # alone would silently merge them.
+    for block in manifest.guided_blocks:
+        queue = previous.get(block.raw_text)
+        prior = queue.pop(0) if queue else None
+        if prior is not None and prior.detection_assessment is not None:
+            block.detection_assessment = prior.detection_assessment
+    save_manifest(UPLOAD_DIR, asset_id, manifest)
+    return {
+        "asset_id": asset_id,
+        "blocks": [_guided_block_payload(block) for block in manifest.guided_blocks],
+    }
+
+
+class GuidedResolution(BaseModel):
+    ## null withdraws an earlier override and hands the Block back to the
+    ## evidence.
+    resolution: Optional[str] = None
+
+
+@app.post("/api/assets/{asset_id}/guided-blocks/{block_id}/resolve")
+def resolve_guided_block(asset_id: str, block_id: str, req: GuidedResolution):
+    """Let the user settle a Block themselves.
+
+    The escape hatch the Guided state machine cannot ship without: some text
+    is genuinely unreadable, and without an explicit way to mark a Block
+    done or skipped, one bad sign holds the whole workflow open and the only
+    exit is to abandon Guided capture.
+
+    Recorded in `resolution`, separately from `status`, so no later
+    automatic pass can quietly overturn it.
+    """
+    from tofu.layers import aboyeur
+    manifest = load_manifest(UPLOAD_DIR, asset_id)
+    if manifest is None:
+        raise HTTPException(404, f"no manifest for asset '{asset_id}'")
+    block = next((b for b in (manifest.guided_blocks or []) if b.id == block_id), None)
+    if block is None:
+        raise HTTPException(404, f"block '{block_id}' not found")
+    try:
+        aboyeur.resolve(block, req.resolution)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+    # Reconcile AFTER, so withdrawing an override recomputes from evidence
+    # rather than leaving the Block frozen at whatever the override said.
+    if req.resolution is None:
+        _reconcile_guided(manifest)
+    save_manifest(UPLOAD_DIR, asset_id, manifest)
+    return {"asset_id": asset_id, **_guided_state(manifest)}
+
+
+@app.delete("/api/assets/{asset_id}/guided-blocks")
+def clear_guided_blocks(asset_id: str):
+    """Discard the Blocks for this asset, deliberately.
+
+    Exists so that "the user reset Guided capture" has a way to be said out
+    loud.  The alternative -- letting an empty `guided_blocks` in a manifest
+    PUT mean the same thing -- makes an intentional reset and an accidental
+    omission indistinguishable at the point where they do the same damage.
+    """
+    manifest = load_manifest(UPLOAD_DIR, asset_id)
+    if manifest is None:
+        raise HTTPException(404, f"no manifest for asset '{asset_id}'")
+    cleared = len(manifest.guided_blocks or [])
+    manifest.guided_blocks = []
+    save_manifest(UPLOAD_DIR, asset_id, manifest)
+    return {"asset_id": asset_id, "cleared": cleared}
+
+
+@app.get("/api/assets/{asset_id}/guided-blocks")
+def get_guided_blocks(asset_id: str):
+    manifest = load_manifest(UPLOAD_DIR, asset_id)
+    if manifest is None:
+        raise HTTPException(404, f"no manifest for asset '{asset_id}'")
+    return {"asset_id": asset_id, **_guided_view(manifest)}
+
+
+@app.post("/api/language/assess")
+def assess_language(req: LanguageAssessRequest):
+    """Does this typed text plausibly belong to the project's SOURCE language?
+
+    Source, not target: a Block has to exist in the asset being localized,
+    so it is the source language it must agree with.  Never blocks -- the
+    strongest answer is a warning the user can keep, review or dismiss.
+    """
+    from tofu.layers.palate import assess
+    verdict = assess(req.text, req.source_language)
+    return {
+        "state": verdict.state,
+        "source_language": verdict.source_language,
+        "detected_language": verdict.detected_language,
+        "scripts": verdict.scripts,
+        "direction": verdict.direction,
+        "reasons": verdict.reasons,
+        "warns": verdict.warns,
+        "policy_revision": verdict.policy_revision,
+    }
 
 
 @app.post("/api/projects/{pid}/archive")
@@ -2133,6 +2324,29 @@ def _ground_truth_pool(asset_id: str, lang: Optional[str]) -> List[tuple]:
     source_lang = lang or project.get("source_lang")
     return [(term, source_lang, scope) for term, scope in effective.items()]
 
+
+def _gt_rescue(asset_id: str, path, manifest) -> Optional[Dict[str, Any]]:
+    """Recover regions for requested text the detector did not read.
+
+    Ground Truth priming only ever reached the recognition-CORRECTION path,
+    which needs a box AND a near-miss read to work with. Measured on
+    prem-sais (zh-TW, rare glyphs): two requested characters got no box at
+    all, and a third came back at confidence 0.004 -- too far from the
+    request for span alignment to fire. This is the seam that handles both.
+
+    Best-effort: a rescue failure must never lose a completed detection.
+    """
+    try:
+        terms = [term for term, _lang, _scope in _ground_truth_pool(asset_id, None)]
+        if not terms:
+            return None
+        from tofu.layers.forage import rescue_requested_text
+        report = rescue_requested_text(manifest, terms, str(path))
+        return report if report.get("recovered") or report.get("unresolved") else None
+    except Exception:
+        return None
+
+
 def _project_lang_hints(asset_id: str) -> Optional[List[str]]:
     """source-language priority protection: when the asset's project has a
     locked source language, detection MUST start language-tuned — the
@@ -2199,6 +2413,9 @@ def detect(req: DetectRequest):
         identify_manifest_fonts(str(path), manifest, get_validator().font_registry)
     except Exception:
         pass
+    # Requested text the detector could not read gets one more chance,
+    # against discarded candidates re-read in the requested script.
+    rescue = _gt_rescue(req.asset_id, path, manifest)
     tm_matched = _lookup_tm_for_manifest(req.asset_id, manifest, path)
     _resolve_auto_fonts(manifest)  # after TM lookup so manifest.targ_lang is set
     save_manifest(UPLOAD_DIR, req.asset_id, manifest)
@@ -2400,6 +2617,10 @@ def detect_stream(
             tm_matched = 0
             if manifest.instances:
                 yield event({"stage": "memory", "status": "running"})
+                # Same rescue as the non-streaming route. Wiring only one of
+                # the two detection paths is why the first attempt changed
+                # nothing on a real capture: the UI streams.
+                _gt_rescue(asset_id, path, manifest)
                 tm_matched = _lookup_tm_for_manifest(asset_id, manifest, path)
                 yield event({"stage": "memory", "status": "complete", "matched": tm_matched})
 
@@ -2478,13 +2699,30 @@ def get_manifest(asset_id: str):
                     changed = True
                 if changed:
                     save_manifest(UPLOAD_DIR, asset_id, manifest)
-    if not manifest.semantic_units or any(unit.pairing is None for unit in manifest.semantic_units):
-        try:
-            from tofu.layers.basil import unify_manifest
+    # Registration and enrichment are separate concerns.  Only a manifest
+    # with NO plates at all gets re-registered; a manifest that is merely
+    # missing an advisory `pairing` verdict gets that verdict filled in.
+    # Conflating the two meant every project reopen regrouped its plates
+    # from geometry, which silently discarded user-authored membership.
+    try:
+        from tofu.layers.basil import (
+            enrich_semantic_units, migrate_plate_identity, unify_manifest,
+        )
+        if not manifest.semantic_units:
             unify_manifest(manifest)
             save_manifest(UPLOAD_DIR, asset_id, manifest)
-        except Exception:
-            pass
+        else:
+            # One persisted pass: durable plate identity is never minted
+            # lazily, or the same project would get different UIDs on
+            # different machines and returned files would resolve to neither.
+            dirty = migrate_plate_identity(manifest)
+            if any(unit.pairing is None for unit in manifest.semantic_units):
+                enrich_semantic_units(manifest)
+                dirty = True
+            if dirty:
+                save_manifest(UPLOAD_DIR, asset_id, manifest)
+    except Exception:
+        pass
     # Upgrade approved Basil plans created before block→cube anchoring.  This
     # is a deterministic metadata/projection repair: no OCR or geometry is
     # changed, but every client and Scribe now see the same plated order.
@@ -2737,7 +2975,32 @@ def font_match(asset_id: str, req: FontMatchRequest):
 
 @app.put("/api/manifest/{asset_id}")
 def put_manifest(asset_id: str, manifest_data: Dict[str, Any]):
-    from tofu.utils.manifest_store import _dict_to_manifest, _manifest_to_dict
+    from tofu.utils.manifest_store import (
+        _dict_to_manifest, _manifest_to_dict, merge_server_owned,
+    )
+    stored = load_manifest(UPLOAD_DIR, asset_id)
+    # A full-document PUT from a client that does not model every field is a
+    # deletion of the fields it does not model.  The frontend's TextManifest
+    # knows nothing about guided_blocks or candidate_lineage, and rebuilds
+    # the whole document on every autosave -- so without this merge, drawing
+    # one box erased Guided progress 1.5s later.  Fields the payload DOES
+    # name are still honoured, including an explicit clear.
+    manifest_data = merge_server_owned(manifest_data, stored)
+    # Stale-write guard.  Correct merge semantics still lose to a payload
+    # that was assembled BEFORE the state it is about to overwrite existed
+    # -- an autosave in flight when a Guided reconciliation lands carries a
+    # complete, plausible, obsolete document.  Opt-in: a request that does
+    # not claim a revision is not making a claim we can check, and the
+    # existing clients do not send one.
+    expected = manifest_data.pop("expected_revision", None)
+    if expected is not None and stored is not None:
+        current = _translation_manifest_revision(stored)
+        if str(expected) != current:
+            raise HTTPException(409, {
+                "error": "manifest revision mismatch",
+                "expected_revision": str(expected),
+                "current_revision": current,
+            })
     manifest = _dict_to_manifest(manifest_data)
     manifest.asset_id = asset_id
     manifest.total_regions = sum(1 for i in manifest.instances if not i.excluded)
@@ -2746,6 +3009,11 @@ def put_manifest(asset_id: str, manifest_data: Dict[str, Any]):
     # resolution is cheap (registry lookups, no font-file I/O) -- no
     # need to diff old vs new to decide what changed
     _resolve_auto_fonts(manifest)
+    # An undo, a redo or a restored snapshot arrives as an ordinary full
+    # save, so this is the route where a whole set of regions can appear or
+    # vanish at once -- and the one where stale Block coverage would be most
+    # visible.
+    _reconcile_guided(manifest)
     save_manifest(UPLOAD_DIR, asset_id, manifest)
     # autosave ledger: every accepted write is snapshotted (deduped) so a
     # session can always be rolled back
@@ -2756,7 +3024,13 @@ def put_manifest(asset_id: str, manifest_data: Dict[str, Any]):
         inst.id: inst.resolved_font_family
         for inst in manifest.instances if inst.resolved_font_family
     }
-    return {"ok": True, "total_regions": manifest.total_regions, "resolved_fonts": resolved_fonts}
+    return {
+        "ok": True, "total_regions": manifest.total_regions,
+        "resolved_fonts": resolved_fonts,
+        # Handed back so a client that wants the stale-write guard can send
+        # it on the next PUT without a second round trip to fetch it.
+        "revision": _translation_manifest_revision(manifest),
+    }
 
 
 def _translation_manifest_revision(manifest: TextManifest) -> str:
@@ -2876,8 +3150,189 @@ def apply_translation_decisions(asset_id: str, req: TranslationDecisionRequest):
     }
 
 
+## Regions already created by a `client_operation_id`, so a repeat returns
+## the first result instead of a second region.
+##
+## In-process and bounded, which is the honest scope: it covers a retry, a
+## replayed click and a late response -- all of which happen within seconds
+## of each other -- and it does NOT survive a restart or span workers. A
+## duplicate region after a server restart is visible and one click to
+## remove; making this durable would mean either a transport concern on the
+## region model or an unbounded map in the manifest, and neither is worth
+## it for the window that is actually at risk.
+_OPERATION_IDS: "OrderedDict[tuple, str]" = OrderedDict()
+_OPERATION_MEMORY = 256
+
+
+def _remember_operation(key: tuple, region_id: str) -> None:
+    _OPERATION_IDS[key] = region_id
+    _OPERATION_IDS.move_to_end(key)
+    while len(_OPERATION_IDS) > _OPERATION_MEMORY:
+        _OPERATION_IDS.popitem(last=False)
+
+
+def _reconcile_guided(
+    manifest: TextManifest, associate: Optional[Dict[str, str]] = None,
+) -> None:
+    """Recompute Block coverage after ANY mutation that could change it.
+
+    Called from every route that adds, edits, excludes, merges or restores a
+    region. Reconciliation is total and idempotent, so calling it more often
+    than strictly necessary is free -- whereas missing one call leaves a
+    Block claiming evidence that no longer exists, and the user is told they
+    found something that is not there any more.
+    """
+    if not manifest.guided_blocks:
+        return
+    from tofu.layers import aboyeur
+    aboyeur.reconcile(manifest.guided_blocks, manifest.instances, associate=associate)
+
+
+def _guided_view(manifest: TextManifest) -> Dict[str, Any]:
+    """Everything a caller needs to decide what to prompt next.
+
+    ONE builder for every route that reports Guided state, so a reload
+    cannot see a different shape from the one a draw just returned -- the
+    asymmetry that made `GET /guided-blocks` unable to restore the screen
+    its own `PUT` had produced.
+    """
+    from tofu.layers import aboyeur
+    blocks = manifest.guided_blocks or []
+    active = aboyeur.active_block(blocks)
+    return {
+        "progress": aboyeur.progress(blocks),
+        "active_block_id": active.id if active else None,
+        "blocks": [_guided_block_payload(b) for b in blocks],
+    }
+
+
+def _guided_state(manifest: TextManifest) -> Dict[str, Any]:
+    """`_guided_view` under one key, and only when there are Blocks.
+
+    An Auto or Manual capture must get back exactly the region object it
+    always got, byte for byte, or every existing caller starts round-
+    tripping fields it does not understand back into the manifest.
+    """
+    if not manifest.guided_blocks:
+        return {}
+    return {"guided": _guided_view(manifest)}
+
+
+## "No boxes were drawn" is at least six different events with nothing in
+## common except the screen, and they send the user to completely different
+## remedies. Naming which one happened is the whole point of this route.
+DETECTION_RUNGS = {
+    "no_engine": "no OCR engine was available, so nothing was attempted",
+    "no_proposals": "the detector proposed nothing at this resolution",
+    "all_suppressed": "the detector proposed candidates and every one was suppressed",
+    "all_excluded": "regions were captured, then all of them were excluded",
+    "regions_present": "regions were captured and are present in the manifest",
+    "no_lineage": "no lineage was recorded for this asset, so the detector's own proposals cannot be inspected",
+}
+
+
+@app.get("/api/manifest/{asset_id}/detection-attribution")
+def detection_attribution(asset_id: str):
+    """Why does this asset have the regions it has -- or none?
+
+    READ-ONLY, and it re-runs nothing. A re-detection would be a DIFFERENT
+    run against a different random state, and comparing a fresh permissive
+    pass against what shipped is precisely the mistake that once reported
+    six pipeline-destroyed regions where the production ancestry has one.
+    What is reported here is the graph the shipping run actually recorded.
+    """
+    from tofu.layers.okara import CandidateGraph
+
+    manifest = load_manifest(UPLOAD_DIR, asset_id)
+    if manifest is None:
+        raise HTTPException(404, f"no manifest for asset '{asset_id}'")
+
+    active = [i for i in manifest.instances if not i.excluded]
+    lineage = manifest.candidate_lineage
+
+    if lineage is None:
+        # Distinguished from "proposed nothing": a manifest captured before
+        # lineage was persisted, or one that was never detected, has no
+        # evidence either way -- and reporting that as "the detector is
+        # blind" would be inventing a finding.
+        rung = "regions_present" if active else "no_lineage"
+        return {
+            "asset_id": asset_id, "rung": rung, "explanation": DETECTION_RUNGS[rung],
+            "regions": {"total": len(manifest.instances), "active": len(active),
+                        "excluded": len(manifest.instances) - len(active)},
+            "lineage": None,
+        }
+
+    graph = CandidateGraph.from_dict(lineage)
+    report = graph.conservation_report()
+    by_state = report["by_state"]
+    raw_nodes = report["raw"]
+
+    if active:
+        rung = "regions_present"
+    elif manifest.instances:
+        rung = "all_excluded"
+    elif raw_nodes == 0:
+        rung = "no_proposals"
+    else:
+        rung = "all_suppressed"
+
+    ## Which stage each suppressed candidate died at, and why. This is the
+    ## sentence that separates "tiles, a different detector, or fine-tuning"
+    ## from "score calibration" -- two remedies with very different costs.
+    suppressed_by_stage: Dict[str, Dict[str, int]] = {}
+    reasons: Dict[str, int] = {}
+    for node in lineage.get("nodes", []):
+        state = node.get("suppression_state", "active")
+        if state == "active":
+            continue
+        bucket = suppressed_by_stage.setdefault(node.get("stage", "unknown"), {})
+        bucket[state] = bucket.get(state, 0) + 1
+        reason = node.get("suppression_reason")
+        if reason:
+            reasons[reason] = reasons.get(reason, 0) + 1
+
+    return {
+        "asset_id": asset_id,
+        "rung": rung,
+        "explanation": DETECTION_RUNGS[rung],
+        "regions": {"total": len(manifest.instances), "active": len(active),
+                    "excluded": len(manifest.instances) - len(active)},
+        "lineage": {
+            "run_kind": lineage.get("run_kind"),
+            "nodes": report["nodes"],
+            "raw_proposals": raw_nodes,
+            "by_state": by_state,
+            "by_stage": report["by_stage"],
+            "suppressed_by_stage": suppressed_by_stage,
+            "suppression_reasons": reasons,
+            ## The conservation invariant, checked rather than asserted: a
+            ## non-empty `orphans` means a candidate reached the manifest
+            ## without traceable ancestry, and any attribution built on this
+            ## graph is that much less complete.
+            "orphans": len(report["orphans"]),
+            "raw_untraced": len(report["raw_untraced"]),
+            "detector_configs": sorted({
+                node["detector_fingerprint"] for node in lineage.get("nodes", [])
+                if node.get("detector_fingerprint")
+            }),
+        },
+    }
+
+
 @app.post("/api/manifest/{asset_id}/regions")
 def add_region(asset_id: str, req: RegionCreate):
+    """Add a region and, in Guided capture, reconcile in the same write.
+
+    ONE transaction on purpose. Association, reconciliation and persistence
+    happening in separate calls gives two chances to disagree about what the
+    manifest says, and leaves a window where a region exists with no owner.
+    The response carries the updated assessment and progress so the caller
+    never has to re-fetch to find out what to ask for next -- and, more
+    importantly, so it advances from what was PERSISTED rather than from an
+    optimistic guess the server might contradict.
+    """
+    operation_key = (asset_id, req.client_operation_id) if req.client_operation_id else None
     bbox = _normalized_asset_bbox(asset_id, req.dict())
     manifest = load_manifest(UPLOAD_DIR, asset_id)
     if manifest is None:
@@ -2888,6 +3343,14 @@ def add_region(asset_id: str, req: RegionCreate):
             img_dim=None,
             scene_regions=[],
         )
+
+    if operation_key is not None and operation_key in _OPERATION_IDS:
+        existing = next(
+            (i for i in manifest.instances if i.id == _OPERATION_IDS[operation_key]), None,
+        )
+        if existing is not None:
+            return {**jsonable(existing), **_guided_state(manifest)}
+
     existing_nums = [int(i.id[1:]) for i in manifest.instances if i.id.startswith("r")]
     next_num = max(existing_nums, default=0) + 1
     new_inst = InstText(
@@ -2898,8 +3361,16 @@ def add_region(asset_id: str, req: RegionCreate):
     )
     manifest.instances.append(new_inst)
     manifest.total_regions = len(manifest.instances)
+
+    _reconcile_guided(
+        manifest,
+        {new_inst.id: req.guided_block_id} if req.guided_block_id else None,
+    )
+
     save_manifest(UPLOAD_DIR, asset_id, manifest)
-    return jsonable(new_inst)
+    if operation_key is not None:
+        _remember_operation(operation_key, new_inst.id)
+    return {**jsonable(new_inst), **_guided_state(manifest)}
 
 
 @app.post("/api/manifest/{asset_id}/regions/merge")
@@ -2996,6 +3467,11 @@ def merge_regions(asset_id: str, req: RegionMerge):
     for spare in members[1:]:
         spare.excluded = True
     manifest.total_regions = sum(1 for i in manifest.instances if not i.excluded)
+    # A merge changes both the survivor's text and which regions still
+    # exist, so any Block that matched a member has to be recomputed. The
+    # survivor keeps its id, so an explicit association on it survives; the
+    # spares are now excluded and drop out of coverage.
+    _reconcile_guided(manifest)
     save_manifest(UPLOAD_DIR, asset_id, manifest)
     pid = db.project_for_asset(asset_id)
     if pid:
@@ -3005,6 +3481,7 @@ def merge_regions(asset_id: str, req: RegionMerge):
         "ok": True, "region": jsonable(survivor), "source": source,
         "merged_ids": [i.id for i in members[1:]],
         "total_regions": manifest.total_regions,
+        **_guided_state(manifest),
     }
 
 
@@ -3044,9 +3521,13 @@ def delete_region(asset_id: str, rid: str):
     if inst is None:
         raise HTTPException(404, f"region '{rid}' not found")
     inst.excluded = True
+    # A Block whose only evidence just went away must REOPEN. `excluded` is
+    # a mark rather than a splice, so nothing else in the manifest changes
+    # shape here -- only reconciliation can notice.
+    _reconcile_guided(manifest)
     save_manifest(UPLOAD_DIR, asset_id, manifest)
     active_count = sum(1 for i in manifest.instances if not i.excluded)
-    return {"ok": True, "total_regions": active_count}
+    return {"ok": True, "total_regions": active_count, **_guided_state(manifest)}
 
 
 @app.patch("/api/manifest/{asset_id}/regions/{rid}")
@@ -3100,8 +3581,12 @@ def update_region(asset_id: str, rid: str, req: RegionUpdate):
             confidence=float(req.segmentation_mask.get("confidence", 1.0)),
             holes=[[tuple(point) for point in hole] for hole in holes] if holes else None,
         )
+    # Editing a region's source text changes what it READS, so the evidence
+    # that matched it may no longer hold; excluding it removes the evidence
+    # outright. Both arrive here.
+    _reconcile_guided(manifest)
     save_manifest(UPLOAD_DIR, asset_id, manifest)
-    return jsonable(inst)
+    return {**jsonable(inst), **_guided_state(manifest)}
 
 
 # --- OCR on a specific region ---
@@ -3257,25 +3742,59 @@ def refine_region(req: RefineRegionRequest):
 
 # --- export + import ---
 
-@app.post("/api/export")
-def export(req: ExportRequest):
-    manifest = load_manifest(UPLOAD_DIR, req.asset_id)
-    if manifest is None:
-        raise HTTPException(404, f"no manifest for asset '{req.asset_id}'")
-    fmt = req.format.lower()
+def _render_export_semantic(manifest, fmt: str, variant: str, targ_lang: str, profile: str):
+    """Plate-oriented projections. One trans-unit/row per Plate, not per region.
+
+    Separate from `_render_export` rather than a branch inside it: the
+    region-based writers must keep producing byte-identical files for every
+    caller that has not opted in, and the cheapest way to guarantee that is
+    for this code to be unable to touch them.
+    """
     src_lang = manifest.src_lang or "en"
     if fmt == "xliff":
-        content = interchange.export_xliff(manifest, src_lang, req.targ_lang or "", req.variant or "standard")
+        content = interchange.export_xliff_semantic(manifest, src_lang, targ_lang or "", variant or "standard")
+        return content, "xliff", "application/xml"
+    if fmt == "tmx":
+        # profile carries the memory kind: semantic | atomic | both
+        kind = profile if profile in {"semantic", "atomic", "both"} else "semantic"
+        content = interchange.export_tmx_profiles(manifest, src_lang, targ_lang or "", kind)
+        return content, "tmx", "application/xml"
+    if fmt == "tsv":
+        return interchange.export_tsv_semantic(manifest, targ_lang or ""), "tsv", "text/tab-separated-values"
+    if fmt == "csv":
+        return interchange.export_csv_semantic(manifest, targ_lang or ""), "csv", "text/csv"
+    if fmt == "txt":
+        return interchange.export_txt_semantic(manifest), "txt", "text/plain"
+    if fmt == "vtm":
+        # VTM is already lossless and plate-aware; there is no separate
+        # semantic projection of it.
+        return _render_export(manifest, fmt, variant, targ_lang)
+    raise HTTPException(400, f"unknown format '{fmt}'")
+
+
+def _render_export(manifest, fmt: str, variant: str, targ_lang: str):
+    """Build one translation file. The single writer both export routes use.
+
+    /api/export and Basil's prepare/download flow MUST produce identical
+    bytes for the same manifest: the flow is a readiness check in front of
+    the same writer, not a second implementation of it.  Keeping one body
+    here is what makes that a structural guarantee rather than a promise.
+
+    Returns (content, ext, media_type).
+    """
+    src_lang = manifest.src_lang or "en"
+    if fmt == "xliff":
+        content = interchange.export_xliff(manifest, src_lang, targ_lang or "", variant or "standard")
         ext, media = "xliff", "application/xml"
     elif fmt == "tmx":
         pairs = [
             (i.id, i.text or "", i.target_text or "",
              f"bbox:{i.bounding_box.x},{i.bounding_box.y}",
              i.language or i.detected_language or src_lang,
-             i.target_language or req.targ_lang or "")
+             i.target_language or targ_lang or "")
             for i in manifest.instances if not getattr(i, "dnt", False)
         ]
-        content = interchange.export_tmx(pairs, src_lang, req.targ_lang or "")
+        content = interchange.export_tmx(pairs, src_lang, targ_lang or "")
         ext, media = "tmx", "application/xml"
     elif fmt == "tsv":
         content = interchange.export_tsv(manifest); ext, media = "tsv", "text/tab-separated-values"
@@ -3292,7 +3811,7 @@ def export(req: ExportRequest):
 
         from tofu.utils import vtm as vtm_mod
         try:
-            document = vtm_mod.export_vtm(manifest, src_lang, req.targ_lang or "")
+            document = vtm_mod.export_vtm(manifest, src_lang, targ_lang or "")
         except ValueError as exc:
             # the asset's pixel dimensions are required and unrecoverable
             # here: a bbox with no resolution cannot be interpreted later
@@ -3301,9 +3820,115 @@ def export(req: ExportRequest):
         ext, media = "vtm.json", "application/json"
     else:
         raise HTTPException(400, f"unknown format '{fmt}'")
+    return content, ext, media
+
+
+@app.post("/api/export")
+def export(req: ExportRequest):
+    """Region-based export, unchanged.
+
+    Kept as-is for backward compatibility: existing clients, scripts and
+    round-trip fixtures call this route and must keep receiving byte-identical
+    files.  Basil's prepare/download flow is the path that adds readiness.
+    """
+    manifest = load_manifest(UPLOAD_DIR, req.asset_id)
+    if manifest is None:
+        raise HTTPException(404, f"no manifest for asset '{req.asset_id}'")
+    content, ext, media = _render_export(
+        manifest, req.format.lower(), req.variant or "standard", req.targ_lang or "",
+    )
     filename = f"{req.asset_id}.{ext}"
     return Response(content=content, media_type=media,
                     headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+## Prepared exports live only until they are fetched or evicted.  They are
+## deliberately NOT persisted: the file is cheap to rebuild from the manifest,
+## and a download link that outlives the manifest it describes would hand a
+## translator a file ToFU can no longer map back.
+_PREPARED_EXPORTS: "OrderedDict[str, Dict[str, Any]]" = OrderedDict()
+_PREPARED_EXPORT_LIMIT = 32
+
+
+def _remember_export(record: Dict[str, Any]) -> str:
+    export_id = uuid.uuid4().hex
+    _PREPARED_EXPORTS[export_id] = record
+    while len(_PREPARED_EXPORTS) > _PREPARED_EXPORT_LIMIT:
+        _PREPARED_EXPORTS.popitem(last=False)
+    return export_id
+
+
+@app.post("/api/basil/export/prepare")
+def basil_export_prepare(req: BasilExportPrepareRequest):
+    """Compile a translation file and report what the expeditor saw.
+
+    Preparation is separate from download so the readiness verdict can be
+    shown BEFORE a file reaches a translator.  A blocked or stale manifest
+    returns its diagnostics and no download id: there is nothing to fetch.
+    """
+    manifest = load_manifest(UPLOAD_DIR, req.asset_id)
+    if manifest is None:
+        raise HTTPException(404, f"no manifest for asset '{req.asset_id}'")
+
+    from tofu.layers.basil import expedite
+    readiness = expedite(manifest, req.target_language or "")
+
+    fmt = req.format.lower()
+    payload: Dict[str, Any] = {
+        "asset_id": req.asset_id,
+        "format": fmt,
+        "variant": req.variant or "standard",
+        "profile": req.profile or "translation",
+        "readiness": jsonable(readiness),
+        "export_id": None,
+        "filename": None,
+    }
+    if readiness.state in {"blocked", "stale"}:
+        return payload
+    if readiness.state == "review" and not req.include_review_units:
+        payload["readiness"]["diagnostics"].append({
+            "code": "review_units_excluded",
+            "severity": "advisory",
+            "message": "Preparation stopped because review findings were not accepted.",
+            "plate_ids": [], "region_ids": [],
+        })
+        return payload
+
+    profile = req.profile or "translation"
+    if profile in {"semantic", "atomic", "both"}:
+        # A semantic file is matched back on durable plate identity, so it
+        # cannot be built from plates that do not have one yet.  Mint and
+        # PERSIST first: writing a uid into a translator's file without
+        # saving it here would guarantee the return trip resolves nothing.
+        from tofu.layers.basil import migrate_plate_identity
+        if migrate_plate_identity(manifest):
+            save_manifest(UPLOAD_DIR, req.asset_id, manifest)
+        content, ext, media = _render_export_semantic(
+            manifest, fmt, req.variant or "standard", req.target_language or "", profile,
+        )
+    else:
+        content, ext, media = _render_export(
+            manifest, fmt, req.variant or "standard", req.target_language or "",
+        )
+    filename = f"{req.asset_id}.{ext}"
+    payload["export_id"] = _remember_export(
+        {"content": content, "media": media, "filename": filename, "asset_id": req.asset_id}
+    )
+    payload["filename"] = filename
+    return payload
+
+
+@app.get("/api/basil/export/{export_id}/download")
+def basil_export_download(export_id: str):
+    record = _PREPARED_EXPORTS.get(export_id)
+    if record is None:
+        # Either never prepared, already evicted, or from a previous server
+        # run.  Re-preparing is always safe, so say so rather than 404ing bare.
+        raise HTTPException(404, "this prepared export is no longer available; prepare it again")
+    return Response(
+        content=record["content"], media_type=record["media"],
+        headers={"Content-Disposition": f'attachment; filename="{record["filename"]}"'},
+    )
 
 
 @app.post("/api/import")
@@ -3319,10 +3944,24 @@ async def import_file(asset_id: str = "", file: UploadFile = File(...)):
     filename = file.filename or "import.txt"
     fmt = interchange.detect_format(filename)
     mapping = None
+    semantic = None
     try:
-        if fmt == "xliff":
+        if fmt == "xliff" and interchange.looks_semantic(content):
+            # The file declares which scheme it was cut from, so the user
+            # never has to. A plate-oriented file is resolved on durable
+            # identity; a legacy region file keeps its original path below.
+            semantic = interchange.import_semantic_for_manifest(content, manifest)
+            translations = semantic["translations"]
+        elif fmt == "xliff":
             mapping = interchange.import_xliff_for_manifest(content, manifest)
             translations = mapping["translations"]
+        elif fmt in {"csv", "tsv"} and interchange.looks_semantic_tabular(
+            content, "\t" if fmt == "tsv" else ","
+        ):
+            semantic = interchange.import_semantic_tabular_for_manifest(
+                content, manifest, "\t" if fmt == "tsv" else ","
+            )
+            translations = semantic["translations"]
         else:
             translations = interchange.import_file(filename, content)
     except Exception as exc:
@@ -3343,13 +3982,30 @@ async def import_file(asset_id: str = "", file: UploadFile = File(...)):
         db.add_snapshot(pid, asset_id, _manifest_to_dict(manifest), reason="import")
         db.log_event(pid, "import",
                      f"imported {len(translations)} translation(s) from '{filename}'")
-    return {
+    result = {
         "imported": len(imported_ids & manifest_ids), "missing": missing,
         "extra": extra, "translations": translations, "format": fmt,
         "matched_by": mapping["matched_by"] if mapping else {"id": len(translations)},
         "unresolved": mapping["unresolved"] if mapping else [],
         "empty_targets": mapping["empty_targets"] if mapping else 0,
     }
+    if semantic is not None:
+        # A multi-region plate cannot be applied without deciding how its
+        # target splits across regions, so it comes back as a proposal the
+        # user applies explicitly.  `stale` and `ambiguous` are refusals, not
+        # warnings: nothing was written for them.
+        result.update({
+            "scheme": "semantic",
+            "matched_by": semantic["resolution"],
+            "unresolved": semantic["unresolved"],
+            "empty_targets": semantic["empty_targets"],
+            "proposals": semantic["proposals"],
+            "stale": semantic["stale"],
+            "ambiguous": semantic["ambiguous"],
+        })
+    else:
+        result["scheme"] = "legacy-region"
+    return result
 
 
 # --- render (scene → cleanse → scribe → verify) ---

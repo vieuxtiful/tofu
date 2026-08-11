@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 import { TbZoomInFilled, TbCircleDashedPlus, TbCircleDashedMinus } from "react-icons/tb";
 import { FaPlus, FaMinus } from "react-icons/fa";
 import { InstText, BBox, SceneRegion } from "./api";
+import GuidedPromptBubble from "./GuidedPromptBubble";
+import type { GuidedPrompt } from "./useGuidedCapture";
 import "./bbox.css";
 
 // magnifier loupe: moderate halo that magnifies the area under the cursor
@@ -41,6 +43,11 @@ interface BBoxCanvasProps {
   newRegionIds?: Set<string> | null;
   onDragStart?: () => void;
   onDragEnd?: () => void;
+  /** Guided capture: what to ask for next. PRESENTATION ONLY -- the parent
+   *  owns the workflow, and this component never advances it. */
+  guidedPrompt?: GuidedPrompt | null;
+  onGuidedComplete?: () => void;
+  onGuidedSkip?: () => void;
 }
 
 type DragState =
@@ -71,6 +78,7 @@ export default function BBoxCanvas({
   controlledZoom, onZoomChange, controlledScroll, onScrollChange,
   controlledHeight, onHeightChange, onDoubleClickExpand,
   bboxColor = "#22d3ee", bboxBlink = false, newRegionIds, onDragStart, onDragEnd,
+  guidedPrompt, onGuidedComplete, onGuidedSkip,
 }: BBoxCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const syncBarRef = useRef<HTMLDivElement>(null);
@@ -486,6 +494,15 @@ export default function BBoxCanvas({
         "--bbox-color": bboxColor,
       } as React.CSSProperties}
     >
+    {/* Inside the card, not the scroll container: the prompt must stay
+        attached when the canvas is expanded, resized or scrolled. */}
+    {guidedPrompt && (
+      <GuidedPromptBubble
+        prompt={guidedPrompt}
+        onComplete={onGuidedComplete}
+        onSkip={onGuidedSkip}
+      />
+    )}
     <div
       ref={containerRef}
       className="bbox-canvas-scroll relative flex-1 mr-6 select-none"

@@ -80,7 +80,7 @@ Nobody has to reverse-engineer an origin.
 ```json
 {
   "vtm_version": "1.0",
-  "generator": { "name": "ToFU", "version": "0.1.0" },
+  "generator": { "name": "ToFU", "version": "1.0.0" },
   "created": "2026-07-25T15:45:35+00:00",
   "source_language": "ja-JP",
   "target_language": "en-US",
@@ -213,6 +213,35 @@ unrecognised `x-` keys. Writers MUST NOT place in an extension anything the
 standard keys can express — an implementation that writes its size to
 `x-vendor.size` instead of `style.font_size` is not conforming, whatever else
 it does.
+
+### 8.1 `x-tofu` (informative)
+
+ToFU writes two extension structures. Both are optional, and a document that
+omits them is complete: every translation pair and its geometry lives in
+`entries`. A conforming 1.0 reader that ignores `x-` keys loses no
+translation data.
+
+`x-tofu.plates` records which entries are read together as one unit — a
+street name spelled across two signs is one plate over two entries. Each
+plate carries:
+
+| Key | Meaning |
+|---|---|
+| `plate_uid` | Durable identity. Stable across reordering, insertion and reload. |
+| `display_number` | Presentation position only. MUST NOT be used to resolve a plate. |
+| `origin` | `derived`, `guided` or `user`. |
+| `revision` | Fingerprint of ordered `region_ids` + normalised source. |
+| `source` | The plate's source text, which MAY differ from the concatenated entries when a source correction was accepted. |
+| `region_ids` | Entry ids, in source reading order. |
+
+A consumer returning a translation SHOULD match on `plate_uid` and compare
+`revision`. A differing `revision` means the plate changed after the document
+was written, and the translation MUST NOT be applied without review.
+
+`x-tofu.lineage_ref` is a *reference*, not the data: `{asset_id, run_id,
+digest}`. The detection lineage graph itself is deliberately not embedded —
+it describes one detection run rather than portable translation memory, and
+is not needed to reproduce the accepted visual result.
 
 ---
 

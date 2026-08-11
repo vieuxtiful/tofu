@@ -92,3 +92,10 @@ server/models/
 *.ngram.json.gz
 *.vectors.npz
 *.klm
+
+# Word2World material — the author's paper carries a real name/institution,
+# and the vendored clone is a separate repository. Local-only, same reason as
+# the technical paper above.
+evidence/word2world-paper.docx
+evidence/word2world-repo/
+evidence/word2world-render/

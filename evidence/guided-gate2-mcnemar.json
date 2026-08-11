@@ -1,0 +1,78 @@
+{
+  "corpus_id": "guided-corpus-v1",
+  "review_status": "machine_derived",
+  "comparisons": [
+    {
+      "split": "full",
+      "paired_occurrences": 189,
+      "unpaired_occurrences": 0,
+      "both_found": 127,
+      "neither_found": 48,
+      "auto_only": 0,
+      "guided_only": 14,
+      "discordant": 14,
+      "auto": {
+        "found": 127,
+        "of": 189,
+        "recall": 67.2
+      },
+      "guided": {
+        "found": 141,
+        "of": 189,
+        "recall": 74.6
+      },
+      "margin_points": 7.4,
+      "p_value": 0.00012,
+      "significant": true,
+      "meets_margin": false
+    },
+    {
+      "split": "dev",
+      "paired_occurrences": 161,
+      "unpaired_occurrences": 0,
+      "both_found": 104,
+      "neither_found": 45,
+      "auto_only": 0,
+      "guided_only": 12,
+      "discordant": 12,
+      "auto": {
+        "found": 104,
+        "of": 161,
+        "recall": 64.6
+      },
+      "guided": {
+        "found": 116,
+        "of": 161,
+        "recall": 72.0
+      },
+      "margin_points": 7.5,
+      "p_value": 0.00049,
+      "significant": true,
+      "meets_margin": false
+    },
+    {
+      "split": "holdout",
+      "paired_occurrences": 28,
+      "unpaired_occurrences": 0,
+      "both_found": 23,
+      "neither_found": 3,
+      "auto_only": 0,
+      "guided_only": 2,
+      "discordant": 2,
+      "auto": {
+        "found": 23,
+        "of": 28,
+        "recall": 82.1
+      },
+      "guided": {
+        "found": 25,
+        "of": 28,
+        "recall": 89.3
+      },
+      "margin_points": 7.1,
+      "p_value": 0.5,
+      "significant": false,
+      "meets_margin": false
+    }
+  ]
+}

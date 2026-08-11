@@ -196,6 +196,22 @@ export async function putVideoKeyframe(jobId: string, keyframe: RenderKeyframe):
   return json(await fetch(`/api/video/jobs/${jobId}/keyframes`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(keyframe) }));
 }
 
+/** How detection is asked to run. Independent of the pipeline's LayerMode,
+ *  whose HYBRID value means a pause checkpoint, not a capture choice. */
+export type CaptureMode = "auto" | "guided" | "manual";
+
+export interface LanguageAssessment {
+  state: "agree" | "probable_mismatch" | "strong_mismatch"
+       | "insufficient_evidence" | "mixed_script_expected";
+  source_language: string | null;
+  detected_language: string | null;
+  scripts: string[];
+  direction: "ltr" | "rtl";
+  reasons: string[];
+  warns: boolean;
+  policy_revision: string;
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -206,6 +222,7 @@ export interface Project {
   updated_at: number;
   archived_at?: number | null;
   ground_truth: string[];
+  capture_mode: CaptureMode;
   asset_count?: number;
   snapshot_count?: number;
   assets?: ProjectAsset[];
@@ -986,7 +1003,7 @@ export async function getProject(id: string): Promise<Project> {
 
 export async function updateProject(
   id: string,
-  updates: Partial<{ name: string; target_lang: string; source_lang: string; ground_truth: string[]; archived: boolean }>
+  updates: Partial<{ name: string; target_lang: string; source_lang: string; ground_truth: string[]; capture_mode: CaptureMode; archived: boolean }>
 ): Promise<Project> {
   return json(
     await fetch(`/api/projects/${encodeURIComponent(id)}`, {
@@ -1329,18 +1346,90 @@ export async function deleteGlossary(scope: "global" | "project", projectId?: st
   return json(await fetch(`/api/glossary/${scope}?${params.toString()}`, { method: "DELETE" }));
 }
 
+/** What a Guided draw learns from the server, alongside the new region.
+ *
+ *  The prompt advances from THIS, never from a local guess: an optimistic
+ *  advance the server then contradicts leaves the screen and the persisted
+ *  state disagreeing, with the user believing the wrong one. */
+export interface GuidedState {
+  progress: {
+    blocks_total: number;
+    blocks_complete: number;
+    blocks_skipped: number;
+    blocks_review: number;
+    blocks_resolved: number;
+    atoms_total: number;
+    atoms_matched: number;
+    fraction: number;
+  };
+  active_block_id: string | null;
+  blocks: GuidedBlockRecord[];
+}
+
+export interface AddRegionOptions {
+  text?: string;
+  targetText?: string;
+  /** Guided: the Block that was active when this box was drawn. */
+  guidedBlockId?: string;
+  /** Idempotency key. A retry, a replayed double-click or a response that
+   *  arrives after navigation must not produce a second region. */
+  clientOperationId?: string;
+}
+
+/** Add a region, and in Guided capture reconcile in the same write.
+ *
+ *  The `guided` envelope is split off rather than returned inline, so the
+ *  region put into the manifest carries no field the frontend's own
+ *  `TextManifest` cannot round-trip. */
+export async function addRegionDetailed(
+  assetId: string,
+  bbox: BBox,
+  options: AddRegionOptions = {}
+): Promise<{ region: InstText; guided: GuidedState | null }> {
+  const body = await json<InstText & { guided?: GuidedState }>(
+    await fetch(`/api/manifest/${assetId}/regions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...bbox,
+        text: options.text,
+        target_text: options.targetText,
+        guided_block_id: options.guidedBlockId,
+        client_operation_id: options.clientOperationId,
+      }),
+    })
+  );
+  const { guided, ...region } = body;
+  return { region: region as InstText, guided: guided ?? null };
+}
+
 export async function addRegion(
   assetId: string,
   bbox: BBox,
   text?: string,
   targetText?: string
 ): Promise<InstText> {
+  return (await addRegionDetailed(assetId, bbox, { text, targetText })).region;
+}
+
+/** Record, or withdraw, the user's own verdict on a Block.
+ *
+ *  Without this a sign the recogniser cannot read holds the workflow open
+ *  indefinitely and the only exit is to abandon Guided capture. */
+export async function resolveGuidedBlock(
+  assetId: string,
+  blockId: string,
+  resolution: "user_complete" | "user_skipped" | null
+): Promise<{ guided: GuidedState }> {
   return json(
-    await fetch(`/api/manifest/${assetId}/regions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...bbox, text, target_text: targetText }),
-    })
+    await fetch(
+      `/api/assets/${encodeURIComponent(assetId)}/guided-blocks/${encodeURIComponent(blockId)}/resolve`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ resolution }),
+      }
+    )
   );
 }
 
@@ -1726,4 +1815,105 @@ export interface SystemCapabilities {
 
 export async function fetchSystemCapabilities(): Promise<SystemCapabilities> {
   return json(await fetch("/api/capabilities"));
+}
+
+/** Assess typed text against the project's SOURCE language.
+ *
+ *  Deliberately a server call rather than a second frontend lexicon: one
+ *  copy of the rules, so the two can never disagree. */
+export async function assessLanguage(
+  text: string,
+  sourceLanguage: string | null
+): Promise<LanguageAssessment> {
+  return json(
+    await fetch("/api/language/assess", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, source_language: sourceLanguage }),
+    })
+  );
+}
+
+/** One atom of a Block, as `mise` divided it.
+ *
+ *  Derived on the SERVER and never recomputed here: the UI having its own
+ *  tokenizer is how `saisie` gets promoted to a Block of its own. */
+export interface GuidedAtomRecord {
+  id: string;
+  text: string;
+  position: number;
+  kind: "word" | "phrase" | "numeric" | "punctuation";
+  script: string | null;
+  direction: "ltr" | "rtl" | null;
+}
+
+export interface GuidedBlockRecord {
+  id: string;
+  raw_text: string;
+  normalized_text: string;
+  position: number;
+  scope: string;
+  find_all: boolean;
+  language_assessment: LanguageAssessment | null;
+  /** Written by the reconciler (E2); null until a Guided capture runs. */
+  detection_assessment: Record<string, unknown> | null;
+  atoms: GuidedAtomRecord[];
+}
+
+/** Persist the Blocks a Guided capture should locate.
+ *
+ *  Order and duplicates are meaningful: two identical entries are two
+ *  occurrences to find, not one term seen twice. */
+export async function saveGuidedBlocks(
+  assetId: string,
+  blocks: string[]
+): Promise<{ blocks: GuidedBlockRecord[] }> {
+  return json(
+    await fetch(`/api/assets/${encodeURIComponent(assetId)}/guided-blocks`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ blocks }),
+    })
+  );
+}
+
+/** The same view a Guided draw returns, so a reload resumes on the Block the
+ *  user was looking at rather than on a recomputed guess. */
+export async function getGuidedBlocks(
+  assetId: string
+): Promise<GuidedState & { asset_id: string }> {
+  return json(await fetch(`/api/assets/${encodeURIComponent(assetId)}/guided-blocks`));
+}
+
+/** Why an asset has the regions it has -- or none.
+ *
+ *  Read-only and recomputes nothing: it reports the graph the shipping run
+ *  recorded, because a fresh detector pass is a different run and comparing
+ *  one against what shipped is how phantom defects get reported. */
+export interface DetectionAttribution {
+  asset_id: string;
+  rung: "no_engine" | "no_proposals" | "all_suppressed" | "all_excluded"
+      | "regions_present" | "no_lineage";
+  explanation: string;
+  regions: { total: number; active: number; excluded: number };
+  lineage: null | {
+    run_kind: string | null;
+    nodes: number;
+    raw_proposals: number;
+    by_state: Record<string, number>;
+    by_stage: Record<string, number>;
+    suppressed_by_stage: Record<string, Record<string, number>>;
+    suppression_reasons: Record<string, number>;
+    orphans: number;
+    raw_untraced: number;
+    detector_configs: string[];
+  };
+}
+
+export async function getDetectionAttribution(
+  assetId: string
+): Promise<DetectionAttribution> {
+  return json(
+    await fetch(`/api/manifest/${encodeURIComponent(assetId)}/detection-attribution`)
+  );
 }

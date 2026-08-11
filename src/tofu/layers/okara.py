@@ -71,9 +71,20 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 ## the geometry that later stages are answerable to -- and `final` is what
 ## the manifest shipped. Everything between is a transform that must justify
 ## itself against its parents.
+## Origin stages produce proposals from pixels and have no parents; the rest
+## are transforms answerable to theirs. `surface_probe` is an origin because
+## it re-runs the detector on an uncovered scene surface at crop resolution,
+## with nothing on the graph above it -- same standing as `zoom`.
+ORIGIN_STAGES = ("raw_craft", "zoom", "surface_probe")
+
 STAGES = (
     "raw_craft", "multipass_union", "merge_detections", "merge_vertical_columns",
-    "prune_contained_fragments", "zoom", "rescue", "final",
+    "prune_contained_fragments", "zoom", "surface_probe", "rescue",
+    ## Transforms that used to emit detections without recording anything,
+    ## which ended the chain and left the shipped regions unreachable from
+    ## the detector proposals. See cicerone._record_derived.
+    "split_tall_detections", "merge_baseline_runs", "compose_crop_text",
+    "final",
 )
 
 ## What became of a candidate. Only `active` reaches the manifest; the rest
@@ -328,6 +339,35 @@ class CandidateGraph:
 
     def children(self, candidate_id: str) -> List[str]:
         return list(self._children.get(candidate_id, ()))
+
+    def surviving_at(self, geometry: Sequence[float]) -> Optional[CandidateNode]:
+        """The one un-suppressed node sitting at exactly this geometry.
+
+        An identity join, not a similarity search. Coordinates are compared
+        at the same 2dp canonicalization `_stable_id` uses, so this matches
+        only a node the pipeline literally carried forward -- never a nearby
+        one that merely looks like it.
+
+        Exists because the last hop of the graph was missing: the `final`
+        nodes recorded for shipped regions had no parents, so
+        `raw_ancestors()` returned nothing for every region that actually
+        reached a user. The graph documented the middle of the pipeline and
+        went quiet exactly where a consumer would ask.
+
+        Returns None on zero or multiple matches. Ambiguity must not be
+        resolved by guessing here: attaching the wrong parent would make a
+        merge appear where none happened, which is worse than the gap it
+        replaces, and inferring lineage from final geometry has already
+        produced phantom defects in this codebase once.
+        """
+        key = tuple(round(float(v), 2) for v in geometry)
+        matches = [
+            node for node in self._nodes.values()
+            if tuple(round(float(v), 2) for v in node.geometry) == key
+            and node.stage != "final"
+            and self._state.get(node.candidate_id, "active") == "active"
+        ]
+        return matches[0] if len(matches) == 1 else None
 
     def ancestors(self, candidate_id: str) -> List[CandidateNode]:
         """Every proposal this one was built from, nearest first."""

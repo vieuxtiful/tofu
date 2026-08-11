@@ -1104,9 +1104,13 @@ export default function RegionTable({
                           const fontPath = overridePath ?? identity.path;
                           const fontFamily = fontPath ? fontNameForPath(fontPath) : identity.cssFontFamily;
                           if (fontPath) loadFontPreview(fontPath);
+                          // The detected source-text color (sp?.color) is intentionally
+                          // NOT applied here: it can be a dark color on the dark preview
+                          // background (or a light color on the light one), rendering the
+                          // preview text invisible. The preview is about the font shape;
+                          // the readable Tailwind color classes on the <p> below win.
                           const previewStyle: CSSProperties = {
                             fontFamily: fontFamily ?? undefined,
-                            color: sp?.color ?? undefined,
                             fontStyle: sp?.italic ? "italic" : undefined,
                             textDecoration: sp?.underline ? "underline" : undefined,
                           };
@@ -1118,7 +1122,7 @@ export default function RegionTable({
                           return (
                             <div className="mt-2 rounded-sm bg-zinc-100 p-2 dark:bg-zinc-950">
                               <p className="subtext mb-0.5 text-[10px] uppercase tracking-wider text-zinc-500">preview</p>
-                              <p className="text-sm text-zinc-800 dark:text-zinc-200" style={previewStyle}>
+                              <p className="text-sm text-zinc-800 dark:text-zinc-100" style={previewStyle}>
                                 {inst.target_text || "(no translation)"}
                               </p>
                             </div>

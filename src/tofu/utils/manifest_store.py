@@ -5,17 +5,44 @@ JSON-based persistence for TextManifest objects so the frontend can
 auto-save and restore the interactive preview state across sessions.
 
 Each manifest is stored as uploads/{asset_id}.manifest.json.
+
+FIELD OWNERSHIP, and why it is written down rather than assumed.
+
+`PUT /api/manifest/{id}` replaces the whole document, and the frontend
+rebuilds that document from a TypeScript interface that knows only about the
+fields the UI edits.  So any field this serializer carries but the frontend
+does not is deleted by the next autosave -- silently, 1.5 seconds after the
+user drags a box.  That is not hypothetical: `guided_blocks` round-tripped
+here perfectly and was erased on every save anyway, and `candidate_lineage`
+had no key at all, so the okara graph never once reached disk.
+
+Hence SERVER_OWNED_FIELDS.  A field listed there is preserved by the server
+when an incoming payload does not MENTION it (see `merge_server_owned` and
+`server.main.put_manifest`).  Absence and emptiness are different: an
+explicit `[]` or `null` still clears, because a caller that names a field is
+asserting something about it.
+
+The list is the contract.  A new server-computed field has to be added to it
+or it inherits the same defect, and the round-trip test parametrises over it
+so the omission fails a test rather than losing a user's work.
 """
 
 import json
 from dataclasses import asdict
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from tofu.core.types import (
     TextManifest, InstText, BBox, Mask, AssetType,
     StyleProfil, BgProfil, CharactText, SceneRegion, SemanticTextUnit, GarnishProfile, GarnishRegion,
     ReconstructionProfile,
+)
+
+## Fields this serializer persists that NO frontend payload is expected to
+## carry.  Everything here is computed or curated server-side.
+SERVER_OWNED_FIELDS = (
+    "guided_blocks",      ## Guided Blocks + their detection_assessment
+    "candidate_lineage",  ## okara's append-only proposal DAG
 )
 
 
@@ -56,6 +83,33 @@ def _manifest_path(store_dir: Path, asset_id: str) -> Path:
     return store_dir / f"{asset_id}.manifest.json"
 
 
+def merge_server_owned(
+    incoming: Dict[str, Any], stored: Optional[TextManifest],
+) -> Dict[str, Any]:
+    """Carry server-owned fields forward when the payload does not name them.
+
+    PRESENCE, not truthiness, is the test.  The endpoint receives a bare
+    dict, so `{"guided_blocks": []}` and a payload with no such key are the
+    same object once either is read with `.get()` -- and they mean opposite
+    things.  Omission is "I have nothing to say about this"; an explicit
+    empty value is "clear it".  Deciding between them on emptiness would
+    make a deliberate reset unexpressible and an accidental omission
+    destructive, which is exactly the pair of bugs this function exists to
+    separate.
+
+    Returns a NEW dict; the caller's payload is not mutated, so a request
+    body stays what the client actually sent for logging and diffing.
+    """
+    if stored is None:
+        return dict(incoming)
+    merged = dict(incoming)
+    stored_data = _manifest_to_dict(stored)
+    for field_name in SERVER_OWNED_FIELDS:
+        if field_name not in merged:
+            merged[field_name] = stored_data.get(field_name)
+    return merged
+
+
 def save_manifest(store_dir: Path, asset_id: str, manifest: TextManifest) -> None:
     """serialize a TextManifest to JSON on disk."""
     store_dir.mkdir(parents=True, exist_ok=True)
@@ -83,6 +137,11 @@ def _manifest_to_dict(m: TextManifest) -> dict:
         "img_dim": list(m.img_dim) if m.img_dim else None,
         "scene_regions": [_region_to_dict(r) for r in (m.scene_regions or [])],
         "semantic_units": [_semantic_unit_to_dict(u) for u in (m.semantic_units or [])],
+        "guided_blocks": [_guided_block_to_dict(b) for b in (getattr(m, "guided_blocks", None) or [])],
+        ## Written verbatim: okara's graph is already a plain dict of plain
+        ## values (`CandidateGraph.to_dict`), and re-shaping it here would
+        ## give the append-only record a second, divergent schema.
+        "candidate_lineage": getattr(m, "candidate_lineage", None),
         "asset_class": m.asset_class,
         "asset_classification": m.asset_classification,
         "asset_type": m.asset_type.value if hasattr(m.asset_type, "value") else str(m.asset_type),
@@ -97,6 +156,10 @@ def _manifest_to_dict(m: TextManifest) -> dict:
 def _semantic_unit_to_dict(unit: SemanticTextUnit) -> dict:
     return {
         "id": unit.id,
+        "plate_uid": unit.plate_uid,
+        "display_number": unit.display_number,
+        "origin": unit.origin,
+        "membership_hash": unit.membership_hash,
         "region_ids": list(unit.region_ids),
         "source_text": unit.source_text,
         "bbox": {
@@ -119,6 +182,14 @@ def _dict_to_semantic_unit(data: dict) -> SemanticTextUnit:
     bbox = data.get("bbox") or {}
     return SemanticTextUnit(
         id=str(data.get("id", "u-unknown")),
+        ## Defaults, never minted here: a legacy manifest gets its durable
+        ## identity from basil.migrate_plate_identity() in ONE persisted
+        ## pass.  Minting on read would hand the same project a different
+        ## UID on every machine that opened it.
+        plate_uid=str(data.get("plate_uid") or ""),
+        display_number=data.get("display_number"),
+        origin=str(data.get("origin") or "derived"),
+        membership_hash=str(data.get("membership_hash") or ""),
         region_ids=[str(region_id) for region_id in data.get("region_ids", [])],
         source_text=str(data.get("source_text", "")),
         bbox=BBox(
@@ -134,6 +205,59 @@ def _dict_to_semantic_unit(data: dict) -> SemanticTextUnit:
         pairing=data.get("pairing"),
         suggestion=data.get("suggestion"),
         ocr_repair=data.get("ocr_repair"),
+    )
+
+
+def _guided_atom_to_dict(atom) -> dict:
+    return {
+        "id": atom.id, "text": atom.text, "position": atom.position,
+        "kind": atom.kind, "script": atom.script, "direction": atom.direction,
+    }
+
+
+def _dict_to_guided_atom(data: dict):
+    from tofu.core.types import GuidedAtom
+    return GuidedAtom(
+        id=str(data.get("id", "")), text=str(data.get("text", "")),
+        position=int(data.get("position", 0)), kind=str(data.get("kind", "word")),
+        script=data.get("script"), direction=data.get("direction"),
+    )
+
+
+def _guided_block_to_dict(block) -> dict:
+    """A Block round-trips whole, including what was judged about it.
+
+    `raw_text` is stored exactly as typed -- whitespace and case are evidence
+    about how the text appears in the asset, and normalising on the way to
+    disk would lose the thing a matcher needs.
+    """
+    return {
+        "id": block.id,
+        "raw_text": block.raw_text,
+        "normalized_text": block.normalized_text,
+        "position": block.position,
+        "source_language": block.source_language,
+        "scope": block.scope,
+        "find_all": block.find_all,
+        "atoms": [_guided_atom_to_dict(a) for a in (block.atoms or [])],
+        "language_assessment": block.language_assessment,
+        "detection_assessment": block.detection_assessment,
+    }
+
+
+def _dict_to_guided_block(data: dict):
+    from tofu.core.types import GuidedBlock
+    return GuidedBlock(
+        id=str(data.get("id", "")),
+        raw_text=str(data.get("raw_text", "")),
+        normalized_text=str(data.get("normalized_text", "")),
+        position=int(data.get("position", 0)),
+        source_language=data.get("source_language"),
+        scope=str(data.get("scope") or "asset"),
+        find_all=bool(data.get("find_all", False)),
+        atoms=[_dict_to_guided_atom(a) for a in data.get("atoms", [])],
+        language_assessment=data.get("language_assessment"),
+        detection_assessment=data.get("detection_assessment"),
     )
 
 
@@ -413,6 +537,8 @@ def _dict_to_manifest(data: dict) -> TextManifest:
         img_dim=tuple(data["img_dim"]) if data.get("img_dim") else None,
         scene_regions=[_dict_to_region(r) for r in data.get("scene_regions", [])],
         semantic_units=[_dict_to_semantic_unit(u) for u in data.get("semantic_units", [])],
+        guided_blocks=[_dict_to_guided_block(b) for b in data.get("guided_blocks", [])],
+        candidate_lineage=data.get("candidate_lineage"),
         asset_class=data.get("asset_class"),
         asset_classification=data.get("asset_classification"),
         asset_type=atype,

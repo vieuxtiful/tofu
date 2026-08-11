@@ -8,15 +8,37 @@
 #   - can be triggered on a PR via workflow_dispatch with the PR number
 #   - posts a comment on the PR if any metric regresses beyond tolerance
 #
-# The baseline lives in tests/fixtures/regression/baseline_metrics.json.
-# To update baselines after an intentional improvement, run
-# scripts/generate_baseline.py locally and commit the updated JSON.
+# ⚠️  THIS WORKFLOW CANNOT RUN ON A HOSTED RUNNER.  ⚠️
+#
+# It needs three things that are all deliberately absent from the remote:
+#   - tests/regression/          the suite is local-only (gitignored by design)
+#   - images/*.gt.json           the annotated eval corpus is local-only
+#   - ~15 min of real detector time (~70s x 11 fixtures)
+#
+# The nightly schedule below was therefore failing every night for reasons
+# unrelated to code quality, which is worse than not running: a red badge
+# nobody can act on trains everyone to ignore red badges. The schedule is
+# disabled until a self-hosted runner with the corpus exists.
+#
+# Until then, run the benchmark locally:
+#     .venv/Scripts/python -m pytest tests/regression/ -q
+#     TOFU_REGRESSION_SWEEP=1 .venv/Scripts/python -m pytest tests/regression/ -q
+#
+# The baseline lives in tests/regression/baseline_metrics.json (tolerance
+# spec) with recorded observations in tests/regression/baselines/<harness>.json.
+# To update after an intentional improvement, run
+# tests/regression/generate_baseline.py --harness <name> locally and review the
+# diff -- regenerating is how a regression becomes the new normal without
+# anyone deciding to allow it.
+#
+# See docs/output-dependability-roadmap.md, P0.2 and P0.4.
 name: Benchmark
 
 on:
-  schedule:
-    # Nightly at 03:00 UTC — off-peak for GitHub Actions runners
-    - cron: "0 3 * * *"
+  # schedule:
+  #   # Nightly at 03:00 UTC — re-enable ONLY on a self-hosted runner that has
+  #   # the local test suite and the annotated eval corpus mounted.
+  #   - cron: "0 3 * * *"
   workflow_dispatch:
     inputs:
       pr_number:
@@ -110,7 +132,7 @@ jobs:
               '',
               'To update baselines after an intentional improvement,',
               'run `scripts/generate_baseline.py` locally and commit the',
-              'updated `tests/fixtures/regression/baseline_metrics.json`.',
+              'updated `tests/regression/baseline_metrics.json`.',
             ].join('\\n');
 
             await github.rest.issues.createComment({

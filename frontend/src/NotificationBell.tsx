@@ -74,14 +74,14 @@ export default function NotificationBell({ notifications, onClear, onDismiss }: 
       >
         <div className="max-h-80 overflow-y-auto">
           {count === 0 ? (
-            <p className="subtext px-3 py-5 text-center text-xs text-zinc-500 dark:text-zinc-600">
+            <p className="subtext px-3 py-5 text-center text-xs text-zinc-500 dark:text-zinc-600 notif-empty">
               no notifications
             </p>
           ) : (
             visible.map((n) => (
               <div
                 key={n.id}
-                className={`notif-item${n.leaving && visible.length > 1 ? " leaving" : ""} flex items-start gap-2 rounded-md px-3 py-2 transition hover:bg-zinc-100 dark:hover:bg-zinc-800`}
+                className={`notif-item${n.leaving && visible.length > 1 ? " leaving" : ""}${allLeaving ? " clearing" : ""} flex items-start gap-2 rounded-md px-3 py-2 transition hover:bg-zinc-100 dark:hover:bg-zinc-800`}
               >
                 <span
                   className="mt-0.5 h-2 w-2 shrink-0 rounded-full"

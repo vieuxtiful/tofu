@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 const TITLE = "ToFU";
-const VERSION = "v0.1.0";
+const VERSION = "v1.0.0";
 
 const HOVER_ANIM_MS = 800;  // text box auto-animates to hover state
 const TYPE_START_MS = 250;   // cursor blinks alone before typing begins (after hover anim)

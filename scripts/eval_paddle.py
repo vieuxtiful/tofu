@@ -1,13 +1,19 @@
 ## 🍢 eval_paddle — PaddleOCR 3.x standalone evaluation
 ## vieuxtiful
 """
-Runs PaddleOCR (PP-OCRv5, paddleocr>=3.x predict API) on an image and
+Runs PaddleOCR (paddleocr>=3.x predict API) on an image and
 scores it against the same .gt.json ground truth eval_detect uses —
 WITHOUT importing the tofu package, so it runs under the isolated
 paddle venv (.venv-paddle) and never touches the app venv's pinned
 numpy/opencv.
 
-The point of this evaluation (CP-1): PP-OCRv5's DB detector + angle
+Model version is RESOLVED BY LANGUAGE unless --ocr-version pins it. Under
+the pinned paddleocr==3.7.0, japan/ch/ch_tra/en/Latin already select
+PP-OCRv6_medium; korean/arabic/cyrillic still select PP-OCRv5. Paddle's own
+v6-vs-v5 benchmark numbers are THEIR corpus, not ToFU scene text, and must
+not be reported as ToFU gains without a corpus A/B.
+
+The point of this evaluation (CP-1): Paddle's DB detector + angle
 classifier natively handles rotated/vertical CJK text that CRAFT
 fragments — measure whether that materially beats the EasyOCR +
 scene-surface-probe path on the street scenes before committing to a
@@ -59,15 +65,24 @@ def _norm_ed(a: str, b: str) -> float:
     return _ed(a, b) / max(len(a or ""), len(b or ""), 1)
 
 
-def run_paddle(image_path: Path, lang: str):
-    """PP-OCRv5 via the 3.x predict API; returns [(bbox, text, conf)]."""
+def run_paddle(image_path: Path, lang: str, ocr_version: str | None = None):
+    """PaddleOCR 3.x predict API; returns [(bbox, text, conf)].
+
+    `ocr_version` pins the model family. Left unset, paddleocr 3.7 RESOLVES BY
+    LANGUAGE: japan/ch/ch_tra/en and the Latin set already select
+    PP-OCRv6_medium, while korean/arabic/cyrillic still resolve to PP-OCRv5.
+    An A/B that does not pin the version is therefore comparing whatever each
+    language happened to pick, which is not a comparison.
+    """
     import os
     # paddle 3.3 windows-cpu bug: oneDNN PIR instruction crashes with
     # "ConvertPirAttribute2RuntimeAttribute not support" — disable mkldnn
     os.environ.setdefault("FLAGS_use_mkldnn", "0")
     from paddleocr import PaddleOCR
+    kwargs = {"ocr_version": ocr_version} if ocr_version else {}
     ocr = PaddleOCR(
         lang=lang,
+        **kwargs,
         use_doc_orientation_classify=False,
         use_doc_unwarping=False,
         use_textline_orientation=True,  # vertical/rotated line handling
@@ -135,19 +150,26 @@ def main() -> None:
     ap.add_argument("--tag", default="paddle")
     ap.add_argument("--lang", default="korean",
                     help="paddleocr lang code: korean | japan | ch | en")
+    ap.add_argument("--ocr-version", dest="ocr_version",
+                    choices=["PP-OCRv5", "PP-OCRv6"],
+                    help="pin the model family. Unset resolves BY LANGUAGE, "
+                         "which makes a v5/v6 A/B meaningless.")
     args = ap.parse_args()
 
     image_path = Path(args.image)
     out_dir = ROOT / "scripts" / "eval_out"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    dets, elapsed = run_paddle(image_path, args.lang)
+    dets, elapsed = run_paddle(image_path, args.lang, args.ocr_version)
 
     gt_path = image_path.parent / f"{image_path.stem}.gt.json"
     metrics = evaluate(dets, gt_path) if gt_path.exists() else None
 
     report = {
         "image": str(image_path), "tag": args.tag, "engine": f"paddleocr/{args.lang}",
+        # Recorded so a report can never be read as evidence about a version
+        # it did not actually pin.
+        "ocr_version": args.ocr_version or "resolved-by-language",
         "detections": len(dets),
         "timing_s": round(elapsed, 1),
         "metrics": metrics,

@@ -445,3 +445,18 @@ html.dark .bbox-meta-tooltip-portal {
     display: none;
   }
 }
+
+/* Guided prompt: the term still to be located.
+   Styled here rather than inline so it picks up --bbox-color the same way
+   every box on the canvas does — a user who set the box colour to magenta
+   should see the term they are hunting for in magenta too. */
+.guided-term {
+  color: color-mix(in srgb, var(--bbox-color, #22d3ee) 85%, black);
+  background: color-mix(in srgb, var(--bbox-color, #22d3ee) 12%, transparent);
+  border-radius: 4px;
+  padding: 1px 4px;
+  font-weight: 500;
+}
+html.dark .guided-term {
+  color: color-mix(in srgb, var(--bbox-color, #22d3ee) 90%, white);
+}

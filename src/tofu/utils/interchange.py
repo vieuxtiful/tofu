@@ -559,3 +559,427 @@ def extract_ground_truth(filename: str, content: str, source_lang: Optional[str]
             rows = iter([header, *rows])
         return [row[source_index].strip() for row in rows if len(row) > source_index and row[source_index].strip()]
     return [line.strip() for line in content.splitlines() if line.strip()]
+
+
+# ---------------------------------------------------------------------------
+# Semantic (Plate-oriented) projections
+#
+# The region-based writers above stay exactly as they are.  A file exported
+# before Basil owned interchange must keep importing, so the two schemes
+# coexist and the IMPORT side decides which it is looking at rather than the
+# caller having to declare it.
+#
+# The durable `plate_uid` is the identity; the positional "u2" travels only as
+# a human-readable resname.  A returned file is matched on uid + revision:
+# same uid with a different revision means the plate moved on since it was
+# sent out, which must stop the import rather than overwrite the newer plate.
+# ---------------------------------------------------------------------------
+
+TOFU_NOTE_PREFIX = "tofu"
+
+
+def _plate_units(manifest: TextManifest) -> List[Any]:
+    """Exportable plates in source reading order."""
+    units = list(getattr(manifest, "semantic_units", None) or [])
+    units.sort(key=lambda unit: (unit.display_number is None, unit.display_number or 0))
+    return [unit for unit in units if (unit.source_text or "").strip()]
+
+
+def _plate_is_dnt(unit: Any, by_id: Dict[str, Any]) -> bool:
+    """A plate every one of whose regions is withheld from translation."""
+    members = [by_id[rid] for rid in unit.region_ids if rid in by_id]
+    if not members:
+        return False
+    return all(getattr(inst, "dnt", False) for inst in members)
+
+
+def _plate_target(unit: Any, by_id: Dict[str, Any]) -> str:
+    """The plate's current target: an applied arrangement, else its members."""
+    substitution = unit.substitution if isinstance(unit.substitution, dict) else None
+    if substitution and substitution.get("applied") and substitution.get("target_text"):
+        return str(substitution["target_text"])
+    members = [by_id[rid] for rid in unit.region_ids if rid in by_id]
+    parts = [(inst.target_text or "").strip() for inst in members]
+    return " ".join(part for part in parts if part)
+
+
+def export_xliff_semantic(
+    manifest: TextManifest,
+    src_lang: str = "en",
+    targ_lang: str = "",
+    variant: str = "standard",
+) -> str:
+    """One trans-unit per Plate, carrying durable identity and revision.
+
+    A translator sees a whole reading unit -- "Rue des Martyrs", not "Rue" /
+    "des" / "Martyrs" in three separate boxes -- which is the entire reason
+    plates exist.  Region membership rides along in a note so the file maps
+    back without ToFU having to guess.
+    """
+    src_lang_full = _lang_to_full(src_lang)
+    targ_lang_full = _lang_to_full(targ_lang) if targ_lang else src_lang_full
+    by_id = {inst.id: inst for inst in manifest.instances}
+
+    lines = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<xliff version="1.2" xmlns="urn:oasis:names:tc:xliff:document:1.2"',
+    ]
+    if variant == "sdl":
+        lines.append('  xmlns:sdl="http://sdl.com/FileFormats/SdlXliff/1.0"')
+    elif variant == "crowdin":
+        lines.append('  xmlns:cr="http://crowdin.com/ns/xliff"')
+    elif variant == "smartling":
+        lines.append('  xmlns:sl="http://smartling.com/ns/xliff"')
+    lines.append('>')
+    lines.append(f'  <file source-language="{src_lang_full}" '
+                 f'target-language="{targ_lang_full}" '
+                 f'datatype="plaintext" original="{manifest.asset_id}">')
+    lines.append('    <header>')
+    lines.append(f'      <tool tool-id="tofu" tool-name="ToFU" tool-version="{_version()}" />')
+    lines.append('    </header>')
+    lines.append('    <body>')
+
+    for unit in _plate_units(manifest):
+        if _plate_is_dnt(unit, by_id):
+            continue
+        source = unit.source_text or ""
+        target = _plate_target(unit, by_id)
+        state = "translated" if target else "needs-translation"
+        label = "tofu:" + unit.id
+        unit_attrs = 'id="%s" resname="%s"' % (
+            xml_escape(unit.plate_uid or unit.id), xml_escape(label),
+        )
+        if variant == "crowdin":
+            unit_attrs += ' cr:context="plate:%s"' % xml_escape(unit.id)
+        lines.append(f'      <trans-unit {unit_attrs}>')
+        lines.append(f'        <source xml:lang="{src_lang_full}">{xml_escape(source)}</source>')
+        lines.append(f'        <target xml:lang="{targ_lang_full}" state="{state}">{xml_escape(target)}</target>')
+        lines.append(f'        <note from="{TOFU_NOTE_PREFIX}">plate: {xml_escape(unit.plate_uid or "")}</note>')
+        lines.append(f'        <note from="{TOFU_NOTE_PREFIX}">revision: {xml_escape(unit.membership_hash or "")}</note>')
+        lines.append(f'        <note from="{TOFU_NOTE_PREFIX}">regions: {xml_escape(",".join(unit.region_ids))}</note>')
+        if variant == "sdl":
+            lines.append('        <sdl:seg-defs>')
+            lines.append(f'          <sdl:seg id="{xml_escape(unit.id)}" conf="Draft" />')
+            lines.append('        </sdl:seg-defs>')
+        if variant == "smartling":
+            lines.append('        <sl:variant variant="text" />')
+        lines.append('      </trans-unit>')
+
+    lines.append('    </body>')
+    lines.append('  </file>')
+    lines.append('</xliff>')
+    return "\n".join(lines)
+
+
+SEMANTIC_COLUMNS = [
+    "unit_id", "plate_uid", "revision", "source", "target",
+    "source_language", "target_language", "region_ids", "status", "context",
+]
+
+
+def _semantic_rows(manifest: TextManifest, targ_lang: str = "") -> List[List[str]]:
+    by_id = {inst.id: inst for inst in manifest.instances}
+    resolved_target_lang = targ_lang or manifest.targ_lang or ""
+    rows: List[List[str]] = []
+    for unit in _plate_units(manifest):
+        if _plate_is_dnt(unit, by_id):
+            continue
+        target = _plate_target(unit, by_id)
+        rows.append([
+            unit.id,
+            unit.plate_uid or "",
+            unit.membership_hash or "",
+            unit.source_text or "",
+            target,
+            manifest.src_lang or "",
+            resolved_target_lang,
+            ",".join(unit.region_ids),
+            "translated" if target else "needs-translation",
+            unit.entity_type or "",
+        ])
+    return rows
+
+
+def export_csv_semantic(manifest: TextManifest, targ_lang: str = "") -> str:
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(SEMANTIC_COLUMNS)
+    writer.writerows(_semantic_rows(manifest, targ_lang))
+    return buf.getvalue()
+
+
+def export_tsv_semantic(manifest: TextManifest, targ_lang: str = "") -> str:
+    buf = io.StringIO()
+    writer = csv.writer(buf, delimiter="\t", lineterminator="\n")
+    writer.writerow(SEMANTIC_COLUMNS)
+    writer.writerows(_semantic_rows(manifest, targ_lang))
+    return buf.getvalue()
+
+
+def export_txt_semantic(manifest: TextManifest) -> str:
+    """Plate source text, one per line, in source reading order."""
+    by_id = {inst.id: inst for inst in manifest.instances}
+    return "\n".join(
+        unit.source_text for unit in _plate_units(manifest)
+        if not _plate_is_dnt(unit, by_id)
+    )
+
+
+def export_tmx_profiles(
+    manifest: TextManifest,
+    src_lang: str = "en",
+    targ_lang: str = "",
+    profile: str = "semantic",
+) -> str:
+    """Translation memory at plate level, region level, or both.
+
+    A memory entry is only worth having when both sides are real and aligned.
+    Plates give phrase memory; regions give the atomic pairs.  Anything with
+    an empty side is skipped rather than written as a half-entry: a source
+    with no target teaches a TM nothing and pollutes later matches.
+    """
+    by_id = {inst.id: inst for inst in manifest.instances}
+    pairs: List[Tuple] = []
+    if profile in {"semantic", "both"}:
+        for unit in _plate_units(manifest):
+            if _plate_is_dnt(unit, by_id):
+                continue
+            target = _plate_target(unit, by_id)
+            if not target.strip():
+                continue
+            pairs.append((
+                unit.plate_uid or unit.id, unit.source_text, target,
+                "plate:" + unit.id,
+                manifest.src_lang or src_lang,
+                targ_lang or manifest.targ_lang or "",
+            ))
+    if profile in {"atomic", "both"}:
+        for inst in manifest.instances:
+            if getattr(inst, "dnt", False):
+                continue
+            source = (inst.text or "").strip()
+            target = (inst.target_text or "").strip()
+            if not source or not target:
+                continue
+            pairs.append((
+                inst.id, source, target,
+                f"bbox:{inst.bounding_box.x},{inst.bounding_box.y}",
+                inst.language or inst.detected_language or src_lang,
+                inst.target_language or targ_lang or "",
+            ))
+    return export_tmx(pairs, src_lang, targ_lang)
+
+
+# ---------------------------------------------------------------------------
+# Semantic import
+# ---------------------------------------------------------------------------
+
+def _note_value(notes: List[str], key: str) -> Optional[str]:
+    for note in notes:
+        match = re.search(rf"\b{key}\s*:\s*([^\s,]+)", note or "", re.I)
+        if match:
+            return match.group(1)
+    return None
+
+
+def import_semantic_for_manifest(xml_text: str, manifest: TextManifest) -> Dict[str, Any]:
+    """Map a returned file back to Plates, failing closed on drift.
+
+    Resolution order is fixed and deliberately narrow:
+
+      1. durable plate_uid whose revision still matches  -> applied
+      2. durable plate_uid whose revision has MOVED      -> stale, refused
+      3. a plate source text that is unique in the asset -> applied
+      4. anything else                                   -> unresolved
+
+    A positional "u2" arriving from outside is never trusted: after any
+    region insert or reorder it names a different plate.
+
+    Single-region plates are applied directly -- there is only one place the
+    text can go.  Multi-region plates come back as PROPOSALS: distributing a
+    target across regions needs alignment the user has to approve, so this
+    step records the translation without touching region targets.
+    """
+    units = list(getattr(manifest, "semantic_units", None) or [])
+    by_uid = {unit.plate_uid: unit for unit in units if unit.plate_uid}
+    by_source: Dict[str, List[Any]] = {}
+    for unit in units:
+        by_source.setdefault(_norm_segment(unit.source_text or ""), []).append(unit)
+
+    translations: Dict[str, str] = {}
+    proposals: List[Dict[str, Any]] = []
+    resolution = {"plate_uid": 0, "plate_source": 0}
+    stale: List[Dict[str, Any]] = []
+    ambiguous: List[Dict[str, Any]] = []
+    unresolved: List[Dict[str, Any]] = []
+    empty = 0
+
+    for parsed in _xliff_units(xml_text):
+        target = parsed["target"]
+        if not target:
+            empty += 1
+            continue
+        notes = parsed["notes"]
+        uid = _note_value(notes, "plate") or next(
+            (key for key in parsed["keys"] if key in by_uid), None
+        )
+        revision = _note_value(notes, "revision")
+
+        unit = by_uid.get(uid) if uid else None
+        method = None
+        if unit is not None:
+            if revision and unit.membership_hash and revision != unit.membership_hash:
+                stale.append({
+                    "plate_uid": unit.plate_uid, "plate_id": unit.id,
+                    "source": parsed["source"],
+                    "reason": "the plate changed after this file was exported",
+                })
+                continue
+            method = "plate_uid"
+        else:
+            matches = by_source.get(_norm_segment(parsed["source"]), [])
+            if len(matches) == 1:
+                unit, method = matches[0], "plate_source"
+            elif len(matches) > 1:
+                ambiguous.append({"source": parsed["source"],
+                                  "candidates": [item.id for item in matches]})
+                continue
+
+        if unit is None:
+            unresolved.append({"id": parsed["keys"][0] if parsed["keys"] else None,
+                               "source": parsed["source"]})
+            continue
+
+        resolution[method] += 1
+        present = [rid for rid in unit.region_ids
+                   if rid in {inst.id for inst in manifest.instances}]
+        if len(present) == 1:
+            translations[present[0]] = target
+        else:
+            proposals.append({
+                "plate_uid": unit.plate_uid, "plate_id": unit.id,
+                "display_number": unit.display_number,
+                "source": unit.source_text, "target": target,
+                "region_ids": list(unit.region_ids),
+                "reason": "needs region distribution before it can be applied",
+            })
+
+    return {
+        "translations": translations,
+        "proposals": proposals,
+        "resolution": resolution,
+        "stale": stale,
+        "ambiguous": ambiguous,
+        "unresolved": unresolved,
+        "empty_targets": empty,
+    }
+
+
+def looks_semantic(xml_text: str) -> bool:
+    """Does this file carry ToFU plate identity?
+
+    Checked rather than declared: a user drops a file in, and which scheme it
+    was cut from is a property of the file, not something they should have to
+    tell us.
+    """
+    try:
+        for parsed in _xliff_units(xml_text):
+            if _note_value(parsed["notes"], "plate"):
+                return True
+    except ET.ParseError:
+        return False
+    return False
+
+
+def _tabular_rows(text: str, delimiter: str) -> List[Dict[str, str]]:
+    reader = csv.DictReader(io.StringIO(text), delimiter=delimiter)
+    return [row for row in reader]
+
+
+def looks_semantic_tabular(text: str, delimiter: str) -> bool:
+    """Does this table carry plate identity columns?
+
+    Same principle as the XLIFF side: the file says which scheme it came
+    from, so the user never has to declare it.
+    """
+    try:
+        header = next(csv.reader(io.StringIO(text), delimiter=delimiter))
+    except StopIteration:
+        return False
+    return "plate_uid" in {column.strip() for column in header}
+
+
+def import_semantic_tabular_for_manifest(
+    text: str, manifest: TextManifest, delimiter: str = ",",
+) -> Dict[str, Any]:
+    """CSV/TSV counterpart of `import_semantic_for_manifest`.
+
+    Same resolution order and the same refusals: durable uid with a matching
+    revision, else a unique plate source, else unresolved -- and a revision
+    that has moved is stale, never merged.
+    """
+    units = list(getattr(manifest, "semantic_units", None) or [])
+    by_uid = {unit.plate_uid: unit for unit in units if unit.plate_uid}
+    by_source: Dict[str, List[Any]] = {}
+    for unit in units:
+        by_source.setdefault(_norm_segment(unit.source_text or ""), []).append(unit)
+    known_regions = {inst.id for inst in manifest.instances}
+
+    translations: Dict[str, str] = {}
+    proposals: List[Dict[str, Any]] = []
+    resolution = {"plate_uid": 0, "plate_source": 0}
+    stale: List[Dict[str, Any]] = []
+    ambiguous: List[Dict[str, Any]] = []
+    unresolved: List[Dict[str, Any]] = []
+    empty = 0
+
+    for row in _tabular_rows(text, delimiter):
+        target = (row.get("target") or "").strip()
+        if not target:
+            empty += 1
+            continue
+        uid = (row.get("plate_uid") or "").strip()
+        revision = (row.get("revision") or "").strip()
+        source = row.get("source") or ""
+
+        unit = by_uid.get(uid) if uid else None
+        method = None
+        if unit is not None:
+            if revision and unit.membership_hash and revision != unit.membership_hash:
+                stale.append({
+                    "plate_uid": unit.plate_uid, "plate_id": unit.id, "source": source,
+                    "reason": "the plate changed after this file was exported",
+                })
+                continue
+            method = "plate_uid"
+        else:
+            matches = by_source.get(_norm_segment(source), [])
+            if len(matches) == 1:
+                unit, method = matches[0], "plate_source"
+            elif len(matches) > 1:
+                ambiguous.append({"source": source,
+                                  "candidates": [item.id for item in matches]})
+                continue
+
+        if unit is None:
+            unresolved.append({"id": row.get("unit_id"), "source": source})
+            continue
+
+        resolution[method] += 1
+        present = [rid for rid in unit.region_ids if rid in known_regions]
+        if len(present) == 1:
+            translations[present[0]] = target
+        else:
+            proposals.append({
+                "plate_uid": unit.plate_uid, "plate_id": unit.id,
+                "display_number": unit.display_number,
+                "source": unit.source_text, "target": target,
+                "region_ids": list(unit.region_ids),
+                "reason": "needs region distribution before it can be applied",
+            })
+
+    return {
+        "translations": translations, "proposals": proposals,
+        "resolution": resolution, "stale": stale, "ambiguous": ambiguous,
+        "unresolved": unresolved, "empty_targets": empty,
+    }

@@ -54,7 +54,8 @@ CREATE TABLE IF NOT EXISTS projects (
   archived_at REAL,
   created_at  REAL NOT NULL,
   updated_at  REAL NOT NULL,
-  ground_truth TEXT NOT NULL DEFAULT '[]'
+  ground_truth TEXT NOT NULL DEFAULT '[]',
+  capture_mode TEXT NOT NULL DEFAULT 'auto'
 );
 CREATE TABLE IF NOT EXISTS project_assets (
   asset_id     TEXT PRIMARY KEY,
@@ -225,6 +226,13 @@ def init_db() -> None:
             con.execute("ALTER TABLE projects ADD COLUMN archived_at REAL")
         if "ground_truth" not in cols:
             con.execute("ALTER TABLE projects ADD COLUMN ground_truth TEXT NOT NULL DEFAULT '[]'")
+        # migration: projects created before Auto/Guided/Manual capture modes.
+        # 'auto' is the pre-existing behaviour, so every existing project keeps
+        # doing exactly what it did.
+        if "capture_mode" not in cols:
+            con.execute(
+                "ALTER TABLE projects ADD COLUMN capture_mode TEXT NOT NULL DEFAULT 'auto'"
+            )
         # migration: assets uploaded before duplicate-image detection existed
         asset_cols = {r["name"] for r in con.execute("PRAGMA table_info(project_assets)")}
         if "content_hash" not in asset_cols:
@@ -704,6 +712,7 @@ def update_project(pid: str, *, name: Optional[str] = None,
                    target_lang: Optional[str] = None,
                    source_lang: Optional[str] = None,
                    ground_truth: Optional[List[str]] = None,
+                   capture_mode: Optional[str] = None,
                    archived: Optional[bool] = None) -> Optional[Dict[str, Any]]:
     sets, vals = [], []
     if name is not None:
@@ -715,6 +724,10 @@ def update_project(pid: str, *, name: Optional[str] = None,
     if ground_truth is not None:
         sets.append("ground_truth = ?")
         vals.append(json.dumps(ground_truth, ensure_ascii=False))
+    if capture_mode is not None:
+        if capture_mode not in {"auto", "guided", "manual"}:
+            raise ValueError(f"unknown capture mode '{capture_mode}'")
+        sets.append("capture_mode = ?"); vals.append(capture_mode)
     if archived is not None:
         sets.append("archived_at = ?")
         vals.append(time.time() if archived else None)

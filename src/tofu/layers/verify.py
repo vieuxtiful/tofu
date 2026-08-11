@@ -66,7 +66,7 @@ records exactly which metrics contributed.
 import re
 import unicodedata
 from collections import Counter
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -805,6 +805,10 @@ def _apply_critical_rules(region: VerificationRegion) -> str:
         failures.append("unreadable_output")
     if "severe_low_contrast" in region.flags:
         failures.append("unreadable_contrast")
+    if "cleanse_retries_exhausted" in region.flags:
+        # Source text may still be visible under the render. Nothing this
+        # region scores well on compensates for that.
+        failures.append("residual_source_text")
     if region.checks.get("geometry", {}).get("overflow_ratio", 0) >= 0.25:
         failures.append("severe_clipping")
     content = region.scores.get("content_integrity")
@@ -840,8 +844,134 @@ def _weighted_component_score(scores: Dict[str, Optional[float]]) -> Optional[fl
     )
 
 
+# ---------------------------------------------------------------------------
+# Coverage gates (roadmap P1.29)
+#
+# _weighted_component_score above renormalizes over whatever was measured.
+# That is defensible as a *score* -- inventing a neutral value for an
+# unmeasured component would be worse -- but it has a sharp edge: the fewer
+# checks that ran, the higher the average of the ones that did. A project
+# where three of six components were unavailable can out-score one where all
+# six ran and two were mediocre. Score alone therefore cannot decide release.
+#
+# So the gates below sit OUTSIDE the score. They are evaluated after every
+# component has spoken, they can only ever downgrade a status, and no
+# aggregate can outvote them. The rule they encode is the one the score
+# cannot: some things are not worth points, they are preconditions.
+#
+# "not green" here means the project lands on `review` at best -- a human
+# looks at it. Gates that indicate actual damage rather than absent evidence
+# escalate to `fail`.
+# ---------------------------------------------------------------------------
+
+# Components whose ABSENCE is itself a finding. Coverage and content integrity
+# are the two that answer "is the source text actually gone and the target
+# actually there" -- the questions the product exists to get right. If either
+# could not be evaluated, the run has not demonstrated the thing it claims,
+# regardless of how the remaining components scored.
+REQUIRED_COMPONENTS = ("coverage", "content_integrity")
+
+
+@dataclass(frozen=True)
+class CoverageGate:
+    """One non-negotiable precondition and what it does when unmet."""
+
+    code: str
+    severity: str          # "fail" (damage shown) or "review" (evidence absent)
+    detail: str
+
+
+def _evaluate_coverage_gates(
+    project_component_scores: Dict[str, Optional[float]],
+    regions: List[VerificationRegion],
+    totals: Dict[str, int],
+) -> List[CoverageGate]:
+    """Preconditions that no component score may override.
+
+    Deliberately returns every unmet gate rather than short-circuiting on the
+    first: a report that names one blocker, gets it fixed, and then names the
+    next teaches the operator that the list is untrustworthy.
+    """
+    gates: List[CoverageGate] = []
+
+    # 1. Source regions the pipeline never rendered. Already caps the region
+    #    score; repeated here because the project must not be green either.
+    if totals.get("missing"):
+        gates.append(CoverageGate(
+            "missed_source_regions", "fail",
+            f"{totals['missing']} detected source region(s) were not rendered.",
+        ))
+
+    # 2. Untranslated regions that were not marked do-not-translate. A DNT
+    #    region is a decision; an untranslated one is an omission.
+    if totals.get("untranslated"):
+        gates.append(CoverageGate(
+            "untranslated_regions", "review",
+            f"{totals['untranslated']} non-DNT region(s) have no target text.",
+        ))
+
+    # 3. Required checks that could not run. This is the renormalization hole:
+    #    without this gate, a project scores HIGHER for having measured less.
+    for name in REQUIRED_COMPONENTS:
+        if project_component_scores.get(name) is None:
+            gates.append(CoverageGate(
+                f"required_check_unavailable:{name}", "review",
+                f"'{name}' could not be evaluated, so the score that excludes "
+                f"it describes a smaller claim than the report implies.",
+            ))
+
+    # 4. Cleanse exhausted its retry budget. cleanse.erase() records this in
+    #    provenance; before this gate existed the signal stopped there and a
+    #    region whose source text was never provably removed could still be
+    #    rolled into a green project.
+    exhausted = [r.region_id for r in regions if "cleanse_retries_exhausted" in r.flags]
+    if exhausted:
+        gates.append(CoverageGate(
+            "cleanse_retries_exhausted", "fail",
+            f"{len(exhausted)} region(s) exhausted background-repair retries "
+            f"without a clean result: {', '.join(exhausted[:5])}"
+            + ("..." if len(exhausted) > 5 else ""),
+        ))
+
+    # 5. Any overflow, not only the severe_clipping threshold. Text outside
+    #    its polygon is a visible defect at any ratio.
+    overflowing = [r.region_id for r in regions if "spatial_overflow" in r.flags]
+    if overflowing:
+        gates.append(CoverageGate(
+            "spatial_overflow", "review",
+            f"{len(overflowing)} region(s) render outside their polygon.",
+        ))
+
+    # 6. Shaping unavailable. Distinct from unsupported_glyphs: there the
+    #    glyphs are absent, here the shaper is, so the output may be silently
+    #    unshaped rather than visibly broken -- the harder failure to spot.
+    unshaped = [r.region_id for r in regions if "shaping_unavailable" in r.flags]
+    if unshaped:
+        gates.append(CoverageGate(
+            "shaping_unavailable", "review",
+            f"{len(unshaped)} region(s) were laid out without a shaping engine; "
+            f"complex-script output cannot be trusted.",
+        ))
+
+    return gates
+
+
+def _gated_status(scored_status: str, gates: List[CoverageGate]) -> str:
+    """Downgrade only. A gate can never promote a failing project to green."""
+    order = {"pass": 0, "review": 1, "fail": 2}
+    worst = scored_status
+    for gate in gates:
+        if order[gate.severity] > order[worst]:
+            worst = gate.severity
+    return worst
+
+
 def _humanize_flag(flag: str) -> str:
     labels = {
+        "missed_source_regions": "missing text",
+        "untranslated_regions": "untranslated regions",
+        "cleanse_retries_exhausted": "background repair unverified",
+        "required_check_unavailable": "required check unavailable",
         "missing_regions": "missing text",
         "untranslated_regions": "untranslated text",
         "unsupported_glyphs": "unsupported glyphs",
@@ -1009,6 +1139,18 @@ def build_verification_report(
         else:
             status, flags, action = (
                 "missing", ["coverage_missing"], "Render the target text for this region."
+            )
+
+        # Cleanse ran out of retry budget with source text still detectable
+        # under the repair. Carried onto the region so the P1.29 gate can see
+        # it: the signal previously stopped inside repair_provenance, where
+        # nothing downstream of cleanse ever read it, and a region whose source
+        # text was never provably removed could still land in a green project.
+        if (inst.repair_provenance or {}).get("retries_exhausted"):
+            flags = [*flags, "cleanse_retries_exhausted"]
+            action = action or (
+                "Background repair could not remove the source text within its "
+                "retry budget. Inspect the erased region before export."
             )
 
         surface_class = _asset_class(text_manifest, inst)
@@ -1356,6 +1498,23 @@ def build_verification_report(
         summary_flags=flags,
         region_totals=totals,
     )
+
+    # P1.29: preconditions the component scores cannot outvote. Evaluated
+    # after the scores exist (gate 3 reads which of them are None) and applied
+    # downgrade-only, so this can turn a green project amber but never the
+    # reverse. Recorded on the project so the reason travels with the verdict
+    # -- a blocked release that does not say why is a support ticket.
+    gates = _evaluate_coverage_gates(project.component_scores, regions, totals)
+    if gates:
+        project.overall_status = _gated_status(project.overall_status, gates)
+        for gate in gates:
+            code = gate.code.split(":", 1)[0]
+            if code not in flags:
+                flags.append(code)
+    project.coverage_gates = [
+        {"code": g.code, "severity": g.severity, "detail": g.detail} for g in gates
+    ]
+
     visual_flags = _aggregate_presentation(project, regions)
     return VerificationReport(
         project=project,

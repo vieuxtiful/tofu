@@ -38,6 +38,19 @@ class LayerMode(str, Enum): ## user workflow type selection
     MANUAL = "manual"
     HYBRID = "hybrid"
 
+class CaptureMode(str, Enum):
+    """How an asset is captured -- deliberately NOT LayerMode.
+
+    `LayerMode.HYBRID` is the pipeline's pause/refinement protocol: a layer
+    stops and waits for a human between stages.  This is a different axis
+    entirely -- what the user asked detection to DO -- and no capture-mode
+    code may branch on LayerMode.  Overloading the one enum would tie a
+    detection choice to a pause checkpoint that has nothing to do with it.
+    """
+    AUTO = "auto"        ## detect everything; entered terms are extra evidence
+    GUIDED = "guided"    ## locate the text the user supplied
+    MANUAL = "manual"    ## no detection at all; the user draws
+
 class AssetType(str, Enum): ## assets for processing 
     IMAGE = "image"
     VIDEO = "video"
@@ -253,6 +266,12 @@ class InstText:
     review_features: Optional[Dict[str, Any]] = None
     source_override: Optional[Dict[str, Any]] = None  ## durable applied-source attribution: {kind, text, icon, color, resource}; independent of the correction scratch slot
     recognition_history: Optional[List[Dict[str, Any]]] = None  ## immutable audit trail of engine candidates and accepted/rejected corrections
+    ## The okara candidate this region was built from. In-memory only (not
+    ## serialized): it exists so the lineage graph's final node can link to
+    ## the chain BY IDENTITY instead of by matching coordinates, which the
+    ## transforms reshape. Without it the graph documented the middle of the
+    ## pipeline and went silent at the regions that actually ship.
+    lineage_candidate_id: Optional[str] = None
     ocr_provenance: Optional[Dict[str, Any]] = None  ## multi-provider observations, arbitration and independent verification
     ocr_quality: Optional[Dict[str, Any]] = None  ## deterministic observability assessment; informs review-only OCR/Savor gating
     repair_provenance: Optional[Dict[str, Any]] = None  ## cleanse provider, confidence gate, fallback and review evidence
@@ -347,6 +366,27 @@ class SemanticTextUnit:
     region_ids: List[str]
     source_text: str
     bbox: BBox
+    ## Durable identity, minted ONCE and never renumbered.  `id` stays "uN"
+    ## for display and legacy compatibility, but it is positional -- Basil
+    ## reassigns it on every re-registration -- so it can never be an
+    ## interchange key.  A translator's returned file is matched on
+    ## plate_uid; matching on "u2" would silently retarget a different plate
+    ## after any region insert or reorder.  Deliberately random rather than
+    ## content-derived: editing a plate's source or membership is a REVISION
+    ## of that plate, not a new one.
+    plate_uid: str = ""
+    ## Reading-order position shown as "Plate 2".  Recomputed freely; never
+    ## persisted as a reference and never used to resolve an import.
+    display_number: Optional[int] = None
+    ## derived -- Basil may regenerate this plate's membership.
+    ## guided/user -- membership is PINNED: an accepted proposal or an
+    ## explicit user edit, which re-registration must never silently undo.
+    origin: str = "derived"
+    ## Revision fingerprint over ordered region_ids + normalized source +
+    ## schema. Import compares it against the exported file's copy: same UID
+    ## with a different hash means the plate moved on since it was sent out,
+    ## which must block rather than overwrite.
+    membership_hash: str = ""
     entity_type: str = "unknown"
     confidence: float = 0.0
     analysis_provider: str = "deterministic_layout"
@@ -358,6 +398,62 @@ class SemanticTextUnit:
     ocr_repair: Optional[Dict[str, Any]] = None  ## proposed (never auto-applied) source correction when a gazetteer entity spans fragmented regions: {read, proposed, spans, similarity, evidence, accepted}
 
 @dataclass
+class GuidedAtom:
+    """One indivisible piece of a Block, in the order it was written.
+
+    Position is explicit rather than implied by list index so that duplicates
+    stay distinguishable: "PARIS PARIS" is two atoms that must remain two
+    separate things to locate, not one term seen twice.
+    """
+    id: str
+    text: str
+    position: int
+    kind: str                       ## word | phrase | numeric | punctuation
+    script: Optional[str] = None    ## ISO 15924, via layers/palate.py
+    direction: Optional[str] = None ## ltr | rtl
+
+@dataclass
+class GuidedBlock:
+    """Source text the user asked ToFU to find, kept exactly as typed.
+
+    `raw_text` is never normalised away: whitespace and case are evidence
+    about how the text appears in the asset, and the moment they are
+    discarded a Block can no longer be matched against what was actually
+    printed.  `atoms` is the derived view.
+    """
+    id: str
+    raw_text: str
+    normalized_text: str
+    position: int
+    source_language: Optional[str] = None
+    scope: str = "asset"            ## asset | project
+    find_all: bool = False
+    atoms: List['GuidedAtom'] = field(default_factory=list)
+    language_assessment: Optional[Dict[str, Any]] = None
+    detection_assessment: Optional[Dict[str, Any]] = None
+
+@dataclass
+class ExportReadiness:
+    """What the expeditor saw at the pass before a translation file left.
+
+    ``state`` is the single verdict a caller acts on:
+
+      ready    -- nothing to report; the file can be built
+      review   -- advisory findings only; export is still permitted
+      stale    -- a plate no longer describes the regions it names
+      blocked  -- a structural contradiction; no file may be built
+
+    ``diagnostics`` carries one record per finding, each
+    ``{code, severity, message, plate_ids, region_ids}``. Severity is
+    ``blocking`` or ``advisory`` -- ``state`` is derived from them, never
+    set independently, so a caller cannot see ``ready`` alongside a
+    blocking record.
+    """
+    state: str
+    diagnostics: List[Dict[str, Any]] = field(default_factory=list)
+    counts: Dict[str, int] = field(default_factory=dict)
+
+@dataclass
 class TextManifest: ## loc task manifest via cicerone
     asset_id: str
     total_regions: int
@@ -367,6 +463,13 @@ class TextManifest: ## loc task manifest via cicerone
     img_dim: Optional[tuple[int, int]] = None
     scene_regions: List[SceneRegion] = field(default_factory=list)
     semantic_units: List[SemanticTextUnit] = field(default_factory=list)
+    ## The Blocks the user asked ToFU to locate, in the order they were
+    ## entered.  Persisted with the manifest rather than recomputed from the
+    ## Ground Truth field: a Block carries its own language assessment and
+    ## detection outcome, and re-deriving them on load would silently discard
+    ## a warning the user has already seen and acknowledged.  Empty for Auto
+    ## and Manual captures, so an existing manifest is unaffected.
+    guided_blocks: List['GuidedBlock'] = field(default_factory=list)
     asset_class: Optional[str] = None
     asset_classification: Optional[Dict[str, Any]] = None
     ## Append-only DAG of every proposal and every merge/prune between the
@@ -552,6 +655,13 @@ class VerificationProject:
     region_totals: Dict[str, int] = field(default_factory=dict)
     summary: Optional[str] = None
     review_order: List[str] = field(default_factory=list)
+    ## non-negotiable preconditions that were not met (roadmap P1.29). Each is
+    ## {code, severity, detail}. Distinct from summary_flags: a flag says what
+    ## was observed, a gate says why the verdict could not be green. Empty on a
+    ## clean run. Defaults to empty so manifests written before gates existed
+    ## still load -- an old report legitimately has no gate evidence, which is
+    ## not the same as having passed them.
+    coverage_gates: List[Dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass

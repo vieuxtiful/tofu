@@ -67,7 +67,7 @@ was presented. Section 6 covers how it rides alongside XLIFF.
 
 {
   "vtm_version": "1.0",
-  "generator": { "name": "ToFU", "version": "0.1.0" },
+  "generator": { "name": "ToFU", "version": "1.0.0" },
   "created": "2026-07-25T15:45:35+00:00",
   "source_language": "ja-JP",
   "target_language": "en-US",

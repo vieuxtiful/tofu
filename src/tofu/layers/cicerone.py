@@ -253,6 +253,14 @@ class RawDetection:
     confidence: float
     language: Optional[str] = None
     provenance: Optional[List[Dict[str, Any]]] = None
+    ## The okara node this detection currently corresponds to, stamped when
+    ## it is recorded. Carried on the detection rather than looked up by
+    ## geometry because geometry is exactly what the transforms change: a
+    ## coordinate-based join has to guess across every reshape, and guessing
+    ## lineage from final geometry has produced phantom defects here before.
+    ## A transform that produces a NEW detection must record a node and
+    ## re-stamp this, or the chain silently ends at its input.
+    candidate_id: Optional[str] = None
 
 
 def tag_detection_pass(
@@ -1491,10 +1499,66 @@ def _record_raw(det: RawDetection, stage: str = "raw_craft") -> Optional[str]:
     if graph is None:
         return None
     box = _polygon_bbox(det.polygon)
-    return graph.add(
+    candidate_id = graph.add(
         stage, (box.x, box.y, box.width, box.height),
         polygon=det.polygon, text=det.text, confidence=det.confidence,
     )
+    det.candidate_id = candidate_id
+    return candidate_id
+
+
+def _record_engine_output(
+    detections: Sequence[RawDetection], stage: str = "raw_craft"
+) -> None:
+    """Put a backend's own proposals on the graph, if not already there.
+
+    Backends hand back fresh `RawDetection`s, and several paths take them
+    straight to `build_manifest` without passing through `merge_detections`
+    -- the single-pass branch, the language-refined second pass, and the
+    per-surface probe. Those regions reached the manifest with no node at
+    all, which is why the CJK fixtures resolved lineage for a quarter of
+    their regions while the Latin ones reached 100%: the Latin path happens
+    to go through a recording transform and the CJK path does not.
+
+    Idempotent by `candidate_id`, so calling it on a set that has already
+    been recorded is free and safe to do defensively.
+    """
+    for det in detections:
+        if det.candidate_id is None:
+            _record_raw(det, stage=stage)
+
+
+def _record_derived(
+    new: RawDetection,
+    parents: Sequence[RawDetection],
+    stage: str,
+    reason: str,
+) -> Optional[str]:
+    """Record a detection a transform produced, linked to what it came from.
+
+    A transform that skips this does not merely omit a row: it terminates
+    the chain, because the detection it emits carries no `candidate_id` and
+    everything downstream of it is unreachable from the detector proposals.
+    Two transforms were doing that (`_split_tall_detections`,
+    `merge_baseline_runs`), which is most of why lineage reached only 0-22%
+    of shipped regions.
+    """
+    from tofu.layers import okara
+
+    graph = okara.active()
+    if graph is None:
+        return None
+    parent_ids = tuple(
+        p.candidate_id for p in parents if p.candidate_id is not None
+    )
+    box = _polygon_bbox(new.polygon)
+    candidate_id = graph.add(
+        stage, (box.x, box.y, box.width, box.height),
+        polygon=new.polygon, parents=parent_ids, reason=reason,
+        text=new.text, confidence=new.confidence,
+    )
+    new.candidate_id = candidate_id
+    return candidate_id
 
 
 def merge_detections(
@@ -1504,6 +1568,17 @@ def merge_detections(
     from tofu.layers import okara
 
     graph = okara.active()
+
+    # Record the FIRST pass too. Only `extra` was being recorded, so every
+    # region that survived from pass one reached the manifest with no node
+    # at all -- the single largest hole in the lineage, and an invisible one,
+    # because the graph looked populated (it was full of later passes) while
+    # the regions that actually shipped were the ones missing from it.
+    if graph is not None:
+        for det in base:
+            if det.candidate_id is None:
+                _record_raw(det)
+
     for det in extra:
         db = _polygon_bbox(det.polygon)
         dup_idx = None
@@ -1760,7 +1835,14 @@ def merge_vertical_columns(detections: List[RawDetection], asset: ImageLike = No
                 )
                 graph.suppress(pid, "merged", "absorbed into a vertical column")
                 parent_ids.append(pid)
-            graph.add(
+            # Stamped onto the detection, not just added to the graph. The
+            # node was already being recorded here; what was missing is the
+            # detection carrying its id forward, so the chain ended at this
+            # merge and every vertical-CJK region reached the manifest with
+            # no traceable ancestry -- which is why japan-street resolved
+            # lineage for 15% of its regions while quai-des-orfevres, which
+            # never takes this path, resolved 0% for a different reason.
+            merged.candidate_id = graph.add(
                 "merge_vertical_columns", (x0, y0, x1 - x0, y1 - y0),
                 polygon=merged.polygon, parents=parent_ids,
                 text=merged.text, confidence=merged.confidence,
@@ -1957,7 +2039,7 @@ def _split_tall_detections(
             continue
         changed = True
         for band_bbox, composed in composed_bands:
-            out.append(RawDetection(
+            band = RawDetection(
                 polygon=[
                     (band_bbox.x, band_bbox.y),
                     (band_bbox.x + band_bbox.width, band_bbox.y),
@@ -1966,7 +2048,14 @@ def _split_tall_detections(
                 ],
                 text=composed.text, confidence=composed.confidence,
                 language=det.language,
-            ))
+            )
+            # One tall detection becoming several bands is a split, and the
+            # bands are answerable to the box they came out of.
+            _record_derived(
+                band, [det], "split_tall_detections",
+                "tall detection resolved into horizontal bands",
+            )
+            out.append(band)
     return out if changed else None
 
 
@@ -2212,7 +2301,7 @@ def merge_baseline_runs(
             out.extend(detections[i] for i in members)
             continue
         changed = True
-        out.append(RawDetection(
+        line = RawDetection(
             polygon=[
                 (line_box.x, line_box.y),
                 (line_box.x + line_box.width, line_box.y),
@@ -2222,7 +2311,16 @@ def merge_baseline_runs(
             text=composed.text,
             confidence=composed.confidence,
             language=detections[members[0]].language,
-        ))
+        )
+        # This is a MERGE, and its members are exactly the alternatives a
+        # reviewer needs when the line turns out to span two signs. Recording
+        # them is what lets an over-merge be attributed to this policy rather
+        # than to the detector.
+        _record_derived(
+            line, [detections[i] for i in members], "merge_baseline_runs",
+            f"composed one line from {len(members)} baseline-aligned detections",
+        )
+        out.append(line)
     return out if changed else None
 
 
@@ -2259,12 +2357,20 @@ def _compose_crop_text(
     y0 = min(b.y for b in boxes)
     x1 = max(b.x + b.width for b in boxes)
     y1 = max(b.y + b.height for b in boxes)
-    return RawDetection(
+    composed = RawDetection(
         polygon=[(x0, y0), (x1, y0), (x1, y1), (x0, y1)],
         text=sep.join(usable[i].text.strip() for i in order),
         confidence=sum(d.confidence for d in usable) / len(usable),
         language=next((d.language for d in usable if d.language), None),
     )
+    # Composing one region's text from every detection inside its crop is a
+    # merge, and its inputs are the alternatives a reviewer needs when the
+    # crop turns out to have spanned two signs.
+    _record_derived(
+        composed, list(usable), "compose_crop_text",
+        f"composed one region from {len(usable)} detections inside the crop",
+    )
+    return composed
 
 
 def _probe_dim(asset: ImageLike) -> Optional[Tuple[int, int]]:
@@ -2987,6 +3093,13 @@ def run_paddle_rescue(
     backend = PaddleOCRBackend(languages=[language], gpu=gpu)
     try:
         full = backend.detect(asset)
+        # PaddleOCR's own frame-scale proposals. This whole function bypasses
+        # merge_detections -- which is where every EasyOCR path happens to get
+        # recorded -- so without this the CJK fixtures reach the manifest with
+        # no lineage at all, while the Latin ones reach 100%. That asymmetry
+        # was not a property of the scripts; it was a property of which code
+        # path each one takes.
+        _record_engine_output(full)
     except Exception:
         full = []
     merged = _prefer_paddle_on_overlap(detections, full) if full else list(detections)
@@ -3006,6 +3119,9 @@ def run_paddle_rescue(
         except Exception:
             per_region = []
         region_dets = [d for dets in per_region for d in dets]
+        # Crop-resolution reads of surfaces the frame pass under-covered:
+        # origins in their own right, same standing as zoom.
+        _record_engine_output(region_dets, stage="surface_probe")
         if region_dets:
             merged = _prefer_paddle_on_overlap(merged, region_dets)
             changed = True
@@ -3040,6 +3156,7 @@ def run_paddle_rescue(
             except Exception:
                 per_region2 = []
             region_dets2 = [d for dets in per_region2 for d in dets]
+            _record_engine_output(region_dets2, stage="surface_probe")
             if region_dets2:
                 merged = _prefer_paddle_on_overlap(merged, region_dets2)
                 changed = True
@@ -3449,6 +3566,11 @@ def _corroborated(
         confidence=corroboration,
         language=det.language,
         provenance=[*(det.provenance or []), entry],
+        # Same polygon, same candidate -- only the confidence was promoted.
+        # Carried forward rather than re-recorded: a new node here would
+        # claim a transform that did not move anything, and dropping the id
+        # (which is what a plain copy does) silently ends the chain.
+        candidate_id=det.candidate_id,
     )
 
 
@@ -3700,7 +3822,7 @@ def zoom_detect(
         except Exception:
             continue
         for d in dets:
-            fine.append(RawDetection(
+            zoomed = RawDetection(
                 polygon=[
                     (int(x / ZOOM_SCALE + x0), int(y / ZOOM_SCALE + y0))
                     for x, y in d.polygon
@@ -3708,7 +3830,14 @@ def zoom_detect(
                 text=d.text,
                 confidence=d.confidence,
                 language=primary_lang,
-            ))
+            )
+            # A genuine detector proposal, just made at zoom scale on a crop.
+            # Recorded as its own origin because it has no frame-scale
+            # parent -- it is not derived from anything already on the graph,
+            # and a region whose whole chain is zoom-derived would otherwise
+            # trace back to nothing.
+            _record_raw(zoomed, stage="zoom")
+            fine.append(zoomed)
     # surfaces can overlap (e.g. an MSER text_cluster and a contour-rescue
     # bordered_region both covering the same sign), so the per-surface
     # re-detection above can hand back the same text twice; collapse those
@@ -4180,6 +4309,9 @@ def detect(
         detections = run_multipass(engine, asset)
     else:
         detections = engine.detect(asset)
+        # The single-pass branch never touches merge_detections, which is
+        # where every other path happens to get recorded.
+        _record_engine_output(detections)
 
     _stage({"stage": "finalize", "status": "running"})
     manifest = build_manifest(
@@ -4214,12 +4346,18 @@ def detect(
             target, surface_dets = probe_uncovered_surfaces(
                 asset, scene_regions, manifest.instances, engine
             )
+            # Crop-resolution reads of surfaces the frame-scale detector left
+            # uncovered. An origin in their own right -- nothing on the graph
+            # sits above them -- and the main source of vertical-CJK regions,
+            # which is why japan-street's lineage was the last to close.
+            _record_engine_output(surface_dets, stage="surface_probe")
         if target:
             _stage({"stage": "refine", "status": "running", "langset": list(target)})
             tuned = EasyOCRBackend(languages=target, gpu=engine.gpu)
             second = (
                 run_multipass(tuned, asset) if multipass else tuned.detect(asset)
             )
+            _record_engine_output(second)
             # per-surface reads are authoritative: they saw each panel at
             # crop resolution where full-frame detection reads fragments
             if surface_dets:
@@ -4391,8 +4529,25 @@ def detect(
                 box = inst.bounding_box
                 if box is None:
                     continue
+                geometry = (box.x, box.y, box.width, box.height)
+                # Close the last hop BY IDENTITY. The instance carries the id
+                # of the candidate it was built from, so no coordinate
+                # matching is involved -- which matters because the
+                # transforms reshape geometry, and a coordinate join has to
+                # guess across every reshape.
+                #
+                # Falls back to an exact-geometry lookup only for detections
+                # that predate a transform being taught to record itself; if
+                # neither resolves, the node is left unlinked and says so,
+                # rather than attaching a parent nobody established.
+                parent = inst.lineage_candidate_id
+                if parent is None or graph.get(parent) is None:
+                    survivor = graph.surviving_at(geometry)
+                    parent = survivor.candidate_id if survivor else None
                 graph.add(
-                    "final", (box.x, box.y, box.width, box.height),
+                    "final", geometry,
+                    parents=(parent,) if parent else (),
+                    reason="shipped region" if parent else "shipped region (unlinked)",
                     text=inst.text, confidence=inst.confidence, salt=inst.id,
                 )
             manifest.candidate_lineage = graph.to_dict()
@@ -5288,6 +5443,25 @@ def _score_region_hypothesis(
         return None
 
 
+def _proposal_family(inst: InstText) -> str:
+    """Which OCR family produced the text a verifier is about to judge.
+
+    Read from the recognition audit trail rather than assumed, because the
+    answer decides whether the upcoming check is independent evidence or a
+    self-check (roadmap P1.25). The last entry that actually set the text
+    wins: a region first read by EasyOCR and then corrected by a Paddle
+    audit is, for verification purposes, a Paddle proposal -- verifying it
+    with Paddle again would confirm Paddle's own correction.
+
+    Falls back to easyocr, the default detector, when the trail is empty.
+    """
+    for item in reversed(inst.recognition_history or []):
+        engine = str(item.get("engine") or "").strip().lower()
+        if engine and engine != "rule":
+            return "paddle" if "paddle" in engine else engine
+    return "easyocr"
+
+
 def assess_multi_candidate_ocr(
     asset: ImageLike,
     instances: List[InstText],
@@ -5389,7 +5563,20 @@ def assess_multi_candidate_ocr(
 
     results_by_instance: Dict[int, Any] = {}
     for lang, group in grouped.items():
-        verifier = PaddleRegionVerifier(languages=[lang])
+        # Declare which family produced the text being checked. When the
+        # primary read already came from Paddle, this verification is a
+        # Paddle-on-Paddle self-check: still worth running, but its agreement
+        # shares every failure mode of the thing it agrees with, so it is
+        # marked `correlated` rather than counted as independent evidence
+        # (roadmap P1.25). Grouping is per-language, and so is provenance --
+        # one region's engine says nothing about another's.
+        proposal_families = {_proposal_family(inst) for inst in group}
+        proposal_family = (
+            next(iter(proposal_families)) if len(proposal_families) == 1 else None
+        )
+        verifier = PaddleRegionVerifier(
+            languages=[lang], proposal_family=proposal_family
+        )
         results = verifier.verify_regions(
             asset,
             [inst.bounding_box for inst in group],
@@ -5986,6 +6173,24 @@ def build_manifest(
         start = time.time()
     asset_info = asset_info or infer_asset_info(asset)
 
+    # Lineage backstop. Every detection that becomes an instance passes
+    # through here, so this is the one place that can guarantee no shipped
+    # region is unreachable from the graph.
+    #
+    # It logs when it fires ON PURPOSE. A silent backstop would let the next
+    # unrecorded emit path hide behind 100% coverage -- the number would look
+    # right while the ancestry it implies was invented here rather than
+    # observed upstream. If this warns, a transform above needs teaching, and
+    # the count says how much of the run is affected.
+    unrecorded = [d for d in detections if d.candidate_id is None]
+    if unrecorded:
+        logger.debug(
+            "lineage backstop recorded %d/%d detections with no upstream node; "
+            "an emit path above build_manifest is not recording itself",
+            len(unrecorded), len(detections),
+        )
+        _record_engine_output(unrecorded)
+
     # stacked vertical CJK signage: unify per-character fragments into
     # single column boxes BEFORE filtering — the merged crop is what the
     # language rescue re-recognizes, and one region per sign is what the
@@ -6037,6 +6242,7 @@ def build_manifest(
                 text=det.text,
                 confidence=det.confidence,
                 detected_language=_det_lang_from_engine(det, engine),
+                lineage_candidate_id=det.candidate_id,
                 reading_order=order,
                 frame_index=None,  # video: set per frame once tracking lands
                 recognition_history=(

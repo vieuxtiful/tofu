@@ -1,0 +1,4265 @@
+{
+  "corpus_id": "guided-corpus-v1",
+  "schema": 1,
+  "note": "Guided Blocks derived from existing ground truth. Derivation is recorded per Block. NOT human-reviewed: see review_status.",
+  "review_status": "machine_derived",
+  "review": {
+    "required": [
+      "a contributor confirms each requested_text is text a user would plausibly ask ToFU to locate",
+      "a second contributor independently reviews, and disagreements are adjudicated and recorded here"
+    ],
+    "annotators": [],
+    "adjudications": []
+  },
+  "minimums": {
+    "assets": 30,
+    "blocks": 120,
+    "occurrences": 180,
+    "strata": 6
+  },
+  "totals": {
+    "assets": 46,
+    "blocks": 162,
+    "occurrences": 189,
+    "repeat_blocks": 13,
+    "strata": 6
+  },
+  "shortfalls": {},
+  "missing_strata": [],
+  "unstratified_annotations": [],
+  "strata": {
+    "japanese_horizontal": {
+      "assets": 4,
+      "blocks": 21,
+      "occurrences": 23
+    },
+    "japanese_vertical": {
+      "assets": 3,
+      "blocks": 9,
+      "occurrences": 9
+    },
+    "latin_horizontal": {
+      "assets": 16,
+      "blocks": 31,
+      "occurrences": 39
+    },
+    "mixed_script_numeric": {
+      "assets": 12,
+      "blocks": 44,
+      "occurrences": 55
+    },
+    "nonlinear_irregular": {
+      "assets": 7,
+      "blocks": 39,
+      "occurrences": 41
+    },
+    "rtl_bidi": {
+      "assets": 4,
+      "blocks": 18,
+      "occurrences": 22
+    }
+  },
+  "split_rule": "Within each stratum, sort asset names and hold out the last. Deterministic and content-blind, so the split cannot have been chosen after seeing which assets scored well.",
+  "assets": {
+    "arabic-bilingual-panel": {
+      "stratum": "rtl_bidi",
+      "partial_annotation": false,
+      "image": {
+        "path": "tests/fixtures/arabic-bilingual-panel.png",
+        "sha256": "b684e4965c481683bbb5c4d9aa8e8dc2e468003b3e8f5508ac40a12ef044ecf8"
+      },
+      "annotation": {
+        "path": "tests/fixtures/arabic-bilingual-panel.gt.json",
+        "sha256": "85e3d5e92b63a205f83afe5e1b6e9a27e1c4b35c21d0f5b3e2ef901f0411a69c"
+      },
+      "blocks": [
+        {
+          "block_id": "arabic-bilingual-panel#b1",
+          "requested_text": "24",
+          "normalized_text": "24",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                120,
+                388,
+                48,
+                32
+              ],
+              "text": "24",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "arabic-bilingual-panel#b2",
+          "requested_text": "Gate",
+          "normalized_text": "gate",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                120,
+                308,
+                83,
+                27
+              ],
+              "text": "Gate",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "arabic-bilingual-panel#b3",
+          "requested_text": "International Airport",
+          "normalized_text": "international airport",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                120,
+                198,
+                381,
+                37
+              ],
+              "text": "International Airport",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "arabic-bilingual-panel#b4",
+          "requested_text": "بوابة",
+          "normalized_text": "بوابة",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                620,
+                291,
+                73,
+                39
+              ],
+              "text": "بوابة",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "arabic-bilingual-panel#b5",
+          "requested_text": "مطار دولي",
+          "normalized_text": "مطار دولي",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                600,
+                113,
+                227,
+                51
+              ],
+              "text": "مطار دولي",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        }
+      ],
+      "split": "dev"
+    },
+    "arabic-market": {
+      "stratum": "rtl_bidi",
+      "partial_annotation": false,
+      "image": {
+        "path": "tests/fixtures/arabic-market.png",
+        "sha256": "9def0083dc4396971b6fd3586121ceb15a996a41e27dc9d95ee13ee90719f80b"
+      },
+      "annotation": {
+        "path": "tests/fixtures/arabic-market.gt.json",
+        "sha256": "0d30b2fcaa18e17defa5e15cd8e189cf9ec852658f24da9d362e918889f9c973"
+      },
+      "blocks": [
+        {
+          "block_id": "arabic-market#b1",
+          "requested_text": "10",
+          "normalized_text": "10",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                200,
+                97,
+                40,
+                26
+              ],
+              "text": "10",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "arabic-market#b2",
+          "requested_text": "15",
+          "normalized_text": "15",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                200,
+                197,
+                40,
+                26
+              ],
+              "text": "15",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "arabic-market#b3",
+          "requested_text": "20",
+          "normalized_text": "20",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                200,
+                297,
+                40,
+                26
+              ],
+              "text": "20",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "arabic-market#b4",
+          "requested_text": "25",
+          "normalized_text": "25",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                200,
+                397,
+                40,
+                26
+              ],
+              "text": "25",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "arabic-market#b5",
+          "requested_text": "سوق",
+          "normalized_text": "سوق",
+          "derivation": "gt_repeat",
+          "expected_occurrences": 4,
+          "occurrences": [
+            {
+              "bbox": [
+                640,
+                101,
+                92,
+                39
+              ],
+              "text": "سوق",
+              "language": null
+            },
+            {
+              "bbox": [
+                640,
+                201,
+                92,
+                39
+              ],
+              "text": "سوق",
+              "language": null
+            },
+            {
+              "bbox": [
+                640,
+                301,
+                92,
+                39
+              ],
+              "text": "سوق",
+              "language": null
+            },
+            {
+              "bbox": [
+                640,
+                401,
+                92,
+                39
+              ],
+              "text": "سوق",
+              "language": null
+            }
+          ],
+          "expected_plate": "unspecified"
+        }
+      ],
+      "split": "dev"
+    },
+    "arabic-street": {
+      "stratum": "rtl_bidi",
+      "partial_annotation": false,
+      "image": {
+        "path": "tests/fixtures/arabic-street.png",
+        "sha256": "a2f67d393d38b595f671b601854e1535ee9927706d87063be71b264756732a62"
+      },
+      "annotation": {
+        "path": "tests/fixtures/arabic-street.gt.json",
+        "sha256": "cc27a77da5d96840fdad09ee79e31a59c940d45a1bb2430fcf5474c203e391e6"
+      },
+      "blocks": [
+        {
+          "block_id": "arabic-street#b1",
+          "requested_text": "12",
+          "normalized_text": "12",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                140,
+                218,
+                44,
+                29
+              ],
+              "text": "12",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "arabic-street#b2",
+          "requested_text": "القاهرة",
+          "normalized_text": "القاهرة",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                620,
+                221,
+                116,
+                38
+              ],
+              "text": "القاهرة",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "arabic-street#b3",
+          "requested_text": "شارع النيل",
+          "normalized_text": "شارع النيل",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                620,
+                135,
+                260,
+                56
+              ],
+              "text": "شارع النيل",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "arabic-street#b4",
+          "requested_text": "مفتوح",
+          "normalized_text": "مفتوح",
+          "derivation": "gt_repeat",
+          "expected_occurrences": 2,
+          "occurrences": [
+            {
+              "bbox": [
+                140,
+                366,
+                87,
+                29
+              ],
+              "text": "مفتوح",
+              "language": null
+            },
+            {
+              "bbox": [
+                420,
+                366,
+                87,
+                29
+              ],
+              "text": "مفتوح",
+              "language": null
+            }
+          ],
+          "expected_plate": "unspecified"
+        }
+      ],
+      "split": "dev"
+    },
+    "avenue-de-la-république": {
+      "stratum": "latin_horizontal",
+      "partial_annotation": false,
+      "image": {
+        "path": "images/avenue-de-la-république.jpeg",
+        "sha256": "c0f5a4253a50a4c8858837f73b9d4b3c190d3e504a7e84640acdba6267afa90a"
+      },
+      "annotation": {
+        "path": "images/avenue-de-la-république.gt.json",
+        "sha256": "c857b31f62d27972eb91c1fa49acd104ee5ed5d0e0d596e6eec2fbbb36dd4653"
+      },
+      "blocks": [
+        {
+          "block_id": "avenue-de-la-république#b1",
+          "requested_text": "AVENUE",
+          "normalized_text": "avenue",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                150,
+                122,
+                155,
+                51
+              ],
+              "text": "AVENUE",
+              "language": "fr"
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "avenue-de-la-république#b2",
+          "requested_text": "de la RÉPUBLIQUE",
+          "normalized_text": "de la république",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                120,
+                171,
+                214,
+                57
+              ],
+              "text": "de la RÉPUBLIQUE",
+              "language": "fr"
+            }
+          ],
+          "expected_plate": "single_region"
+        }
+      ],
+      "split": "dev"
+    },
+    "china-street": {
+      "stratum": "nonlinear_irregular",
+      "partial_annotation": true,
+      "image": {
+        "path": "images/china-street.png",
+        "sha256": "46aed5c3d70d7738d509ec7e1a8b17db69bb2c63c06080b9160fbc42445b54ef"
+      },
+      "annotation": {
+        "path": "images/china-street.gt.json",
+        "sha256": "3e209122089111f69d9e469bd1a35c4f5f8fdb420b68ffa23d90c1a73d402732"
+      },
+      "blocks": [
+        {
+          "block_id": "china-street#b1",
+          "requested_text": "MING",
+          "normalized_text": "ming",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                195,
+                415,
+                75,
+                30
+              ],
+              "text": "MING",
+              "language": "en"
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "china-street#b2",
+          "requested_text": "OPTICAL",
+          "normalized_text": "optical",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                562,
+                646,
+                102,
+                24
+              ],
+              "text": "OPTICAL",
+              "language": "en"
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "china-street#b3",
+          "requested_text": "上海明牌",
+          "normalized_text": "上海明牌",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                175,
+                455,
+                95,
+                155
+              ],
+              "text": "上海明牌",
+              "language": "zh-cn"
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "china-street#b4",
+          "requested_text": "华联店3F",
+          "normalized_text": "华联店3f",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                355,
+                245,
+                110,
+                65
+              ],
+              "text": "华联店3F",
+              "language": "zh-cn"
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "china-street#b5",
+          "requested_text": "大娘水饺",
+          "normalized_text": "大娘水饺",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                390,
+                490,
+                85,
+                170
+              ],
+              "text": "大娘水饺",
+              "language": "zh-cn"
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "china-street#b6",
+          "requested_text": "美珠宝",
+          "normalized_text": "美珠宝",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                358,
+                8,
+                116,
+                238
+              ],
+              "text": "美珠宝",
+              "language": "zh-cn"
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "china-street#b7",
+          "requested_text": "茂昌眼镜公司",
+          "normalized_text": "茂昌眼镜公司",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                545,
+                13,
+                127,
+                603
+              ],
+              "text": "茂昌眼镜公司",
+              "language": "zh-cn"
+            }
+          ],
+          "expected_plate": "single_region"
+        }
+      ],
+      "split": "dev"
+    },
+    "cjk-horizontal": {
+      "stratum": "latin_horizontal",
+      "partial_annotation": false,
+      "image": {
+        "path": "tests/fixtures/cjk-horizontal.png",
+        "sha256": "ad46cdc963ae46cbb809a2ee8b2451fdf9bbb1a1e5b6b5347773ec9419372119"
+      },
+      "annotation": {
+        "path": "tests/fixtures/cjk-horizontal.gt.json",
+        "sha256": "c6b8f49030fb82de4e0a2cee0344206ac5a542e552f2aea2aee4b9d57dfbcfbd"
+      },
+      "blocks": [
+        {
+          "block_id": "cjk-horizontal#b1",
+          "requested_text": "City Library",
+          "normalized_text": "city library",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                220,
+                161,
+                343,
+                59
+              ],
+              "text": "City Library",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "cjk-horizontal#b2",
+          "requested_text": "Open today",
+          "normalized_text": "open today",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                330,
+                294,
+                216,
+                38
+              ],
+              "text": "Open today",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        }
+      ],
+      "split": "dev"
+    },
+    "cjk-vertical": {
+      "stratum": "japanese_vertical",
+      "partial_annotation": false,
+      "image": {
+        "path": "tests/fixtures/cjk-vertical.png",
+        "sha256": "16e446862a261a159f064c3582e58d43e61003010460f225ad4ab20f4e1c4733"
+      },
+      "annotation": {
+        "path": "tests/fixtures/cjk-vertical.gt.json",
+        "sha256": "70c1eb2f7caede7d4a0c1863fbcbafad1d2494d7754d689e23f6716d936791ce"
+      },
+      "blocks": [
+        {
+          "block_id": "cjk-vertical#b1",
+          "requested_text": "ようこそ",
+          "normalized_text": "ようこそ",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                420,
+                263,
+                192,
+                44
+              ],
+              "text": "ようこそ",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "cjk-vertical#b2",
+          "requested_text": "居酒屋",
+          "normalized_text": "居酒屋",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                148,
+                94,
+                88,
+                262
+              ],
+              "text": "居酒屋",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        }
+      ],
+      "split": "dev"
+    },
+    "cjk-vertical-banner": {
+      "stratum": "japanese_vertical",
+      "partial_annotation": false,
+      "image": {
+        "path": "tests/fixtures/cjk-vertical-banner.png",
+        "sha256": "f44c92d4e93dc70c0d7f62445f3bcf1f7fdc42091a93d4d39029b951d10bbb48"
+      },
+      "annotation": {
+        "path": "tests/fixtures/cjk-vertical-banner.gt.json",
+        "sha256": "5b36803be3cda38a7abdc744f61ad9949996ad0a67af7bd454c9de1b6f47bb14"
+      },
+      "blocks": [
+        {
+          "block_id": "cjk-vertical-banner#b1",
+          "requested_text": "2026",
+          "normalized_text": "2026",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                640,
+                307,
+                80,
+                26
+              ],
+              "text": "2026",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "cjk-vertical-banner#b2",
+          "requested_text": "SALE",
+          "normalized_text": "sale",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                640,
+                208,
+                117,
+                32
+              ],
+              "text": "SALE",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "cjk-vertical-banner#b3",
+          "requested_text": "新春大売出",
+          "normalized_text": "新春大売出",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                200,
+                70,
+                52,
+                316
+              ],
+              "text": "新春大売出",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "cjk-vertical-banner#b4",
+          "requested_text": "本日開店",
+          "normalized_text": "本日開店",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                480,
+                70,
+                52,
+                250
+              ],
+              "text": "本日開店",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        }
+      ],
+      "split": "dev"
+    },
+    "cjk-vertical-menu": {
+      "stratum": "japanese_vertical",
+      "partial_annotation": false,
+      "image": {
+        "path": "tests/fixtures/cjk-vertical-menu.png",
+        "sha256": "13663111fdc0213753464a57b6d4e3d403151fc2347dd7e0cba697bf075cbb13"
+      },
+      "annotation": {
+        "path": "tests/fixtures/cjk-vertical-menu.gt.json",
+        "sha256": "72002f573e567df8bd18b87bd4c86bfb25f27a2a87cfaff2ce90c1012a5e0fee"
+      },
+      "blocks": [
+        {
+          "block_id": "cjk-vertical-menu#b1",
+          "requested_text": "喫茶店",
+          "normalized_text": "喫茶店",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                660,
+                90,
+                58,
+                208
+              ],
+              "text": "喫茶店",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "cjk-vertical-menu#b2",
+          "requested_text": "定食屋",
+          "normalized_text": "定食屋",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                420,
+                90,
+                58,
+                208
+              ],
+              "text": "定食屋",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "cjk-vertical-menu#b3",
+          "requested_text": "居酒屋",
+          "normalized_text": "居酒屋",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                180,
+                90,
+                58,
+                208
+              ],
+              "text": "居酒屋",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        }
+      ],
+      "split": "holdout"
+    },
+    "decolonisons-nos-rues": {
+      "stratum": "latin_horizontal",
+      "partial_annotation": true,
+      "image": {
+        "path": "images/decolonisons-nos-rues.jpeg",
+        "sha256": "eee1a5e1be97cc2b11bd0c057b7180161f7f0a00e352f6705a0467bc83804d9b"
+      },
+      "annotation": {
+        "path": "images/decolonisons-nos-rues.gt.json",
+        "sha256": "aff01fc1573ac577134b67c7e8e6928992ac9a2a85634ba68f2f73ea78fef751"
+      },
+      "blocks": [
+        {
+          "block_id": "decolonisons-nos-rues#b1",
+          "requested_text": "crimes coloniaux et esclavagistes",
+          "normalized_text": "crimes coloniaux et esclavagistes",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                85,
+                518,
+                296,
+                15
+              ],
+              "text": "crimes coloniaux et esclavagistes",
+              "language": "fr"
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "decolonisons-nos-rues#b2",
+          "requested_text": "Décolonisons",
+          "normalized_text": "décolonisons",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                35,
+                51,
+                413,
+                47
+              ],
+              "text": "Décolonisons",
+              "language": "fr"
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "decolonisons-nos-rues#b3",
+          "requested_text": "nos rues !",
+          "normalized_text": "nos rues !",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                96,
+                123,
+                304,
+                42
+              ],
+              "text": "nos rues !",
+              "language": "fr"
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "decolonisons-nos-rues#b4",
+          "requested_text": "Pour une mémoire des luttes contre les",
+          "normalized_text": "pour une mémoire des luttes contre les",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                60,
+                499,
+                347,
+                13
+              ],
+              "text": "Pour une mémoire des luttes contre les",
+              "language": "fr"
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "decolonisons-nos-rues#b5",
+          "requested_text": "Texte : Naïké Desquesnes",
+          "normalized_text": "texte : naïké desquesnes",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                45,
+                585,
+                163,
+                12
+              ],
+              "text": "Texte : Naïké Desquesnes",
+              "language": "fr"
+            }
+          ],
+          "expected_plate": "single_region"
+        }
+      ],
+      "split": "dev"
+    },
+    "degraded-ink": {
+      "stratum": "latin_horizontal",
+      "partial_annotation": false,
+      "image": {
+        "path": "tests/fixtures/degraded-ink.png",
+        "sha256": "3a5c3c7b085f7967c82167237ffd5fe554facc8501c419bae01d3a16c4305134"
+      },
+      "annotation": {
+        "path": "tests/fixtures/degraded-ink.gt.json",
+        "sha256": "8f19b3a087dfa3a9e0cfb1282200c35c2331dc6d50064ec90c7719a913eeb16b"
+      },
+      "blocks": [
+        {
+          "block_id": "degraded-ink#b1",
+          "requested_text": "OLD SIGN",
+          "normalized_text": "old sign",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                180,
+                191,
+                291,
+                45
+              ],
+              "text": "OLD SIGN",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        }
+      ],
+      "split": "dev"
+    },
+    "dense-layout": {
+      "stratum": "nonlinear_irregular",
+      "partial_annotation": false,
+      "image": {
+        "path": "tests/fixtures/dense-layout.png",
+        "sha256": "d14f3a9fb1260a26ae99a70fdfcf9cbfee163bf77d884a9be75d77a95aeb2cb6"
+      },
+      "annotation": {
+        "path": "tests/fixtures/dense-layout.gt.json",
+        "sha256": "58b01d6320ba001ae13e0f8b089bf845fe254372fc1c74bcf5a392ac5ab98960"
+      },
+      "blocks": [
+        {
+          "block_id": "dense-layout#b1",
+          "requested_text": "CULTURE",
+          "normalized_text": "culture",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                558,
+                308,
+                211,
+                32
+              ],
+              "text": "CULTURE",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "dense-layout#b2",
+          "requested_text": "NEWS",
+          "normalized_text": "news",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                98,
+                119,
+                149,
+                38
+              ],
+              "text": "NEWS",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "dense-layout#b3",
+          "requested_text": "SPORT",
+          "normalized_text": "sport",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                98,
+                308,
+                165,
+                37
+              ],
+              "text": "SPORT",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "dense-layout#b4",
+          "requested_text": "WEATHER",
+          "normalized_text": "weather",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                558,
+                119,
+                213,
+                30
+              ],
+              "text": "WEATHER",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        }
+      ],
+      "split": "dev"
+    },
+    "expansion-en": {
+      "stratum": "latin_horizontal",
+      "partial_annotation": false,
+      "image": {
+        "path": "tests/fixtures/expansion-en.png",
+        "sha256": "d5768efe0dab89fbd48e1173bdf9f6363ec14eab0f9bd50a5ccd94cc8e3fa75d"
+      },
+      "annotation": {
+        "path": "tests/fixtures/expansion-en.gt.json",
+        "sha256": "4152332de70a8bdbd6461fcc040c85358c620ada98ddf3a61d9b101d69d61683"
+      },
+      "blocks": [
+        {
+          "block_id": "expansion-en#b1",
+          "requested_text": "Please keep this area clean",
+          "normalized_text": "please keep this area clean",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                100,
+                271,
+                512,
+                38
+              ],
+              "text": "Please keep this area clean",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        }
+      ],
+      "split": "dev"
+    },
+    "flat-sign": {
+      "stratum": "mixed_script_numeric",
+      "partial_annotation": false,
+      "image": {
+        "path": "tests/fixtures/flat-sign.png",
+        "sha256": "64a68b889b9e12a146797a87b1a6ec169ff5c3364d4d9bf537b6d577a032a03d"
+      },
+      "annotation": {
+        "path": "tests/fixtures/flat-sign.gt.json",
+        "sha256": "3a093331423e4bb08068ef24b98ecf4e20b31e0c5d7436ab20a486797c9112e2"
+      },
+      "blocks": [
+        {
+          "block_id": "flat-sign#b1",
+          "requested_text": "EXIT 25",
+          "normalized_text": "exit 25",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                120,
+                188,
+                144,
+                29
+              ],
+              "text": "EXIT 25",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "flat-sign#b2",
+          "requested_text": "MAIN STREET",
+          "normalized_text": "main street",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                120,
+                120,
+                354,
+                39
+              ],
+              "text": "MAIN STREET",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "flat-sign#b3",
+          "requested_text": "Open 9am to 5pm",
+          "normalized_text": "open 9am to 5pm",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                100,
+                448,
+                241,
+                28
+              ],
+              "text": "Open 9am to 5pm",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "flat-sign#b4",
+          "requested_text": "STOP",
+          "normalized_text": "stop",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                700,
+                133,
+                119,
+                32
+              ],
+              "text": "STOP",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        }
+      ],
+      "split": "dev"
+    },
+    "gemini-street": {
+      "stratum": "nonlinear_irregular",
+      "partial_annotation": true,
+      "image": {
+        "path": "images/gemini-street.png",
+        "sha256": "e089639370fade50d905f6a8755a308c1500ebf7a260471b30f551678616ab97"
+      },
+      "annotation": {
+        "path": "images/gemini-street.gt.json",
+        "sha256": "63943604bab1026fdd9ee5279f71cb1d927778850476d39657ffec6e9c85961e"
+      },
+      "blocks": [
+        {
+          "block_id": "gemini-street#b1",
+          "requested_text": "ラーメン",
+          "normalized_text": "ラーメン",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                210,
+                468,
+                46,
+                122
+              ],
+              "text": "ラーメン",
+              "language": "ja"
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "gemini-street#b2",
+          "requested_text": "居酒屋",
+          "normalized_text": "居酒屋",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                118,
+                485,
+                60,
+                120
+              ],
+              "text": "居酒屋",
+              "language": "ja"
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "gemini-street#b3",
+          "requested_text": "道頓堀",
+          "normalized_text": "道頓堀",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                750,
+                75,
+                48,
+                80
+              ],
+              "text": "道頓堀",
+              "language": "ja"
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "gemini-street#b4",
+          "requested_text": "감접",
+          "normalized_text": "감접",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                28,
+                2,
+                70,
+                66
+              ],
+              "text": "감접",
+              "language": "ko"
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "gemini-street#b5",
+          "requested_text": "고깃집",
+          "normalized_text": "고깃집",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                215,
+                55,
+                127,
+                280
+              ],
+              "text": "고깃집",
+              "language": "ko"
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "gemini-street#b6",
+          "requested_text": "노래방",
+          "normalized_text": "노래방",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                1008,
+                12,
+                70,
+                110
+              ],
+              "text": "노래방",
+              "language": "ko"
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "gemini-street#b7",
+          "requested_text": "대박식당",
+          "normalized_text": "대박식당",
+          "derivation": "gt_repeat",
+          "expected_occurrences": 2,
+          "occurrences": [
+            {
+              "bbox": [
+                148,
+                335,
+                132,
+                80
+              ],
+              "text": "대박식당",
+              "language": "ko"
+            },
+            {
+              "bbox": [
+                282,
+                332,
+                58,
+                36
+              ],
+              "text": "대박식당",
+              "language": "ko"
+            }
+          ],
+          "expected_plate": "unspecified"
+        },
+        {
+          "block_id": "gemini-street#b8",
+          "requested_text": "라면·국수",
+          "normalized_text": "라면·국수",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                345,
+                50,
+                90,
+                285
+              ],
+              "text": "라면·국수",
+              "language": "ko"
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "gemini-street#b9",
+          "requested_text": "맥주",
+          "normalized_text": "맥주",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                1168,
+                5,
+                77,
+                117
+              ],
+              "text": "맥주",
+              "language": "ko"
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "gemini-street#b10",
+          "requested_text": "전주삼겹살",
+          "normalized_text": "전주삼겹살",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                430,
+                180,
+                62,
+                172
+              ],
+              "text": "전주삼겹살",
+              "language": "ko"
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "gemini-street#b11",
+          "requested_text": "파식당",
+          "normalized_text": "파식당",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                545,
+                180,
+                41,
+                152
+              ],
+              "text": "파식당",
+              "language": "ko"
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "gemini-street#b12",
+          "requested_text": "편의맥주",
+          "normalized_text": "편의맥주",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                1158,
+                135,
+                87,
+                220
+              ],
+              "text": "편의맥주",
+              "language": "ko"
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "gemini-street#b13",
+          "requested_text": "포차",
+          "normalized_text": "포차",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                28,
+                70,
+                77,
+                240
+              ],
+              "text": "포차",
+              "language": "ko"
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "gemini-street#b14",
+          "requested_text": "피시개방",
+          "normalized_text": "피시개방",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                1078,
+                15,
+                64,
+                220
+              ],
+              "text": "피시개방",
+              "language": "ko"
+            }
+          ],
+          "expected_plate": "single_region"
+        }
+      ],
+      "split": "dev"
+    },
+    "gradient-banner": {
+      "stratum": "latin_horizontal",
+      "partial_annotation": false,
+      "image": {
+        "path": "tests/fixtures/gradient-banner.png",
+        "sha256": "edd093589af381c9b655aa070ad276ecf725e1d86e9ee0c6245a3e4fa393e254"
+      },
+      "annotation": {
+        "path": "tests/fixtures/gradient-banner.gt.json",
+        "sha256": "28bb974ebf0838deac7f1c5c66ce93b49214bda1bbba5f7186ca9371f98fdfc2"
+      },
+      "blocks": [
+        {
+          "block_id": "gradient-banner#b1",
+          "requested_text": "fifty percent off",
+          "normalized_text": "fifty percent off",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                200,
+                308,
+                262,
+                37
+              ],
+              "text": "fifty percent off",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "gradient-banner#b2",
+          "requested_text": "SUMMER SALE",
+          "normalized_text": "summer sale",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                140,
+                191,
+                473,
+                48
+              ],
+              "text": "SUMMER SALE",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        }
+      ],
+      "split": "dev"
+    },
+    "hebrew-notice": {
+      "stratum": "rtl_bidi",
+      "partial_annotation": false,
+      "image": {
+        "path": "tests/fixtures/hebrew-notice.png",
+        "sha256": "fe274de39e74552e20ea9f7f637fb00ca17831904b0e8eb27e6d23f53ce18094"
+      },
+      "annotation": {
+        "path": "tests/fixtures/hebrew-notice.gt.json",
+        "sha256": "8835333751345b540cca57951aeb1d070c6f0e853d947070baddad0e1a458e2d"
+      },
+      "blocks": [
+        {
+          "block_id": "hebrew-notice#b1",
+          "requested_text": "TOFU",
+          "normalized_text": "tofu",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                150,
+                328,
+                120,
+                32
+              ],
+              "text": "TOFU",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "hebrew-notice#b2",
+          "requested_text": "סגור",
+          "normalized_text": "סגור",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                150,
+                413,
+                59,
+                18
+              ],
+              "text": "סגור",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "hebrew-notice#b3",
+          "requested_text": "רחוב הרצל",
+          "normalized_text": "רחוב הרצל",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                600,
+                120,
+                229,
+                39
+              ],
+              "text": "רחוב הרצל",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "hebrew-notice#b4",
+          "requested_text": "תל אביב",
+          "normalized_text": "תל אביב",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                600,
+                197,
+                119,
+                26
+              ],
+              "text": "תל אביב",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        }
+      ],
+      "split": "holdout"
+    },
+    "indic-shaping": {
+      "stratum": "mixed_script_numeric",
+      "partial_annotation": false,
+      "image": {
+        "path": "tests/fixtures/indic-shaping.png",
+        "sha256": "85e70487e5fa4bc7e037c520f6d792a0ca931df4a311b4f9f91f2c9879e370ff"
+      },
+      "annotation": {
+        "path": "tests/fixtures/indic-shaping.gt.json",
+        "sha256": "dda4bb1d8e7b021490ce36feb32b34d3a8ea91b9a639fa1282d0072174087005"
+      },
+      "blocks": [
+        {
+          "block_id": "indic-shaping#b1",
+          "requested_text": "नमस्ते",
+          "normalized_text": "नमस्ते",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                200,
+                136,
+                252,
+                35
+              ],
+              "text": "नमस्ते",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "indic-shaping#b2",
+          "requested_text": "வணக்கம்",
+          "normalized_text": "வணக்கம்",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                200,
+                414,
+                252,
+                30
+              ],
+              "text": "வணக்கம்",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "indic-shaping#b3",
+          "requested_text": "สวัสดี",
+          "normalized_text": "สวัสดี",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                200,
+                276,
+                252,
+                35
+              ],
+              "text": "สวัสดี",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        }
+      ],
+      "split": "dev"
+    },
+    "japan-street": {
+      "stratum": "japanese_horizontal",
+      "partial_annotation": true,
+      "image": {
+        "path": "images/japan-street.jpeg",
+        "sha256": "eae7787f043e2ed276ee3aa939b5283280f86618d8ddbf4a97137ca3b305e34d"
+      },
+      "annotation": {
+        "path": "images/japan-street.gt.json",
+        "sha256": "67516cba4955f142b76fd41f5b1b4cce75f66a4280751e26f43bc686920c8794"
+      },
+      "blocks": [
+        {
+          "block_id": "japan-street#b1",
+          "requested_text": "2F",
+          "normalized_text": "2f",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                463,
+                371,
+                19,
+                11
+              ],
+              "text": "2F",
+              "language": "en"
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "japan-street#b2",
+          "requested_text": "3F",
+          "normalized_text": "3f",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                140,
+                272,
+                25,
+                15
+              ],
+              "text": "3F",
+              "language": "en"
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "japan-street#b3",
+          "requested_text": "お好み焼本陣",
+          "normalized_text": "お好み焼本陣",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                455,
+                287,
+                27,
+                73
+              ],
+              "text": "お好み焼本陣",
+              "language": "ja"
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "japan-street#b4",
+          "requested_text": "バンダイ",
+          "normalized_text": "バンダイ",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                137,
+                222,
+                41,
+                46
+              ],
+              "text": "バンダイ",
+              "language": "ja"
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "japan-street#b5",
+          "requested_text": "劇場通り",
+          "normalized_text": "劇場通り",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                53,
+                335,
+                20,
+                61
+              ],
+              "text": "劇場通り",
+              "language": "ja"
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "japan-street#b6",
+          "requested_text": "東南荘",
+          "normalized_text": "東南荘",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                435,
+                217,
+                23,
+                38
+              ],
+              "text": "東南荘",
+              "language": "ja"
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "japan-street#b7",
+          "requested_text": "歌舞伎町一番街",
+          "normalized_text": "歌舞伎町一番街",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                190,
+                122,
+                243,
+                47
+              ],
+              "text": "歌舞伎町一番街",
+              "language": "ja"
+            }
+          ],
+          "expected_plate": "single_region"
+        }
+      ],
+      "split": "dev"
+    },
+    "japanese-poster": {
+      "stratum": "japanese_horizontal",
+      "partial_annotation": false,
+      "image": {
+        "path": "tests/fixtures/japanese-poster.png",
+        "sha256": "030fafe1df2eadb60382fb747f72774f1fac30045d5f79040f3c5e90d8efe31e"
+      },
+      "annotation": {
+        "path": "tests/fixtures/japanese-poster.gt.json",
+        "sha256": "9767790942a6046f2f1990d2005da97a88a99057ff60abf71455c6bfdba61d0c"
+      },
+      "blocks": [
+        {
+          "block_id": "japanese-poster#b1",
+          "requested_text": "5.2",
+          "normalized_text": "5.2",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                100,
+                101,
+                78,
+                41
+              ],
+              "text": "5.2",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "japanese-poster#b2",
+          "requested_text": "ACME",
+          "normalized_text": "acme",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                100,
+                426,
+                94,
+                23
+              ],
+              "text": "ACME",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "japanese-poster#b3",
+          "requested_text": "FRI",
+          "normalized_text": "fri",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                230,
+                108,
+                71,
+                32
+              ],
+              "text": "FRI",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "japanese-poster#b4",
+          "requested_text": "サンダーボルツ",
+          "normalized_text": "サンダーボルツ",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                100,
+                321,
+                322,
+                43
+              ],
+              "text": "サンダーボルツ",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "japanese-poster#b5",
+          "requested_text": "世界を救え",
+          "normalized_text": "世界を救え",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                100,
+                213,
+                270,
+                49
+              ],
+              "text": "世界を救え",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        }
+      ],
+      "split": "dev"
+    },
+    "japanese-shopfront": {
+      "stratum": "japanese_horizontal",
+      "partial_annotation": false,
+      "image": {
+        "path": "tests/fixtures/japanese-shopfront.png",
+        "sha256": "42b3582a627f3e0d957daa097e2cd4e73c34081215d066c7dc1168d35efbf508"
+      },
+      "annotation": {
+        "path": "tests/fixtures/japanese-shopfront.gt.json",
+        "sha256": "14e184428c22992e67eae8b2e65eb6f13743080aad5384f7e0441bc170a62f38"
+      },
+      "blocks": [
+        {
+          "block_id": "japanese-shopfront#b1",
+          "requested_text": "10:00",
+          "normalized_text": "10:00",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                130,
+                407,
+                92,
+                26
+              ],
+              "text": "10:00",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "japanese-shopfront#b2",
+          "requested_text": "19:00",
+          "normalized_text": "19:00",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                330,
+                407,
+                92,
+                26
+              ],
+              "text": "19:00",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "japanese-shopfront#b3",
+          "requested_text": "営業中",
+          "normalized_text": "営業中",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                130,
+                302,
+                132,
+                40
+              ],
+              "text": "営業中",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "japanese-shopfront#b4",
+          "requested_text": "定休日",
+          "normalized_text": "定休日",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                480,
+                302,
+                132,
+                41
+              ],
+              "text": "定休日",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "japanese-shopfront#b5",
+          "requested_text": "東京古書店",
+          "normalized_text": "東京古書店",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                130,
+                113,
+                310,
+                57
+              ],
+              "text": "東京古書店",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        }
+      ],
+      "split": "dev"
+    },
+    "japanese-station": {
+      "stratum": "japanese_horizontal",
+      "partial_annotation": false,
+      "image": {
+        "path": "tests/fixtures/japanese-station.png",
+        "sha256": "0f00498cad4e93da5845e22fdda2942095a53cf65ea3da7c4d2fcad97a25d30c"
+      },
+      "annotation": {
+        "path": "tests/fixtures/japanese-station.gt.json",
+        "sha256": "146671a7988b3327694f2e85248b1dc677df0e992a0d1224c7a7ed0a62eabbdd"
+      },
+      "blocks": [
+        {
+          "block_id": "japanese-station#b1",
+          "requested_text": "品川",
+          "normalized_text": "品川",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                120,
+                315,
+                104,
+                45
+              ],
+              "text": "品川",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "japanese-station#b2",
+          "requested_text": "新宿",
+          "normalized_text": "新宿",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                120,
+                92,
+                104,
+                48
+              ],
+              "text": "新宿",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "japanese-station#b3",
+          "requested_text": "渋谷",
+          "normalized_text": "渋谷",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                120,
+                203,
+                104,
+                47
+              ],
+              "text": "渋谷",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "japanese-station#b4",
+          "requested_text": "番線",
+          "normalized_text": "番線",
+          "derivation": "gt_repeat",
+          "expected_occurrences": 3,
+          "occurrences": [
+            {
+              "bbox": [
+                420,
+                92,
+                80,
+                37
+              ],
+              "text": "番線",
+              "language": null
+            },
+            {
+              "bbox": [
+                420,
+                202,
+                80,
+                37
+              ],
+              "text": "番線",
+              "language": null
+            },
+            {
+              "bbox": [
+                420,
+                312,
+                80,
+                37
+              ],
+              "text": "番線",
+              "language": null
+            }
+          ],
+          "expected_plate": "unspecified"
+        }
+      ],
+      "split": "holdout"
+    },
+    "la-bastille-1789": {
+      "stratum": "nonlinear_irregular",
+      "partial_annotation": true,
+      "image": {
+        "path": "images/la-bastille-1789.jpeg",
+        "sha256": "b8b998832326ac8bdd3aa765b755888e3db643d1ce421a5646e406e970b67b0e"
+      },
+      "annotation": {
+        "path": "images/la-bastille-1789.gt.json",
+        "sha256": "da8c2b793a8ce572ffbfba9a9c6837b259750ddbbfe62e4245e5f58ba843fb6b"
+      },
+      "blocks": [
+        {
+          "block_id": "la-bastille-1789#b1",
+          "requested_text": "1789",
+          "normalized_text": "1789",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                337,
+                79,
+                92,
+                47
+              ],
+              "text": "1789",
+              "language": "fr"
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "la-bastille-1789#b2",
+          "requested_text": "ANTOINE",
+          "normalized_text": "antoine",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                140,
+                78,
+                155,
+                46
+              ],
+              "text": "ANTOINE",
+              "language": "fr"
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "la-bastille-1789#b3",
+          "requested_text": "BASTILLE",
+          "normalized_text": "bastille",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                80,
+                13,
+                254,
+                61
+              ],
+              "text": "BASTILLE",
+              "language": "fr"
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "la-bastille-1789#b4",
+          "requested_text": "EN",
+          "normalized_text": "en",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                299,
+                92,
+                36,
+                31
+              ],
+              "text": "EN",
+              "language": "fr"
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "la-bastille-1789#b5",
+          "requested_text": "ET",
+          "normalized_text": "et",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                346,
+                27,
+                57,
+                42
+              ],
+              "text": "ET",
+              "language": "fr"
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "la-bastille-1789#b6",
+          "requested_text": "LA",
+          "normalized_text": "la",
+          "derivation": "gt_repeat",
+          "expected_occurrences": 2,
+          "occurrences": [
+            {
+              "bbox": [
+                27,
+                19,
+                49,
+                53
+              ],
+              "text": "LA",
+              "language": "fr"
+            },
+            {
+              "bbox": [
+                406,
+                10,
+                63,
+                64
+              ],
+              "text": "LA",
+              "language": "fr"
+            }
+          ],
+          "expected_plate": "unspecified"
+        },
+        {
+          "block_id": "la-bastille-1789#b7",
+          "requested_text": "RUE",
+          "normalized_text": "rue",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                20,
+                75,
+                72,
+                49
+              ],
+              "text": "RUE",
+              "language": "fr"
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "la-bastille-1789#b8",
+          "requested_text": "St",
+          "normalized_text": "st",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                95,
+                78,
+                44,
+                46
+              ],
+              "text": "St",
+              "language": "fr"
+            }
+          ],
+          "expected_plate": "single_region"
+        }
+      ],
+      "split": "dev"
+    },
+    "la-rue-sans-nom-example": {
+      "stratum": "latin_horizontal",
+      "partial_annotation": false,
+      "image": {
+        "path": "images/la-rue-sans-nom-example.jpg",
+        "sha256": "c8c4911c1945f0de563d23b7a261d53f49d5d5a3a80dcc2372d4c8b7e16a2c77"
+      },
+      "annotation": {
+        "path": "images/la-rue-sans-nom-example.gt.json",
+        "sha256": "8d091ce5fe62bdc417008a8e3c6ebd9327435a46b7251853c623379348fb0063"
+      },
+      "blocks": [
+        {
+          "block_id": "la-rue-sans-nom-example#b1",
+          "requested_text": "La rue",
+          "normalized_text": "la rue",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                361,
+                268,
+                314,
+                100
+              ],
+              "text": "La rue",
+              "language": "fr"
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "la-rue-sans-nom-example#b2",
+          "requested_text": "SANS-NOM",
+          "normalized_text": "sans-nom",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                241,
+                415,
+                543,
+                110
+              ],
+              "text": "SANS-NOM",
+              "language": "fr"
+            }
+          ],
+          "expected_plate": "single_region"
+        }
+      ],
+      "split": "dev"
+    },
+    "low-confidence": {
+      "stratum": "latin_horizontal",
+      "partial_annotation": false,
+      "image": {
+        "path": "tests/fixtures/low-confidence.png",
+        "sha256": "46214a6266e03b9f5c5e6db4333fd958cd9c2e5152cf77d3854919ce9c6a3b4b"
+      },
+      "annotation": {
+        "path": "tests/fixtures/low-confidence.gt.json",
+        "sha256": "d44c17fe5e2ba2ccb4dd52548fe3b5846d668005eb1f77af57919b61b192ce55"
+      },
+      "blocks": [
+        {
+          "block_id": "low-confidence#b1",
+          "requested_text": "FADED",
+          "normalized_text": "faded",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                200,
+                209,
+                166,
+                35
+              ],
+              "text": "FADED",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        }
+      ],
+      "split": "dev"
+    },
+    "mixed-orientation": {
+      "stratum": "nonlinear_irregular",
+      "partial_annotation": false,
+      "image": {
+        "path": "tests/fixtures/mixed-orientation.png",
+        "sha256": "070bb01656b207671f9ffe25345b4e9117ed3f612fc0456d2fb19443d2362789"
+      },
+      "annotation": {
+        "path": "tests/fixtures/mixed-orientation.gt.json",
+        "sha256": "f6969f13a746f9a0024ff1536d0e343692b86d87064f7e3b98311c8aa57e0c9a"
+      },
+      "blocks": [
+        {
+          "block_id": "mixed-orientation#b1",
+          "requested_text": "OPEN",
+          "normalized_text": "open",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                140,
+                150,
+                158,
+                42
+              ],
+              "text": "OPEN",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        }
+      ],
+      "split": "dev"
+    },
+    "mixed-script": {
+      "stratum": "mixed_script_numeric",
+      "partial_annotation": false,
+      "image": {
+        "path": "tests/fixtures/mixed-script.png",
+        "sha256": "ed02c7d3d1e339c916200085ebf90f621c6d48b1d9e3285c8c8383214b435938"
+      },
+      "annotation": {
+        "path": "tests/fixtures/mixed-script.gt.json",
+        "sha256": "bee166dd797b6af90a3fc30c947a1f9e3343989e916e67e4a4162674a7653b88"
+      },
+      "blocks": [
+        {
+          "block_id": "mixed-script#b1",
+          "requested_text": "TOFU PRO",
+          "normalized_text": "tofu pro",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                250,
+                201,
+                331,
+                48
+              ],
+              "text": "TOFU PRO",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "mixed-script#b2",
+          "requested_text": "Version 2",
+          "normalized_text": "version 2",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                360,
+                308,
+                160,
+                27
+              ],
+              "text": "Version 2",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        }
+      ],
+      "split": "dev"
+    },
+    "multicolour-text": {
+      "stratum": "latin_horizontal",
+      "partial_annotation": false,
+      "image": {
+        "path": "tests/fixtures/multicolour-text.png",
+        "sha256": "475fc5cc31197257b0682f80dcee400ee37ffa8ee0dcb543eb60aa9a0e6ab5f2"
+      },
+      "annotation": {
+        "path": "tests/fixtures/multicolour-text.gt.json",
+        "sha256": "37e63e1516324190626442ca4ae59cd2d2511d9d7282a19ce1983273904fd0fd"
+      },
+      "blocks": [
+        {
+          "block_id": "multicolour-text#b1",
+          "requested_text": "ABC",
+          "normalized_text": "abc",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                180,
+                210,
+                300,
+                64
+              ],
+              "text": "ABC",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        }
+      ],
+      "split": "dev"
+    },
+    "museum-labels": {
+      "stratum": "mixed_script_numeric",
+      "partial_annotation": false,
+      "image": {
+        "path": "tests/fixtures/museum-labels.png",
+        "sha256": "30604ea14f3dc2b0f8ae14dc7d882d05b9a32c4b1d691554aecb1f505db505c3"
+      },
+      "annotation": {
+        "path": "tests/fixtures/museum-labels.gt.json",
+        "sha256": "19c93cfdbab5c65204d05b6f3521ec826c3ca14ffcd2fd198385a2c8f0751d4b"
+      },
+      "blocks": [
+        {
+          "block_id": "museum-labels#b1",
+          "requested_text": "Entree libre",
+          "normalized_text": "entree libre",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                120,
+                321,
+                184,
+                26
+              ],
+              "text": "Entree libre",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "museum-labels#b2",
+          "requested_text": "Fermeture 18h",
+          "normalized_text": "fermeture 18h",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                120,
+                399,
+                236,
+                26
+              ],
+              "text": "Fermeture 18h",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "museum-labels#b3",
+          "requested_text": "Musee des Arts",
+          "normalized_text": "musee des arts",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                120,
+                87,
+                250,
+                26
+              ],
+              "text": "Musee des Arts",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "museum-labels#b4",
+          "requested_text": "Ouvert",
+          "normalized_text": "ouvert",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                120,
+                243,
+                108,
+                26
+              ],
+              "text": "Ouvert",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "museum-labels#b5",
+          "requested_text": "Salle 4",
+          "normalized_text": "salle 4",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                120,
+                165,
+                110,
+                26
+              ],
+              "text": "Salle 4",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        }
+      ],
+      "split": "dev"
+    },
+    "parking-levels": {
+      "stratum": "mixed_script_numeric",
+      "partial_annotation": false,
+      "image": {
+        "path": "tests/fixtures/parking-levels.png",
+        "sha256": "70f13150e2003eeaf4a6726a29279a21efefe165caa93c432387f67416540b6f"
+      },
+      "annotation": {
+        "path": "tests/fixtures/parking-levels.gt.json",
+        "sha256": "abb2388a540f6500531284d61b5cf1967c3b36f0355347683a392b8bab5130e7"
+      },
+      "blocks": [
+        {
+          "block_id": "parking-levels#b1",
+          "requested_text": "COMPLET",
+          "normalized_text": "complet",
+          "derivation": "gt_repeat",
+          "expected_occurrences": 4,
+          "occurrences": [
+            {
+              "bbox": [
+                600,
+                86,
+                167,
+                25
+              ],
+              "text": "COMPLET",
+              "language": null
+            },
+            {
+              "bbox": [
+                600,
+                186,
+                167,
+                25
+              ],
+              "text": "COMPLET",
+              "language": null
+            },
+            {
+              "bbox": [
+                600,
+                286,
+                167,
+                25
+              ],
+              "text": "COMPLET",
+              "language": null
+            },
+            {
+              "bbox": [
+                600,
+                386,
+                167,
+                25
+              ],
+              "text": "COMPLET",
+              "language": null
+            }
+          ],
+          "expected_plate": "unspecified"
+        },
+        {
+          "block_id": "parking-levels#b2",
+          "requested_text": "NIVEAU",
+          "normalized_text": "niveau",
+          "derivation": "gt_repeat",
+          "expected_occurrences": 4,
+          "occurrences": [
+            {
+              "bbox": [
+                120,
+                88,
+                142,
+                27
+              ],
+              "text": "NIVEAU",
+              "language": null
+            },
+            {
+              "bbox": [
+                120,
+                188,
+                142,
+                27
+              ],
+              "text": "NIVEAU",
+              "language": null
+            },
+            {
+              "bbox": [
+                120,
+                288,
+                142,
+                27
+              ],
+              "text": "NIVEAU",
+              "language": null
+            },
+            {
+              "bbox": [
+                120,
+                388,
+                142,
+                27
+              ],
+              "text": "NIVEAU",
+              "language": null
+            }
+          ],
+          "expected_plate": "unspecified"
+        }
+      ],
+      "split": "dev"
+    },
+    "perspective-sign": {
+      "stratum": "nonlinear_irregular",
+      "partial_annotation": false,
+      "image": {
+        "path": "tests/fixtures/perspective-sign.png",
+        "sha256": "8e079cb4bad8ae5e7ecc928995e0de39f180b89b6991d11731267d68457bde35"
+      },
+      "annotation": {
+        "path": "tests/fixtures/perspective-sign.gt.json",
+        "sha256": "f747ac2aa46b9b2915a3fab051154b8fd2b82169990c7535918978551f54e775"
+      },
+      "blocks": [
+        {
+          "block_id": "perspective-sign#b1",
+          "requested_text": "CAFE",
+          "normalized_text": "cafe",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                220,
+                100,
+                440,
+                220
+              ],
+              "text": "CAFE",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        }
+      ],
+      "split": "dev"
+    },
+    "product-label": {
+      "stratum": "mixed_script_numeric",
+      "partial_annotation": false,
+      "image": {
+        "path": "tests/fixtures/product-label.png",
+        "sha256": "a88acce2c0d427faa83149990563d4affdcff091ef274da8bb0a32bb53bde76a"
+      },
+      "annotation": {
+        "path": "tests/fixtures/product-label.gt.json",
+        "sha256": "b6b1c3aaed64c2108ec43346474df50c5ecd29d5bba6a2b8b88c1c364c18a4de"
+      },
+      "blocks": [
+        {
+          "block_id": "product-label#b1",
+          "requested_text": "500 ml",
+          "normalized_text": "500 ml",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                420,
+                258,
+                119,
+                29
+              ],
+              "text": "500 ml",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "product-label#b2",
+          "requested_text": "ALMOND TONIC",
+          "normalized_text": "almond tonic",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                270,
+                130,
+                450,
+                44
+              ],
+              "text": "ALMOND TONIC",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "product-label#b3",
+          "requested_text": "CONTAINS NUTS",
+          "normalized_text": "contains nuts",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                330,
+                391,
+                282,
+                25
+              ],
+              "text": "CONTAINS NUTS",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        }
+      ],
+      "split": "dev"
+    },
+    "quai-des-orfevres": {
+      "stratum": "mixed_script_numeric",
+      "partial_annotation": true,
+      "image": {
+        "path": "images/quai-des-orfevres.jpeg",
+        "sha256": "cbfe6568b8ac95c35b1bdab07bb87ed3dc31b49faa1804919b8c7eebb1b4ee6b"
+      },
+      "annotation": {
+        "path": "images/quai-des-orfevres.gt.json",
+        "sha256": "89bb07f5cab3fd2a3b02e08a99701a02390513544c5636ffe5fba0ada8f7f2f8"
+      },
+      "blocks": [
+        {
+          "block_id": "quai-des-orfevres#b1",
+          "requested_text": "1er Arrᵗ",
+          "normalized_text": "1er arrᵗ",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                239,
+                162,
+                75,
+                47
+              ],
+              "text": "1er Arrᵗ",
+              "language": "fr"
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "quai-des-orfevres#b2",
+          "requested_text": "DES",
+          "normalized_text": "des",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                236,
+                278,
+                50,
+                33
+              ],
+              "text": "DES",
+              "language": "fr"
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "quai-des-orfevres#b3",
+          "requested_text": "ORFÈVRES",
+          "normalized_text": "orfèvres",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                156,
+                291,
+                225,
+                83
+              ],
+              "text": "ORFÈVRES",
+              "language": "fr"
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "quai-des-orfevres#b4",
+          "requested_text": "QUAI",
+          "normalized_text": "quai",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                214,
+                219,
+                113,
+                69
+              ],
+              "text": "QUAI",
+              "language": "fr"
+            }
+          ],
+          "expected_plate": "single_region"
+        }
+      ],
+      "split": "dev"
+    },
+    "repeated-exits": {
+      "stratum": "mixed_script_numeric",
+      "partial_annotation": false,
+      "image": {
+        "path": "tests/fixtures/repeated-exits.png",
+        "sha256": "11a15f44dcbe5b76a746dea0dad0ebd3385a07fe7468eeed8efffdfd0b11249f"
+      },
+      "annotation": {
+        "path": "tests/fixtures/repeated-exits.gt.json",
+        "sha256": "4e28044cca4fad6afd598f5b6757b5d0f32e74b375db7ad434219b1efb8b098c"
+      },
+      "blocks": [
+        {
+          "block_id": "repeated-exits#b1",
+          "requested_text": "12",
+          "normalized_text": "12",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                420,
+                227,
+                40,
+                26
+              ],
+              "text": "12",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "repeated-exits#b2",
+          "requested_text": "SORTIE",
+          "normalized_text": "sortie",
+          "derivation": "gt_repeat",
+          "expected_occurrences": 4,
+          "occurrences": [
+            {
+              "bbox": [
+                90,
+                98,
+                149,
+                29
+              ],
+              "text": "SORTIE",
+              "language": null
+            },
+            {
+              "bbox": [
+                520,
+                98,
+                149,
+                29
+              ],
+              "text": "SORTIE",
+              "language": null
+            },
+            {
+              "bbox": [
+                90,
+                338,
+                149,
+                29
+              ],
+              "text": "SORTIE",
+              "language": null
+            },
+            {
+              "bbox": [
+                520,
+                338,
+                149,
+                29
+              ],
+              "text": "SORTIE",
+              "language": null
+            }
+          ],
+          "expected_plate": "unspecified"
+        }
+      ],
+      "split": "dev"
+    },
+    "repeated-platform": {
+      "stratum": "latin_horizontal",
+      "partial_annotation": false,
+      "image": {
+        "path": "tests/fixtures/repeated-platform.png",
+        "sha256": "b07660ca4de8574fdab4e082decf01ad57554be07a700927682753e955dc4ffe"
+      },
+      "annotation": {
+        "path": "tests/fixtures/repeated-platform.gt.json",
+        "sha256": "0c433e72fed096ef5fba59f00010796437325be02468598414e439985d84d0d7"
+      },
+      "blocks": [
+        {
+          "block_id": "repeated-platform#b1",
+          "requested_text": "PLATFORM",
+          "normalized_text": "platform",
+          "derivation": "gt_repeat",
+          "expected_occurrences": 6,
+          "occurrences": [
+            {
+              "bbox": [
+                110,
+                98,
+                210,
+                27
+              ],
+              "text": "PLATFORM",
+              "language": null
+            },
+            {
+              "bbox": [
+                520,
+                98,
+                210,
+                27
+              ],
+              "text": "PLATFORM",
+              "language": null
+            },
+            {
+              "bbox": [
+                110,
+                208,
+                210,
+                27
+              ],
+              "text": "PLATFORM",
+              "language": null
+            },
+            {
+              "bbox": [
+                520,
+                208,
+                210,
+                27
+              ],
+              "text": "PLATFORM",
+              "language": null
+            },
+            {
+              "bbox": [
+                110,
+                318,
+                210,
+                27
+              ],
+              "text": "PLATFORM",
+              "language": null
+            },
+            {
+              "bbox": [
+                520,
+                318,
+                210,
+                27
+              ],
+              "text": "PLATFORM",
+              "language": null
+            }
+          ],
+          "expected_plate": "unspecified"
+        }
+      ],
+      "split": "dev"
+    },
+    "rtl-sign": {
+      "stratum": "latin_horizontal",
+      "partial_annotation": false,
+      "image": {
+        "path": "tests/fixtures/rtl-sign.png",
+        "sha256": "83ebdaa07526d52e0279aa0c7f52b88620edd827529e1f316495f9ff0fec2098"
+      },
+      "annotation": {
+        "path": "tests/fixtures/rtl-sign.gt.json",
+        "sha256": "35b942f3cd84c3abd9fe20d7831fd4e18eeb187caecacb65e7ba8a72044af61b"
+      },
+      "blocks": [
+        {
+          "block_id": "rtl-sign#b1",
+          "requested_text": "Welcome",
+          "normalized_text": "welcome",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                340,
+                239,
+                316,
+                53
+              ],
+              "text": "Welcome",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        }
+      ],
+      "split": "dev"
+    },
+    "rue-des-martyrs": {
+      "stratum": "latin_horizontal",
+      "partial_annotation": true,
+      "image": {
+        "path": "images/rue-des-martyrs.jpeg",
+        "sha256": "c972604e658d278398172b1adb03106e4722a8445af38af6c545998e7e57dbbe"
+      },
+      "annotation": {
+        "path": "images/rue-des-martyrs.gt.json",
+        "sha256": "eb18bbda392e0ccbe82bfc2843bf36a5e068e7977ffa3abeb9f63a795e21ef87"
+      },
+      "blocks": [
+        {
+          "block_id": "rue-des-martyrs#b1",
+          "requested_text": "DES",
+          "normalized_text": "des",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                489,
+                111,
+                43,
+                39
+              ],
+              "text": "DES",
+              "language": "fr"
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "rue-des-martyrs#b2",
+          "requested_text": "MARTYRS",
+          "normalized_text": "martyrs",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                527,
+                89,
+                129,
+                59
+              ],
+              "text": "MARTYRS",
+              "language": "fr"
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "rue-des-martyrs#b3",
+          "requested_text": "RUE",
+          "normalized_text": "rue",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                530,
+                62,
+                61,
+                45
+              ],
+              "text": "RUE",
+              "language": "fr"
+            }
+          ],
+          "expected_plate": "single_region"
+        }
+      ],
+      "split": "dev"
+    },
+    "russian-billboard": {
+      "stratum": "mixed_script_numeric",
+      "partial_annotation": true,
+      "image": {
+        "path": "images/russian-billboard.jpeg",
+        "sha256": "7634a03836ece14e4c6dbca7a845c1a6ee1d14232682ab0cb83e9bc2a9769ada"
+      },
+      "annotation": {
+        "path": "images/russian-billboard.gt.json",
+        "sha256": "5c6a3eb03f44fec6a576b299586a1462ebf6a20e8717d9c71a2c1f05d6e72df2"
+      },
+      "blocks": [
+        {
+          "block_id": "russian-billboard#b1",
+          "requested_text": "23",
+          "normalized_text": "23",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                466,
+                33,
+                66,
+                46
+              ],
+              "text": "23",
+              "language": "ru"
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "russian-billboard#b2",
+          "requested_text": "Za",
+          "normalized_text": "za",
+          "derivation": "gt_repeat",
+          "expected_occurrences": 3,
+          "occurrences": [
+            {
+              "bbox": [
+                347,
+                109,
+                35,
+                26
+              ],
+              "text": "Za",
+              "language": "en"
+            },
+            {
+              "bbox": [
+                391,
+                133,
+                35,
+                26
+              ],
+              "text": "Za",
+              "language": "en"
+            },
+            {
+              "bbox": [
+                361,
+                153,
+                37,
+                29
+              ],
+              "text": "Za",
+              "language": "en"
+            }
+          ],
+          "expected_plate": "unspecified"
+        },
+        {
+          "block_id": "russian-billboard#b3",
+          "requested_text": "НАШИХ!",
+          "normalized_text": "наших!",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                427,
+                115,
+                108,
+                41
+              ],
+              "text": "НАШИХ!",
+              "language": "ru"
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "russian-billboard#b4",
+          "requested_text": "ПОБЕДУ!",
+          "normalized_text": "победу!",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                385,
+                92,
+                129,
+                46
+              ],
+              "text": "ПОБЕДУ!",
+              "language": "ru"
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "russian-billboard#b5",
+          "requested_text": "ПРАВДУ!",
+          "normalized_text": "правду!",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                399,
+                144,
+                114,
+                41
+              ],
+              "text": "ПРАВДУ!",
+              "language": "ru"
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "russian-billboard#b6",
+          "requested_text": "ФЕВРАЛЯ",
+          "normalized_text": "февраля",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                468,
+                80,
+                63,
+                14
+              ],
+              "text": "ФЕВРАЛЯ",
+              "language": "ru"
+            }
+          ],
+          "expected_plate": "single_region"
+        }
+      ],
+      "split": "dev"
+    },
+    "russian-billboard-2": {
+      "stratum": "mixed_script_numeric",
+      "partial_annotation": true,
+      "image": {
+        "path": "images/russian-billboard-2.jpg",
+        "sha256": "51151fdae49c7c53cbd7f996972df2c14fc403523496b35d5169a64d0768b007"
+      },
+      "annotation": {
+        "path": "images/russian-billboard-2.gt.json",
+        "sha256": "47184b5d5a1ada6d714e58d6ee7251c9ba6feb60802c9abd4b14aacf105a9a33"
+      },
+      "blocks": [
+        {
+          "block_id": "russian-billboard-2#b1",
+          "requested_text": "Valentina Ursu (RFE/RL)",
+          "normalized_text": "valentina ursu (rfe/rl)",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                291,
+                203,
+                117,
+                27
+              ],
+              "text": "Valentina Ursu (RFE/RL)",
+              "language": "en"
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "russian-billboard-2#b2",
+          "requested_text": "В БУДУЩЕЕ",
+          "normalized_text": "в будущее",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                79,
+                57,
+                125,
+                30
+              ],
+              "text": "В БУДУЩЕЕ",
+              "language": "ru"
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "russian-billboard-2#b3",
+          "requested_text": "ВМЕСТЕ С РОССИЕЙ!",
+          "normalized_text": "вместе с россией!",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                76,
+                79,
+                222,
+                31
+              ],
+              "text": "ВМЕСТЕ С РОССИЕЙ!",
+              "language": "ru"
+            }
+          ],
+          "expected_plate": "single_region"
+        }
+      ],
+      "split": "dev"
+    },
+    "serif-vs-sans": {
+      "stratum": "latin_horizontal",
+      "partial_annotation": false,
+      "image": {
+        "path": "tests/fixtures/serif-vs-sans.png",
+        "sha256": "9c5219e7950568ba5f3138fc4f2ed6b25f2bc605eef95f40b65bd86e79a74bb4"
+      },
+      "annotation": {
+        "path": "tests/fixtures/serif-vs-sans.gt.json",
+        "sha256": "84c57fcdf0fb44b101f01bd37f65f7d57794f3ca89d39f2ee29bbe753d3b2eca"
+      },
+      "blocks": [
+        {
+          "block_id": "serif-vs-sans#b1",
+          "requested_text": "Handgloves",
+          "normalized_text": "handgloves",
+          "derivation": "gt_repeat",
+          "expected_occurrences": 2,
+          "occurrences": [
+            {
+              "bbox": [
+                90,
+                333,
+                281,
+                49
+              ],
+              "text": "Handgloves",
+              "language": null
+            },
+            {
+              "bbox": [
+                500,
+                331,
+                316,
+                52
+              ],
+              "text": "Handgloves",
+              "language": null
+            }
+          ],
+          "expected_plate": "unspecified"
+        },
+        {
+          "block_id": "serif-vs-sans#b2",
+          "requested_text": "La rue",
+          "normalized_text": "la rue",
+          "derivation": "gt_repeat",
+          "expected_occurrences": 2,
+          "occurrences": [
+            {
+              "bbox": [
+                90,
+                95,
+                164,
+                43
+              ],
+              "text": "La rue",
+              "language": null
+            },
+            {
+              "bbox": [
+                500,
+                92,
+                183,
+                46
+              ],
+              "text": "La rue",
+              "language": null
+            }
+          ],
+          "expected_plate": "unspecified"
+        },
+        {
+          "block_id": "serif-vs-sans#b3",
+          "requested_text": "SANS-NOM",
+          "normalized_text": "sans-nom",
+          "derivation": "gt_repeat",
+          "expected_occurrences": 2,
+          "occurrences": [
+            {
+              "bbox": [
+                90,
+                205,
+                334,
+                43
+              ],
+              "text": "SANS-NOM",
+              "language": null
+            },
+            {
+              "bbox": [
+                500,
+                201,
+                345,
+                48
+              ],
+              "text": "SANS-NOM",
+              "language": null
+            }
+          ],
+          "expected_plate": "unspecified"
+        }
+      ],
+      "split": "dev"
+    },
+    "shadow-effects": {
+      "stratum": "latin_horizontal",
+      "partial_annotation": false,
+      "image": {
+        "path": "tests/fixtures/shadow-effects.png",
+        "sha256": "8b61bfb093800f695abb62352dc8b7a305cbf25386b7ddf4cddc65a8b93fb140"
+      },
+      "annotation": {
+        "path": "tests/fixtures/shadow-effects.gt.json",
+        "sha256": "6127689b4bd8bea620570db4d65ca9f76cadd9749aca0c4c73c8d98d71d2c74c"
+      },
+      "blocks": [
+        {
+          "block_id": "shadow-effects#b1",
+          "requested_text": "Every Friday",
+          "normalized_text": "every friday",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                310,
+                309,
+                238,
+                38
+              ],
+              "text": "Every Friday",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "shadow-effects#b2",
+          "requested_text": "NIGHT MARKET",
+          "normalized_text": "night market",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                170,
+                161,
+                506,
+                50
+              ],
+              "text": "NIGHT MARKET",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        }
+      ],
+      "split": "dev"
+    },
+    "stylized-italic": {
+      "stratum": "nonlinear_irregular",
+      "partial_annotation": false,
+      "image": {
+        "path": "tests/fixtures/stylized-italic.png",
+        "sha256": "c69d9bb59bda9f5cb5472e3ec2ec7c2b28d4b9f17765040de0392f3ddc035628"
+      },
+      "annotation": {
+        "path": "tests/fixtures/stylized-italic.gt.json",
+        "sha256": "a69878ed6790a5f640b1761114c39109d522cada37186a91c1a3cd963c3af9d8"
+      },
+      "blocks": [
+        {
+          "block_id": "stylized-italic#b1",
+          "requested_text": "Bold Statement",
+          "normalized_text": "bold statement",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                100,
+                198,
+                322,
+                32
+              ],
+              "text": "Bold Statement",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "stylized-italic#b2",
+          "requested_text": "Italic Emphasis",
+          "normalized_text": "italic emphasis",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                100,
+                298,
+                295,
+                41
+              ],
+              "text": "Italic Emphasis",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "stylized-italic#b3",
+          "requested_text": "Regular Weight",
+          "normalized_text": "regular weight",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                100,
+                98,
+                301,
+                41
+              ],
+              "text": "Regular Weight",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "stylized-italic#b4",
+          "requested_text": "Stroked Display",
+          "normalized_text": "stroked display",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                100,
+                398,
+                363,
+                46
+              ],
+              "text": "Stroked Display",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        }
+      ],
+      "split": "holdout"
+    },
+    "textured-wall": {
+      "stratum": "mixed_script_numeric",
+      "partial_annotation": false,
+      "image": {
+        "path": "tests/fixtures/textured-wall.png",
+        "sha256": "68d78ce7485628fa6dfffe36be430d7529b7ec4b7a6bb22df124df2e0733d272"
+      },
+      "annotation": {
+        "path": "tests/fixtures/textured-wall.gt.json",
+        "sha256": "83391f71acdf8df3ac12e67564a539148c381e1f4c4decbbe6c0f487b4886983"
+      },
+      "blocks": [
+        {
+          "block_id": "textured-wall#b1",
+          "requested_text": "BAKERY",
+          "normalized_text": "bakery",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                280,
+                154,
+                305,
+                52
+              ],
+              "text": "BAKERY",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "textured-wall#b2",
+          "requested_text": "est. 1962",
+          "normalized_text": "est. 1962",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                360,
+                287,
+                148,
+                26
+              ],
+              "text": "est. 1962",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        }
+      ],
+      "split": "dev"
+    },
+    "tight-space": {
+      "stratum": "latin_horizontal",
+      "partial_annotation": false,
+      "image": {
+        "path": "tests/fixtures/tight-space.png",
+        "sha256": "f5fbfed989f57ccb011ab059e7ccc5ea33de64b90baacb2e8344757b021ac422"
+      },
+      "annotation": {
+        "path": "tests/fixtures/tight-space.gt.json",
+        "sha256": "043bcae4545ea7b1ba0dcf7ad24f263da791ef0a95543acb39423f73ad668260"
+      },
+      "blocks": [
+        {
+          "block_id": "tight-space#b1",
+          "requested_text": "Members only",
+          "normalized_text": "members only",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                330,
+                250,
+                338,
+                46
+              ],
+              "text": "Members only",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        }
+      ],
+      "split": "dev"
+    },
+    "transit-board": {
+      "stratum": "mixed_script_numeric",
+      "partial_annotation": false,
+      "image": {
+        "path": "tests/fixtures/transit-board.png",
+        "sha256": "e89b6b16a2beec74bd9299b65da510b4b1665b21486db4b4785f0893343324d4"
+      },
+      "annotation": {
+        "path": "tests/fixtures/transit-board.gt.json",
+        "sha256": "528cdf4e1d0ddc230b0fb328a37254afd03c2ea33f984fae3b2c0e639ae319ce"
+      },
+      "blocks": [
+        {
+          "block_id": "transit-board#b1",
+          "requested_text": "08:15",
+          "normalized_text": "08:15",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                640,
+                98,
+                101,
+                29
+              ],
+              "text": "08:15",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "transit-board#b2",
+          "requested_text": "09:40",
+          "normalized_text": "09:40",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                640,
+                188,
+                101,
+                29
+              ],
+              "text": "09:40",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "transit-board#b3",
+          "requested_text": "11:05",
+          "normalized_text": "11:05",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                640,
+                278,
+                101,
+                29
+              ],
+              "text": "11:05",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "transit-board#b4",
+          "requested_text": "13:20",
+          "normalized_text": "13:20",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                640,
+                368,
+                101,
+                29
+              ],
+              "text": "13:20",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "transit-board#b5",
+          "requested_text": "BORDEAUX",
+          "normalized_text": "bordeaux",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                110,
+                368,
+                230,
+                29
+              ],
+              "text": "BORDEAUX",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "transit-board#b6",
+          "requested_text": "LYON",
+          "normalized_text": "lyon",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                110,
+                188,
+                111,
+                29
+              ],
+              "text": "LYON",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "transit-board#b7",
+          "requested_text": "MARSEILLE",
+          "normalized_text": "marseille",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                110,
+                278,
+                231,
+                29
+              ],
+              "text": "MARSEILLE",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "transit-board#b8",
+          "requested_text": "PARIS",
+          "normalized_text": "paris",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                110,
+                98,
+                123,
+                29
+              ],
+              "text": "PARIS",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        }
+      ],
+      "split": "holdout"
+    },
+    "ui-controls": {
+      "stratum": "latin_horizontal",
+      "partial_annotation": false,
+      "image": {
+        "path": "tests/fixtures/ui-controls.png",
+        "sha256": "05735d2be8f044b24a7c5ad971fa5da1328a89c48a976de953491de4b4ca3a55"
+      },
+      "annotation": {
+        "path": "tests/fixtures/ui-controls.gt.json",
+        "sha256": "e32c2b59cfee4e72f153872193b453ddfcda92e0d78b7671440cc1fc9886ef32"
+      },
+      "blocks": [
+        {
+          "block_id": "ui-controls#b1",
+          "requested_text": "Cancel",
+          "normalized_text": "cancel",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                430,
+                157,
+                118,
+                26
+              ],
+              "text": "Cancel",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "ui-controls#b2",
+          "requested_text": "Delete account",
+          "normalized_text": "delete account",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                300,
+                327,
+                256,
+                26
+              ],
+              "text": "Delete account",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        },
+        {
+          "block_id": "ui-controls#b3",
+          "requested_text": "Save",
+          "normalized_text": "save",
+          "derivation": "gt_region",
+          "expected_occurrences": 1,
+          "occurrences": [
+            {
+              "bbox": [
+                180,
+                157,
+                84,
+                26
+              ],
+              "text": "Save",
+              "language": null
+            }
+          ],
+          "expected_plate": "single_region"
+        }
+      ],
+      "split": "holdout"
+    }
+  }
+}

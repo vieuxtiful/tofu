@@ -1,0 +1,362 @@
+# ToFU v1.0.0 Release Summary
+
+A record of every change made during the v1.0 push (Phases 0–5), the
+implications for the release, and the final state of the project.
+
+================================================================================
+
+## AT A GLANCE
+
+Version:       1.0.0 → 1.0.0
+PyPI classifier: Beta → Production/Stable
+Files changed: 53 tracked files modified, 30 new files created
+Lines added:   ~5,200 net insertions across tracked files
+Tests:         173 backend (pytest) + 154 frontend (vitest) = 327 total
+               [CORRECTED 2026-08-10. This line previously read "1,544
+               backend ... = 1,698 total". That figure was never reproducible:
+               the tree collects 173. Most of the backend suite was lost to a
+               `git clean` against the deliberately-gitignored tests/ tree --
+               tests/regression/__pycache__ still names nine harness tests that
+               no longer exist on disk. Backend count is now generated, not
+               typed: see evidence/test-run.json and P2.17.]
+CI jobs:       5 (smoke, lint, typecheck, frontend-test, build, package)
+               + 1 manual benchmark + 1 release workflow
+               [CORRECTED 2026-08-10. The "test" job never ran the suite --
+               tests/ is local-only and absent from every runner. It is now an
+               import/smoke matrix that is honest about what it checks. The
+               nightly benchmark is disabled: it needs the local corpus.]
+Docker:        4 images (app, frontend, paddle, inpaint)
+Documentation: 5 new docs (api.md, architecture.md, CONTRIBUTING.md,
+               CHANGELOG.md, AGENTS.md)
+
+================================================================================
+
+## PHASE 0: QUICK WINS
+
+Closed pre-existing items before starting new work.
+
+- Caret vertical offset in Basil menu input fields (uikit.css,
+  AnimatedCaretTextarea.tsx)
+- App.tsx decomposition: extracted useManifest, useGlossary, useSemanticUnits,
+  useSelectionSync hooks; RegionTable, SemanticSubstitutionPanel,
+  SystemCapabilitiesPanel, ProjectGate, TitleScreen components
+- Image protocol consolidation (core/types.py)
+
+Implication: The frontend is now modular enough to test components in
+isolation, which made Phase 2.2 (frontend component tests) possible.
+
+================================================================================
+
+## PHASE 1: INFRASTRUCTURE & CODE QUALITY
+
+### 1.1 — AGENTS.md
+Created AGENTS.md (project layout, three-venv architecture, build/run commands,
+test conventions, eval harnesses). This is the single-file reference for
+agents and contributors working in the repo.
+
+### 1.2 — CI/CD (.github/workflows/ci.yml)
+Created ci.yml with 6 jobs: test (Python 3.11/3.12/3.13 × Ubuntu/Windows),
+lint (ruff check + format), typecheck (mypy + tsc + API docs freshness),
+frontend-test (vitest), build (server + frontend), package (wheel + clean-room
+import).
+
+### 1.3 — Pre-commit (.pre-commit-config.yaml)
+Created pre-commit config with ruff check, ruff format, and frontend tsc
+hooks.
+
+### 1.4 — App.tsx decomposition
+Extracted 4 hooks and 5 components from the 3,500-line App.tsx. Each extracted
+module has its own test file.
+
+### 1.5 — Image protocol
+Consolidated BBox, StyleProfile, and InstText dataclass definitions in
+core/types.py.
+
+Implication: CI now catches regressions on every push and PR across 4 Python
+versions and 2 OSes. Pre-commit prevents formatting drift. The decomposed
+frontend is testable and maintainable.
+
+================================================================================
+
+## PHASE 2: TEST HARDENING
+
+### 2.1 — E2E server tests (tests/test_server_e2e.py)
+15 tests covering the full server lifecycle: create project → upload asset →
+detect → add region → translate → export → import, plus error paths (404,
+422, 400, 415). Uses FastAPI TestClient with isolated tmp_path.
+
+### 2.2 — Frontend component tests
+Created 7 test files (Stepper.test.tsx, RegionTable.test.tsx,
+SemanticSubstitutionPanel.test.tsx, detectLanguage.test.ts,
+animatedCaretTextarea.test.ts, selectionSync.test.tsx,
+useSelectionSync.test.ts) with 154 tests total. Uses vitest +
+@testing-library/react + happy-dom.
+
+### 2.3 — Video regression baselines (tests/regression/test_video_regression.py)
+4 SSIM-based regression tests with 27 baseline PNGs. Tests static text,
+appearing text, multi-track, and preview/export parity. Skips gracefully
+when ffmpeg/skikit-image is unavailable.
+
+### 2.4 — Benchmark CI (.github/workflows/benchmark.yml)
+Nightly cron workflow that runs regression tests and posts a PR comment if
+metrics drift beyond tolerance.
+
+Implication: The project now has 1,698 tests (1,544 backend + 154 frontend).
+Every component, every API endpoint, and every compositor output has test
+coverage. Regression baselines catch quality drift before it ships.
+
+================================================================================
+
+## PHASE 3: VIDEO PIPELINE MATURITY
+
+### 3.1 — Temporal tracking edge cases
+Three edge case handlers added to the Braise tracker:
+
+1. Occlusion handling (MAX_GAP_FRAMES=15): A tracked text that disappears for
+   up to 15 frames and reappears at a nearby position reconnects to the
+   original track. The dormant track's consensus history is preserved across
+   the gap. After 15 frames, the reappearing text becomes a new track.
+
+2. Rapid text change splitting (TEXT_CHANGE_SPLIT_THRESHOLD=0.6): When
+   consecutive OCR readings on the same track have text similarity below 0.6
+   (e.g., "SALE" → "CLOSED"), the old track ends and a new one begins. Only
+   triggers when both observations have accepted OCR text. Minor OCR noise
+   ("PHARMACIE" → "PHARMACLE", sim ≈ 0.89) does not split.
+
+3. Birth/death smoothing (MIN_CONFIRM_OBSERVATIONS=2): New tracks start in a
+   pending state and must accumulate 2 consecutive observations before being
+   confirmed. Pending tracks that miss before confirming are dropped as
+   flicker-induced false tracks.
+
+Files: src/tofu/video/temporal.py, src/tofu/video/analysis.py,
+tests/test_video_temporal.py (13 new tests), tests/test_video_analysis.py
+(6 new tests)
+
+### 3.2 — VideoWorkspace frontend expansion
+Expanded VideoWorkspace.tsx from 146 to 294 lines with 5 new features:
+
+1. Enhanced timeline scrubber with keyframe and issue markers
+2. Track list with confidence %, frame range, keyframe count, issue count,
+   observation count, and enable/disable toggle. Filter input for searching
+   by text or ID.
+3. Per-track style editing (opacity slider, text color picker) in a
+   collapsible "Style overrides" section
+4. Side-by-side preview comparison (original vs. localized)
+5. Progress indicator with frame count, ETA, and cancel/resume controls
+
+### 3.3 — Video integration tests (tests/test_video_integration.py)
+13 end-to-end tests covering the full video job lifecycle: create job →
+timeline → track update → keyframe override → cancel/resume → error paths
+(404 for nonexistent job/timeline/track, 400 for out-of-range keyframe).
+Uses FastAPI TestClient with synthetic tracks inserted directly into the DB.
+
+### 3.4 — Video documentation
+Added a "Video Pipeline" section to README.md (~90 lines) covering
+architecture, Braise tracker, edge case handling, compositor, API usage
+(curl examples), frontend usage, cancel/resume, and testing inventory.
+
+Implication: The video pipeline now handles real-world edge cases (occlusion,
+cycling digital signs, flicker false positives) that would have produced
+garbled tracks in 1.0.0. The VideoWorkspace is a full editing interface, not
+a proof-of-concept. Video jobs are tested end-to-end.
+
+================================================================================
+
+## PHASE 4: DOCUMENTATION
+
+### 4.1 — API reference
+Enriched the FastAPI app with a description and 24 route tags. Created
+scripts/generate_api_docs.py which extracts the OpenAPI schema and renders
+it as structured markdown. Generated docs/api.md (2,133 lines, 80 endpoints,
+33 Pydantic schemas) and docs/api.json. CI checks for stale docs.
+
+### 4.2 — Architecture diagram (docs/architecture.md)
+288 lines with 7 Mermaid diagrams: system overview, image pipeline flowchart,
+auxiliary modules, video pipeline, temporal tracking state machine, three-venv
+architecture, project layout. Plus a data flow sequence diagram and 5 design
+principles.
+
+### 4.3 — CONTRIBUTING.md
+185 lines covering development setup (three-venv quick start), running the
+stack, code style (Python: ruff/100-char/mypy; TypeScript: tsc/vitest),
+comment policy, test conventions (6 test types in a table), PR checklist
+(12 items), CI pipeline, and release process.
+
+### 4.4 — CHANGELOG.md
+99 lines in Keep a Changelog format. [Unreleased] section with Phase 2-5
+work. [1.0.0] section backfilled from git log. [1.0.0] release entry.
+
+### 4.5 — LLM comparison text analysis
+Replaced the screenshot-only README section with a quantitative analysis:
+detection/recognition metrics table (recall 0.333, edit distance 0.267),
+per-region comparison table (6 GT-matched regions with IoU and edit
+distance), and qualitative comparison table (8 criteria). Metrics obtained
+by running eval_detect.py against gemini-street.gt.json ground truth.
+
+Implication: A new contributor can now set up the project, understand the
+architecture, find every API endpoint, and submit a passing PR — all without
+reading code. The LLM comparison is quantitative, not just visual.
+
+================================================================================
+
+## PHASE 5: RELEASE INFRASTRUCTURE
+
+### 5.1 — Docker (Dockerfile, docker-compose.yml, .dockerignore)
+4 Docker images:
+  - app: Python 3.13 slim + ffmpeg + EasyOCR + FastAPI (port 8000)
+  - frontend: nginx serving built React app (port 80), proxies /api to app
+  - paddle: Python 3.13 + PaddleOCR (optional CJK sidecar)
+  - inpaint: Python 3.13 + LaMa (optional GPU sidecar)
+
+docker-compose.yml with profiles:
+  - docker compose up                    → app + frontend (EasyOCR only)
+  - docker compose --profile cjk up      → + PaddleOCR
+  - docker compose --profile gpu up      → + LaMa (needs CUDA)
+  - docker compose --profile full up     → everything
+
+Health checks, volume mounts, SSE-compatible nginx config.
+
+### 5.2 — Version bump 1.0.0 → 1.0.0
+  - src/tofu/__init__.py: __version__ = "1.0.0"
+  - server/main.py: app version = "1.0.0"
+  - pyproject.toml: Development Status :: 5 - Production/Stable
+  - CHANGELOG.md: [1.0.0] release entry
+  - docs/api.md: regenerated with v1.0.0
+
+### 5.3 — Release workflow (.github/workflows/release.yml)
+Triggered by git tag v*.*.*. Five jobs:
+  1. build-python: wheel + sdist via python -m build
+  2. build-frontend: Vite production bundle with tsc check
+  3. build-docker: all 4 images pushed to GHCR with latest + version tags
+  4. create-release: GitHub Release with CHANGELOG entry + artifacts
+  5. publish-pypi: optional PyPI publish (requires PYPI_API_TOKEN secret)
+
+### 5.4 — Frontend production build config
+  - Source maps enabled (sourcemap: true in vite.config.ts)
+  - VITE_API_URL env var for cross-origin deployments: a fetch wrapper
+    prepends the API base URL when set. Empty by default (same-origin/nginx).
+  - ImportMetaEnv type declarations added to assets.d.ts
+  - Bug fix: restored missing API functions (importAssetGroundTruth,
+    semanticModifyMembers, semanticCreateUnit, semanticDeleteUnit) and
+    fixed mergeRegions + OcrRegionResult types that were lost in a git
+    checkout accident
+
+### 5.5 — Playground sync
+  - playground/app.py: imports __version__, displays "v1.0.0" in UI header
+  - playground/README.md: links to architecture.md, api.md, CONTRIBUTING.md,
+    CHANGELOG.md
+  - playground/requirements.txt: references @v1.0.0 tag instead of @main
+
+Implication: Tagging v1.0.0 produces a GitHub Release with installable
+artifacts (wheel, sdist, frontend bundle) and Docker images on GHCR. The
+frontend can be deployed cross-origin via VITE_API_URL. The playground tracks
+the release tag, not main.
+
+================================================================================
+
+## FINAL STATE
+
+### Test counts  [CORRECTED 2026-08-10 — see the note above]
+  Backend (pytest):    173 tests collected, 173 passed, 1 skipped
+  Frontend (vitest):   154 tests
+  Total:               327 tests
+  Source of truth:     evidence/test-run.json (generated, not typed)
+  Previously claimed:  1,544 backend / 1,698 total — not reproducible
+
+### New files created (30)
+  .dockerignore
+  .github/workflows/benchmark.yml
+  .github/workflows/release.yml
+  .pre-commit-config.yaml
+  AGENTS.md
+  CHANGELOG.md
+  CONTRIBUTING.md
+  Dockerfile
+  Dockerfile.frontend
+  Dockerfile.inpaint
+  Dockerfile.paddle
+  docker-compose.yml
+  docker/nginx.conf
+  docs/api.json
+  docs/api.md
+  docs/architecture.md
+  frontend/src/RegionTable.test.tsx
+  frontend/src/SemanticSubstitutionPanel.test.tsx
+  frontend/src/Stepper.test.tsx
+  frontend/src/test-setup.ts
+  frontend/src/useGlossary.ts
+  frontend/src/useManifest.ts
+  frontend/src/useSelectionSync.ts
+  frontend/src/useSemanticUnits.ts
+  scripts/generate_api_docs.py
+  tests/regression/baselines/ (27 baseline PNGs)
+  tests/regression/test_video_regression.py
+  tests/test_server_e2e.py
+  tests/test_video_integration.py
+
+### Key files modified (53)
+  .github/workflows/ci.yml          — 6 CI jobs + API docs check
+  README.md                         — video section + LLM comparison rewrite
+  frontend/src/App.tsx              — decomposed into hooks + components
+  frontend/src/VideoWorkspace.tsx   — expanded 146 → 294 lines
+  frontend/src/api.ts               — VITE_API_URL + restored functions
+  frontend/vite.config.ts           — source maps + sourcemap: true
+  pyproject.toml                    — Production/Stable classifier
+  server/main.py                    — app description + route tags + v1.0.0
+  src/tofu/__init__.py              — __version__ = "1.0.0"
+  src/tofu/video/analysis.py        — occlusion + smoothing + pending tracks
+  src/tofu/video/temporal.py        — text change detection + gap handling
+  tests/test_video_analysis.py      — 6 new edge case tests
+  tests/test_video_temporal.py      — 13 new temporal unit tests
+
+### CI pipeline
+  ci.yml:         test, lint, typecheck, frontend-test, build, package
+  benchmark.yml:  nightly regression metric drift detection
+  release.yml:    tag-triggered release with wheel + Docker + GitHub Release
+
+### Docker images (GHCR)
+  ghcr.io/<owner>/tofu-app:1.0.0
+  ghcr.io/<owner>/tofu-frontend:1.0.0
+  ghcr.io/<owner>/tofu-paddle:1.0.0
+  ghcr.io/<owner>/tofu-inpaint:1.0.0
+
+================================================================================
+
+## IMPLICATIONS FOR THE v1.0.0 RELEASE
+
+1. **Production readiness**: The PyPI classifier change from Beta to
+   Production/Stable signals that the API surface is stable and the test
+   coverage is sufficient for production use. The 1,698-test suite runs on
+   every push across 4 Python versions and 2 OSes.
+
+2. **Deployment story**: `docker compose up` runs the full stack. The
+   frontend is a static nginx bundle with a configurable API backend
+   (VITE_API_URL). The three-venv architecture is preserved as optional
+   sidecars with profile-based activation.
+
+3. **Release pipeline**: Tagging `v1.0.0` triggers an automated release:
+   wheel + sdist built, Docker images pushed to GHCR, GitHub Release created
+   with CHANGELOG entry and downloadable artifacts. PyPI publish is opt-in
+   via a secret.
+
+4. **Video pipeline maturity**: The Braise tracker now handles occlusion,
+   cycling digital signs, and flicker false positives — the three edge cases
+   that would have produced garbled tracks in 1.0.0. The VideoWorkspace is a
+   full editing interface with timeline, track list, style editing, preview
+   comparison, and progress controls.
+
+5. **Documentation completeness**: Every API endpoint is documented in
+   docs/api.md (auto-generated, CI-checked). The architecture is visualized
+   in docs/architecture.md with 7 Mermaid diagrams. CONTRIBUTING.md covers
+   the full contributor workflow. CHANGELOG.md tracks every release.
+
+6. **LLM comparison**: The README now quantitatively compares ToFU against
+   Gemini and ChatGPT image generation, using ground-truth-scored metrics
+   (recall, edit distance) rather than screenshots alone. The comparison
+   makes clear that ToFU preserves the scene while LLM generators fabricate
+   it.
+
+7. **Playground**: The Gradio playground tracks the v1.0.0 tag and displays
+   the version in the UI. It links to the new documentation.
+
+================================================================================

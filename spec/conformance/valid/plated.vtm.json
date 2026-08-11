@@ -1,0 +1,37 @@
+{
+  "vtm_version": "1.0",
+  "source_language": "fr-FR",
+  "target_language": "en-US",
+  "asset": { "id": "plated-01", "width": 800, "height": 600 },
+  "entries": [
+    {
+      "id": "r1",
+      "source": "Rue des",
+      "target": "Street of the",
+      "geometry": { "bbox": { "x": 40, "y": 60, "width": 120, "height": 36 } }
+    },
+    {
+      "id": "r2",
+      "source": "MARTYRS",
+      "target": "MARTYRS",
+      "geometry": { "bbox": { "x": 40, "y": 110, "width": 160, "height": 40 } }
+    }
+  ],
+  "x-tofu": {
+    "plates": [
+      {
+        "plate_uid": "9f1c7b0a4e2d4f5b8c3a1e6d7f8b9c0a",
+        "display_number": 1,
+        "origin": "derived",
+        "revision": "3a7f2c19d4b5e6081b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f607182",
+        "source": "Rue des MARTYRS",
+        "region_ids": ["r1", "r2"]
+      }
+    ],
+    "lineage_ref": {
+      "asset_id": "plated-01",
+      "run_id": "run-2026-08-10T17-00-00Z",
+      "digest": "sha256:6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b"
+    }
+  }
+}

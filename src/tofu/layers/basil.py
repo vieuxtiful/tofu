@@ -25,9 +25,12 @@ this module never downloads a model while someone is scanning an asset.
 
 from __future__ import annotations
 
+import dataclasses
+import hashlib
 import os
 import re
 import unicodedata
+import uuid
 from dataclasses import asdict
 from itertools import permutations
 from pathlib import Path
@@ -1190,27 +1193,166 @@ def suggest_plating(
     }
 
 
+## ------------------------------------------------------- plate identity
+## A plate's NUMBER is where it sits in the reading order; its IDENTITY is
+## not.  Keeping the two apart is what lets a translation file come back and
+## find the plate it was cut from after the regions around it have moved.
+
+PLATE_SCHEMA = 1          ## bump when membership_hash's inputs change
+PINNED_ORIGINS = frozenset({"guided", "user"})
+
+
+def mint_plate_uid() -> str:
+    """A fresh durable plate identity.
+
+    Random, not content-derived: a user editing a plate's source text or its
+    membership is REVISING that plate.  A content hash would call the result
+    a different plate and orphan every file already sent out against it.
+    """
+    return uuid.uuid4().hex
+
+
+def membership_hash(region_ids: Sequence[str], source_text: str) -> str:
+    """Revision fingerprint for a plate: what it contains and what it says."""
+    payload = "␟".join((
+        str(PLATE_SCHEMA),
+        "␞".join(region_ids),
+        unicodedata.normalize("NFC", (source_text or "").strip()),
+    ))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def stamp_plate(unit: SemanticTextUnit) -> SemanticTextUnit:
+    """Give a plate an identity if it lacks one, and refresh its revision."""
+    if not unit.plate_uid:
+        unit.plate_uid = mint_plate_uid()
+    unit.membership_hash = membership_hash(unit.region_ids, unit.source_text)
+    return unit
+
+
+def _renumber(units: Sequence[SemanticTextUnit]) -> None:
+    """Display numbers follow current reading order; identities do not move."""
+    for number, unit in enumerate(units, 1):
+        unit.display_number = number
+
+
+def migrate_plate_identity(manifest: TextManifest) -> bool:
+    """Give pre-identity plates a durable UID, in ONE persisted pass.
+
+    Deliberately not done lazily in the deserializer.  Minting on read means
+    the same legacy project opened twice -- on two machines, or either side
+    of an export -- gets two different UIDs, and the returned file then
+    resolves against neither.  The caller MUST save the manifest when this
+    returns True.
+
+    Also rewrites the two places a positional "uN" was already persisted as
+    a reference: Basil's substitution plans, and each region's
+    `semantic_assignment` (schema 1 -> 2).  Both keep their legacy `unit_id`
+    so records written before the migration stay auditable.
+    """
+    changed = False
+    by_id = {inst.id: inst for inst in manifest.instances}
+    for unit in (manifest.semantic_units or []):
+        if unit.plate_uid and unit.membership_hash:
+            continue
+        if not unit.plate_uid:
+            unit.plate_uid = mint_plate_uid()
+        # A plate the user authored is pinned; anything Basil derived is not.
+        if unit.origin == "derived" and unit.analysis_provider == "user_created":
+            unit.origin = "user"
+        unit.membership_hash = membership_hash(unit.region_ids, unit.source_text)
+        changed = True
+
+        if isinstance(unit.substitution, dict) and not unit.substitution.get("plate_uid"):
+            unit.substitution["plate_uid"] = unit.plate_uid
+            unit.substitution["membership_hash"] = unit.membership_hash
+        for region_id in unit.region_ids:
+            inst = by_id.get(region_id)
+            assignment = getattr(inst, "semantic_assignment", None)
+            if isinstance(assignment, dict) and assignment.get("unit_id") == unit.id:
+                assignment["schema"] = 2
+                assignment["plate_uid"] = unit.plate_uid
+                assignment["membership_hash"] = unit.membership_hash
+    if changed:
+        _renumber(manifest.semantic_units or [])
+    return changed
+
+
+def resolve_plate(
+    manifest: TextManifest,
+    *,
+    plate_uid: Optional[str] = None,
+    unit_id: Optional[str] = None,
+) -> Optional[SemanticTextUnit]:
+    """Find a plate by durable identity, falling back to a legacy record.
+
+    Lookup order is fixed: plate_uid, then a legacy `unit_id` for records
+    written before the migration, then nothing.  A positional "uN" arriving
+    from OUTSIDE ToFU is never trusted here -- callers handling returned
+    translation files must pass plate_uid only.
+    """
+    units = manifest.semantic_units or []
+    if plate_uid:
+        for unit in units:
+            if unit.plate_uid == plate_uid:
+                return unit
+    if unit_id:
+        for unit in units:
+            if unit.id == unit_id:
+                return unit
+    return None
+
+
 def unify_manifest(manifest: TextManifest) -> List[SemanticTextUnit]:
     """Register source reading units without touching user translations.
 
     Existing applied substitution provenance is retained only when both the
     source text and immutable member IDs still match.  If OCR/source editing
     changes either, the plan becomes stale and is deliberately discarded.
+
+    Plates whose origin is guided or user are PINNED: their membership is
+    carried through untouched and their regions are withheld from
+    re-grouping.  Only derived plates are rebuilt.  Re-registration used to
+    regroup everything from geometry, which silently discarded an accepted
+    guided proposal the next time the project was opened.
     """
+    existing = list(manifest.semantic_units or [])
     previous = {
         (tuple(unit.region_ids), unit.source_text): unit.substitution
-        for unit in (manifest.semantic_units or [])
+        for unit in existing
+    }
+    ## A derived plate that comes back with the same membership and the same
+    ## source is the SAME plate: carry its identity across so a re-registration
+    ## does not orphan files already exported against it.
+    previous_uids = {
+        (tuple(unit.region_ids), unit.source_text): unit.plate_uid
+        for unit in existing if unit.plate_uid
     }
     accepted_repairs = {
         tuple(unit.region_ids)
-        for unit in (manifest.semantic_units or [])
+        for unit in existing
         if isinstance(unit.ocr_repair, dict) and unit.ocr_repair.get("accepted")
     }
     verdict = pairing(manifest.src_lang, manifest.targ_lang)
     src_lang = _lang(manifest.src_lang)
 
-    units: List[SemanticTextUnit] = []
-    for number, sprig in enumerate(bunch(manifest, verdict["verdict"]), 1):
+    ## Pinned plates keep their membership AND hold their regions back from
+    ## regrouping, so a derived plate can never absorb a region the user has
+    ## already committed to a guided or hand-made plate.
+    pinned = [unit for unit in existing if unit.origin in PINNED_ORIGINS]
+    claimed = {region_id for unit in pinned for region_id in unit.region_ids}
+    for unit in pinned:
+        unit.pairing = verdict
+        stamp_plate(unit)
+
+    unclaimed = [inst for inst in manifest.instances if inst.id not in claimed]
+    grouping_source = (
+        manifest if not claimed
+        else dataclasses.replace(manifest, instances=unclaimed, semantic_units=[])
+    )
+
+    units: List[SemanticTextUnit] = list(pinned)
+    for number, sprig in enumerate(bunch(grouping_source, verdict["verdict"]), 1):
         members = sprig["members"]
         entity = sprig["entity"]
         member_ids = [inst.id for inst in members]
@@ -1255,11 +1397,115 @@ def unify_manifest(manifest: TextManifest) -> List[SemanticTextUnit]:
             substitution=previous.get((tuple(member_ids), source)),
             pairing=verdict,
             ocr_repair=repair,
+            origin="derived",
+            plate_uid=previous_uids.get((tuple(member_ids), source), ""),
         )
+        stamp_plate(unit)
         unit.suggestion = suggest_plating(manifest, unit, manifest.targ_lang)
         units.append(unit)
+
+    ## Every translatable region must belong to exactly one exportable plate.
+    ## `bunch()` only emits multi-region groups, so a region it did not group
+    ## had no plate at all -- and a plate-oriented export would have dropped
+    ## it silently, sending a translator a file missing most of the asset.
+    ## These single-region plates carry no editing card in the UI (Basil's
+    ## panel shows multi-region and user-authored plates only); they exist so
+    ## the interchange layer is complete.
+    covered = {region_id for unit in units for region_id in unit.region_ids}
+    for inst in manifest.instances:
+        if inst.id in covered:
+            continue
+        text = (inst.text or "").strip()
+        if not text:
+            continue
+        solo = SemanticTextUnit(
+            id="",
+            region_ids=[inst.id],
+            source_text=text,
+            bbox=inst.bounding_box,
+            entity_type="region",
+            confidence=inst.confidence or 0.0,
+            analysis_provider="single_region",
+            semantic_roles={},
+            review_required=False,
+            substitution=previous.get(((inst.id,), text)),
+            pairing=verdict,
+            origin="derived",
+            plate_uid=previous_uids.get(((inst.id,), text), ""),
+        )
+        stamp_plate(solo)
+        units.append(solo)
+
+    ## Reading order governs presentation only.  Sorting here means "Plate 2"
+    ## is the second plate a reader meets, while every plate_uid above is
+    ## already fixed and unaffected by the sort.
+    order = {inst.id: index for index, inst in enumerate(manifest.instances)}
+    units.sort(key=lambda unit: min(
+        (order.get(region_id, len(order)) for region_id in unit.region_ids),
+        default=len(order),
+    ))
+    ## Positional ids are assigned LAST so "u2" agrees with "Plate 2".  Safe
+    ## to renumber: substitution provenance is keyed on membership, and
+    ## durable identity lives in plate_uid.
+    for number, unit in enumerate(units, 1):
+        if unit.origin not in PINNED_ORIGINS or not unit.id:
+            unit.id = f"u{number}"
+    _renumber(units)
     manifest.semantic_units = units
     return units
+
+
+def enrich_semantic_units(manifest: TextManifest) -> List[SemanticTextUnit]:
+    """Refresh advisory analysis IN PLACE. Never changes membership.
+
+    Split out of `unify_manifest` because the server used to call the whole
+    re-registration merely to fill in a missing `pairing` verdict -- which
+    regrouped every plate as a side effect of wanting one metadata field.
+    """
+    verdict = pairing(manifest.src_lang, manifest.targ_lang)
+    for unit in (manifest.semantic_units or []):
+        unit.pairing = verdict
+        if not unit.plate_uid or not unit.membership_hash:
+            stamp_plate(unit)
+        if unit.suggestion is None:
+            unit.suggestion = suggest_plating(manifest, unit, manifest.targ_lang)
+    _renumber(manifest.semantic_units or [])
+    return manifest.semantic_units or []
+
+
+def validate_plate_membership(manifest: TextManifest) -> List[Dict[str, Any]]:
+    """Structural problems a plate can have against the current regions.
+
+    Reported, never repaired: a pinned plate that lost a region is a
+    question for the user, and silently re-deriving it is exactly the
+    behaviour pinning exists to prevent.
+    """
+    known = {inst.id for inst in manifest.instances}
+    problems: List[Dict[str, Any]] = []
+    seen_uids: Dict[str, str] = {}
+    owner: Dict[str, List[str]] = {}
+    for unit in (manifest.semantic_units or []):
+        missing = [region_id for region_id in unit.region_ids if region_id not in known]
+        if missing:
+            problems.append({"code": "plate_missing_region", "plate_uid": unit.plate_uid,
+                             "plate_id": unit.id, "region_ids": missing})
+        if unit.plate_uid and unit.plate_uid in seen_uids:
+            problems.append({"code": "duplicate_plate_uid", "plate_uid": unit.plate_uid,
+                             "plate_id": unit.id, "region_ids": []})
+        elif unit.plate_uid:
+            seen_uids[unit.plate_uid] = unit.id
+        if unit.membership_hash and unit.membership_hash != membership_hash(
+            unit.region_ids, unit.source_text
+        ):
+            problems.append({"code": "plate_revision_stale", "plate_uid": unit.plate_uid,
+                             "plate_id": unit.id, "region_ids": list(unit.region_ids)})
+        for region_id in unit.region_ids:
+            owner.setdefault(region_id, []).append(unit.id)
+    for region_id, plate_ids in owner.items():
+        if len(plate_ids) > 1:
+            problems.append({"code": "region_in_multiple_plates", "plate_uid": None,
+                             "plate_id": plate_ids, "region_ids": [region_id]})
+    return problems
 
 
 def accept_repair(manifest: TextManifest, unit_id: str, accepted: bool) -> SemanticTextUnit:
@@ -1281,6 +1527,9 @@ def accept_repair(manifest: TextManifest, unit_id: str, accepted: bool) -> Seman
     elif not accepted and read and proposed and proposed in unit.source_text:
         unit.source_text = unit.source_text.replace(proposed, read, 1)
     unit.review_required = not accepted
+    ## The source moved, so the revision moves with it. Identity does not:
+    ## this is the same plate, corrected.
+    stamp_plate(unit)
     return unit
 
 
@@ -1325,6 +1574,8 @@ def modify_unit_members(
                 other.bbox = _union_box(other_members) if other_members else other.bbox
                 other.substitution = None
                 other.suggestion = suggest_plating(manifest, other, manifest.targ_lang)
+                other.origin = "user"
+                stamp_plate(other)
         new_ids = [*unit.region_ids, add_region_id]
     else:
         raise ValueError("either add_region_id or remove_region_id must be provided")
@@ -1336,6 +1587,11 @@ def modify_unit_members(
     # Clear stale substitution; the membership change invalidates any prior plan.
     unit.substitution = None
     unit.suggestion = suggest_plating(manifest, unit, manifest.targ_lang)
+    ## An explicitly edited membership is a decision, not a derivation:
+    ## pin it so re-registration carries it through instead of regrouping
+    ## these regions from geometry the next time the project is opened.
+    unit.origin = "user"
+    stamp_plate(unit)
     return unit
 
 
@@ -1365,9 +1621,14 @@ def create_unit(manifest: TextManifest, region_ids: Optional[List[str]] = None) 
         semantic_roles={},
         review_required=True,
         pairing=verdict,
+        ## Hand-made: re-registration must carry this through untouched
+        ## rather than regrouping its regions from geometry.
+        origin="user",
     )
+    stamp_plate(unit)
     unit.suggestion = suggest_plating(manifest, unit, manifest.targ_lang)
     manifest.semantic_units = [*manifest.semantic_units, unit]
+    _renumber(manifest.semantic_units)
     return unit
 
 
@@ -1717,3 +1978,167 @@ def migrate_legacy_plating(manifest: TextManifest) -> bool:
             changed = True
         substitution["spatial_anchor_order"] = list(cubes)
     return changed
+
+
+## ---------------------------------------------------------------- the pass
+## Every plate is checked by the expeditor before it leaves the kitchen.  A
+## translation file is the one artefact that goes to someone outside ToFU --
+## a translator, a TMS -- so the check happens HERE, at Basil's boundary,
+## rather than inside each format writer, where every format would have to
+## re-derive the same structural facts.
+
+## Codes are stable strings: the frontend maps them to explanations, and a
+## support log stays greppable across releases.
+BLOCKING_CODES = (
+    "plate_missing_region",       # a plate names a region the manifest lost
+    "region_in_multiple_plates",  # one region would be exported twice
+    "duplicate_plate_id",         # two plates share an identity
+    "plate_without_source",       # a plate has nothing to translate
+    "missing_language_metadata",  # no source/target pair to declare in the file
+)
+
+
+def _plate_is_stale(unit: SemanticTextUnit, by_id: Dict[str, InstText]) -> bool:
+    """Has this plate's source drifted from the regions it names?
+
+    An ACCEPTED ocr_repair legitimately makes the two differ: the plate
+    deliberately carries the corrected spelling while its members keep what
+    the recognizer actually read.  Treating that as drift would flag every
+    repaired plate, so a plate whose repair was accepted is never stale on
+    text alone.
+    """
+    members = [by_id[rid] for rid in unit.region_ids if rid in by_id]
+    if not members:
+        return False
+    repair = unit.ocr_repair if isinstance(unit.ocr_repair, dict) else None
+    if repair and repair.get("accepted"):
+        return False
+    return _join([inst.text or "" for inst in members]).strip() != (unit.source_text or "").strip()
+
+
+def expedite(manifest: TextManifest, targ_lang: Optional[str] = None) -> "ExportReadiness":
+    """Check a manifest at the pass before a translation file is built.
+
+    Advisory findings never stop an export -- a half-translated project is a
+    normal thing to send out.  Structural contradictions do stop it, because
+    they produce a file that cannot be mapped back to this asset when the
+    translator returns it, and a silent mis-map is worse than a refusal.
+
+    Region-based export is still what ships (Release 1), so `translation_units`
+    counts regions.  It becomes a count of plates when the semantic
+    projections land, which is why it is reported separately from `regions`
+    instead of being inferred by the caller.
+    """
+    from tofu.core.types import ExportReadiness
+
+    by_id = {inst.id: inst for inst in manifest.instances}
+    units = list(manifest.semantic_units or [])
+    diagnostics: List[Dict[str, Any]] = []
+
+    def report(code: str, severity: str, message: str, *, plates=None, regions=None) -> None:
+        diagnostics.append({
+            "code": code,
+            "severity": severity,
+            "message": message,
+            "plate_ids": list(plates or []),
+            "region_ids": list(regions or []),
+        })
+
+    # --- structural contradictions -------------------------------------
+    seen_ids: Dict[str, int] = {}
+    for unit in units:
+        seen_ids[unit.id] = seen_ids.get(unit.id, 0) + 1
+    for plate_id, count in seen_ids.items():
+        if count > 1:
+            report("duplicate_plate_id", "blocking",
+                   f"{count} plates share the identity '{plate_id}'.", plates=[plate_id])
+
+    ## Two plates sharing a DURABLE identity is worse than sharing a display
+    ## label: a returned translation file would resolve to either one.
+    seen_uids: Dict[str, int] = {}
+    for unit in units:
+        if unit.plate_uid:
+            seen_uids[unit.plate_uid] = seen_uids.get(unit.plate_uid, 0) + 1
+    for uid, count in seen_uids.items():
+        if count > 1:
+            report("duplicate_plate_uid", "blocking",
+                   "Two plates share a durable identity; a returned file could "
+                   "not be matched to either.",
+                   plates=[unit.id for unit in units if unit.plate_uid == uid])
+
+    owner: Dict[str, List[str]] = {}
+    for unit in units:
+        missing = [rid for rid in unit.region_ids if rid not in by_id]
+        if missing:
+            report("plate_missing_region", "blocking",
+                   "A plate refers to regions that are no longer in this asset.",
+                   plates=[unit.id], regions=missing)
+        if unit.region_ids and not (unit.source_text or "").strip():
+            report("plate_without_source", "blocking",
+                   "A plate has no source text to translate.", plates=[unit.id])
+        for rid in unit.region_ids:
+            owner.setdefault(rid, []).append(unit.id)
+
+    for rid, plate_ids in owner.items():
+        if len(plate_ids) > 1:
+            report("region_in_multiple_plates", "blocking",
+                   "A region belongs to more than one plate and would be exported twice.",
+                   plates=plate_ids, regions=[rid])
+
+    resolved_target = (targ_lang or manifest.targ_lang or "").strip()
+    if not (manifest.src_lang or "").strip() or not resolved_target:
+        report("missing_language_metadata", "blocking",
+               "A translation file must declare both a source and a target language.")
+
+    # --- drift ----------------------------------------------------------
+    for unit in units:
+        if _plate_is_stale(unit, by_id):
+            report("plate_source_stale", "blocking",
+                   "A plate's source no longer matches the regions it names.",
+                   plates=[unit.id], regions=list(unit.region_ids))
+
+    # --- advisory -------------------------------------------------------
+    exportable = [
+        inst for inst in manifest.instances
+        if (inst.text or "").strip() and not getattr(inst, "dnt", False)
+    ]
+    needing_review = [unit for unit in units if unit.review_required]
+    if needing_review:
+        report("plate_needs_review", "advisory",
+               f"{len(needing_review)} plate{'' if len(needing_review) == 1 else 's'} "
+               "await review before the arrangement is settled.",
+               plates=[unit.id for unit in needing_review])
+    untranslated = [inst for inst in exportable if not (inst.target_text or "").strip()]
+    if untranslated:
+        report("untranslated_regions", "advisory",
+               f"{len(untranslated)} region{'' if len(untranslated) == 1 else 's'} "
+               "have no target text yet.",
+               regions=[inst.id for inst in untranslated])
+    if not exportable:
+        report("nothing_to_export", "advisory",
+               "This asset has no translatable text.")
+
+    blocking = [item for item in diagnostics if item["severity"] == "blocking"]
+    drift = [item for item in blocking if item["code"] == "plate_source_stale"]
+    if blocking and len(drift) == len(blocking):
+        # Drift alone is its own state: it is repairable by re-registering the
+        # plate, whereas the other blockers mean the manifest disagrees with
+        # itself and a human has to decide what is true.
+        state = "stale"
+    elif blocking:
+        state = "blocked"
+    elif diagnostics:
+        state = "review"
+    else:
+        state = "ready"
+
+    return ExportReadiness(
+        state=state,
+        diagnostics=diagnostics,
+        counts={
+            "regions": len(exportable),
+            "plates": len(units),
+            "translation_units": len(exportable),
+            "plates_needing_review": len(needing_review),
+        },
+    )

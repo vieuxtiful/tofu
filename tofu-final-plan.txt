@@ -1,0 +1,415 @@
+# ToFU v1.0 Roadmap
+
+A phased plan to take ToFU from 1.0.0 beta to 1.0.0, addressing every gap
+identified in the completeness assessment (scored 8.3/10). Phases are ordered
+by dependency — each builds on the previous.
+
+================================================================================
+
+## Phase 0: Pending Quick Wins (1-2 days)
+
+Items already scoped from previous sessions that should be closed before
+starting new work.
+
+### 0.1 — Caret vertical offset in Basil menu input fields
+- Problem: The blinking caret in Basil menu input fields has a vertical
+  offset misalignment.
+- Files: frontend/src/uikit.css, frontend/src/AnimatedCaretTextArea.tsx
+- Task: Investigate the caret positioning CSS (likely a line-height / padding
+  mismatch between the textarea and the animated caret overlay). Align the
+  caret's vertical position with the text baseline.
+- Success: Caret blinks at the correct vertical position in both light and
+  dark themes, across all Basil input fields.
+
+### 0.2 — Merge confidence recalculation
+- Problem: POST /api/manifest/{asset_id}/regions/merge computes confidence as
+  a simple arithmetic average, ignoring region size. A tiny low-confidence
+  fragment drags down a large high-confidence region equally.
+- Files: server/main.py (merge endpoint, ~line 2785),
+  src/tofu/layers/cicerone.py (reread_merged_region, already implemented)
+- Task:
+  1. Replace sum(confs) / len(confs) with an area-weighted average:
+     sum(conf * area) / sum(area) using each member's bbox.
+  2. Optionally wire reread_merged_region as an opt-in reread: true flag on
+     the RegionMerge request model (the function exists and has quality
+     gates — it just needs a caller). When re-read succeeds, use its
+     confidence; when it falls back to joined, use the area-weighted average.
+  3. Update the mergeRegions docstring in frontend/src/api.ts to reflect the
+     new behavior.
+- Success: Merged region confidence reflects the dominant region's
+  contribution. Re-read path produces honest None confidence when quality
+  gates fail, rather than a misleading average.
+
+================================================================================
+
+## Phase 1: Developer Infrastructure & Code Quality (3-5 days)
+
+### 1.1 — AGENTS.md
+- File: AGENTS.md (new, repo root)
+- Content: Build commands (npx tsc --noEmit, pytest, ruff check, mypy
+  src/tofu), test commands, project structure overview, the three-venv
+  architecture, known gotchas (OpenCV duplicate wheel bug, PYTHONUTF8=1 on
+  Windows, PaddleOCR out-of-process requirement).
+- Success: A new contributor (or agent) can build, test, and run the project
+  from this file alone.
+
+### 1.2 — CI/CD pipeline (GitHub Actions)
+- File: .github/workflows/ci.yml (new)
+- Jobs:
+  1. lint — ruff check src/ tests/ server/ + ruff format --check
+  2. typecheck — mypy src/tofu + npx tsc --noEmit (frontend)
+  3. test — pytest tests/ --tb=short (skip paddle-live and inpaint tests
+     via markers)
+  4. build — pip install -e ".[server]" + cd frontend && npm run build
+     (verify both build)
+- Matrix: Python 3.11, 3.12, 3.13 on ubuntu-latest and windows-latest
+- Cache: pip wheels, npm modules
+- Success: Every PR runs lint, typecheck, test, and build. Red CI blocks
+  merge.
+
+### 1.3 — Pre-commit hooks
+- File: .pre-commit-config.yaml (new)
+- Hooks: ruff (lint + format), mypy (on staged Python files), tsc (on staged
+  .tsx/.ts files via a local hook)
+- Success: Local commits are linted and typechecked before they reach CI.
+
+### 1.4 — App.tsx decomposition
+- Problem: App.tsx is 6,335 lines — a monolith that holds all state, API
+  calls, UI rendering, and event handlers.
+- Approach: Extract by concern, not by component. Each extraction is a
+  separate PR to keep diffs reviewable.
+  1. Custom hooks — useSemanticUnits.ts (semantic state + all onSemantic*
+     callbacks), useManifest.ts (region CRUD), useRender.ts
+     (render/approve/preview), useProjects.ts (project lifecycle),
+     useGlossary.ts, useVideoJob.ts, useInpaint.ts. Each hook owns its slice
+     of state and API calls, returns state + handlers.
+  2. Tab components — CaptureTab.tsx, TranslateTab.tsx, RenderTab.tsx,
+     VerifyTab.tsx. Each receives its hook outputs as props. App.tsx becomes
+     the shell: project gate, stepper, tab routing, theme, toasts.
+  3. Shared state — Lift only truly cross-tab state (asset, project, theme,
+     toasts) into App.tsx. Everything else lives in its hook.
+- Target: App.tsx under 1,500 lines. Each hook under 500. Each tab under 800.
+- Success: npx tsc --noEmit passes after each extraction. No behavioral
+  change — pure refactor.
+
+### 1.5 — Image protocol type
+- Problem: 91 parameters typed Any for images crossing layer boundaries.
+  mypy can't catch image type errors.
+- Approach: Define a Protocol (or ABC) in src/tofu/core/types.py:
+
+      class ImageAsset(Protocol):
+          @property
+          def array(self) -> np.ndarray: ...
+          @property
+          def pil(self) -> Image.Image: ...
+          # or a simpler union: ImageAsset = Union[Image.Image, np.ndarray]
+
+  Replace Any image parameters with ImageAsset across all layer modules. Add
+  a runtime adapter if layers expect different concrete types (PIL vs
+  ndarray).
+- Files: src/tofu/core/types.py, all src/tofu/layers/*.py (signature changes
+  only)
+- Success: mypy strict mode passes for image parameters. No runtime behavior
+  change.
+
+================================================================================
+
+## Phase 2: Test Hardening (3-4 days)
+
+### 2.1 — E2E server tests (FastAPI TestClient)
+- File: tests/test_server_e2e.py (new)
+- Scope: Full lifecycle test — create project -> upload asset -> detect ->
+  add region -> translate -> render -> verify -> export XLIFF -> export VTM
+  -> import XLIFF -> re-render. Assert manifest state at each step.
+- Also: Error path tests — 404 on missing asset, 422 on invalid bbox, 409 on
+  duplicate project.
+- Success: pytest tests/test_server_e2e.py exercises every major endpoint in
+  sequence.
+
+### 2.2 — Frontend component tests
+- Framework: vitest + @testing-library/react (add to frontend/package.json
+  devDeps)
+- Files:
+  - frontend/src/SemanticSubstitutionPanel.test.tsx — render with mock units,
+    test dismiss/restore/delete flow, add-plate button, region chip add/remove
+  - frontend/src/RegionTable.test.tsx — render with mock manifest, test
+    pagination, merge, delete, target text editing
+  - frontend/src/Stepper.test.tsx — step gating logic (canCapture,
+    canTranslate, canRender, canVerify)
+- Success: npm test runs vitest with >=20 component tests. CI job runs
+  frontend tests.
+
+### 2.3 — Video regression baselines
+- File: tests/regression/test_video_regression.py (new),
+  tests/regression/baselines/video/ (fixtures)
+- Scope: Run video.analysis.analyze + video.compositor.compose on a short
+  test clip (5-10 frames). Compare output frames against baseline images with
+  SSIM tolerance. Cover: static text, text appearing/disappearing,
+  multi-track.
+- Fixture: scripts/video_fixtures.py already exists — extend it to generate a
+  deterministic test clip.
+- Success: pytest tests/regression/test_video_regression.py passes and
+  catches regressions in compositing.
+
+### 2.4 — Automated benchmark regression in CI
+- File: .github/workflows/benchmark.yml (new, runs on schedule: cron +
+  manual dispatch)
+- Scope: Run scripts/eval_detect.py + scripts/eval_render.py +
+  scripts/eval_cleanse_providers.py against the 10 GT-annotated images.
+  Compare F1/NED/render-quality against a stored baseline. Post a comment on
+  the PR if metrics regress beyond tolerance.
+- Storage: Baseline metrics in tests/regression/baselines/metrics.json
+- Success: A PR that degrades detection F1 by >2% triggers a CI warning.
+
+================================================================================
+
+## Phase 3: Video Pipeline Maturity (4-5 days)
+
+### 3.1 — Temporal tracking edge cases
+- File: src/tofu/video/temporal.py
+- Tasks:
+  1. Occlusion handling — when a tracked text disappears for N frames then
+     reappears at a nearby position, maintain track identity rather than
+     spawning a new track. Add a max_gap_frames parameter to settle().
+  2. Rapid text change — when OCR text changes significantly between
+     consecutive keyframes on the same track (e.g., a digital sign cycling
+     messages), detect the change and split the track at the boundary rather
+     than averaging dissimilar observations.
+  3. Track birth/death smoothing — require K consecutive observations before
+     confirming a track birth, and K consecutive misses before declaring
+     death, to suppress flicker-induced false tracks.
+- Tests: Add cases to tests/test_video_temporal.py for each edge case.
+- Success: Temporal tracking handles occlusion, text changes, and flicker
+  without spurious tracks.
+
+### 3.2 — VideoWorkspace frontend expansion
+- File: frontend/src/VideoWorkspace.tsx (146 lines -> target ~600)
+- Tasks:
+  1. Timeline scrubber — visual timeline with keyframe markers,
+     click-to-seek, play/pause.
+  2. Track list — per-track panel showing source text, target text,
+     confidence, keyframe count, enable/disable toggle.
+  3. Per-track editing — edit target text for a track, propagate to all
+     keyframes. Edit style overrides per-track.
+  4. Preview comparison — side-by-side or toggle view of original vs.
+     composited frame.
+  5. Progress indicator — job progress bar with frame count, ETA, cancel
+     button.
+- Success: Video workspace is usable for real video localization, not just a
+  proof-of-concept.
+
+### 3.3 — Video integration tests
+- File: tests/test_video_integration.py (new)
+- Scope: End-to-end: create video job -> analyze -> plan -> compose -> verify
+  output exists and has correct duration/codec. Test cancel/resume. Test
+  keyframe override.
+- Success: pytest tests/test_video_integration.py passes with a real (small)
+  test video.
+
+### 3.4 — Video documentation
+- File: README.md (new section after Memory)
+- Content: Video pipeline architecture, the Braise analysis flow, temporal
+  tracking, compositing, keyframe model, how to run video jobs via API and
+  frontend.
+- Success: README covers video as thoroughly as the image pipeline.
+
+================================================================================
+
+## Phase 4: Documentation (2-3 days)
+
+### 4.1 — API reference
+- Approach: Enrich FastAPI endpoint metadata with response_model, summary,
+  description, tags. Generate OpenAPI JSON -> render to markdown via
+  scripts/generate_api_docs.py (new script using
+  fastapi.openapi.utils.get_openapi). Output to docs/api.md.
+- File: server/main.py (add metadata to all 81 endpoints), docs/api.md
+  (generated), scripts/generate_api_docs.py (new)
+- Success: docs/api.md documents every endpoint with parameters, request
+  body, response shape, and error codes. Regenerated in CI.
+
+### 4.2 — Architecture diagram
+- File: docs/architecture.md (new), docs/architecture.svg or
+  docs/architecture.mermaid (new)
+- Content: Visual flow diagram of the 7-layer pipeline + 3 auxiliary modules
+  + video pipeline. Data flow (TextManifest) between layers. Three-venv
+  architecture. Frontend <-> server <-> pipeline data flow.
+- Success: A reader can understand the system architecture from the diagram
+  without reading code.
+
+### 4.3 — CONTRIBUTING.md
+- File: CONTRIBUTING.md (new)
+- Content: Development setup (three venvs), code style (ruff rules,
+  line-length 100, comment policy), test conventions (unit vs regression vs
+  e2e, marker system), PR checklist (lint passes, tests pass, new tests for
+  new features, README updated if user-facing), release process.
+- Success: A new contributor can submit a PR that passes CI on the first try.
+
+### 4.4 — CHANGELOG.md
+- File: CHANGELOG.md (new)
+- Content: Keep a Changelog format (https://keepachangelog.com/). Backfill
+  from git log for 1.0.0. Going forward, every PR adds an entry under
+  [Unreleased].
+- Success: Every release has a human-readable changelog.
+
+### 4.5 — LLM comparison text analysis
+- File: README.md (lines 386-417, replace image-only section)
+- Content: Replace the screenshot-only LLM comparison with a structured
+  table: input image, Gemini output, ChatGPT output, ToFU output, and
+  per-region comparison (residual artifacts, untranslated strings,
+  mistranslations, style match). Use the existing images/*.gt.json ground
+  truth files to score all three quantitatively.
+- Success: The LLM comparison is quantitative, not just visual.
+
+================================================================================
+
+## Phase 5: Release Infrastructure (3-4 days)
+
+### 5.1 — Dockerfile (multi-stage)
+- File: Dockerfile (new), docker-compose.yml (new)
+- Stages:
+  1. app — Python 3.13 slim, installs tofu-l10n[all] from source, runs
+     uvicorn on port 8000. Includes EasyOCR but NOT PaddleOCR/LaMa (they need
+     their own interpreters).
+  2. frontend — Node 20, builds Vite production bundle, serves static files
+     via nginx on port 80 (proxies /api to app container).
+  3. paddle (optional, in docker-compose) — Python 3.10 with paddlepaddle +
+     PP-OCRv5, runs scripts/paddle_worker.py as a sidecar.
+  4. inpaint (optional, in docker-compose) — Python with CUDA torch + LaMa,
+     runs scripts/inpaint_lama_runner.py as a sidecar.
+- docker-compose.yml — orchestrates app + frontend + paddle + inpaint with
+  health checks and volume mounts for uploads/fonts/memory.
+- Success: docker compose up runs the full stack with all backends.
+  docker compose up app frontend runs the degraded path (EasyOCR only).
+
+### 5.2 — Version bump 1.0.0 -> 1.0.0
+- Files: src/tofu/__init__.py (__version__), pyproject.toml (classifier ->
+  Development Status :: 5 - Production/Stable), CHANGELOG.md (1.0.0 release
+  entry)
+- Success: pip show tofu-l10n reports 1.0.0. PyPI upload (if applicable) is
+  tagged.
+
+### 5.3 — Release workflow
+- File: .github/workflows/release.yml (new)
+- Trigger: Git tag v*.*.*
+- Jobs:
+  1. Build Python wheel + sdist (python -m build)
+  2. Build frontend production bundle
+  3. Build Docker images (app, frontend, paddle, inpaint) and push to GHCR
+  4. Create GitHub Release with CHANGELOG entry + wheel + sdist artifacts
+  5. (Optional) Publish to PyPI
+- Success: Tagging v1.0.0 produces a GitHub Release with installable
+  artifacts and Docker images.
+
+### 5.4 — Frontend production build config
+- File: frontend/vite.config.ts (verify/adjust production settings)
+- Tasks: Ensure API proxy is configurable via env var (VITE_API_URL), enable
+  source map generation for production, configure asset hashing, verify
+  npm run build produces a deployable static bundle.
+- Success: npm run build produces a dist/ folder that can be served by any
+  static file server with a configurable API backend.
+
+### 5.5 — Playground sync
+- File: playground/app.py, playground/requirements.txt
+- Tasks: Update playground to use the latest API surface (Basil semantic
+  units, video jobs if feasible in Gradio). Sync README. Verify Hugging Face
+  Space deployment works.
+- Success: The Gradio playground demonstrates 1.0 features and builds cleanly.
+
+================================================================================
+
+## Dependency Graph
+
+Phase 0 (quick wins)
+    |
+    v
+Phase 1 (infra + code quality)
+    1.1 AGENTS.md -----------------> (no deps)
+    1.2 CI/CD ---------------------> (no deps)
+    1.3 pre-commit ----------------> (depends on 1.2)
+    1.4 App.tsx decomposition -----> (no deps, but benefits from 1.2)
+    1.5 image protocol ------------> (no deps)
+    |
+    v
+Phase 2 (test hardening)
+    2.1 E2E server tests ----------> (depends on 1.2 for CI)
+    2.2 frontend component tests --> (depends on 1.4 for component boundaries)
+    2.3 video regression ----------> (no deps)
+    2.4 benchmark regression ------> (depends on 1.2 for CI)
+    |
+    v
+Phase 3 (video maturity)
+    3.1 temporal edge cases -------> (no deps)
+    3.2 VideoWorkspace expand -----> (depends on 1.4 for hook extraction)
+    3.3 video integration ---------> (depends on 3.1, 2.3)
+    3.4 video docs ----------------> (depends on 3.1, 3.2, 3.3)
+    |
+    v
+Phase 4 (documentation)
+    4.1 API reference --------------> (no deps)
+    4.2 architecture diagram ------> (no deps)
+    4.3 CONTRIBUTING.md -----------> (depends on 1.2, 1.3)
+    4.4 CHANGELOG.md --------------> (no deps)
+    4.5 LLM comparison -------------> (no deps)
+    |
+    v
+Phase 5 (release infra)
+    5.1 Dockerfile ----------------> (depends on 1.2 for CI)
+    5.2 version bump --------------> (depends on all prior phases)
+    5.3 release workflow ----------> (depends on 5.1, 5.2)
+    5.4 frontend prod build -------> (no deps)
+    5.5 playground sync -----------> (depends on 5.2)
+
+================================================================================
+
+## Estimated Timeline
+
+Phase                        Duration     Parallelizable?
+---------------------------  ----------   --------------------------------
+0 - Quick wins               1-2 days     Yes (0.1 || 0.2)
+1 - Infra & code quality     3-5 days     Yes (1.1-1.5 all parallel)
+2 - Test hardening           3-4 days     Yes (2.1-2.4 all parallel after 1.2)
+3 - Video maturity           4-5 days     Partial (3.1 || 3.2, then 3.3, 3.4)
+4 - Documentation            2-3 days     Yes (4.1-4.5 all parallel)
+5 - Release infra            3-4 days     Partial (5.1 || 5.4, then 5.2, 5.3, 5.5)
+---------------------------  ----------   --------------------------------
+Total                        16-23 days   With full parallelization: ~12-15 days
+
+================================================================================
+
+## Success Criteria for v1.0
+
+- [ ] CI passes on all PRs (lint, typecheck, test, build) on Python
+      3.11/3.12/3.13 x ubuntu/windows
+- [ ] App.tsx under 1,500 lines; all hooks and tabs extracted
+- [ ] mypy strict mode passes for image parameters (no Any for images)
+- [ ] E2E server test exercises full lifecycle
+- [ ] >=20 frontend component tests pass in CI
+- [ ] Video regression baseline catches compositing regressions
+- [ ] Benchmark regression CI job detects >2% F1 degradation
+- [ ] Temporal tracking handles occlusion, text change, flicker
+- [ ] VideoWorkspace is usable for real video localization
+- [ ] docs/api.md documents all 81 endpoints
+- [ ] Architecture diagram exists and is accurate
+- [ ] CONTRIBUTING.md and CHANGELOG.md exist
+- [ ] LLM comparison is quantitative (uses GT files)
+- [ ] docker compose up runs the full stack
+- [ ] Tagging v1.0.0 produces a GitHub Release with artifacts
+- [ ] pip show tofu-l10n reports 1.0.0
+- [ ] Playground demonstrates 1.0 features
+
+================================================================================
+
+## Completeness Assessment Summary (scored 8.3/10)
+
+Dimension                  Score   Key Strength                    Key Gap
+-------------------------  ------  ------------------------------  --------------------------------
+Core Pipeline              9/10    All 7 layers + 10 aux modules   Merge confidence still averaged
+Backend API                9/10    81 endpoints, full lifecycle    No API docs beyond auto-schema
+Frontend UI                8/10    Full 5-step workflow, Basil     App.tsx monolith, caret pending
+Test Coverage              8/10    300 tests, 86 files             No E2E, minimal frontend tests
+VTM Specification          10/10   Published spec, schema, conf    --
+Video Pipeline             7/10    8 modules, temporal tracking    Newer, less tested, minimal UI
+Documentation              8/10    Comprehensive README, VTM spec  No AGENTS.md, no API reference
+Packaging                  8/10    pip-installable, 3-venv isol    v1.0.0, no CI/CD, no Docker
+Code Quality               8/10    Zero TODOs, ruff+mypy           91 Any params, monolithic App.tsx
+Evaluation                 9/10    16 scripts, 10 GT images        No automated benchmark regression

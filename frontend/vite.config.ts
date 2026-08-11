@@ -1,4 +1,5 @@
 /// <reference types="vitest/config" />
+import { fileURLToPath, URL } from "node:url";
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 
@@ -6,6 +7,13 @@ export default defineConfig(({ mode }) => {
   const backend = loadEnv(mode, process.cwd(), "").TOFU_BACKEND_URL || "http://localhost:8000";
   return {
     plugins: [react()],
+    // `@/` has to be declared HERE as well as in tsconfig.json: tsc resolves
+    // the type-check from `paths`, but Vite and Vitest resolve the actual
+    // module from this alias. Declaring only one of the two type-checks
+    // clean and then fails at runtime, or vice versa.
+    resolve: {
+      alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
+    },
     build: {
       sourcemap: true,
       rollupOptions: {
@@ -26,7 +34,10 @@ export default defineConfig(({ mode }) => {
       },
     },
     server: {
-      port: 5173,
+      // 5173 unless PORT says otherwise, so two checkouts (or two agent
+      // sessions) can run a dev server at the same time without one of them
+      // silently attaching to the other's.
+      port: Number(process.env.PORT) || 5173,
       proxy: {
         "/api": backend,
         "/outputs": backend,

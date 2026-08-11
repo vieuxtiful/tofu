@@ -1,0 +1,1500 @@
+{
+  "corpus_id": "guided-corpus-v1",
+  "arm": "auto",
+  "iou": 0.5,
+  "review_status": "machine_derived",
+  "totals": {
+    "assets": 46,
+    "blocks": 162,
+    "occurrences": 189,
+    "repeat_blocks": 13,
+    "strata": 6
+  },
+  "minimums": {
+    "assets": 30,
+    "blocks": 120,
+    "occurrences": 180,
+    "strata": 6
+  },
+  "elapsed_seconds": 1033.4,
+  "assets": {
+    "arabic-bilingual-panel": {
+      "stratum": "rtl_bidi",
+      "split": "dev",
+      "expected": 5,
+      "found": 5,
+      "shipped_regions": 5,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "arabic-bilingual-panel#b1",
+          "requested_text": "24",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "arabic-bilingual-panel#b2",
+          "requested_text": "Gate",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "arabic-bilingual-panel#b3",
+          "requested_text": "International Airport",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "arabic-bilingual-panel#b4",
+          "requested_text": "بوابة",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "arabic-bilingual-panel#b5",
+          "requested_text": "مطار دولي",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "arabic-market": {
+      "stratum": "rtl_bidi",
+      "split": "dev",
+      "expected": 8,
+      "found": 5,
+      "shipped_regions": 8,
+      "unrequested_regions": 3,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "arabic-market#b1",
+          "requested_text": "10",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "arabic-market#b2",
+          "requested_text": "15",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "arabic-market#b3",
+          "requested_text": "20",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "arabic-market#b4",
+          "requested_text": "25",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "arabic-market#b5",
+          "requested_text": "سوق",
+          "expected": 4,
+          "found": 4
+        }
+      ]
+    },
+    "arabic-street": {
+      "stratum": "rtl_bidi",
+      "split": "dev",
+      "expected": 5,
+      "found": 2,
+      "shipped_regions": 5,
+      "unrequested_regions": 3,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "arabic-street#b1",
+          "requested_text": "12",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "arabic-street#b2",
+          "requested_text": "القاهرة",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "arabic-street#b3",
+          "requested_text": "شارع النيل",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "arabic-street#b4",
+          "requested_text": "مفتوح",
+          "expected": 2,
+          "found": 0
+        }
+      ]
+    },
+    "avenue-de-la-république": {
+      "stratum": "latin_horizontal",
+      "split": "dev",
+      "expected": 2,
+      "found": 2,
+      "shipped_regions": 2,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "avenue-de-la-république#b1",
+          "requested_text": "AVENUE",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "avenue-de-la-république#b2",
+          "requested_text": "de la RÉPUBLIQUE",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "china-street": {
+      "stratum": "nonlinear_irregular",
+      "split": "dev",
+      "expected": 7,
+      "found": 5,
+      "shipped_regions": 15,
+      "unrequested_regions": 10,
+      "partial_annotation": true,
+      "blocks": [
+        {
+          "block_id": "china-street#b1",
+          "requested_text": "MING",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "china-street#b2",
+          "requested_text": "OPTICAL",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "china-street#b3",
+          "requested_text": "上海明牌",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "china-street#b4",
+          "requested_text": "华联店3F",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "china-street#b5",
+          "requested_text": "大娘水饺",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "china-street#b6",
+          "requested_text": "美珠宝",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "china-street#b7",
+          "requested_text": "茂昌眼镜公司",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "cjk-horizontal": {
+      "stratum": "latin_horizontal",
+      "split": "dev",
+      "expected": 2,
+      "found": 2,
+      "shipped_regions": 2,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "cjk-horizontal#b1",
+          "requested_text": "City Library",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "cjk-horizontal#b2",
+          "requested_text": "Open today",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "cjk-vertical": {
+      "stratum": "japanese_vertical",
+      "split": "dev",
+      "expected": 2,
+      "found": 2,
+      "shipped_regions": 2,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "cjk-vertical#b1",
+          "requested_text": "ようこそ",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "cjk-vertical#b2",
+          "requested_text": "居酒屋",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "cjk-vertical-banner": {
+      "stratum": "japanese_vertical",
+      "split": "dev",
+      "expected": 4,
+      "found": 2,
+      "shipped_regions": 6,
+      "unrequested_regions": 4,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "cjk-vertical-banner#b1",
+          "requested_text": "2026",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "cjk-vertical-banner#b2",
+          "requested_text": "SALE",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "cjk-vertical-banner#b3",
+          "requested_text": "新春大売出",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "cjk-vertical-banner#b4",
+          "requested_text": "本日開店",
+          "expected": 1,
+          "found": 0
+        }
+      ]
+    },
+    "cjk-vertical-menu": {
+      "stratum": "japanese_vertical",
+      "split": "holdout",
+      "expected": 3,
+      "found": 3,
+      "shipped_regions": 3,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "cjk-vertical-menu#b1",
+          "requested_text": "喫茶店",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "cjk-vertical-menu#b2",
+          "requested_text": "定食屋",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "cjk-vertical-menu#b3",
+          "requested_text": "居酒屋",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "decolonisons-nos-rues": {
+      "stratum": "latin_horizontal",
+      "split": "dev",
+      "expected": 5,
+      "found": 4,
+      "shipped_regions": 5,
+      "unrequested_regions": 1,
+      "partial_annotation": true,
+      "blocks": [
+        {
+          "block_id": "decolonisons-nos-rues#b1",
+          "requested_text": "crimes coloniaux et esclavagistes",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "decolonisons-nos-rues#b2",
+          "requested_text": "Décolonisons",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "decolonisons-nos-rues#b3",
+          "requested_text": "nos rues !",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "decolonisons-nos-rues#b4",
+          "requested_text": "Pour une mémoire des luttes contre les",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "decolonisons-nos-rues#b5",
+          "requested_text": "Texte : Naïké Desquesnes",
+          "expected": 1,
+          "found": 0
+        }
+      ]
+    },
+    "degraded-ink": {
+      "stratum": "latin_horizontal",
+      "split": "dev",
+      "expected": 1,
+      "found": 1,
+      "shipped_regions": 1,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "degraded-ink#b1",
+          "requested_text": "OLD SIGN",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "dense-layout": {
+      "stratum": "nonlinear_irregular",
+      "split": "dev",
+      "expected": 4,
+      "found": 4,
+      "shipped_regions": 5,
+      "unrequested_regions": 1,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "dense-layout#b1",
+          "requested_text": "CULTURE",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "dense-layout#b2",
+          "requested_text": "NEWS",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "dense-layout#b3",
+          "requested_text": "SPORT",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "dense-layout#b4",
+          "requested_text": "WEATHER",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "expansion-en": {
+      "stratum": "latin_horizontal",
+      "split": "dev",
+      "expected": 1,
+      "found": 1,
+      "shipped_regions": 1,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "expansion-en#b1",
+          "requested_text": "Please keep this area clean",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "flat-sign": {
+      "stratum": "mixed_script_numeric",
+      "split": "dev",
+      "expected": 4,
+      "found": 4,
+      "shipped_regions": 4,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "flat-sign#b1",
+          "requested_text": "EXIT 25",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "flat-sign#b2",
+          "requested_text": "MAIN STREET",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "flat-sign#b3",
+          "requested_text": "Open 9am to 5pm",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "flat-sign#b4",
+          "requested_text": "STOP",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "gemini-street": {
+      "stratum": "nonlinear_irregular",
+      "split": "dev",
+      "expected": 15,
+      "found": 0,
+      "shipped_regions": 65,
+      "unrequested_regions": 65,
+      "partial_annotation": true,
+      "blocks": [
+        {
+          "block_id": "gemini-street#b1",
+          "requested_text": "ラーメン",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "gemini-street#b2",
+          "requested_text": "居酒屋",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "gemini-street#b3",
+          "requested_text": "道頓堀",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "gemini-street#b4",
+          "requested_text": "감접",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "gemini-street#b5",
+          "requested_text": "고깃집",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "gemini-street#b6",
+          "requested_text": "노래방",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "gemini-street#b7",
+          "requested_text": "대박식당",
+          "expected": 2,
+          "found": 0
+        },
+        {
+          "block_id": "gemini-street#b8",
+          "requested_text": "라면·국수",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "gemini-street#b9",
+          "requested_text": "맥주",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "gemini-street#b10",
+          "requested_text": "전주삼겹살",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "gemini-street#b11",
+          "requested_text": "파식당",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "gemini-street#b12",
+          "requested_text": "편의맥주",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "gemini-street#b13",
+          "requested_text": "포차",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "gemini-street#b14",
+          "requested_text": "피시개방",
+          "expected": 1,
+          "found": 0
+        }
+      ]
+    },
+    "gradient-banner": {
+      "stratum": "latin_horizontal",
+      "split": "dev",
+      "expected": 2,
+      "found": 2,
+      "shipped_regions": 2,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "gradient-banner#b1",
+          "requested_text": "fifty percent off",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "gradient-banner#b2",
+          "requested_text": "SUMMER SALE",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "hebrew-notice": {
+      "stratum": "rtl_bidi",
+      "split": "holdout",
+      "expected": 4,
+      "found": 1,
+      "shipped_regions": 6,
+      "unrequested_regions": 5,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "hebrew-notice#b1",
+          "requested_text": "TOFU",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "hebrew-notice#b2",
+          "requested_text": "סגור",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "hebrew-notice#b3",
+          "requested_text": "רחוב הרצל",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "hebrew-notice#b4",
+          "requested_text": "תל אביב",
+          "expected": 1,
+          "found": 0
+        }
+      ]
+    },
+    "indic-shaping": {
+      "stratum": "mixed_script_numeric",
+      "split": "dev",
+      "expected": 3,
+      "found": 0,
+      "shipped_regions": 0,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "indic-shaping#b1",
+          "requested_text": "नमस्ते",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "indic-shaping#b2",
+          "requested_text": "வணக்கம்",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "indic-shaping#b3",
+          "requested_text": "สวัสดี",
+          "expected": 1,
+          "found": 0
+        }
+      ]
+    },
+    "japan-street": {
+      "stratum": "japanese_horizontal",
+      "split": "dev",
+      "expected": 7,
+      "found": 1,
+      "shipped_regions": 19,
+      "unrequested_regions": 18,
+      "partial_annotation": true,
+      "blocks": [
+        {
+          "block_id": "japan-street#b1",
+          "requested_text": "2F",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "japan-street#b2",
+          "requested_text": "3F",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "japan-street#b3",
+          "requested_text": "お好み焼本陣",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "japan-street#b4",
+          "requested_text": "バンダイ",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "japan-street#b5",
+          "requested_text": "劇場通り",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "japan-street#b6",
+          "requested_text": "東南荘",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "japan-street#b7",
+          "requested_text": "歌舞伎町一番街",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "japanese-poster": {
+      "stratum": "japanese_horizontal",
+      "split": "dev",
+      "expected": 5,
+      "found": 3,
+      "shipped_regions": 4,
+      "unrequested_regions": 1,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "japanese-poster#b1",
+          "requested_text": "5.2",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "japanese-poster#b2",
+          "requested_text": "ACME",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "japanese-poster#b3",
+          "requested_text": "FRI",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "japanese-poster#b4",
+          "requested_text": "サンダーボルツ",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "japanese-poster#b5",
+          "requested_text": "世界を救え",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "japanese-shopfront": {
+      "stratum": "japanese_horizontal",
+      "split": "dev",
+      "expected": 5,
+      "found": 5,
+      "shipped_regions": 5,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "japanese-shopfront#b1",
+          "requested_text": "10:00",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "japanese-shopfront#b2",
+          "requested_text": "19:00",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "japanese-shopfront#b3",
+          "requested_text": "営業中",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "japanese-shopfront#b4",
+          "requested_text": "定休日",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "japanese-shopfront#b5",
+          "requested_text": "東京古書店",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "japanese-station": {
+      "stratum": "japanese_horizontal",
+      "split": "holdout",
+      "expected": 6,
+      "found": 6,
+      "shipped_regions": 9,
+      "unrequested_regions": 3,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "japanese-station#b1",
+          "requested_text": "品川",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "japanese-station#b2",
+          "requested_text": "新宿",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "japanese-station#b3",
+          "requested_text": "渋谷",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "japanese-station#b4",
+          "requested_text": "番線",
+          "expected": 3,
+          "found": 3
+        }
+      ]
+    },
+    "la-bastille-1789": {
+      "stratum": "nonlinear_irregular",
+      "split": "dev",
+      "expected": 9,
+      "found": 0,
+      "shipped_regions": 24,
+      "unrequested_regions": 24,
+      "partial_annotation": true,
+      "blocks": [
+        {
+          "block_id": "la-bastille-1789#b1",
+          "requested_text": "1789",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "la-bastille-1789#b2",
+          "requested_text": "ANTOINE",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "la-bastille-1789#b3",
+          "requested_text": "BASTILLE",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "la-bastille-1789#b4",
+          "requested_text": "EN",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "la-bastille-1789#b5",
+          "requested_text": "ET",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "la-bastille-1789#b6",
+          "requested_text": "LA",
+          "expected": 2,
+          "found": 0
+        },
+        {
+          "block_id": "la-bastille-1789#b7",
+          "requested_text": "RUE",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "la-bastille-1789#b8",
+          "requested_text": "St",
+          "expected": 1,
+          "found": 0
+        }
+      ]
+    },
+    "la-rue-sans-nom-example": {
+      "stratum": "latin_horizontal",
+      "split": "dev",
+      "expected": 2,
+      "found": 2,
+      "shipped_regions": 2,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "la-rue-sans-nom-example#b1",
+          "requested_text": "La rue",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "la-rue-sans-nom-example#b2",
+          "requested_text": "SANS-NOM",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "low-confidence": {
+      "stratum": "latin_horizontal",
+      "split": "dev",
+      "expected": 1,
+      "found": 1,
+      "shipped_regions": 1,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "low-confidence#b1",
+          "requested_text": "FADED",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "mixed-orientation": {
+      "stratum": "nonlinear_irregular",
+      "split": "dev",
+      "expected": 1,
+      "found": 1,
+      "shipped_regions": 2,
+      "unrequested_regions": 1,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "mixed-orientation#b1",
+          "requested_text": "OPEN",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "mixed-script": {
+      "stratum": "mixed_script_numeric",
+      "split": "dev",
+      "expected": 2,
+      "found": 2,
+      "shipped_regions": 2,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "mixed-script#b1",
+          "requested_text": "TOFU PRO",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "mixed-script#b2",
+          "requested_text": "Version 2",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "multicolour-text": {
+      "stratum": "latin_horizontal",
+      "split": "dev",
+      "expected": 1,
+      "found": 0,
+      "shipped_regions": 3,
+      "unrequested_regions": 3,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "multicolour-text#b1",
+          "requested_text": "ABC",
+          "expected": 1,
+          "found": 0
+        }
+      ]
+    },
+    "museum-labels": {
+      "stratum": "mixed_script_numeric",
+      "split": "dev",
+      "expected": 5,
+      "found": 5,
+      "shipped_regions": 5,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "museum-labels#b1",
+          "requested_text": "Entree libre",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "museum-labels#b2",
+          "requested_text": "Fermeture 18h",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "museum-labels#b3",
+          "requested_text": "Musee des Arts",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "museum-labels#b4",
+          "requested_text": "Ouvert",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "museum-labels#b5",
+          "requested_text": "Salle 4",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "parking-levels": {
+      "stratum": "mixed_script_numeric",
+      "split": "dev",
+      "expected": 8,
+      "found": 4,
+      "shipped_regions": 11,
+      "unrequested_regions": 7,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "parking-levels#b1",
+          "requested_text": "COMPLET",
+          "expected": 4,
+          "found": 4
+        },
+        {
+          "block_id": "parking-levels#b2",
+          "requested_text": "NIVEAU",
+          "expected": 4,
+          "found": 0
+        }
+      ]
+    },
+    "perspective-sign": {
+      "stratum": "nonlinear_irregular",
+      "split": "dev",
+      "expected": 1,
+      "found": 0,
+      "shipped_regions": 1,
+      "unrequested_regions": 1,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "perspective-sign#b1",
+          "requested_text": "CAFE",
+          "expected": 1,
+          "found": 0
+        }
+      ]
+    },
+    "product-label": {
+      "stratum": "mixed_script_numeric",
+      "split": "dev",
+      "expected": 3,
+      "found": 3,
+      "shipped_regions": 3,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "product-label#b1",
+          "requested_text": "500 ml",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "product-label#b2",
+          "requested_text": "ALMOND TONIC",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "product-label#b3",
+          "requested_text": "CONTAINS NUTS",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "quai-des-orfevres": {
+      "stratum": "mixed_script_numeric",
+      "split": "dev",
+      "expected": 4,
+      "found": 4,
+      "shipped_regions": 4,
+      "unrequested_regions": 0,
+      "partial_annotation": true,
+      "blocks": [
+        {
+          "block_id": "quai-des-orfevres#b1",
+          "requested_text": "1er Arrᵗ",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "quai-des-orfevres#b2",
+          "requested_text": "DES",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "quai-des-orfevres#b3",
+          "requested_text": "ORFÈVRES",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "quai-des-orfevres#b4",
+          "requested_text": "QUAI",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "repeated-exits": {
+      "stratum": "mixed_script_numeric",
+      "split": "dev",
+      "expected": 5,
+      "found": 5,
+      "shipped_regions": 5,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "repeated-exits#b1",
+          "requested_text": "12",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "repeated-exits#b2",
+          "requested_text": "SORTIE",
+          "expected": 4,
+          "found": 4
+        }
+      ]
+    },
+    "repeated-platform": {
+      "stratum": "latin_horizontal",
+      "split": "dev",
+      "expected": 6,
+      "found": 6,
+      "shipped_regions": 6,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "repeated-platform#b1",
+          "requested_text": "PLATFORM",
+          "expected": 6,
+          "found": 6
+        }
+      ]
+    },
+    "rtl-sign": {
+      "stratum": "latin_horizontal",
+      "split": "dev",
+      "expected": 1,
+      "found": 1,
+      "shipped_regions": 1,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "rtl-sign#b1",
+          "requested_text": "Welcome",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "rue-des-martyrs": {
+      "stratum": "latin_horizontal",
+      "split": "dev",
+      "expected": 3,
+      "found": 3,
+      "shipped_regions": 3,
+      "unrequested_regions": 0,
+      "partial_annotation": true,
+      "blocks": [
+        {
+          "block_id": "rue-des-martyrs#b1",
+          "requested_text": "DES",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "rue-des-martyrs#b2",
+          "requested_text": "MARTYRS",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "rue-des-martyrs#b3",
+          "requested_text": "RUE",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "russian-billboard": {
+      "stratum": "mixed_script_numeric",
+      "split": "dev",
+      "expected": 8,
+      "found": 8,
+      "shipped_regions": 11,
+      "unrequested_regions": 3,
+      "partial_annotation": true,
+      "blocks": [
+        {
+          "block_id": "russian-billboard#b1",
+          "requested_text": "23",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "russian-billboard#b2",
+          "requested_text": "Za",
+          "expected": 3,
+          "found": 3
+        },
+        {
+          "block_id": "russian-billboard#b3",
+          "requested_text": "НАШИХ!",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "russian-billboard#b4",
+          "requested_text": "ПОБЕДУ!",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "russian-billboard#b5",
+          "requested_text": "ПРАВДУ!",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "russian-billboard#b6",
+          "requested_text": "ФЕВРАЛЯ",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "russian-billboard-2": {
+      "stratum": "mixed_script_numeric",
+      "split": "dev",
+      "expected": 3,
+      "found": 0,
+      "shipped_regions": 4,
+      "unrequested_regions": 4,
+      "partial_annotation": true,
+      "blocks": [
+        {
+          "block_id": "russian-billboard-2#b1",
+          "requested_text": "Valentina Ursu (RFE/RL)",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "russian-billboard-2#b2",
+          "requested_text": "В БУДУЩЕЕ",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "russian-billboard-2#b3",
+          "requested_text": "ВМЕСТЕ С РОССИЕЙ!",
+          "expected": 1,
+          "found": 0
+        }
+      ]
+    },
+    "serif-vs-sans": {
+      "stratum": "latin_horizontal",
+      "split": "dev",
+      "expected": 6,
+      "found": 6,
+      "shipped_regions": 6,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "serif-vs-sans#b1",
+          "requested_text": "Handgloves",
+          "expected": 2,
+          "found": 2
+        },
+        {
+          "block_id": "serif-vs-sans#b2",
+          "requested_text": "La rue",
+          "expected": 2,
+          "found": 2
+        },
+        {
+          "block_id": "serif-vs-sans#b3",
+          "requested_text": "SANS-NOM",
+          "expected": 2,
+          "found": 2
+        }
+      ]
+    },
+    "shadow-effects": {
+      "stratum": "latin_horizontal",
+      "split": "dev",
+      "expected": 2,
+      "found": 1,
+      "shipped_regions": 3,
+      "unrequested_regions": 2,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "shadow-effects#b1",
+          "requested_text": "Every Friday",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "shadow-effects#b2",
+          "requested_text": "NIGHT MARKET",
+          "expected": 1,
+          "found": 0
+        }
+      ]
+    },
+    "stylized-italic": {
+      "stratum": "nonlinear_irregular",
+      "split": "holdout",
+      "expected": 4,
+      "found": 3,
+      "shipped_regions": 4,
+      "unrequested_regions": 1,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "stylized-italic#b1",
+          "requested_text": "Bold Statement",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "stylized-italic#b2",
+          "requested_text": "Italic Emphasis",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "stylized-italic#b3",
+          "requested_text": "Regular Weight",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "stylized-italic#b4",
+          "requested_text": "Stroked Display",
+          "expected": 1,
+          "found": 0
+        }
+      ]
+    },
+    "textured-wall": {
+      "stratum": "mixed_script_numeric",
+      "split": "dev",
+      "expected": 2,
+      "found": 1,
+      "shipped_regions": 2,
+      "unrequested_regions": 1,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "textured-wall#b1",
+          "requested_text": "BAKERY",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "textured-wall#b2",
+          "requested_text": "est. 1962",
+          "expected": 1,
+          "found": 0
+        }
+      ]
+    },
+    "tight-space": {
+      "stratum": "latin_horizontal",
+      "split": "dev",
+      "expected": 1,
+      "found": 1,
+      "shipped_regions": 1,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "tight-space#b1",
+          "requested_text": "Members only",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "transit-board": {
+      "stratum": "mixed_script_numeric",
+      "split": "holdout",
+      "expected": 8,
+      "found": 7,
+      "shipped_regions": 8,
+      "unrequested_regions": 1,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "transit-board#b1",
+          "requested_text": "08:15",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "transit-board#b2",
+          "requested_text": "09:40",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "transit-board#b3",
+          "requested_text": "11:05",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "transit-board#b4",
+          "requested_text": "13:20",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "transit-board#b5",
+          "requested_text": "BORDEAUX",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "transit-board#b6",
+          "requested_text": "LYON",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "transit-board#b7",
+          "requested_text": "MARSEILLE",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "transit-board#b8",
+          "requested_text": "PARIS",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "ui-controls": {
+      "stratum": "latin_horizontal",
+      "split": "holdout",
+      "expected": 3,
+      "found": 3,
+      "shipped_regions": 3,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "blocks": [
+        {
+          "block_id": "ui-controls#b1",
+          "requested_text": "Cancel",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "ui-controls#b2",
+          "requested_text": "Delete account",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "ui-controls#b3",
+          "requested_text": "Save",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    }
+  }
+}

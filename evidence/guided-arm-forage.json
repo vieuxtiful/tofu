@@ -1,0 +1,1952 @@
+{
+  "corpus_id": "guided-corpus-v1",
+  "arm": "guided",
+  "iou": 0.5,
+  "review_status": "machine_derived",
+  "totals": {
+    "assets": 46,
+    "blocks": 162,
+    "occurrences": 189,
+    "repeat_blocks": 13,
+    "strata": 6
+  },
+  "minimums": {
+    "assets": 30,
+    "blocks": 120,
+    "occurrences": 180,
+    "strata": 6
+  },
+  "elapsed_seconds": 1121.3,
+  "assets": {
+    "arabic-bilingual-panel": {
+      "stratum": "rtl_bidi",
+      "split": "dev",
+      "expected": 5,
+      "found": 5,
+      "shipped_regions": 5,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "recovered_hits": 0,
+      "tiers": {
+        "high": 5
+      },
+      "high_tier_located": 5,
+      "high_tier_correct": 5,
+      "blocks": [
+        {
+          "block_id": "arabic-bilingual-panel#b1",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "arabic-bilingual-panel#b2",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "arabic-bilingual-panel#b3",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "arabic-bilingual-panel#b4",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "arabic-bilingual-panel#b5",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "arabic-market": {
+      "stratum": "rtl_bidi",
+      "split": "dev",
+      "expected": 8,
+      "found": 5,
+      "shipped_regions": 8,
+      "unrequested_regions": 3,
+      "partial_annotation": false,
+      "recovered_hits": 0,
+      "tiers": {
+        "high": 5
+      },
+      "high_tier_located": 8,
+      "high_tier_correct": 5,
+      "blocks": [
+        {
+          "block_id": "arabic-market#b1",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "arabic-market#b2",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "arabic-market#b3",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "arabic-market#b4",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "arabic-market#b5",
+          "state": "multiple",
+          "tier": "high",
+          "expected": 4,
+          "found": 4
+        }
+      ]
+    },
+    "arabic-street": {
+      "stratum": "rtl_bidi",
+      "split": "dev",
+      "expected": 5,
+      "found": 3,
+      "shipped_regions": 5,
+      "unrequested_regions": 2,
+      "partial_annotation": false,
+      "recovered_hits": 0,
+      "tiers": {
+        "high": 4
+      },
+      "high_tier_located": 5,
+      "high_tier_correct": 3,
+      "blocks": [
+        {
+          "block_id": "arabic-street#b1",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "arabic-street#b2",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "arabic-street#b3",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "arabic-street#b4",
+          "state": "multiple",
+          "tier": "high",
+          "expected": 2,
+          "found": 0
+        }
+      ]
+    },
+    "avenue-de-la-république": {
+      "stratum": "latin_horizontal",
+      "split": "dev",
+      "expected": 2,
+      "found": 2,
+      "shipped_regions": 2,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "recovered_hits": 0,
+      "tiers": {
+        "high": 2
+      },
+      "high_tier_located": 2,
+      "high_tier_correct": 2,
+      "blocks": [
+        {
+          "block_id": "avenue-de-la-république#b1",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "avenue-de-la-république#b2",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "china-street": {
+      "stratum": "nonlinear_irregular",
+      "split": "dev",
+      "expected": 7,
+      "found": 5,
+      "shipped_regions": 5,
+      "unrequested_regions": 0,
+      "partial_annotation": true,
+      "recovered_hits": 0,
+      "tiers": {
+        "low": 2,
+        "high": 5
+      },
+      "high_tier_located": 5,
+      "high_tier_correct": 5,
+      "blocks": [
+        {
+          "block_id": "china-street#b1",
+          "state": "not_detected",
+          "tier": "low",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "china-street#b2",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "china-street#b3",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "china-street#b4",
+          "state": "not_detected",
+          "tier": "low",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "china-street#b5",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "china-street#b6",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "china-street#b7",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "cjk-horizontal": {
+      "stratum": "latin_horizontal",
+      "split": "dev",
+      "expected": 2,
+      "found": 2,
+      "shipped_regions": 2,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "recovered_hits": 0,
+      "tiers": {
+        "high": 2
+      },
+      "high_tier_located": 2,
+      "high_tier_correct": 2,
+      "blocks": [
+        {
+          "block_id": "cjk-horizontal#b1",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "cjk-horizontal#b2",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "cjk-vertical": {
+      "stratum": "japanese_vertical",
+      "split": "dev",
+      "expected": 2,
+      "found": 2,
+      "shipped_regions": 2,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "recovered_hits": 0,
+      "tiers": {
+        "high": 2
+      },
+      "high_tier_located": 2,
+      "high_tier_correct": 2,
+      "blocks": [
+        {
+          "block_id": "cjk-vertical#b1",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "cjk-vertical#b2",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "cjk-vertical-banner": {
+      "stratum": "japanese_vertical",
+      "split": "dev",
+      "expected": 4,
+      "found": 2,
+      "shipped_regions": 2,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "recovered_hits": 0,
+      "tiers": {
+        "high": 2,
+        "low": 2
+      },
+      "high_tier_located": 2,
+      "high_tier_correct": 2,
+      "blocks": [
+        {
+          "block_id": "cjk-vertical-banner#b1",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "cjk-vertical-banner#b2",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "cjk-vertical-banner#b3",
+          "state": "not_detected",
+          "tier": "low",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "cjk-vertical-banner#b4",
+          "state": "not_detected",
+          "tier": "low",
+          "expected": 1,
+          "found": 0
+        }
+      ]
+    },
+    "cjk-vertical-menu": {
+      "stratum": "japanese_vertical",
+      "split": "holdout",
+      "expected": 3,
+      "found": 3,
+      "shipped_regions": 3,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "recovered_hits": 0,
+      "tiers": {
+        "high": 3
+      },
+      "high_tier_located": 3,
+      "high_tier_correct": 3,
+      "blocks": [
+        {
+          "block_id": "cjk-vertical-menu#b1",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "cjk-vertical-menu#b2",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "cjk-vertical-menu#b3",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "decolonisons-nos-rues": {
+      "stratum": "latin_horizontal",
+      "split": "dev",
+      "expected": 5,
+      "found": 5,
+      "shipped_regions": 5,
+      "unrequested_regions": 0,
+      "partial_annotation": true,
+      "recovered_hits": 1,
+      "tiers": {
+        "high": 4,
+        "medium": 1
+      },
+      "high_tier_located": 4,
+      "high_tier_correct": 4,
+      "blocks": [
+        {
+          "block_id": "decolonisons-nos-rues#b1",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "decolonisons-nos-rues#b2",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "decolonisons-nos-rues#b3",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "decolonisons-nos-rues#b4",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "decolonisons-nos-rues#b5",
+          "state": "found",
+          "tier": "medium",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "degraded-ink": {
+      "stratum": "latin_horizontal",
+      "split": "dev",
+      "expected": 1,
+      "found": 1,
+      "shipped_regions": 1,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "recovered_hits": 0,
+      "tiers": {
+        "high": 1
+      },
+      "high_tier_located": 1,
+      "high_tier_correct": 1,
+      "blocks": [
+        {
+          "block_id": "degraded-ink#b1",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "dense-layout": {
+      "stratum": "nonlinear_irregular",
+      "split": "dev",
+      "expected": 4,
+      "found": 4,
+      "shipped_regions": 4,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "recovered_hits": 0,
+      "tiers": {
+        "high": 4
+      },
+      "high_tier_located": 4,
+      "high_tier_correct": 4,
+      "blocks": [
+        {
+          "block_id": "dense-layout#b1",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "dense-layout#b2",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "dense-layout#b3",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "dense-layout#b4",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "expansion-en": {
+      "stratum": "latin_horizontal",
+      "split": "dev",
+      "expected": 1,
+      "found": 1,
+      "shipped_regions": 1,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "recovered_hits": 0,
+      "tiers": {
+        "high": 1
+      },
+      "high_tier_located": 1,
+      "high_tier_correct": 1,
+      "blocks": [
+        {
+          "block_id": "expansion-en#b1",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "flat-sign": {
+      "stratum": "mixed_script_numeric",
+      "split": "dev",
+      "expected": 4,
+      "found": 4,
+      "shipped_regions": 4,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "recovered_hits": 0,
+      "tiers": {
+        "high": 4
+      },
+      "high_tier_located": 4,
+      "high_tier_correct": 4,
+      "blocks": [
+        {
+          "block_id": "flat-sign#b1",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "flat-sign#b2",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "flat-sign#b3",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "flat-sign#b4",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "gemini-street": {
+      "stratum": "nonlinear_irregular",
+      "split": "dev",
+      "expected": 15,
+      "found": 0,
+      "shipped_regions": 1,
+      "unrequested_regions": 1,
+      "partial_annotation": true,
+      "recovered_hits": 0,
+      "tiers": {
+        "low": 13,
+        "high": 1
+      },
+      "high_tier_located": 1,
+      "high_tier_correct": 0,
+      "blocks": [
+        {
+          "block_id": "gemini-street#b1",
+          "state": "not_detected",
+          "tier": "low",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "gemini-street#b2",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "gemini-street#b3",
+          "state": "not_detected",
+          "tier": "low",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "gemini-street#b4",
+          "state": "not_detected",
+          "tier": "low",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "gemini-street#b5",
+          "state": "not_detected",
+          "tier": "low",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "gemini-street#b6",
+          "state": "not_detected",
+          "tier": "low",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "gemini-street#b7",
+          "state": "not_detected",
+          "tier": "low",
+          "expected": 2,
+          "found": 0
+        },
+        {
+          "block_id": "gemini-street#b8",
+          "state": "not_detected",
+          "tier": "low",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "gemini-street#b9",
+          "state": "not_detected",
+          "tier": "low",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "gemini-street#b10",
+          "state": "not_detected",
+          "tier": "low",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "gemini-street#b11",
+          "state": "not_detected",
+          "tier": "low",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "gemini-street#b12",
+          "state": "not_detected",
+          "tier": "low",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "gemini-street#b13",
+          "state": "not_detected",
+          "tier": "low",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "gemini-street#b14",
+          "state": "not_detected",
+          "tier": "low",
+          "expected": 1,
+          "found": 0
+        }
+      ]
+    },
+    "gradient-banner": {
+      "stratum": "latin_horizontal",
+      "split": "dev",
+      "expected": 2,
+      "found": 2,
+      "shipped_regions": 2,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "recovered_hits": 0,
+      "tiers": {
+        "high": 2
+      },
+      "high_tier_located": 2,
+      "high_tier_correct": 2,
+      "blocks": [
+        {
+          "block_id": "gradient-banner#b1",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "gradient-banner#b2",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "hebrew-notice": {
+      "stratum": "rtl_bidi",
+      "split": "holdout",
+      "expected": 4,
+      "found": 1,
+      "shipped_regions": 1,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "recovered_hits": 0,
+      "tiers": {
+        "high": 1,
+        "low": 3
+      },
+      "high_tier_located": 1,
+      "high_tier_correct": 1,
+      "blocks": [
+        {
+          "block_id": "hebrew-notice#b1",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "hebrew-notice#b2",
+          "state": "not_detected",
+          "tier": "low",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "hebrew-notice#b3",
+          "state": "not_detected",
+          "tier": "low",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "hebrew-notice#b4",
+          "state": "not_detected",
+          "tier": "low",
+          "expected": 1,
+          "found": 0
+        }
+      ]
+    },
+    "indic-shaping": {
+      "stratum": "mixed_script_numeric",
+      "split": "dev",
+      "expected": 3,
+      "found": 0,
+      "shipped_regions": 0,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "recovered_hits": 0,
+      "tiers": {
+        "low": 3
+      },
+      "high_tier_located": 0,
+      "high_tier_correct": 0,
+      "blocks": [
+        {
+          "block_id": "indic-shaping#b1",
+          "state": "not_detected",
+          "tier": "low",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "indic-shaping#b2",
+          "state": "not_detected",
+          "tier": "low",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "indic-shaping#b3",
+          "state": "not_detected",
+          "tier": "low",
+          "expected": 1,
+          "found": 0
+        }
+      ]
+    },
+    "japan-street": {
+      "stratum": "japanese_horizontal",
+      "split": "dev",
+      "expected": 7,
+      "found": 2,
+      "shipped_regions": 3,
+      "unrequested_regions": 1,
+      "partial_annotation": true,
+      "recovered_hits": 0,
+      "tiers": {
+        "low": 4,
+        "high": 2,
+        "medium": 1
+      },
+      "high_tier_located": 2,
+      "high_tier_correct": 1,
+      "blocks": [
+        {
+          "block_id": "japan-street#b1",
+          "state": "not_detected",
+          "tier": "low",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "japan-street#b2",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "japan-street#b3",
+          "state": "not_detected",
+          "tier": "low",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "japan-street#b4",
+          "state": "not_detected",
+          "tier": "low",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "japan-street#b5",
+          "state": "possible",
+          "tier": "medium",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "japan-street#b6",
+          "state": "not_detected",
+          "tier": "low",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "japan-street#b7",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "japanese-poster": {
+      "stratum": "japanese_horizontal",
+      "split": "dev",
+      "expected": 5,
+      "found": 5,
+      "shipped_regions": 5,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "recovered_hits": 2,
+      "tiers": {
+        "medium": 2,
+        "high": 3
+      },
+      "high_tier_located": 3,
+      "high_tier_correct": 3,
+      "blocks": [
+        {
+          "block_id": "japanese-poster#b1",
+          "state": "found",
+          "tier": "medium",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "japanese-poster#b2",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "japanese-poster#b3",
+          "state": "found",
+          "tier": "medium",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "japanese-poster#b4",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "japanese-poster#b5",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "japanese-shopfront": {
+      "stratum": "japanese_horizontal",
+      "split": "dev",
+      "expected": 5,
+      "found": 5,
+      "shipped_regions": 5,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "recovered_hits": 0,
+      "tiers": {
+        "high": 5
+      },
+      "high_tier_located": 5,
+      "high_tier_correct": 5,
+      "blocks": [
+        {
+          "block_id": "japanese-shopfront#b1",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "japanese-shopfront#b2",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "japanese-shopfront#b3",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "japanese-shopfront#b4",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "japanese-shopfront#b5",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "japanese-station": {
+      "stratum": "japanese_horizontal",
+      "split": "holdout",
+      "expected": 6,
+      "found": 6,
+      "shipped_regions": 6,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "recovered_hits": 0,
+      "tiers": {
+        "high": 4
+      },
+      "high_tier_located": 6,
+      "high_tier_correct": 6,
+      "blocks": [
+        {
+          "block_id": "japanese-station#b1",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "japanese-station#b2",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "japanese-station#b3",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "japanese-station#b4",
+          "state": "multiple",
+          "tier": "high",
+          "expected": 3,
+          "found": 3
+        }
+      ]
+    },
+    "la-bastille-1789": {
+      "stratum": "nonlinear_irregular",
+      "split": "dev",
+      "expected": 9,
+      "found": 2,
+      "shipped_regions": 2,
+      "unrequested_regions": 0,
+      "partial_annotation": true,
+      "recovered_hits": 1,
+      "tiers": {
+        "low": 6,
+        "medium": 2
+      },
+      "high_tier_located": 0,
+      "high_tier_correct": 0,
+      "blocks": [
+        {
+          "block_id": "la-bastille-1789#b1",
+          "state": "not_detected",
+          "tier": "low",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "la-bastille-1789#b2",
+          "state": "not_detected",
+          "tier": "low",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "la-bastille-1789#b3",
+          "state": "possible",
+          "tier": "medium",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "la-bastille-1789#b4",
+          "state": "not_detected",
+          "tier": "low",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "la-bastille-1789#b5",
+          "state": "not_detected",
+          "tier": "low",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "la-bastille-1789#b6",
+          "state": "possible",
+          "tier": "medium",
+          "expected": 2,
+          "found": 1
+        },
+        {
+          "block_id": "la-bastille-1789#b7",
+          "state": "not_detected",
+          "tier": "low",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "la-bastille-1789#b8",
+          "state": "not_detected",
+          "tier": "low",
+          "expected": 1,
+          "found": 0
+        }
+      ]
+    },
+    "la-rue-sans-nom-example": {
+      "stratum": "latin_horizontal",
+      "split": "dev",
+      "expected": 2,
+      "found": 2,
+      "shipped_regions": 2,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "recovered_hits": 0,
+      "tiers": {
+        "high": 2
+      },
+      "high_tier_located": 2,
+      "high_tier_correct": 2,
+      "blocks": [
+        {
+          "block_id": "la-rue-sans-nom-example#b1",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "la-rue-sans-nom-example#b2",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "low-confidence": {
+      "stratum": "latin_horizontal",
+      "split": "dev",
+      "expected": 1,
+      "found": 1,
+      "shipped_regions": 1,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "recovered_hits": 0,
+      "tiers": {
+        "high": 1
+      },
+      "high_tier_located": 1,
+      "high_tier_correct": 1,
+      "blocks": [
+        {
+          "block_id": "low-confidence#b1",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "mixed-orientation": {
+      "stratum": "nonlinear_irregular",
+      "split": "dev",
+      "expected": 1,
+      "found": 1,
+      "shipped_regions": 1,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "recovered_hits": 0,
+      "tiers": {
+        "high": 1
+      },
+      "high_tier_located": 1,
+      "high_tier_correct": 1,
+      "blocks": [
+        {
+          "block_id": "mixed-orientation#b1",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "mixed-script": {
+      "stratum": "mixed_script_numeric",
+      "split": "dev",
+      "expected": 2,
+      "found": 2,
+      "shipped_regions": 2,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "recovered_hits": 0,
+      "tiers": {
+        "high": 2
+      },
+      "high_tier_located": 2,
+      "high_tier_correct": 2,
+      "blocks": [
+        {
+          "block_id": "mixed-script#b1",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "mixed-script#b2",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "multicolour-text": {
+      "stratum": "latin_horizontal",
+      "split": "dev",
+      "expected": 1,
+      "found": 0,
+      "shipped_regions": 0,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "recovered_hits": 0,
+      "tiers": {
+        "low": 1
+      },
+      "high_tier_located": 0,
+      "high_tier_correct": 0,
+      "blocks": [
+        {
+          "block_id": "multicolour-text#b1",
+          "state": "not_detected",
+          "tier": "low",
+          "expected": 1,
+          "found": 0
+        }
+      ]
+    },
+    "museum-labels": {
+      "stratum": "mixed_script_numeric",
+      "split": "dev",
+      "expected": 5,
+      "found": 5,
+      "shipped_regions": 5,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "recovered_hits": 0,
+      "tiers": {
+        "high": 5
+      },
+      "high_tier_located": 5,
+      "high_tier_correct": 5,
+      "blocks": [
+        {
+          "block_id": "museum-labels#b1",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "museum-labels#b2",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "museum-labels#b3",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "museum-labels#b4",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "museum-labels#b5",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "parking-levels": {
+      "stratum": "mixed_script_numeric",
+      "split": "dev",
+      "expected": 8,
+      "found": 6,
+      "shipped_regions": 8,
+      "unrequested_regions": 2,
+      "partial_annotation": false,
+      "recovered_hits": 2,
+      "tiers": {
+        "high": 1,
+        "medium": 1
+      },
+      "high_tier_located": 4,
+      "high_tier_correct": 4,
+      "blocks": [
+        {
+          "block_id": "parking-levels#b1",
+          "state": "multiple",
+          "tier": "high",
+          "expected": 4,
+          "found": 4
+        },
+        {
+          "block_id": "parking-levels#b2",
+          "state": "multiple",
+          "tier": "medium",
+          "expected": 4,
+          "found": 2
+        }
+      ]
+    },
+    "perspective-sign": {
+      "stratum": "nonlinear_irregular",
+      "split": "dev",
+      "expected": 1,
+      "found": 0,
+      "shipped_regions": 1,
+      "unrequested_regions": 1,
+      "partial_annotation": false,
+      "recovered_hits": 0,
+      "tiers": {
+        "high": 1
+      },
+      "high_tier_located": 1,
+      "high_tier_correct": 0,
+      "blocks": [
+        {
+          "block_id": "perspective-sign#b1",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 0
+        }
+      ]
+    },
+    "product-label": {
+      "stratum": "mixed_script_numeric",
+      "split": "dev",
+      "expected": 3,
+      "found": 3,
+      "shipped_regions": 3,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "recovered_hits": 0,
+      "tiers": {
+        "high": 3
+      },
+      "high_tier_located": 3,
+      "high_tier_correct": 3,
+      "blocks": [
+        {
+          "block_id": "product-label#b1",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "product-label#b2",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "product-label#b3",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "quai-des-orfevres": {
+      "stratum": "mixed_script_numeric",
+      "split": "dev",
+      "expected": 4,
+      "found": 4,
+      "shipped_regions": 4,
+      "unrequested_regions": 0,
+      "partial_annotation": true,
+      "recovered_hits": 0,
+      "tiers": {
+        "high": 4
+      },
+      "high_tier_located": 4,
+      "high_tier_correct": 4,
+      "blocks": [
+        {
+          "block_id": "quai-des-orfevres#b1",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "quai-des-orfevres#b2",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "quai-des-orfevres#b3",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "quai-des-orfevres#b4",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "repeated-exits": {
+      "stratum": "mixed_script_numeric",
+      "split": "dev",
+      "expected": 5,
+      "found": 5,
+      "shipped_regions": 5,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "recovered_hits": 0,
+      "tiers": {
+        "high": 2
+      },
+      "high_tier_located": 5,
+      "high_tier_correct": 5,
+      "blocks": [
+        {
+          "block_id": "repeated-exits#b1",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "repeated-exits#b2",
+          "state": "multiple",
+          "tier": "high",
+          "expected": 4,
+          "found": 4
+        }
+      ]
+    },
+    "repeated-platform": {
+      "stratum": "latin_horizontal",
+      "split": "dev",
+      "expected": 6,
+      "found": 6,
+      "shipped_regions": 6,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "recovered_hits": 0,
+      "tiers": {
+        "high": 1
+      },
+      "high_tier_located": 6,
+      "high_tier_correct": 6,
+      "blocks": [
+        {
+          "block_id": "repeated-platform#b1",
+          "state": "multiple",
+          "tier": "high",
+          "expected": 6,
+          "found": 6
+        }
+      ]
+    },
+    "rtl-sign": {
+      "stratum": "latin_horizontal",
+      "split": "dev",
+      "expected": 1,
+      "found": 1,
+      "shipped_regions": 1,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "recovered_hits": 0,
+      "tiers": {
+        "high": 1
+      },
+      "high_tier_located": 1,
+      "high_tier_correct": 1,
+      "blocks": [
+        {
+          "block_id": "rtl-sign#b1",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "rue-des-martyrs": {
+      "stratum": "latin_horizontal",
+      "split": "dev",
+      "expected": 3,
+      "found": 3,
+      "shipped_regions": 3,
+      "unrequested_regions": 0,
+      "partial_annotation": true,
+      "recovered_hits": 0,
+      "tiers": {
+        "high": 3
+      },
+      "high_tier_located": 3,
+      "high_tier_correct": 3,
+      "blocks": [
+        {
+          "block_id": "rue-des-martyrs#b1",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "rue-des-martyrs#b2",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "rue-des-martyrs#b3",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "russian-billboard": {
+      "stratum": "mixed_script_numeric",
+      "split": "dev",
+      "expected": 8,
+      "found": 8,
+      "shipped_regions": 8,
+      "unrequested_regions": 0,
+      "partial_annotation": true,
+      "recovered_hits": 0,
+      "tiers": {
+        "high": 6
+      },
+      "high_tier_located": 8,
+      "high_tier_correct": 8,
+      "blocks": [
+        {
+          "block_id": "russian-billboard#b1",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "russian-billboard#b2",
+          "state": "multiple",
+          "tier": "high",
+          "expected": 3,
+          "found": 3
+        },
+        {
+          "block_id": "russian-billboard#b3",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "russian-billboard#b4",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "russian-billboard#b5",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "russian-billboard#b6",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "russian-billboard-2": {
+      "stratum": "mixed_script_numeric",
+      "split": "dev",
+      "expected": 3,
+      "found": 1,
+      "shipped_regions": 1,
+      "unrequested_regions": 0,
+      "partial_annotation": true,
+      "recovered_hits": 0,
+      "tiers": {
+        "medium": 1,
+        "low": 2
+      },
+      "high_tier_located": 0,
+      "high_tier_correct": 0,
+      "blocks": [
+        {
+          "block_id": "russian-billboard-2#b1",
+          "state": "possible",
+          "tier": "medium",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "russian-billboard-2#b2",
+          "state": "not_detected",
+          "tier": "low",
+          "expected": 1,
+          "found": 0
+        },
+        {
+          "block_id": "russian-billboard-2#b3",
+          "state": "not_detected",
+          "tier": "low",
+          "expected": 1,
+          "found": 0
+        }
+      ]
+    },
+    "serif-vs-sans": {
+      "stratum": "latin_horizontal",
+      "split": "dev",
+      "expected": 6,
+      "found": 6,
+      "shipped_regions": 6,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "recovered_hits": 0,
+      "tiers": {
+        "high": 3
+      },
+      "high_tier_located": 6,
+      "high_tier_correct": 6,
+      "blocks": [
+        {
+          "block_id": "serif-vs-sans#b1",
+          "state": "multiple",
+          "tier": "high",
+          "expected": 2,
+          "found": 2
+        },
+        {
+          "block_id": "serif-vs-sans#b2",
+          "state": "multiple",
+          "tier": "high",
+          "expected": 2,
+          "found": 2
+        },
+        {
+          "block_id": "serif-vs-sans#b3",
+          "state": "multiple",
+          "tier": "high",
+          "expected": 2,
+          "found": 2
+        }
+      ]
+    },
+    "shadow-effects": {
+      "stratum": "latin_horizontal",
+      "split": "dev",
+      "expected": 2,
+      "found": 2,
+      "shipped_regions": 2,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "recovered_hits": 1,
+      "tiers": {
+        "high": 1,
+        "medium": 1
+      },
+      "high_tier_located": 1,
+      "high_tier_correct": 1,
+      "blocks": [
+        {
+          "block_id": "shadow-effects#b1",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "shadow-effects#b2",
+          "state": "found",
+          "tier": "medium",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "stylized-italic": {
+      "stratum": "nonlinear_irregular",
+      "split": "holdout",
+      "expected": 4,
+      "found": 4,
+      "shipped_regions": 4,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "recovered_hits": 1,
+      "tiers": {
+        "high": 3,
+        "medium": 1
+      },
+      "high_tier_located": 3,
+      "high_tier_correct": 3,
+      "blocks": [
+        {
+          "block_id": "stylized-italic#b1",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "stylized-italic#b2",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "stylized-italic#b3",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "stylized-italic#b4",
+          "state": "possible",
+          "tier": "medium",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "textured-wall": {
+      "stratum": "mixed_script_numeric",
+      "split": "dev",
+      "expected": 2,
+      "found": 2,
+      "shipped_regions": 2,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "recovered_hits": 1,
+      "tiers": {
+        "high": 1,
+        "medium": 1
+      },
+      "high_tier_located": 1,
+      "high_tier_correct": 1,
+      "blocks": [
+        {
+          "block_id": "textured-wall#b1",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "textured-wall#b2",
+          "state": "found",
+          "tier": "medium",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "tight-space": {
+      "stratum": "latin_horizontal",
+      "split": "dev",
+      "expected": 1,
+      "found": 1,
+      "shipped_regions": 1,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "recovered_hits": 0,
+      "tiers": {
+        "high": 1
+      },
+      "high_tier_located": 1,
+      "high_tier_correct": 1,
+      "blocks": [
+        {
+          "block_id": "tight-space#b1",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "transit-board": {
+      "stratum": "mixed_script_numeric",
+      "split": "holdout",
+      "expected": 8,
+      "found": 8,
+      "shipped_regions": 8,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "recovered_hits": 0,
+      "tiers": {
+        "high": 8
+      },
+      "high_tier_located": 8,
+      "high_tier_correct": 8,
+      "blocks": [
+        {
+          "block_id": "transit-board#b1",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "transit-board#b2",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "transit-board#b3",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "transit-board#b4",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "transit-board#b5",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "transit-board#b6",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "transit-board#b7",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "transit-board#b8",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    },
+    "ui-controls": {
+      "stratum": "latin_horizontal",
+      "split": "holdout",
+      "expected": 3,
+      "found": 3,
+      "shipped_regions": 3,
+      "unrequested_regions": 0,
+      "partial_annotation": false,
+      "recovered_hits": 0,
+      "tiers": {
+        "high": 3
+      },
+      "high_tier_located": 3,
+      "high_tier_correct": 3,
+      "blocks": [
+        {
+          "block_id": "ui-controls#b1",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "ui-controls#b2",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        },
+        {
+          "block_id": "ui-controls#b3",
+          "state": "found",
+          "tier": "high",
+          "expected": 1,
+          "found": 1
+        }
+      ]
+    }
+  }
+}

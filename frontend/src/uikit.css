@@ -514,6 +514,12 @@ html.dark .save-anim {
   user-select: none;
   pointer-events: none;
   will-change: transform;
+  /* fallback background so the block shape is visible before the image loads */
+  background: #f7f7f5;
+  border-radius: 2px;
+}
+html.dark .save-block {
+  background: #262626;
 }
 
 /* stink lines: absolutely positioned just above the block, centered on its
@@ -787,7 +793,7 @@ html.dark .tofu-block {
   --tb-wall-bottom: #333333;
   --tb-ink: #f4f4f5;
   box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.1),
+    0 0 0 1px rgba(255, 255, 255, 0.18),
     -14px 14px 28px rgba(255, 255, 255, 0.1),
     -20px 20px 18px rgba(0, 0, 0, 0.65);
 }
@@ -3120,3 +3126,110 @@ html.dark .basil-assign-id {
 }
 .video-overlays button.editable{cursor:move;touch-action:none}.video-track-inspector{display:grid;gap:.65rem;border:1px solid #71717a44;border-radius:.65rem;padding:.75rem;background:#71717a0d}.video-track-inspector header,.video-track-inspector footer{display:flex;align-items:center;justify-content:space-between;gap:.75rem}.video-track-inspector header>div{display:grid}.video-track-inspector small,.video-track-inspector footer span{color:#71717a;font-size:.68rem}.video-track-inspector label{display:grid;gap:.25rem;color:#71717a;font-size:.7rem}.video-track-inspector textarea{min-height:3.5rem;resize:vertical;border:1px solid #71717a55;border-radius:.45rem;padding:.5rem;background:transparent;color:inherit;font-size:.85rem}.video-track-inspector button{border:1px solid #71717a55;border-radius:.4rem;padding:.35rem .55rem}.video-track-inspector button:disabled{opacity:.4}
 .video-workspace{display:grid;gap:.65rem;min-width:0}.video-stage{position:relative;overflow:hidden;border-radius:.75rem;background:#09090b;aspect-ratio:16/9}.video-stage video{width:100%;height:100%;object-fit:contain}.video-overlays{position:absolute;pointer-events:none}.video-overlays button{position:absolute;min-width:4px;min-height:4px;border:2px solid #22d3ee;background:#22d3ee22;pointer-events:auto}.video-overlays button:focus-visible,.video-overlays button.selected{outline:2px solid #facc15;outline-offset:1px;border-color:#facc15;background:#facc1533}.video-controls{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem;font-size:.75rem}.video-controls button,.video-scope-dialog button{display:flex;align-items:center;justify-content:center;gap:.25rem;min-height:32px;border:1px solid #71717a55;border-radius:.4rem;padding:.3rem .55rem}.video-controls button:focus-visible,.video-timeline button:focus-visible,.video-scope-dialog button:focus-visible{outline:2px solid #06b6d4;outline-offset:2px}.video-controls button:disabled{opacity:.4}.video-timecode{font-variant-numeric:tabular-nums;margin-right:auto}.video-scrubber{width:100%;accent-color:#06b6d4}.video-timeline{position:relative;display:grid;gap:.3rem;max-height:18rem;overflow:auto}.video-timeline-loading{position:sticky;top:0;z-index:2;padding:.25rem .5rem;border-radius:.35rem;background:#18181be6;color:white;font-size:.7rem}.video-timeline>button{display:grid;grid-template-columns:minmax(8rem,14rem) 1fr;align-items:center;gap:.65rem;text-align:left;padding:.45rem .6rem;border-radius:.4rem;background:#71717a18}.video-timeline>button.selected{outline:1px solid #22d3ee}.video-track-label{display:grid;min-width:0}.video-track-label strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.video-track-label small{color:#71717a;font-size:.65rem}.video-track-rail{position:relative;height:12px;border-radius:999px;background:#71717a20}.video-track-rail i{position:absolute;top:2px;height:8px;border-radius:999px;background:#06b6d4}.video-track-rail b,.video-track-rail em{position:absolute;top:-2px;width:3px;height:16px;transform:translateX(-1px)}.video-track-rail b{background:#facc15}.video-track-rail em{background:#ef4444}.video-error,.video-job-state{display:flex;align-items:center;gap:.65rem;border:1px solid #f59e0b66;border-radius:.6rem;padding:.7rem;background:#f59e0b12;font-size:.8rem}.video-error span{flex:1}.video-job-state p{margin:0;color:#71717a}.video-job-actions{margin-left:auto}.video-job-actions button{display:flex;align-items:center;gap:.3rem}.video-job-spinner{width:18px;height:18px;border:2px solid #71717a55;border-top-color:#06b6d4;border-radius:50%;animation:spin 1s linear infinite}.video-scope-backdrop{position:fixed;inset:0;z-index:600;display:grid;place-items:center;padding:1rem;background:#0009}.video-scope-dialog{width:min(28rem,100%);border-radius:.8rem;padding:1rem;background:white;box-shadow:0 20px 60px #0006}.dark .video-scope-dialog{background:#18181b}.video-scope-dialog h3{font-weight:650}.video-scope-dialog p{margin:.25rem 0 .8rem;color:#71717a;font-size:.8rem}.video-scope-dialog>div{display:grid;gap:.4rem}.video-scope-dialog label{display:flex;gap:.5rem;align-items:center;border:1px solid #71717a33;border-radius:.5rem;padding:.55rem}.video-scope-dialog footer{display:flex;justify-content:flex-end;gap:.5rem;margin-top:1rem}@media(max-width:720px){.video-timeline>button{grid-template-columns:1fr}.video-timecode{width:100%;order:5}.video-controls button{min-height:40px}}@media(prefers-reduced-motion:reduce){.video-job-spinner{animation-duration:2s}}
+
+/* ── Blocks field: capture lock ─────────────────────────────────────────
+   A capture is running, so the request that started it is frozen. Editing
+   Blocks mid-run would leave the results describing a question the user has
+   since changed. The stripes TRAVEL rather than sit still, so the state
+   reads as "working" instead of "broken" — a barber's pole, not a hatch. */
+.gt-locked { position: relative; }
+
+.gt-lock {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;   /* readOnly on the input does the real locking */
+  z-index: 5;
+  background: rgb(244 244 245 / 0.72);
+}
+:root[data-theme="dark"] .gt-lock,
+.dark .gt-lock { background: rgb(24 24 27 / 0.72); }
+
+.gt-lock-stripes {
+  position: absolute;
+  /* Overdrawn on both sides so the diagonal never reveals a bare corner as
+     it travels. */
+  inset: -50% -60%;
+  background: repeating-linear-gradient(
+    /* forward diagonal: rises left-to-right, y_left < y_right */
+    60deg,
+    var(--gt-lock-a, rgb(161 161 170 / 0.55)) 0 14px,
+    transparent 14px 28px,
+    var(--gt-lock-b, rgb(8 145 178 / 0.40)) 28px 42px,
+    transparent 42px 56px
+  );
+  animation: gt-lock-travel 1.1s linear infinite;
+}
+:root[data-theme="dark"] .gt-lock-stripes,
+.dark .gt-lock-stripes {
+  --gt-lock-a: rgb(212 212 216 / 0.34);
+  --gt-lock-b: rgb(34 211 238 / 0.30);
+}
+
+/* One full period is the repeating-gradient's own 56px cycle, measured
+   along X, so the loop is seamless: 56px / sin(60deg). */
+@keyframes gt-lock-travel {
+  from { transform: translateX(0); }
+  to   { transform: translateX(64.66px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gt-lock-stripes { animation: none; }
+}
+
+/* ── Notifications: clearing them all ───────────────────────────────────
+   `notif-fade-out` slides an item sideways but leaves its box occupying
+   space until React unmounts it, so clearing the list made the panel jump
+   to the empty state. Clearing collapses the row's own height, padding and
+   margin as well, which lets the container shrink continuously and land on
+   "no notifications" instead of cutting to it.
+
+   Single dismissal keeps the plain sideways slide: one row leaving a list
+   is not the same gesture as the list emptying. */
+.notif-item.clearing {
+  animation: notif-clear 0.34s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  overflow: hidden;
+}
+
+@keyframes notif-clear {
+  0% {
+    opacity: 1;
+    transform: translateX(0);
+    max-height: 5rem;
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+    margin-bottom: 0;
+  }
+  45% {
+    opacity: 0;
+    transform: translateX(60%);
+    max-height: 5rem;
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(60%);
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    margin-bottom: 0;
+  }
+}
+
+/* The empty state arrives as the rows finish collapsing, rather than
+   appearing under them mid-animation. */
+.notif-empty {
+  animation: notif-empty-in 0.28s ease-out 0.18s both;
+}
+
+@keyframes notif-empty-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notif-item.clearing { animation-duration: 0.01s; }
+  .notif-empty { animation: none; }
+}

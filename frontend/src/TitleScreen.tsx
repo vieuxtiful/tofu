@@ -21,7 +21,7 @@ interface TitleScreenProps {
   onProjectRenamed?: (project: Project) => void;
 }
 
-const FOOTER_TEXT = "ToFU v0.1.0.";
+const FOOTER_TEXT = "ToFU v1.0.0.";
 
 /** the flattened card's resting size — the same numbers the .morphing rule in
  * uikit.css inflates to. kept here because the centring maths needs them. */
@@ -216,7 +216,7 @@ export default function TitleScreen({ onEnter, onSelectProject, onCreateProject,
   return (
     <div className="fixed inset-0 z-90 flex flex-col items-center justify-center gap-10 bg-zinc-100 dark:bg-black">
       {theme === "light" && (
-        <div className="absolute inset-0 z-0 overflow-hidden">
+        <div className="absolute inset-0 z-0 overflow-hidden bg-[#dcdcdc]">
           <Grainient
             color1="#ffffff"
             color2="#bdbdbd"
@@ -244,7 +244,7 @@ export default function TitleScreen({ onEnter, onSelectProject, onCreateProject,
         </div>
       )}
       {theme === "dark" && (
-        <div className="absolute inset-0 z-0 overflow-hidden">
+        <div className="absolute inset-0 z-0 overflow-hidden bg-[#1a1a1a]">
           <Grainient
             color1="#212121"
             color2="#121212"

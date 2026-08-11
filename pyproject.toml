@@ -55,7 +55,11 @@ shaping = ["uharfbuzz>=0.37", "freetype-py>=2.4"]  # Indic/SEA correctness
 glossary = ["openpyxl>=3.1", "xlrd>=2.0.1"]
 server = ["fastapi>=0.110", "uvicorn[standard]>=0.29", "python-multipart>=0.0.9", "pydantic>=2.6"]
 all = ["tofu-l10n[ocr,shaping,glossary,server]"]
-dev = ["pytest>=8.0"]
+## jsonschema validates VTM documents against the PUBLISHED spec schema in
+## the conformance tests.  Without it those tests importorskip, and the
+## guarantee that a ToFU document still satisfies its own spec would go
+## unchecked in exactly the environment that ships it.
+dev = ["pytest>=8.0", "jsonschema>=4.0"]
 
 ## NOTE: there is deliberately no [paddle] or [inpaint] extra.
 ## PP-OCRv5 (CJK detection) and LaMa (neural inpainting) run OUT-OF-PROCESS

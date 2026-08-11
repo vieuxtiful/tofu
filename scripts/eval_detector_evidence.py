@@ -237,10 +237,84 @@ def _norm_ed(a: str, b: str) -> float:
     return previous[-1] / max(len(a), len(b))
 
 
-def report(image_path: Path, languages, gt_path: Path, mag_ratio=1.0):
+def text_free_surfaces(image_path: Path, gt, limit: int = 12):
+    """Scene surfaces that contain NO annotated text.
+
+    The other half of a discrimination claim. Sampling the detector's
+    response only inside text says how well it sees text; saying it cannot
+    tell text from scene requires knowing what it does where there is none.
+    Without this arm, "confuses scene texture for glyphs" is an assertion.
+
+    Surfaces come from the same `scene.analyze_regions` the pipeline uses,
+    and any surface overlapping an annotated box at all is discarded --
+    partial annotations mean unlisted text is real text, so a surface that
+    merely touches one is not safely text-free.
+    """
+    try:
+        from tofu.layers import scene
+        regions = scene.analyze_regions(str(image_path))
+    except Exception:
+        return []
+    boxes = [g["bbox"] for g in gt]
+    clean = []
+    for surface in regions:
+        box = [surface.bbox.x, surface.bbox.y, surface.bbox.width, surface.bbox.height]
+        if box[2] < 8 or box[3] < 8:
+            continue
+        if any(_iou(box, b) > 0.0 for b in boxes):
+            continue
+        clean.append({"bbox": box, "label": getattr(surface, "semantic_label", None)})
+        if len(clean) >= limit:
+            break
+    return clean
+
+
+def paddle_probe(image_path: Path, languages):
+    """DBNet's own response, or an explicit record that it could not run.
+
+    Paddle is a rescue path behind an ISOLATED `.venv-paddle`, and it is a
+    silent no-op wherever that venv is absent. A run that does not record
+    reachability cannot be distinguished later from a run where Paddle saw
+    nothing -- which is the "measuring a configuration the product does not
+    run" trap, and it has cost this project real work twice.
+    """
+    from tofu.layers.cicerone import PaddleOCRBackend
+    available = PaddleOCRBackend.is_available()
+    if not available:
+        return {"reachable": False, "reason": "isolated .venv-paddle not set up",
+                "proposals": None}
+    try:
+        backend = PaddleOCRBackend(languages=tuple(languages), gpu=False)
+        detections = backend.detect(str(image_path))
+        ## A RawDetection carries a POLYGON, not a box -- DB emits quads, and
+        ## flattening them to a rectangle here is exactly the reduction that
+        ## made the 42/72 drop-in comparison partly a verdict on the
+        ## annotation format rather than on the detector. The bounding box is
+        ## derived for comparability and the polygon is kept alongside it.
+        proposals = []
+        for det in detections:
+            xs = [p[0] for p in det.polygon]
+            ys = [p[1] for p in det.polygon]
+            proposals.append({
+                "bbox": [min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys)],
+                "polygon": [list(p) for p in det.polygon],
+                "confidence": round(float(det.confidence), 3),
+            })
+        return {"reachable": True, "reason": None, "proposals": proposals}
+    except Exception as exc:
+        return {"reachable": False, "reason": f"{type(exc).__name__}: {exc}",
+                "proposals": None}
+
+
+def report(image_path: Path, languages, gt_path: Path, mag_ratio=1.0,
+           with_paddle: bool = False):
     from tofu.layers.cicerone import EasyOCRBackend
 
-    gt = json.loads(gt_path.read_text(encoding="utf-8"))["regions"]
+    gt_doc = json.loads(gt_path.read_text(encoding="utf-8"))
+    gt = gt_doc["regions"]
+    ## Whether every piece of text in this image is annotated. It decides
+    ## what a high score over a "text-free" surface is allowed to mean.
+    gt_partial = bool(gt_doc.get("partial_annotation", gt_doc.get("partial", True)))
     region, affinity, scale, _reader = score_maps(image_path, languages, mag_ratio)
     proposals = raw_proposals(region, affinity, scale)
     background = float(np.median(region))
@@ -267,6 +341,50 @@ def report(image_path: Path, languages, gt_path: Path, mag_ratio=1.0):
             "crop_text": crop_text,
             "verdict": classify(peak_r, best, len(overlaps)),
         })
+    ## The negative arm: the same measurement where there is no text.
+    ## `peak_region` inside annotated text answers "does it see text?";
+    ## `peak_region` inside a text-free surface answers "does it invent
+    ## text?". The SEPARATION between the two distributions is the
+    ## discrimination claim, measured rather than asserted.
+    negatives = []
+    for surface in text_free_surfaces(image_path, gt):
+        pr = patch(region, surface["bbox"], scale)
+        negatives.append({
+            "bbox": surface["bbox"],
+            "label": surface["label"],
+            "peak_region": round(float(pr.max()) if pr is not None and pr.size else 0.0, 3),
+            "raw_overlaps": len([p for p in proposals if _iou(surface["bbox"], p) > 0.05]),
+        })
+
+    text_peaks = [r["peak_region"] for r in rows]
+    scene_peaks = [n["peak_region"] for n in negatives]
+    separation = None
+    if text_peaks and scene_peaks:
+        separation = {
+            "text_peak_median": round(float(np.median(text_peaks)), 3),
+            "scene_peak_median": round(float(np.median(scene_peaks)), 3),
+            "text_peak_min": round(min(text_peaks), 3),
+            "scene_peak_max": round(max(scene_peaks), 3),
+            ## True only when EVERY annotated region outscores EVERY
+            ## text-free surface on this image. A weak claim deliberately:
+            ## it is falsifiable from one image, whereas medians are not.
+            "cleanly_separated": min(text_peaks) > max(scene_peaks),
+            ## THE CAVEAT THAT DECIDES WHAT A HIGH SCENE PEAK MEANS.
+            ##
+            ## "Text-free" here means "overlaps no ANNOTATED box". On a
+            ## partially-annotated fixture that is not the same as
+            ## containing no text -- unlisted text is real text, correctly
+            ## detected -- so a scene surface scoring like text is at least
+            ## as likely to be a hole in the annotation as a false positive
+            ## by the detector.
+            ##
+            ## Which means the max/min overlap CANNOT be read as evidence
+            ## that the detector confuses scene for glyphs. Only the
+            ## complete annotations can carry that claim, and they are the
+            ## minority of this corpus.
+            "negatives_trustworthy": not bool(gt_partial),
+        }
+
     return {
         "image": str(image_path),
         "languages": list(languages),
@@ -274,6 +392,14 @@ def report(image_path: Path, languages, gt_path: Path, mag_ratio=1.0):
         "score_map_background_median": round(background, 4),
         "raw_proposal_count": len(proposals),
         "regions": rows,
+        "text_free_surfaces": negatives,
+        "separation": separation,
+        ## Recorded on EVERY run, reachable or not. A field that is simply
+        ## absent when Paddle is missing is indistinguishable from one where
+        ## Paddle ran and found nothing.
+        "paddle": paddle_probe(image_path, languages) if with_paddle
+                  else {"reachable": None, "reason": "not requested (--paddle)",
+                        "proposals": None},
     }
 
 
@@ -282,6 +408,8 @@ def main() -> int:
     ap.add_argument("image", nargs="?", default=None)
     ap.add_argument("--lang", default=None)
     ap.add_argument("--mag-ratio", type=float, default=1.0)
+    ap.add_argument("--paddle", action="store_true",
+                    help="also probe PaddleOCR's detector (records reachability either way)")
     ap.add_argument("--out", type=Path, default=ROOT / "scripts" / "eval_out")
     args = ap.parse_args()
 
@@ -302,7 +430,8 @@ def main() -> int:
         if not gt_path.exists():
             print(f"no ground truth for {image_path.name}", file=sys.stderr)
             continue
-        data = report(image_path, expand_langset([lang]), gt_path, args.mag_ratio)
+        data = report(image_path, expand_langset([lang]), gt_path, args.mag_ratio,
+                      with_paddle=args.paddle)
 
         print(f"\n### {image_path.name}  (lang={lang}, mag={args.mag_ratio})")
         print(f"    score-map background median {data['score_map_background_median']}, "
@@ -319,6 +448,23 @@ def main() -> int:
         for r in data["regions"]:
             tally[r["verdict"]] = tally.get(r["verdict"], 0) + 1
         print(f"    -> {tally}")
+
+        sep = data["separation"]
+        if sep:
+            print(f"    text peaks median {sep['text_peak_median']} (min {sep['text_peak_min']})"
+                  f"  vs {len(data['text_free_surfaces'])} text-free surfaces "
+                  f"median {sep['scene_peak_median']} (max {sep['scene_peak_max']})"
+                  f"  -> {'separated' if sep['cleanly_separated'] else 'OVERLAPPING'}")
+            if not sep["negatives_trustworthy"]:
+                print("      (annotation is PARTIAL: a scene surface scoring like text "
+                      "is as likely a hole in the annotation as a detector error)")
+        else:
+            print("    no text-free scene surfaces on this image; "
+                  "discrimination not measurable here")
+        paddle = data["paddle"]
+        print(f"    paddle: reachable={paddle['reachable']}"
+              + (f" ({paddle['reason']})" if paddle["reason"] else "")
+              + (f", {len(paddle['proposals'])} proposals" if paddle["proposals"] is not None else ""))
 
         path = args.out / f"{image_path.stem}.evidence.json"
         path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")

@@ -41,6 +41,14 @@ const STINK_CX = [4.5, 11.5, 18.5];          // centered across ~23px block widt
 const STINK_DY = [0, -3, 0];                  // middle line sits higher (block shape)
 const STINK_DELAYS = ["0s", "0.25s", "0.55s"];
 
+// Preload both block images at module load so the first "saving" state doesn't
+// wait on a network fetch — the block would be invisible until the image
+// arrives, which can take seconds on a cold cache.
+for (const src of ["/save-anim-block.png", "/save-anim-block-dark.png"]) {
+  const img = new Image();
+  img.src = src;
+}
+
 export default function SaveAnimIndicator({ status, theme }: { status: Status; theme: "light" | "dark" }) {
   const [mounted, setMounted] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);   // outer: gets opacity fade

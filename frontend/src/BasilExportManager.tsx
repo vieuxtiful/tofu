@@ -3,11 +3,22 @@ import { ArrowDownToLine, ChevronDown, Loader2 } from "lucide-react";
 import { exportFile } from "./api";
 import { FlipButton } from "./Buttons";
 
-interface ExportPanelProps {
+/**
+ * The Translation File Manager — the boundary where a spatial manifest
+ * leaves ToFU as a translation file.
+ *
+ * Relocated from Capture to sit under the Translate step's text manifest.
+ * Everything a user or a CAT/TMS tool can observe is carried over verbatim:
+ * the card's own styling, the "Export" heading, the format order, the XLIFF
+ * variants and their icons, filename derivation, the disabled and loading
+ * states, and the blob-download path.  A file exported before the move is
+ * byte-identical to one exported after.
+ */
+
+interface BasilExportManagerProps {
   assetId: string;
   targLang: string;
   disabled: boolean;
-  embedded?: boolean;
   projectName?: string;
 }
 
@@ -34,7 +45,7 @@ const VARIANT_ICONS: Record<string, string> = {
   memoq: "memoq-icon.png",
 };
 
-export default function ExportPanel({ assetId, targLang, disabled, embedded, projectName }: ExportPanelProps) {
+export default function BasilExportManager({ assetId, targLang, disabled, projectName }: BasilExportManagerProps) {
   const [format, setFormat] = useState("xliff");
   const [variant, setVariant] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -78,7 +89,10 @@ export default function ExportPanel({ assetId, targLang, disabled, embedded, pro
   };
 
   return (
-    <div className={embedded ? "space-y-2 p-3" : "bezier-card soft-shadow space-y-3 rounded-lg bg-white/60 p-4 dark:bg-zinc-900/60"}>
+    <section
+      aria-label="Translation File Manager"
+      className="bezier-card soft-shadow space-y-3 rounded-lg bg-white/60 p-4 dark:bg-zinc-900/60"
+    >
       <h3 className="subtext mb-1 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Export</h3>
       <div className="flex flex-wrap gap-2">
         {FORMATS.map((f) => (
@@ -140,6 +154,6 @@ export default function ExportPanel({ assetId, targLang, disabled, embedded, pro
         onClick={onExport}
         disabled={disabled || loading || (currentFormat !== undefined && currentFormat.variants.length > 0 && !variant)}
       />
-    </div>
+    </section>
   );
 }
