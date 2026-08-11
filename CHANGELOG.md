@@ -23,9 +23,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   weighting is the ranker's job, and `layers/ticket.py` records why the ranker
   cannot be priced until reviewer outcomes exist. `unknown` is never a synonym
   for `absent`.
+- **`scene.substrate()`** — samples the surface a text region sits on with
+  every glyph mask excluded, using `SceneRegion.polygon` and each
+  `segmentation_mask`. `cleanse` currently estimates fills from a fixed 14px
+  ring, whose own source notes it can sample an adjacent sign; on dense signage
+  it also samples neighbouring glyphs. Surface-minus-glyphs is both larger and
+  cleaner, and it is the "surrounding surface" a degradation model needs.
+  Observational only — it changes no repair, and returns `None` rather than a
+  fabricated estimate when no sample survives.
 - `docs/vision-2-assessment.md` — the program assessed against measured
   evidence, including a correction to its own §1 after the oracle re-run showed
   crop-read legibility is materially pessimistic for CJK.
+
+### Measured and rejected
+- **A Guided localization oracle is not answerable in this architecture.**
+  Three attempts — crops at `pad=0` (42.3%), the backend's crop path (57.1%),
+  and the full pipeline via `seed_detections` (64.0%) — all scored below the
+  Auto arm's 67.2%, which an oracle cannot. The pipeline's merge and assembly
+  stages rewrite supplied geometry, and those same stages are what make text
+  readable, so localization cannot be replaced on its own. Indexed in
+  `docs/measured-dead-ends.md`.
 
 ### Fixed
 - **Guided Blocks are no longer flattened before `mise` sees them.** Entries

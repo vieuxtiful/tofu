@@ -83,9 +83,20 @@ leaves ~63% of requested occurrences unfound. That is independent support for
 Track A: on the strata where the measurement can be trusted, the residual loss
 is recognition.
 
-A fully valid oracle still needs ground-truth geometry injected into the
-pipeline's *own* recognition path after detection — a change in `cicerone`, not
-in the harness. Full numbers in `docs/gate2-status.md`.
+That injection was then built (`cicerone.detect(seed_detections=...)`) and run:
+**64.0%, still below Auto.** The cause is not padding and not a disabled stage —
+both were tested. The pipeline's merge and assembly stages *rewrite supplied
+geometry* (three seeded boxes emerge as one region on `cjk-vertical-menu`), and
+those stages are also what make text readable.
+
+**So localization and recognition are entangled in this architecture, and no
+configuration replaces localization alone.** That is a finding Vision 2 should
+absorb directly: the program's clean split — Cicerone for identity, Scene for
+process, fused at the end — assumes the two can be reasoned about separately.
+At least for CJK they currently cannot, and a Track A evaluation that holds
+geometry fixed will not behave the way the design diagram implies. Full numbers
+in `docs/gate2-status.md`; the negative result is indexed in
+`docs/measured-dead-ends.md`.
 
 ## 2. The unifying model double-counts the observation
 

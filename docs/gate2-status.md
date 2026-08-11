@@ -84,62 +84,66 @@ Unknown, and deliberately not guessed at. The relevant fact is the **48
 occurrences neither arm found** — that is where any further margin has to come
 from, and nothing here says whether they are locatable at all.
 
-### The oracle arm: two runs, and what they establish
+### The oracle arm: three runs, and a negative result
 
-| arm | recall | note |
+| arm | recall | what it measured |
 |---|---:|---|
 | Auto | 67.2% | |
 | Guided | 74.6% | |
-| oracle **v1** (`pad=0`) | **42.3%** | measurement bug |
-| oracle **v2** (pipeline crop path) | **57.1%** | still not a ceiling |
+| oracle v1 — crops at `pad=0` | 42.3% | a padding bug |
+| oracle v2 — the backend's crop path | 57.1% | the crop path, not the pipeline |
+| oracle v3 — `seed_detections`, full pipeline | **64.0%** | **still not a ceiling** |
 
-**v1 was wrong, and the bug is worth recording.** It read annotated crops through
-`detect_in_regions(..., pad=0)`, cropping tighter than the pipeline ever does --
-while `crop_legibility` in `eval_detector_evidence.py` had already learned to use
-the backend's own crop path (pad 4, upscale to `MIN_CROP_HEIGHT`) for exactly
-this reason. Fixing it moved the arm **42.3% -> 57.1%: a 14.8-point measurement
-artefact.**
+**v1 -> v2 was a real bug worth 14.8 points.** `pad=0` cropped tighter than the
+pipeline ever does; `crop_legibility` in `eval_detector_evidence.py` had already
+learned to use the backend's own crop path for the same reason.
 
-**v2 is still below both real arms, and that is structural rather than a bug.**
-No crop-based oracle can bound this pipeline, because the crop path *is* a weaker
-recogniser than the pipeline: Auto and Guided get the multipass ladder, zoom,
-surface probes, edge rescue and the correction layers, and a per-crop read gets
-none of them. The remaining ~10-point gap to Auto is that machinery.
+**v2 -> v3 moved the seam into the layer.** `cicerone.detect(seed_detections=...)`
+replaces the detector and keeps the pipeline's own recognition -- multipass,
+edge rescue, polish, the correction layers. On two RTL assets the arm went
+53.8% -> 76.9%, from absurd to plausible.
 
-Per stratum, oracle minus Auto:
+**And v3 is still below Auto. That is the finding.**
 
-| stratum | expected | Auto | oracle v2 | delta |
+| stratum | expected | Auto | oracle v3 | delta |
 |---|---:|---:|---:|---:|
-| `japanese_vertical` | 9 | 77.8% | 22.2% | **-55.6** |
-| `japanese_horizontal` | 23 | 65.2% | 21.7% | **-43.5** |
-| `rtl_bidi` | 22 | 59.1% | 40.9% | -18.2 |
+| `japanese_vertical` | 9 | 77.8% | 44.4% | **-33.3** |
 | `latin_horizontal` | 39 | 92.3% | 84.6% | -7.7 |
-| `mixed_script_numeric` | 55 | 78.2% | 80.0% | **+1.8** |
+| `mixed_script_numeric` | 55 | 78.2% | 72.7% | -5.5 |
+| `rtl_bidi` | 22 | 59.1% | 59.1% | +0.0 |
+| `japanese_horizontal` | 23 | 65.2% | 69.6% | **+4.3** |
 | `nonlinear_irregular` | 41 | 31.7% | 36.6% | **+4.9** |
 
-Two things follow, and they point in opposite directions:
+The obvious explanation -- that disabling `zoom` and `vertical_split` crippled
+vertical CJK -- was tested and is WRONG. Re-running the three vertical assets
+with those stages back on changes nothing (2/4 and 0/3 either way).
 
-1. **On CJK, ToFU's recognition is carried almost entirely by the multipass and
-   zoom passes.** A single crop read reaches 22% where the pipeline reaches
-   65-78%. Any measurement that reads CJK from a crop -- including
-   `crop_legibility` -- is therefore **materially pessimistic** and must not be
-   quoted as evidence about what is legible.
-2. **On `mixed_script_numeric` and `nonlinear_irregular` the oracle is a valid
-   lower bound**, because there the crop path is comparable to the pipeline. And
-   there it sits only **+1.8 and +4.9** above Auto. On `nonlinear_irregular` --
-   the worst stratum in the corpus -- **perfect localization still leaves ~63% of
-   requested occurrences unfound.**
+The probe showed the real mechanism: on `cjk-vertical-menu`, **three seeded
+boxes come out as one region.** The pipeline's merge and assembly stages
+(`merge_detections`, `merge_vertical_columns`, `merge_baseline_runs`,
+`split_tall_detections`) rewrite the geometry they are given. Supplying boxes
+does not hold them fixed.
 
-Point 2 is the one that bears on the 0.6-point gap. Where the oracle is
-trustworthy, handing the pipeline perfect boxes buys very little, so the
-remaining loss there is **recognition, not localization**, and no amount of
-guidance addresses it.
+**So localization and recognition are not separable in this architecture.** The
+stages that reshape geometry are the same stages that make text readable -- a
+column of characters has to be merged before it reads as a word. Disable them
+and recognition degrades; leave them on and the supplied geometry is modified
+before it is scored. There is no configuration that replaces localization
+alone.
 
-That is a partial answer, not the whole one. A fully valid oracle still needs
-ground-truth geometry injected into the pipeline's OWN recognition path after
-detection -- a `cicerone` change, not a harness change -- so that only
-localization is replaced. Until then CJK and RTL remain unmeasured on this
-question.
+That makes "what if the user drew every box perfectly?" a question this
+codebase cannot currently answer, and three successive attempts to answer it
+have each been better-founded than the last and still wrong. Recorded in
+`docs/measured-dead-ends.md`. Answering it properly needs a geometry-preserving
+recognition path -- a design change, not a harness flag -- and that should be
+justified by something other than curiosity before anyone builds it.
+
+**What survives for Gate 2:** on `nonlinear_irregular` and
+`japanese_horizontal` the oracle beats Auto by only +4.9 and +4.3 while Guided
+beats it by +7.3 and +13.0. Guided already exceeds what perfect localization
+delivers on those strata, which is evidence that guidance is contributing
+something other than better boxes -- and no evidence at all that the remaining
+0.6-point gap is closable by localization.
 
 ## Reproducing
 

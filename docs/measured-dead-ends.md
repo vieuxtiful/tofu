@@ -30,6 +30,16 @@ Reproduce any row with `scripts/eval_detect.py`; the localization metric is
 | Zoom inflation gate (`MAX_ZOOM_INFLATION`) | 0.706 < 0.738, matched 51→48. **No threshold window exists** — decolonisons degrades at 8.0× before la-bastille improves at 3.5×. | `union_prefer_primary`, in-place note |
 | Family B expansion **as a recall mechanism** | Geometric oracle 24/33 matched, score-guided oracle **19/33 — zero gain**. The five recoverable gemini columns have no CRAFT region-map mass in the bands that would reach them. Detector belief failure, not selector failure. | `eval_expansion_oracle.py` |
 
+## Measurement
+
+| Intervention | Result | Detail |
+|---|---|---|
+| A Guided **localization oracle** ("what if the user drew every box perfectly?") | **Not answerable in this architecture.** Three attempts: annotated crops at `pad=0` (42.3%), the backend's own crop path (57.1%), and `cicerone.detect(seed_detections=...)` running the full pipeline (64.0%) — all BELOW the Auto arm's 67.2%, which an oracle cannot be. The first two measured the crop path rather than the pipeline. The third measured the pipeline, and still failed: the merge and assembly stages rewrite supplied geometry (three seeded boxes come out as one region on `cjk-vertical-menu`), and those same stages are what make text readable. Disabling them degrades recognition; leaving them on modifies the geometry. **Localization and recognition are entangled**, so no configuration replaces localization alone. | `docs/gate2-status.md`, `layers/cicerone.detect(seed_detections=)` |
+
+`seed_detections` is kept: it is the right seam, and it is what a
+geometry-preserving recognition path would build on. What is rejected is the
+claim that any current configuration yields a ceiling.
+
 ## Recognition
 
 | Intervention | Result | Detail |

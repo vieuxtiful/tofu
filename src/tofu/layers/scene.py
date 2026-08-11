@@ -32,6 +32,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from tofu.core.types import (
     ImageLike, TextManifest, StyleProfil, BgProfil, SceneRegion, BBox, CharactText, GarnishProfile,
+    InstText,
 )
 from tofu.utils.imaging import load_rgb as _load_rgb, text_mask as _text_mask
 
@@ -966,3 +967,130 @@ def analyze(asset: ImageLike, text_manifest: TextManifest) -> TextManifest:
         # language model must never degrade Scene/Cleanse/Scribe execution.
         pass
     return text_manifest
+
+
+## --- substrate: the surface a text region sits ON, with the text removed ---
+##
+## Restoration is only as good as its sample of the material underneath, and
+## the sample is where restoration quietly goes wrong. `cleanse` currently
+## estimates from a fixed 14px ring around the glyph mask, and its own source
+## records the failure mode: "a ring touching an adjacent sign can be a much
+## worse estimate", mitigated by anchoring to Scene's dominant colour. A ring
+## has a second contamination it does not mitigate -- on dense signage it
+## samples NEIGHBOURING GLYPHS, so the "background" estimate is partly other
+## people's text.
+##
+## Scene already holds both halves of the fix. `SceneRegion.polygon` is the
+## surface outline, and every `InstText.segmentation_mask` is a glyph outline.
+## Surface minus ALL glyphs is the substrate, and it is both larger and
+## cleaner than any ring.
+##
+## This is also the input the material/degradation work needs: inferring how
+## a surface has weathered requires looking at the surface, not at the letters
+## on top of it. Kept OBSERVATIONAL here -- it measures and reports, and
+## changes no repair. Wiring it into `cleanse` is a separate, measured step,
+## because swapping the estimator under a corpus that was tuned around the
+## ring is exactly the kind of change that has to be scored before it ships.
+
+## How far each glyph mask is grown before exclusion. Anti-aliased edges
+## carry glyph colour for a couple of pixels beyond the mask, and sampling
+## those as substrate would drag the estimate toward the ink.
+## `reasoned` -- it matches cleanse.DILATE_ITER's ~3px growth, chosen there
+## for the same anti-aliasing reason. Not swept.
+SUBSTRATE_EXCLUDE_PX = 3
+
+## Below this many surviving pixels the sample is not worth reporting: a
+## handful of pixels gives a median with no stability. `reasoned` against
+## cleanse.MIN_RING_PIXELS = 20, which is the same judgement for the ring.
+SUBSTRATE_MIN_PIXELS = 20
+
+
+def substrate(
+    asset: ImageLike,
+    region: SceneRegion,
+    instances: Optional[List[InstText]] = None,
+) -> Optional[Dict[str, Any]]:
+    """Sample the surface inside `region`, excluding every glyph on it.
+
+    Returns None when the sample cannot be taken at all -- a missing image,
+    no surviving pixels -- rather than returning a fabricated estimate, and
+    reports `trustworthy: False` when it is too small to rely on. A
+    restoration that cannot tell "no sample" from "a bad sample" is how
+    hallucinated material gets treated as observed.
+    """
+    try:
+        import cv2
+        import numpy as np
+    except ImportError:
+        return None
+
+    img = _load_rgb(asset)
+    if img is None:
+        return None
+    height, width = img.shape[:2]
+
+    ## The surface itself: its polygon when scene traced one, else its box.
+    surface = np.zeros((height, width), dtype=np.uint8)
+    if region.polygon:
+        points = np.array([[int(x), int(y)] for x, y in region.polygon], dtype=np.int32)
+        cv2.fillPoly(surface, [points], 1)
+    else:
+        x0 = max(0, int(region.bbox.x)); y0 = max(0, int(region.bbox.y))
+        x1 = min(width, x0 + int(region.bbox.width))
+        y1 = min(height, y0 + int(region.bbox.height))
+        surface[y0:y1, x0:x1] = 1
+    if not surface.any():
+        return None
+    surface_pixels = int(surface.sum())
+
+    ## Every glyph in the IMAGE, not only those attributed to this surface.
+    ## A neighbouring sign's text overlapping this polygon is contamination
+    ## whoever it belongs to.
+    glyphs = np.zeros((height, width), dtype=np.uint8)
+    excluded = 0
+    for inst in instances or []:
+        mask = getattr(inst, "segmentation_mask", None)
+        if mask is not None and mask.polygon:
+            points = np.array([[int(x), int(y)] for x, y in mask.polygon], dtype=np.int32)
+            cv2.fillPoly(glyphs, [points], 1)
+            for hole in (mask.holes or []):
+                hole_pts = np.array([[int(x), int(y)] for x, y in hole], dtype=np.int32)
+                cv2.fillPoly(glyphs, [hole_pts], 0)
+        else:
+            ## No mask: fall back to the bounding box, which over-excludes.
+            ## Over-excluding shrinks the sample; under-excluding poisons it.
+            box = getattr(inst, "bounding_box", None)
+            if box is None:
+                continue
+            x0 = max(0, int(box.x)); y0 = max(0, int(box.y))
+            glyphs[y0:min(height, y0 + int(box.height)),
+                   x0:min(width, x0 + int(box.width))] = 1
+        excluded += 1
+
+    if glyphs.any() and SUBSTRATE_EXCLUDE_PX > 0:
+        kernel = np.ones((SUBSTRATE_EXCLUDE_PX * 2 + 1,) * 2, np.uint8)
+        glyphs = cv2.dilate(glyphs, kernel, iterations=1)
+
+    sample = (surface > 0) & (glyphs == 0)
+    pixels = int(sample.sum())
+    if pixels == 0:
+        return None
+
+    values = img[sample].reshape(-1, 3).astype(np.float64)
+    median = np.median(values, axis=0)
+    return {
+        "schema": 1,
+        "pixels": pixels,
+        "surface_pixels": surface_pixels,
+        ## What fraction of the surface survived exclusion. A low figure on a
+        ## dense sign says the substrate is barely visible, which is a fact
+        ## about the asset the caller should be able to see.
+        "coverage": round(pixels / surface_pixels, 3) if surface_pixels else 0.0,
+        "glyph_regions_excluded": excluded,
+        "median_color": "#%02x%02x%02x" % tuple(int(round(c)) for c in median),
+        ## Per-channel spread, the cheapest available roughness proxy: a flat
+        ## painted panel and weathered masonry differ here before any
+        ## material model is involved.
+        "std": [round(float(v), 2) for v in values.std(axis=0)],
+        "trustworthy": pixels >= SUBSTRATE_MIN_PIXELS,
+    }
