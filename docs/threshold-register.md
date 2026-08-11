@@ -84,6 +84,22 @@ actually killing candidates before anything is swept.
 | `mag_ratio` | 1.0 (default) | **`measured`** | 1.5–3.0 swept: japan-street −0.143, la-bastille −0.061, ~1.8× wall clock, curve non-monotonic. Rejected. |
 | `rotation_info` | unset | **`measured`** | `[90,270]` gave zero benefit, twice. |
 
+## Evidence survival — `src/tofu/layers/decant.py`
+
+Added 2026-08-11 with Vision 2 Track A. Registered on creation rather than
+retrospectively, which is the point of this file.
+
+| Constant | Value | Provenance | Basis / note |
+|---|---:|---|---|
+| `LEGIBLE_GLYPH_PX` | 12.0 | `reasoned` | Two observations agree here and neither was swept: `EasyOCRBackend.MIN_CROP_HEIGHT` is 40px because reads degrade below it, and `la-bastille`'s annotation note records ±3px box error at 13–14px line height — error large relative to the box. **Not swept.** |
+| `LOW_CONFIDENCE` | 0.3 | `invented` | Deliberately may only ever contribute a *reason* and downgrade to `partial`, never decide a state alone: cicerone records a correctly-scripted CJK read at 0.015 against a wrong-charset garbage read at 0.087, so confidence is not trusted to condemn. |
+| `NO_ACTIVATION` | 0.10 | `measured` | Inherited from `eval_detector_evidence`, where it is set below the pipeline's loosest `low_text` so stone grain is not counted as activation. |
+| `PROPOSAL_FLOOR` | 0.20 | `measured` | `PASS_THRESHOLDS[-1]`'s `low_text` — the loosest rung the pipeline ever runs. A peak below it was never going to form a proposal however anything else is tuned. |
+
+No weights, and deliberately no scalar: `decant` returns a state plus the
+measurements behind it. Combining these into a score is the ranker's job, and
+`layers/ticket.py` records why the ranker cannot be priced yet.
+
 ## Recognition — `src/tofu/utils/textmatch.py`
 
 | Constant | Value | Provenance | Basis / note |

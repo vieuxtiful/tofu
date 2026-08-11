@@ -45,6 +45,18 @@ SERVER_OWNED_FIELDS = (
     "candidate_lineage",  ## okara's append-only proposal DAG
 )
 
+## Per-INSTANCE fields with the same problem, listed for the same reason.
+## These live inside `instances`, so the manifest-level merge above cannot
+## protect them -- a client that round-trips a region without them drops
+## them. Recorded here so the next provenance field has somewhere obvious to
+## be declared, and so the serializer audit has something to check against.
+SERVER_OWNED_INSTANCE_FIELDS = (
+    "scene_eligibility",     ## the scene filter's verdict, veto on or off
+    "review_features",       ## layers/ticket.py's per-candidate ticket
+    "lineage_candidate_id",  ## the join from a shipped region to its okara node
+    "evidence_survival",     ## layers/decant.py's survival verdict
+)
+
 
 def _garnish_to_dict(profile: Optional[GarnishProfile]) -> Optional[dict]:
     return None if profile is None else {
@@ -327,6 +339,24 @@ def _inst_to_dict(inst: InstText) -> dict:
         "recognition_history": inst.recognition_history,
         "ocr_provenance": inst.ocr_provenance,
         "ocr_quality": inst.ocr_quality,
+        ## Provenance that was being written in memory and dropped on save,
+        ## the same defect class as candidate_lineage. `lineage_candidate_id`
+        ## is the one that matters most: it is the stamp joining a shipped
+        ## region to its okara node, so without it the persisted graph cannot
+        ## be attributed back to the regions it produced. `scene_eligibility`
+        ## records the scene filter's verdict whether or not the veto is
+        ## enabled -- which is only true if it survives the write.
+        "scene_eligibility": inst.scene_eligibility,
+        "review_features": inst.review_features,
+        "lineage_candidate_id": inst.lineage_candidate_id,
+        "evidence_survival": getattr(inst, "evidence_survival", None),
+        ## Video identity. Dropping these silently un-tracked every instance
+        ## on reload.
+        "source_asset_id": inst.source_asset_id,
+        "target_asset_id": inst.target_asset_id,
+        "frame_index": inst.frame_index,
+        "temporal_span": list(inst.temporal_span) if inst.temporal_span else None,
+        "track_id": inst.track_id,
         "repair_provenance": inst.repair_provenance,
         "reconstruction_profile": (
             asdict(inst.reconstruction_profile)
@@ -510,6 +540,17 @@ def _dict_to_manifest(data: dict) -> TextManifest:
             recognition_history=idict.get("recognition_history"),
             ocr_provenance=idict.get("ocr_provenance"),
             ocr_quality=idict.get("ocr_quality"),
+            scene_eligibility=idict.get("scene_eligibility"),
+            review_features=idict.get("review_features"),
+            lineage_candidate_id=idict.get("lineage_candidate_id"),
+            evidence_survival=idict.get("evidence_survival"),
+            source_asset_id=idict.get("source_asset_id"),
+            target_asset_id=idict.get("target_asset_id"),
+            frame_index=idict.get("frame_index"),
+            temporal_span=(
+                tuple(idict["temporal_span"]) if idict.get("temporal_span") else None
+            ),
+            track_id=idict.get("track_id"),
             repair_provenance=idict.get("repair_provenance"),
             reconstruction_profile=(
                 ReconstructionProfile(**idict["reconstruction_profile"])

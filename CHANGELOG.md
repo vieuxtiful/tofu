@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — ToFU Vision 2, first increment
+- **`cicerone.detect(seed_detections=...)`** — replace the detector with
+  supplied geometry and run the normal recognition pipeline over it. Built for
+  the Guided oracle, which cannot be answered by re-reading crops: two
+  crop-based attempts scored 42.3% and 57.1%, both *below* the Auto arm they
+  were meant to bound, because the crop path skips multipass, zoom, surface
+  probes, edge rescue and the correction layers. On CJK that machinery is
+  nearly the whole read (22% from a crop vs 65–78% from the pipeline).
+- **`layers/decant.py`** — evidence survival, kept separate from candidate
+  ranking. Answers "is there enough here to justify choosing *any* reading?",
+  which a ranking cannot: a candidate can lead because every alternative was
+  eliminated. Returns a state (`absent` / `weak` / `partial` / `present` /
+  `unknown`) plus the measurements behind it, and **deliberately no score** —
+  weighting is the ranker's job, and `layers/ticket.py` records why the ranker
+  cannot be priced until reviewer outcomes exist. `unknown` is never a synonym
+  for `absent`.
+- `docs/vision-2-assessment.md` — the program assessed against measured
+  evidence, including a correction to its own §1 after the oracle re-run showed
+  crop-read legibility is materially pessimistic for CJK.
+
 ### Fixed
 - **Guided Blocks are no longer flattened before `mise` sees them.** Entries
   were split on whitespace by the frontend and split *and deduplicated* again
@@ -25,6 +45,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `manifest_store.SERVER_OWNED_FIELDS` are now carried forward when a payload
   does not *mention* them; an explicit `[]`/`null` still clears, and
   `DELETE /api/assets/{id}/guided-blocks` clears deliberately.
+- **Eight per-region fields were dropped on every save.** `_inst_to_dict`
+  omitted `scene_eligibility`, `review_features`, `lineage_candidate_id` and
+  the five video-identity fields, so `ticket.py`'s output never reached disk,
+  the scene filter's "on the record either way" verdict was not, and — worst —
+  the stamp joining a shipped region to its okara node was lost, leaving the
+  newly-persisted lineage graph unattributable after a reload. A test now
+  parametrises over the dataclass, so a new field fails a test rather than
+  losing a user's work.
 - **`candidate_lineage` is persisted.** okara's proposal graph had no key in
   `_manifest_to_dict`, so it was dropped by the first `save_manifest` after
   detection and had never reached disk; every recorded lineage figure came

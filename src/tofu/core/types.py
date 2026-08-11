@@ -264,6 +264,11 @@ class InstText:
     ## than starting a collection period from zero. Purely descriptive: no
     ## stage may order, hide or discard on it.
     review_features: Optional[Dict[str, Any]] = None
+    ## How much identity-bearing evidence survives here (layers/decant.py):
+    ## {state, reasons, measured, schema}. Deliberately NOT a score --
+    ## "which candidate wins" and "is there enough here to choose at all"
+    ## are different questions, and a ranking cannot tell them apart.
+    evidence_survival: Optional[Dict[str, Any]] = None
     source_override: Optional[Dict[str, Any]] = None  ## durable applied-source attribution: {kind, text, icon, color, resource}; independent of the correction scratch slot
     recognition_history: Optional[List[Dict[str, Any]]] = None  ## immutable audit trail of engine candidates and accepted/rejected corrections
     ## The okara candidate this region was built from. In-memory only (not

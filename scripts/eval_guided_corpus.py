@@ -245,132 +245,58 @@ def score_guided(entry: Dict[str, Any], manifest: Any, iou_threshold: float) -> 
     }
 
 
-_ORACLE_BACKENDS: Dict[str, Any] = {}
-
-
-def _oracle_backend(language: str | None):
-    """One recogniser per language set, reused across crops.
-
-    Constructing an EasyOCR reader per occurrence would dominate the
-    runtime and measure model loading rather than recognition.
-    """
-    from tofu.core.types import BBox  # noqa: F401  (used by score_oracle)
-    from tofu.layers import cicerone
-    key = language or "en"
-    if key not in _ORACLE_BACKENDS:
-        langset = cicerone.expand_langset([language]) if language else ("en",)
-        _ORACLE_BACKENDS[key] = cicerone.EasyOCRBackend(languages=langset, gpu=False)
-    return _ORACLE_BACKENDS[key]
-
-
 def score_oracle(entry: Dict[str, Any], manifest: Any, iou_threshold: float) -> Dict[str, Any]:
-    """INVALID AS A CEILING AS WRITTEN. Measured 2026-08-11: 42.3% (80/189),
-    BELOW Auto's 67.2% and Guided's 74.6%.
+    """The CEILING: what if the user drew every box perfectly?
 
-    That is not a finding about guidance, it is a contradiction that proves
-    the arm is mis-specified. An oracle handed perfect localization cannot
-    score below an arm that had to find the boxes itself unless the two are
-    being read by different machinery -- and they are.
+    Localization is replaced and NOTHING ELSE IS. The annotated boxes are
+    fed to `cicerone.detect(seed_detections=...)`, so the read goes through
+    the pipeline the product actually runs -- multipass recognition, edge
+    rescue, polish, and the correction layers -- rather than through a bare
+    per-crop call.
 
-    WHY IT IS WRONG. This reads each annotated crop through a bare
-    `EasyOCRBackend.detect_in_regions(..., pad=0)`. The product's recognition
-    is not that. It is a multipass ladder plus zoom, surface probes, edge
-    rescue, language-set expansion and the correction layers -- and the
-    corpus annotations are DETECTOR-scale boxes, so `pad=0` crops tighter
-    than anything the pipeline reads. `la-bastille`'s own annotation note
-    records the consequence directly: a box tight to the glyphs of a
-    comparable word reads as garbage at 0.303.
+    That distinction is the whole history of this function. Two earlier
+    versions read the annotated crops directly and scored 42.3% (pad=0) and
+    57.1% (the backend's crop path), BOTH below the Auto arm's 67.2%. An
+    oracle cannot score below the arm it bounds; those runs were measuring
+    the crop path, which on CJK reaches 22% where the pipeline reaches
+    65-78%. See docs/gate2-status.md.
 
-    The per-stratum numbers make the mechanism plain -- japanese_horizontal
-    8.7% and japanese_vertical 11.1%, exactly the strata whose reads depend
-    most on the zoom and rescue passes this arm skips.
-
-    So this measures A DIFFERENT CONFIGURATION FROM THE ONE THE PRODUCT RUNS,
-    which is the trap `docs/measured-dead-ends.md` names twice as the most
-    expensive mistake available here. The number is kept and labelled rather
-    than deleted, because a plausible-looking 42.3% quoted later as "the
-    ceiling" would be worse than no arm at all.
-
-    WHAT A VALID ORACLE NEEDS: the annotated boxes injected into the
-    pipeline's OWN recognition path after detection -- same passes, same
-    padding, same corrections -- so that only localization is replaced.
-    Until then this arm answers nothing about the feature's premise.
-
-    Original intent, still the right question:
-
-    Localization is handed over -- each annotated occurrence is treated as a
-    box the user drew -- and only the read is scored. That separates the two
-    failures the Auto number fuses:
-
-        localization failure   the box was never found
-        recognition failure    the box was found and read wrong
+    `zoom` and `vertical_split` are off because they invent geometry, and
+    this arm exists to hold geometry fixed. Everything else stays on.
 
     It is not an arm anyone ships. It answers the question that has to be
-    asked BEFORE building a guidance feature: if guidance worked perfectly,
-    how much would it be worth? An oracle sitting at the Auto baseline says
-    the remaining loss is recognition, and no amount of guidance addresses
-    that.
-
-    Scored on the same rule as the other arms -- the read must match the
-    requested text -- with the geometry supplied rather than searched for.
+    asked before more guidance work: if guidance worked perfectly, how much
+    would it be worth? An oracle at the Auto baseline says the remaining
+    loss is recognition, and no amount of guidance addresses that.
     """
+    from tofu.core.types import BBox
+    from tofu.layers import cicerone
+
     image = ROOT / entry["image"]["path"]
-    found = expected = 0
-    per_block = []
-    outcomes: List[Dict[str, Any]] = []
-    for block in entry["blocks"]:
-        wanted = _normalize(block["requested_text"])
-        hits = 0
-        for occurrence in block["occurrences"]:
-            expected += 1
-            box = occurrence["bbox"]
-            read = ""
-            try:
-                # The recogniser on the ANNOTATED crop, through the same
-                # backend the product uses. No detection is involved, so a
-                # miss here is a reading failure and nothing else.
-                from tofu.core.types import BBox
-                backend = _oracle_backend(occurrence.get("language"))
-                per_region = backend.detect_in_regions(
-                    str(image),
-                    [BBox(x=int(box[0]), y=int(box[1]),
-                          width=int(box[2]), height=int(box[3]))],
-                    ## DEFAULT pad and upscale, deliberately -- `pad=0` was
-                    ## the first version's mistake. The backend's own crop
-                    ## path pads by 4 and upscales anything under
-                    ## MIN_CROP_HEIGHT, and the corpus boxes are
-                    ## detector-scale; cropping tighter than the pipeline
-                    ## ever does made this arm weaker than the thing it was
-                    ## supposed to bound. `crop_legibility` in
-                    ## eval_detector_evidence.py had already learned this
-                    ## the same way.
-                )
-                read = _normalize(" ".join(
-                    det.text or "" for group in per_region for det in group
-                ))
-            except Exception:
-                # A recogniser that cannot run is not a located occurrence.
-                # Recorded as a miss rather than skipped, so the ceiling is
-                # never flattered by an engine that was absent.
-                read = ""
-            hit = bool(read) and (read == wanted or wanted in read)
-            outcomes.append({
-                "block_id": block["block_id"],
-                "occurrence": len(outcomes), "found": hit,
-            })
-            if hit:
-                hits += 1
-                found += 1
-        per_block.append({
-            "block_id": block["block_id"],
-            "expected": len(block["occurrences"]), "found": hits,
-        })
-    return {
-        "expected": expected, "found": found,
-        "shipped_regions": expected, "unrequested_regions": 0,
-        "partial_annotation": entry["partial_annotation"],
-        "blocks": per_block, "occurrences": outcomes,
-    }
+    language = next(
+        (occ.get("language") for block in entry["blocks"]
+         for occ in block["occurrences"] if occ.get("language")), None
+    )
+    boxes = [
+        BBox(x=int(o["bbox"][0]), y=int(o["bbox"][1]),
+             width=int(o["bbox"][2]), height=int(o["bbox"][3]))
+        for block in entry["blocks"] for o in block["occurrences"]
+    ]
+    kwargs: Dict[str, Any] = {"seed_detections": boxes, "zoom": False,
+                              "vertical_split": False}
+    if language:
+        kwargs["languages"] = [language]
+    try:
+        oracle_manifest = cicerone.detect(str(image), **kwargs)
+    except Exception as exc:
+        raise SystemExit(
+            f"oracle detection failed on {image.name}: {type(exc).__name__}: {exc}"
+        )
+
+    # Scored by the SAME rule as the other arms: a located box must overlap
+    # the annotation and read as the requested text. Only the geometry's
+    # origin differs.
+    return score_asset(entry, oracle_manifest, iou_threshold)
 
 
 SCORERS = {"auto": score_asset, "guided": score_guided, "guided_oracle": score_oracle}

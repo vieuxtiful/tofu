@@ -4137,6 +4137,7 @@ def detect(
     ground_truth_pool: Optional[List[tuple]] = None,
     font_registry: Optional[Any] = None,
     on_stage: Optional[Callable[[Dict[str, Any]], None]] = None,
+    seed_detections: Optional[Sequence[BBox]] = None,
 ) -> TextManifest:
     """detect and localize text instances in the asset.
 
@@ -4194,6 +4195,13 @@ def detect(
             best-effort, silently skipped wherever the isolated
             `.venv-paddle` isn't set up. see `should_paddle_rescue`/
             `run_paddle_rescue`.
+        seed_detections: replace the DETECTOR with these boxes and run the
+            normal recognition pipeline over them. For the Guided oracle —
+            "what if the user drew every box perfectly?" — which cannot be
+            answered by re-reading crops, because the crop path is a weaker
+            recogniser than the pipeline it is meant to bound. Pass
+            zoom=False and vertical_split=False as well to keep localization
+            purely supplied.
         polish: second-look recognition — re-read low-confidence regions
             from upscaled crops with the final engine and keep the
             better read.
@@ -4291,9 +4299,35 @@ def detect(
         else:
             engine = get_backend()
 
+    # Localization supplied from outside: read exactly these boxes and let
+    # every downstream stage run as it normally does.
+    #
+    # This exists for the Guided ORACLE -- "what if the user drew every box
+    # perfectly?" -- and it has to live here rather than in the harness.
+    # Measured 2026-08-11: scoring that question by re-reading annotated
+    # crops through a bare backend gave 42.3% at pad=0 and 57.1% with the
+    # backend's own crop path, BOTH below the Auto arm's 67.2%. An oracle
+    # cannot score below the arm it is supposed to bound; what those runs
+    # actually measured was the crop path, which skips the multipass ladder,
+    # zoom, surface probes, edge rescue and the correction layers. On CJK
+    # that machinery is nearly the whole read (22% from a crop against
+    # 65-78% from the pipeline).
+    #
+    # So: replace ONLY the geometry, and keep the recognition pipeline the
+    # product actually runs. Callers wanting pure localization replacement
+    # should also pass zoom=False and vertical_split=False, since those
+    # stages invent geometry of their own.
+    if seed_detections is not None:
+        boxes = [
+            BBox(x=int(b.x), y=int(b.y), width=int(b.width), height=int(b.height))
+            for b in seed_detections
+        ]
+        per_region = engine.detect_in_regions(asset, boxes) if boxes else []
+        detections = [det for group in per_region for det in group]
+        _record_engine_output(detections)
     # multi-pass detection: EasyOCR uses threshold sweeps, PaddleOCR a
     # single detect call (run_multipass dispatches internally).
-    if multipass and on_stage is not None:
+    elif multipass and on_stage is not None:
         # run_multipass is iter_multipass drained; draining it here instead
         # lets a progress consumer see each threshold pass land, which is
         # the one place the SSE contract is finer-grained than a stage.
