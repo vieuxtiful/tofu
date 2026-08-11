@@ -1,0 +1,572 @@
+{
+  "schema": 1,
+  "faces": [
+    "C:\\Windows\\Fonts\\arial.ttf",
+    "C:\\Windows\\Fonts\\msgothic.ttc"
+  ],
+  "scored_regions": 56,
+  "top1": 6,
+  "top1_rate": 10.7,
+  "rows": [
+    {
+      "image": "avenue-de-la-république.jpeg",
+      "truth": "de la RÉPUBLIQUE",
+      "recognizer_read": "de lb Republique",
+      "matcher_best": "AVENUE",
+      "top1": false,
+      "support": 0.5964,
+      "margin": 0.1462,
+      "candidates": 6
+    },
+    {
+      "image": "china-street.png",
+      "truth": "美珠宝",
+      "recognizer_read": "==3",
+      "matcher_best": "MING",
+      "top1": false,
+      "support": 0.3411,
+      "margin": 0.0352,
+      "candidates": 7
+    },
+    {
+      "image": "china-street.png",
+      "truth": "华联店3F",
+      "recognizer_read": "4 H*3 F",
+      "matcher_best": "MING",
+      "top1": false,
+      "support": 0.521,
+      "margin": 0.0424,
+      "candidates": 7
+    },
+    {
+      "image": "china-street.png",
+      "truth": "茂昌眼镜公司",
+      "recognizer_read": "1",
+      "matcher_best": "MING",
+      "top1": false,
+      "support": 0.2566,
+      "margin": 0.017,
+      "candidates": 7
+    },
+    {
+      "image": "china-street.png",
+      "truth": "MING",
+      "recognizer_read": "",
+      "matcher_best": "MIN6",
+      "top1": false,
+      "support": 0.569,
+      "margin": 0.0148,
+      "candidates": 9
+    },
+    {
+      "image": "china-street.png",
+      "truth": "上海明牌",
+      "recognizer_read": "60A",
+      "matcher_best": "MING",
+      "top1": false,
+      "support": 0.3583,
+      "margin": 0.0291,
+      "candidates": 7
+    },
+    {
+      "image": "china-street.png",
+      "truth": "大娘水饺",
+      "recognizer_read": "6",
+      "matcher_best": "MING",
+      "top1": false,
+      "support": 0.3287,
+      "margin": 0.0212,
+      "candidates": 7
+    },
+    {
+      "image": "decolonisons-nos-rues.jpeg",
+      "truth": "Décolonisons",
+      "recognizer_read": "Decolonisons",
+      "matcher_best": "Déc0lonisons",
+      "top1": false,
+      "support": 0.5849,
+      "margin": 0.0029,
+      "candidates": 11
+    },
+    {
+      "image": "decolonisons-nos-rues.jpeg",
+      "truth": "nos rues !",
+      "recognizer_read": "nosrues4",
+      "matcher_best": "Décolonisons",
+      "top1": false,
+      "support": 0.599,
+      "margin": 0.0402,
+      "candidates": 10
+    },
+    {
+      "image": "decolonisons-nos-rues.jpeg",
+      "truth": "Pour une mémoire des luttes contre les",
+      "recognizer_read": "Pourunememoire des luttes contre les",
+      "matcher_best": "Décolonisons",
+      "top1": false,
+      "support": 0.4423,
+      "margin": 0.0181,
+      "candidates": 13
+    },
+    {
+      "image": "decolonisons-nos-rues.jpeg",
+      "truth": "Texte : Naïké Desquesnes",
+      "recognizer_read": "TexteNaike Desquesnes",
+      "matcher_best": "nos rues !",
+      "top1": false,
+      "support": 0.3937,
+      "margin": 0.014,
+      "candidates": 5
+    },
+    {
+      "image": "gemini-street.png",
+      "truth": "감접",
+      "recognizer_read": "33",
+      "matcher_best": "차",
+      "top1": false,
+      "support": 0.3955,
+      "margin": 0.0428,
+      "candidates": 15
+    },
+    {
+      "image": "gemini-street.png",
+      "truth": "포차",
+      "recognizer_read": "23}",
+      "matcher_best": "차",
+      "top1": false,
+      "support": 0.1857,
+      "margin": 0.0174,
+      "candidates": 15
+    },
+    {
+      "image": "gemini-street.png",
+      "truth": "고깃집",
+      "recognizer_read": "3",
+      "matcher_best": "居酒屋",
+      "top1": false,
+      "support": 0.306,
+      "margin": 0.0226,
+      "candidates": 15
+    },
+    {
+      "image": "gemini-street.png",
+      "truth": "라면·국수",
+      "recognizer_read": "1",
+      "matcher_best": "道頓堀",
+      "top1": false,
+      "support": 0.2641,
+      "margin": 0.0038,
+      "candidates": 15
+    },
+    {
+      "image": "gemini-street.png",
+      "truth": "차",
+      "recognizer_read": "4",
+      "matcher_best": "차",
+      "top1": true,
+      "support": 0.5308,
+      "margin": 0.1726,
+      "candidates": 15
+    },
+    {
+      "image": "gemini-street.png",
+      "truth": "대박식당",
+      "recognizer_read": "Wyad",
+      "matcher_best": "居酒屋",
+      "top1": false,
+      "support": 0.548,
+      "margin": 0.0398,
+      "candidates": 15
+    },
+    {
+      "image": "gemini-street.png",
+      "truth": "대박식당",
+      "recognizer_read": "Lual",
+      "matcher_best": "道頓堀",
+      "top1": false,
+      "support": 0.3843,
+      "margin": 0.0155,
+      "candidates": 15
+    },
+    {
+      "image": "gemini-street.png",
+      "truth": "전주삼겹살",
+      "recognizer_read": "1",
+      "matcher_best": "道頓堀",
+      "top1": false,
+      "support": 0.2751,
+      "margin": 0.0181,
+      "candidates": 15
+    },
+    {
+      "image": "gemini-street.png",
+      "truth": "파식당",
+      "recognizer_read": "5!",
+      "matcher_best": "차",
+      "top1": false,
+      "support": 0.3601,
+      "margin": 0.0925,
+      "candidates": 15
+    },
+    {
+      "image": "gemini-street.png",
+      "truth": "居酒屋",
+      "recognizer_read": "8",
+      "matcher_best": "차",
+      "top1": false,
+      "support": 0.4724,
+      "margin": 0.1202,
+      "candidates": 15
+    },
+    {
+      "image": "gemini-street.png",
+      "truth": "ラーメン",
+      "recognizer_read": "g",
+      "matcher_best": "차",
+      "top1": false,
+      "support": 0.3766,
+      "margin": 0.1031,
+      "candidates": 15
+    },
+    {
+      "image": "gemini-street.png",
+      "truth": "道頓堀",
+      "recognizer_read": "3",
+      "matcher_best": "차",
+      "top1": false,
+      "support": 0.4804,
+      "margin": 0.1106,
+      "candidates": 15
+    },
+    {
+      "image": "gemini-street.png",
+      "truth": "노래방",
+      "recognizer_read": "6",
+      "matcher_best": "차",
+      "top1": false,
+      "support": 0.3919,
+      "margin": 0.0802,
+      "candidates": 15
+    },
+    {
+      "image": "gemini-street.png",
+      "truth": "피시개방",
+      "recognizer_read": "\"",
+      "matcher_best": "차",
+      "top1": false,
+      "support": 0.262,
+      "margin": 0.0395,
+      "candidates": 15
+    },
+    {
+      "image": "gemini-street.png",
+      "truth": "맥주",
+      "recognizer_read": "4",
+      "matcher_best": "차",
+      "top1": false,
+      "support": 0.3532,
+      "margin": 0.028,
+      "candidates": 15
+    },
+    {
+      "image": "gemini-street.png",
+      "truth": "편의맥주",
+      "recognizer_read": "]",
+      "matcher_best": "차",
+      "top1": false,
+      "support": 0.3283,
+      "margin": 0.0286,
+      "candidates": 15
+    },
+    {
+      "image": "japan-street.jpeg",
+      "truth": "歌舞伎町一番街",
+      "recognizer_read": "EEp_T",
+      "matcher_best": "お好み焼本陣",
+      "top1": false,
+      "support": 0.6386,
+      "margin": 0.1208,
+      "candidates": 7
+    },
+    {
+      "image": "japan-street.jpeg",
+      "truth": "劇場通り",
+      "recognizer_read": "6",
+      "matcher_best": "3F",
+      "top1": false,
+      "support": 0.3347,
+      "margin": 0.0101,
+      "candidates": 7
+    },
+    {
+      "image": "japan-street.jpeg",
+      "truth": "お好み焼本陣",
+      "recognizer_read": "1",
+      "matcher_best": "3F",
+      "top1": false,
+      "support": 0.4392,
+      "margin": 0.0261,
+      "candidates": 7
+    },
+    {
+      "image": "japan-street.jpeg",
+      "truth": "バンダイ",
+      "recognizer_read": "",
+      "matcher_best": "2F",
+      "top1": false,
+      "support": 0.4427,
+      "margin": 0.003,
+      "candidates": 7
+    },
+    {
+      "image": "japan-street.jpeg",
+      "truth": "3F",
+      "recognizer_read": "",
+      "matcher_best": "3F",
+      "top1": true,
+      "support": 0.4317,
+      "margin": 0.0251,
+      "candidates": 7
+    },
+    {
+      "image": "japan-street.jpeg",
+      "truth": "東南荘",
+      "recognizer_read": "",
+      "matcher_best": "3F",
+      "top1": false,
+      "support": 0.4186,
+      "margin": 0.0232,
+      "candidates": 7
+    },
+    {
+      "image": "japan-street.jpeg",
+      "truth": "2F",
+      "recognizer_read": "",
+      "matcher_best": "3F",
+      "top1": false,
+      "support": 0.3496,
+      "margin": 0.0195,
+      "candidates": 8
+    },
+    {
+      "image": "la-bastille-1789.jpeg",
+      "truth": "LA",
+      "recognizer_read": "Ia",
+      "matcher_best": "St",
+      "top1": false,
+      "support": 0.6343,
+      "margin": 0.1742,
+      "candidates": 8
+    },
+    {
+      "image": "la-bastille-1789.jpeg",
+      "truth": "BASTILLE",
+      "recognizer_read": "babtille",
+      "matcher_best": "BASTILLE",
+      "top1": true,
+      "support": 0.5733,
+      "margin": 0.0032,
+      "candidates": 11
+    },
+    {
+      "image": "la-bastille-1789.jpeg",
+      "truth": "LA",
+      "recognizer_read": "La",
+      "matcher_best": "EN",
+      "top1": false,
+      "support": 0.5445,
+      "margin": 0.0241,
+      "candidates": 8
+    },
+    {
+      "image": "la-bastille-1789.jpeg",
+      "truth": "RUE",
+      "recognizer_read": "Rue",
+      "matcher_best": "EN",
+      "top1": false,
+      "support": 0.5339,
+      "margin": 0.0039,
+      "candidates": 8
+    },
+    {
+      "image": "la-bastille-1789.jpeg",
+      "truth": "St",
+      "recognizer_read": "8?",
+      "matcher_best": "5t",
+      "top1": false,
+      "support": 0.7094,
+      "margin": 0.1063,
+      "candidates": 9
+    },
+    {
+      "image": "la-bastille-1789.jpeg",
+      "truth": "ANTOINE",
+      "recognizer_read": "Abtoibe",
+      "matcher_best": "ANTOINE",
+      "top1": true,
+      "support": 0.5044,
+      "margin": 0.0001,
+      "candidates": 10
+    },
+    {
+      "image": "la-bastille-1789.jpeg",
+      "truth": "EN",
+      "recognizer_read": "BQ",
+      "matcher_best": "St",
+      "top1": false,
+      "support": 0.5562,
+      "margin": 0.0557,
+      "candidates": 8
+    },
+    {
+      "image": "la-bastille-1789.jpeg",
+      "truth": "1789",
+      "recognizer_read": "Inr?",
+      "matcher_best": "I789",
+      "top1": false,
+      "support": 0.599,
+      "margin": 0.0233,
+      "candidates": 12
+    },
+    {
+      "image": "la-rue-sans-nom-example.jpg",
+      "truth": "La rue",
+      "recognizer_read": "La' rue",
+      "matcher_best": "SANS-NOM",
+      "top1": false,
+      "support": 0.4553,
+      "margin": 0.0333,
+      "candidates": 2
+    },
+    {
+      "image": "quai-des-orfevres.jpeg",
+      "truth": "1er Arrᵗ",
+      "recognizer_read": "TerArr!",
+      "matcher_best": "QUAI",
+      "top1": false,
+      "support": 0.4806,
+      "margin": 0.0084,
+      "candidates": 7
+    },
+    {
+      "image": "quai-des-orfevres.jpeg",
+      "truth": "ORFÈVRES",
+      "recognizer_read": "DESORFEVRES",
+      "matcher_best": "0RFÈVRES",
+      "top1": false,
+      "support": 0.504,
+      "margin": 0.0153,
+      "candidates": 6
+    },
+    {
+      "image": "rue-des-martyrs.jpeg",
+      "truth": "MARTYRS",
+      "recognizer_read": "KUlMARTYRS",
+      "matcher_best": "RUE",
+      "top1": false,
+      "support": 0.5839,
+      "margin": 0.059,
+      "candidates": 4
+    },
+    {
+      "image": "russian-billboard-2.jpg",
+      "truth": "В БУДУЩЕЕ",
+      "recognizer_read": "BBYAYWIEE",
+      "matcher_best": "В БУДУЩЕЕ",
+      "top1": true,
+      "support": 0.3912,
+      "margin": 0.0942,
+      "candidates": 3
+    },
+    {
+      "image": "russian-billboard-2.jpg",
+      "truth": "ВМЕСТЕ С РОССИЕЙ!",
+      "recognizer_read": "4BMECTE C POCCMEMI",
+      "matcher_best": "В БУДУЩЕЕ",
+      "top1": false,
+      "support": 0.4551,
+      "margin": 0.0785,
+      "candidates": 7
+    },
+    {
+      "image": "russian-billboard-2.jpg",
+      "truth": "Valentina Ursu (RFE/RL)",
+      "recognizer_read": "Valentina Urgu (rfeIRL)",
+      "matcher_best": "В БУДУЩЕЕ",
+      "top1": false,
+      "support": 0.3687,
+      "margin": 0.0671,
+      "candidates": 6
+    },
+    {
+      "image": "russian-billboard.jpeg",
+      "truth": "ФЕВРАЛЯ",
+      "recognizer_read": "PEBPAJS",
+      "matcher_best": "Za",
+      "top1": false,
+      "support": 0.3062,
+      "margin": 0.0127,
+      "candidates": 6
+    },
+    {
+      "image": "russian-billboard.jpeg",
+      "truth": "Za",
+      "recognizer_read": "ZA",
+      "matcher_best": "2a",
+      "top1": false,
+      "support": 0.4657,
+      "margin": 0.0479,
+      "candidates": 7
+    },
+    {
+      "image": "russian-billboard.jpeg",
+      "truth": "ПОБЕДУ!",
+      "recognizer_read": "UNMNOBEAVI",
+      "matcher_best": "ПРАВДУ!",
+      "top1": false,
+      "support": 0.4609,
+      "margin": 0.0285,
+      "candidates": 10
+    },
+    {
+      "image": "russian-billboard.jpeg",
+      "truth": "Za",
+      "recognizer_read": "ZA",
+      "matcher_best": "2a",
+      "top1": false,
+      "support": 0.4359,
+      "margin": 0.0632,
+      "candidates": 7
+    },
+    {
+      "image": "russian-billboard.jpeg",
+      "truth": "НАШИХ!",
+      "recognizer_read": ")beA?AHALMXI",
+      "matcher_best": "Za",
+      "top1": false,
+      "support": 0.4594,
+      "margin": 0.03,
+      "candidates": 10
+    },
+    {
+      "image": "russian-billboard.jpeg",
+      "truth": "Za",
+      "recognizer_read": "ZA",
+      "matcher_best": "2a",
+      "top1": false,
+      "support": 0.4295,
+      "margin": 0.056,
+      "candidates": 7
+    },
+    {
+      "image": "russian-billboard.jpeg",
+      "truth": "ПРАВДУ!",
+      "recognizer_read": "ZAFeNPABAVI",
+      "matcher_best": "ПРАВДУ!",
+      "top1": true,
+      "support": 0.4366,
+      "margin": 0.0106,
+      "candidates": 10
+    }
+  ]
+}

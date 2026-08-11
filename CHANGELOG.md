@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — ToFU Vision 2, Phase 1 baseline
+- **`layers/proof.py`** — canonical glyph rendering, a degradation catalogue
+  named after physical processes (`fade`, `bleed`, `abrasion`, `blur`,
+  `resample`, `compression`, `occlusion`, `speckle`), hard negatives **mined**
+  from the correction ledger rather than imagined, and a deterministic
+  silhouette matcher. Reuses `font_matching`'s renderer and comparison rather
+  than adding a second that could disagree with the first.
+- **`scripts/eval_proof_matcher.py` + `docs/phase1-baseline.md`** — the number
+  an encoder has to beat, measured before one is trained.
+
+  **Result: 10.7% top-1 (6/56), and degradation is not the cause.** The control
+  scores 1.000 with 0.42–0.51 margins and survives every degradation in the
+  catalogue when the font matches. Real ink scores 0.441. Going from 2 faces to
+  14 nearly doubles accuracy (10.7% → 17.9%) and an oracle over faces reaches
+  **46.4%** — so the information is present in nearly half of cases and the
+  face-selection rule discards it. The margin is also uninformative: 0.018 when
+  right, 0.029 when wrong.
+
+  **Consequence: Phase 1 as specified trains the wrong invariance.** It proposes
+  a degradation-robust encoder; the measurement says typeface, not degradation,
+  is what breaks silhouette matching. The cheapest untested fix is to render in
+  the face `font_matching` already identifies, which would make the first
+  increment plumbing rather than learning.
+
 ### Added — ToFU Vision 2, first increment
 - **`cicerone.detect(seed_detections=...)`** — replace the detector with
   supplied geometry and run the normal recognition pipeline over it. Built for
