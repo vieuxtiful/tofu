@@ -70,16 +70,49 @@ a face the renderer does not have.
 present in nearly half of all cases and the *face-selection rule throws it
 away*.
 
-**3. The selection rule is the immediate defect.** Picking the face with the
-highest support jointly maximises over face and string, so a wrong string in a
-well-matched face beats the right string in a poorly-matched one. Those are two
-different questions being answered by one number — the same confound this
-project already fixed once, in `decant`, by refusing to collapse "which
-candidate wins" into "is there enough evidence".
+**3. The selection rule looked like the defect, and is not fixable.** Picking
+the face with the highest support jointly maximises over face and string, so a
+wrong string in a well-matched face beats the right string in a poorly-matched
+one — two questions answered by one number, the confound `decant` refuses
+elsewhere. But separating them does not help: both aggregation rules tested
+below score *worse* than the joint argmax.
 
 **4. Even the oracle tops out below half.** 46.4% with perfect face choice is
 the honest ceiling for pure silhouette matching on this corpus. That is a real
 target for an encoder rather than a rhetorical one.
+
+## Two aggregation rules, tested and rejected
+
+If the right face is in the set for 46.4% of regions, the obvious question is
+whether a better *rule* recovers it without knowing which face is right.
+Absolute scores are not comparable across faces — a well-matched face scores
+everything highly — but ranks within a face should be. Two ways to exploit
+that, on the same 56 regions:
+
+| rule | top-1 |
+|---|---:|
+| argmax over (face, string) — the current rule | 16.1% |
+| **Borda**: rank strings within each face, sum ranks | **10.7%** |
+| **z-norm**: normalise each face's scores, then sum | **8.9%** |
+| oracle over faces | 46.4% |
+
+**Both aggregations are worse than doing nothing.** The reason is
+straightforward in hindsight: most faces are the wrong face, and a wrong face
+ranks strings close to arbitrarily. Averaging over fourteen faces of which one
+or two are right drowns the signal that argmax at least concentrates on.
+
+(The 16.1% here versus 17.9% above is one region, from tie-breaking. At n=56
+that difference is noise and neither figure should be quoted to a decimal.)
+
+**This is the finding that argues FOR the encoder rather than against it.**
+Face selection cannot be finessed by a scoring rule, and it cannot be solved
+by identification either — `font_matching.local_match` needs the region's TEXT
+to identify its face, and the text is precisely what is being recovered. The
+circularity is real.
+
+What breaks a circularity is a representation in which the face does not
+matter. That is a typeface-invariant embedding — which is an encoder, and now
+one with a measured reason to exist and a measured target to beat.
 
 ## Consequences for Phase 1 as proposed
 
@@ -89,24 +122,21 @@ confusables. On this evidence **that trains the wrong invariance.** Degradation
 is what the control shows the method already survives; typeface is what breaks
 it.
 
-Three adjustments, in order of cost:
+Three adjustments were considered. Two are now closed:
 
-- **Cheapest, and untested: use the face ToFU already identifies.** The
-  `font_matching` layer identifies a region's typeface from its ink. This
-  harness renders in a stand-in instead. If the identified face closes most of
-  the gap between 17.9% and 46.4%, Phase 1's first increment is *plumbing*, not
-  learning. This should be measured before any encoder is trained.
-- **Separate the two decisions.** Face agreement and string agreement must be
-  scored independently rather than jointly maximised, or the selection rule
-  keeps discarding correct answers it already had.
-- **If an encoder is trained, train typeface-invariance.** Same string across
-  many faces → same embedding; different strings → separated. Degradation pairs
-  are still worth including, but they are not the primary axis the measurement
-  points at.
-
-`proof.degrade()` keeps its value under all three: it is how any of these arms
-gets tested against controlled damage, and the control above is exactly that
-use.
+- **Using the face ToFU already identifies: ruled out.**
+  `font_matching.local_match` requires the region's `text` to rank faces, and
+  the text is what is being recovered. The circularity is not incidental —
+  identification works by rendering the known string in each face.
+- **Separating the two decisions by rank aggregation: measured and rejected.**
+  Borda 10.7%, z-norm 8.9%, both below the 16.1% argmax baseline. See above.
+- **Train typeface-invariance, not degradation-invariance.** Same string across
+  many faces → same embedding; different strings → separated. This is now the
+  surviving option rather than the preferred one, which is a stronger position
+  to build from: the two cheaper alternatives were tried and lost. Degradation
+  pairs remain worth including — `proof.degrade()` is how any arm gets tested
+  against controlled damage — but they are not the axis the measurement points
+  at.
 
 ## Honest limits
 

@@ -27,9 +27,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   **Consequence: Phase 1 as specified trains the wrong invariance.** It proposes
   a degradation-robust encoder; the measurement says typeface, not degradation,
-  is what breaks silhouette matching. The cheapest untested fix is to render in
-  the face `font_matching` already identifies, which would make the first
-  increment plumbing rather than learning.
+  is what breaks silhouette matching. Both cheaper alternatives were then tried
+  and closed: identifying the face first is *circular* (`local_match` needs the
+  region's text to rank faces, and the text is what is being recovered), and
+  rank aggregation across faces is **worse than doing nothing** (Borda 10.7%,
+  z-norm 8.9%, against a 16.1% argmax baseline). That leaves a
+  typeface-invariant encoder as the surviving option — with a measured reason
+  to exist and a 46.4% target to approach.
 
 ### Added — ToFU Vision 2, first increment
 - **`cicerone.detect(seed_detections=...)`** — replace the detector with

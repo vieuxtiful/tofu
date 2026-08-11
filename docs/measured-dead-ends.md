@@ -40,6 +40,18 @@ Reproduce any row with `scripts/eval_detect.py`; the localization metric is
 geometry-preserving recognition path would build on. What is rejected is the
 claim that any current configuration yields a ceiling.
 
+## Glyph identity from ground truth
+
+| Intervention | Result | Detail |
+|---|---|---|
+| **Rank aggregation across faces** to recover the right string without knowing the face | **Worse than doing nothing.** Borda 10.7% and per-face z-normalisation 8.9%, against a 16.1% argmax baseline and a 46.4% face-oracle, on 56 misread regions. Most faces are the wrong face and rank strings near-arbitrarily; averaging over fourteen drowns the one or two that fit. | `docs/phase1-baseline.md` |
+| **Identifying the face first, then matching** | **Circular, not merely hard.** `font_matching.local_match` ranks faces by rendering the region's KNOWN text in each one — and the text is exactly what a glyph matcher is trying to recover. | `font_matching.local_match` |
+
+Both were tried because both are cheaper than training an encoder. Their
+failure is what gives a typeface-invariant embedding a measured reason to
+exist: a representation in which the face does not matter is what breaks the
+circularity, and the 46.4% oracle is the target it has to approach.
+
 ## Recognition
 
 | Intervention | Result | Detail |
