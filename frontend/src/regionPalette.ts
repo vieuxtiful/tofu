@@ -30,6 +30,16 @@ export function regionColorMap(regionIds: string[]): Record<string, string> {
   return map;
 }
 
+/** Stable palette assignment for identities whose list position can change. */
+export function identityColor(identity: string): string {
+  let hash = 2166136261;
+  for (let index = 0; index < identity.length; index += 1) {
+    hash ^= identity.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return regionColor(hash >>> 0);
+}
+
 /** Translucent form of a palette colour, using the RRGGBBAA hex-suffix
  * idiom already used throughout BBoxCanvas. */
 export function regionTint(color: string, alpha: number): string {

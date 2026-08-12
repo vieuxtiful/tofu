@@ -762,18 +762,26 @@ def touch_project(pid: str) -> None:
 # --- assets ---
 
 def link_asset(pid: str, asset_id: str, filename: Optional[str],
-               content_hash: Optional[str] = None) -> None:
-    """attach an uploaded asset to a project and make it the active one."""
+               content_hash: Optional[str] = None, *, make_active: bool = True,
+               max_assets: int = 30) -> None:
+    """Attach an upload, enforcing the project limit in the same transaction."""
     now = time.time()
     with _conn() as con:
-        con.execute(
-            "UPDATE project_assets SET is_active = 0 WHERE project_id = ?", (pid,)
-        )
+        count = con.execute(
+            "SELECT COUNT(*) AS n FROM project_assets WHERE project_id = ?", (pid,)
+        ).fetchone()["n"]
+        if count >= max_assets:
+            raise ValueError(f"a project can contain at most {max_assets} assets")
+        activate = bool(make_active or count == 0)
+        if activate:
+            con.execute(
+                "UPDATE project_assets SET is_active = 0 WHERE project_id = ?", (pid,)
+            )
         con.execute(
             "INSERT OR REPLACE INTO project_assets"
             " (asset_id, project_id, filename, uploaded_at, is_active, content_hash)"
-            " VALUES (?, ?, ?, ?, 1, ?)",
-            (asset_id, pid, filename, now, content_hash),
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            (asset_id, pid, filename, now, int(activate), content_hash),
         )
         con.execute("UPDATE projects SET updated_at = ? WHERE id = ?", (now, pid))
 
@@ -841,6 +849,39 @@ def unlink_asset(pid: str, asset_id: str) -> bool:
         )
         con.execute("UPDATE projects SET updated_at = ? WHERE id = ?", (time.time(), pid))
     return cur.rowcount > 0
+
+
+def unlink_asset_with_successor(pid: str, asset_id: str) -> tuple[bool, Optional[str]]:
+    """Unlink one asset and atomically activate the newest survivor if needed."""
+    now = time.time()
+    with _conn() as con:
+        current = con.execute(
+            "SELECT is_active FROM project_assets WHERE project_id = ? AND asset_id = ?",
+            (pid, asset_id),
+        ).fetchone()
+        if current is None:
+            return False, None
+        was_active = bool(current["is_active"])
+        con.execute(
+            "DELETE FROM project_assets WHERE project_id = ? AND asset_id = ?",
+            (pid, asset_id),
+        )
+        successor = None
+        if was_active:
+            row = con.execute(
+                "SELECT asset_id FROM project_assets WHERE project_id = ?"
+                " ORDER BY uploaded_at DESC, asset_id DESC LIMIT 1",
+                (pid,),
+            ).fetchone()
+            if row is not None:
+                successor = row["asset_id"]
+                con.execute(
+                    "UPDATE project_assets SET is_active = 1"
+                    " WHERE project_id = ? AND asset_id = ?",
+                    (pid, successor),
+                )
+        con.execute("UPDATE projects SET updated_at = ? WHERE id = ?", (now, pid))
+    return True, successor
 
 
 def delete_snapshot(sid: int) -> bool:

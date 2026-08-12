@@ -43,6 +43,33 @@ describe("BlocksField", () => {
     expect(chips()).toEqual(["la première saisie"]);
   });
 
+  it("renders the draft as ONE token, not one per word", () => {
+    // The capability was always there -- spaces have never committed -- but
+    // the field coloured each whitespace-separated word separately, so it
+    // looked like the phrase was already being split. Users responded by
+    // committing the words one at a time, which is how prem-sais-gt ended up
+    // with "la", "première" and "saisie" as three Blocks.
+    render(<Harness />);
+    type("la première saisie");
+    const tokens = document.querySelectorAll("[data-testid='single-block-token']");
+    expect(tokens.length).toBe(1);
+    expect(tokens[0].textContent).toBe("la première saisie");
+  });
+
+  it("commits on Shift+Enter as well, without requiring Shift for spaces", () => {
+    // An alias, never a requirement: Shift is needed for capitals and much
+    // punctuation, and gating spaces on it would fight every IME.
+    render(<Harness />);
+    fireEvent.keyDown(type("la première saisie"), { key: "Enter", shiftKey: true });
+    expect(chips()).toEqual(["la première saisie"]);
+  });
+
+  it("trims a phrase's outer whitespace but keeps its inner spaces", () => {
+    render(<Harness />);
+    fireEvent.keyDown(type("  la première saisie  "), { key: "Enter" });
+    expect(chips()).toEqual(["la première saisie"]);
+  });
+
   it("keeps two identical Blocks as two", () => {
     render(<Harness />);
     fireEvent.keyDown(type("PARIS"), { key: "Enter" });
@@ -140,7 +167,13 @@ describe("BlocksField", () => {
         }]}
       />,
     );
-    expect(screen.getByTitle("Block 1 — 3 atoms")).toBeTruthy();
+    // The atom count is gone from the tooltip. It was an honesty check while
+    // whitespace splitting was in doubt; now that a Block is committed whole
+    // and located by one box, "3 atoms" only invites the reader to wonder
+    // whether it was split after all. The record is still passed in, so this
+    // asserts the count is not SHOWN, not that it stopped arriving.
+    expect(screen.getByTitle("Block 1")).toBeTruthy();
+    expect(screen.queryByTitle(/atom/)).toBeNull();
   });
 
   it("hides the remove control while a capture is running", () => {

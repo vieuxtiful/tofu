@@ -13,9 +13,22 @@ import type { GuidedProgress as Progress } from "./useGuidedCapture";
 export default function GuidedProgress({ progress }: { progress: Progress }) {
   if (!progress.blocks_total) return null;
 
-  const filled = Math.round(progress.fraction * 8);
   const percent = Math.round(progress.fraction * 100);
   const skipped = progress.blocks_skipped;
+
+  // Red at 0%, yellow at 50%, green at 100%. One linear sweep through hue
+  // rather than three colour stops: HSL puts yellow at exactly half of the
+  // 0→120 arc, so the midpoint the user is told about is the midpoint they
+  // see, with no banding where discrete stops would meet.
+  const barHue = progress.fraction * 120;
+
+  // Skipped runs the same arc backwards, and against blocks_total rather
+  // than a fixed ceiling: one skip out of two is most of the work abandoned,
+  // one out of thirty is a rounding error, and a fixed scale calls both the
+  // same colour.
+  const skippedHue = progress.blocks_total
+    ? 60 * (1 - Math.min(1, skipped / progress.blocks_total))
+    : 60;
 
   return (
     <span
@@ -32,14 +45,35 @@ export default function GuidedProgress({ progress }: { progress: Progress }) {
         + `, ${percent}% of terms located`
       }
     >
-      <span aria-hidden="true" className="font-mono tracking-tighter">
-        {"█".repeat(filled)}{"░".repeat(Math.max(0, 8 - filled))}
+      {/* A real bar, not eight block glyphs. The glyphs could only move in
+          whole eighths, so the first box of a nine-Block run advanced
+          nothing visible, and they cannot animate or carry a gradient. */}
+      <span
+        aria-hidden="true"
+        className="inline-block h-1 w-14 shrink-0 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700"
+      >
+        <span
+          className="block h-full rounded-full"
+          style={{
+            width: `${percent}%`,
+            backgroundColor: `hsl(${barHue}, 70%, 45%)`,
+            // Width and colour travel together, so the bar arrives at its
+            // new length already the right colour instead of snapping.
+            transition: "width 320ms cubic-bezier(0.4, 0, 0.2, 1), background-color 320ms linear",
+          }}
+        />
       </span>
       <span aria-hidden="true" className="text-zinc-700 dark:text-zinc-300">
         {progress.blocks_resolved}/{progress.blocks_total}
       </span>
       {skipped > 0 && (
-        <span aria-hidden="true" className="text-amber-600 dark:text-amber-400">
+        <span
+          aria-hidden="true"
+          style={{
+            color: `hsl(${skippedHue}, 75%, 45%)`,
+            transition: "color 320ms linear",
+          }}
+        >
           ({skipped} skipped)
         </span>
       )}

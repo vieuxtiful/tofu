@@ -1,0 +1,59 @@
+{
+  "schema": 1,
+  "checkpoint": "evidence\\proof-encoder-zh-hant-v1.pt",
+  "observed_font": "C:\\Windows\\Fonts\\NotoSansTC-VF.ttf",
+  "candidate_font": "C:\\Windows\\Fonts\\NotoSerifTC-VF.ttf",
+  "scored": 6,
+  "top1": 5,
+  "top1_rate": 0.8333333333333334,
+  "rows": [
+    {
+      "truth": "靄籔蠱爨鑿",
+      "best": "靄籔蠱爨鑿",
+      "top1": true,
+      "rank": 1,
+      "support": 0.995531,
+      "margin": 0.272333
+    },
+    {
+      "truth": "靄",
+      "best": "靄",
+      "top1": true,
+      "rank": 1,
+      "support": 0.994935,
+      "margin": 0.002553
+    },
+    {
+      "truth": "籔",
+      "best": "籔",
+      "top1": true,
+      "rank": 1,
+      "support": 0.994587,
+      "margin": 0.000725
+    },
+    {
+      "truth": "蠱",
+      "best": "蠱",
+      "top1": true,
+      "rank": 1,
+      "support": 0.997301,
+      "margin": 0.001146
+    },
+    {
+      "truth": "爨",
+      "best": "爨",
+      "top1": true,
+      "rank": 1,
+      "support": 0.996476,
+      "margin": 0.000599
+    },
+    {
+      "truth": "鑿",
+      "best": "靄",
+      "top1": false,
+      "rank": 2,
+      "support": 0.993533,
+      "margin": 0.000295
+    }
+  ]
+}

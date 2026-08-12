@@ -122,8 +122,39 @@ def merge_server_owned(
     return merged
 
 
+## An optional check run immediately before every write.
+##
+## Registered rather than imported so the dependency points the right way:
+## this module must not know what "valid" means -- that lives in
+## `layers.couvert` and in the test-suite oracle, both of which sit ABOVE
+## persistence. A callback lets the strictest available definition be
+## installed without this file growing an opinion.
+##
+## The point is that it cannot be bypassed. Route-level settling covers the
+## routes someone remembered; anything that reaches disk goes through here,
+## including code paths written later by someone who has never heard of the
+## invariant. Off by default -- production must not fail a save on an
+## assertion -- and switched on for the whole test suite in conftest.
+_SAVE_GUARD: Optional[Any] = None
+
+
+def set_save_guard(guard: Optional[Any]) -> Optional[Any]:
+    """Install a `guard(manifest, asset_id)` run before each save.
+
+    Returns the previous guard, so a caller can restore it -- a test that
+    deliberately persists a damaged manifest has to be able to turn this off
+    for exactly that write and put it back afterwards.
+    """
+    global _SAVE_GUARD
+    previous = _SAVE_GUARD
+    _SAVE_GUARD = guard
+    return previous
+
+
 def save_manifest(store_dir: Path, asset_id: str, manifest: TextManifest) -> None:
     """serialize a TextManifest to JSON on disk."""
+    if _SAVE_GUARD is not None:
+        _SAVE_GUARD(manifest, asset_id)
     store_dir.mkdir(parents=True, exist_ok=True)
     data = _manifest_to_dict(manifest)
     _manifest_path(store_dir, asset_id).write_text(
@@ -284,6 +315,7 @@ def _region_to_dict(r: SceneRegion) -> dict:
         "polygon": r.polygon,
         "texture": r.texture,
         "material": r.material,
+        "material_evidence": r.material_evidence,
         "garnish_profile": _garnish_to_dict(r.garnish_profile),
     }
 
@@ -302,6 +334,7 @@ def _dict_to_region(rdict: dict) -> SceneRegion:
         ),
         texture=rdict.get("texture"),
         material=rdict.get("material"),
+        material_evidence=rdict.get("material_evidence"),
         garnish_profile=_garnish_from_dict(rdict.get("garnish_profile")),
     )
 
@@ -362,6 +395,7 @@ def _inst_to_dict(inst: InstText) -> dict:
             asdict(inst.reconstruction_profile)
             if inst.reconstruction_profile is not None else None
         ),
+        "material_evidence": inst.material_evidence,
         "font_match": inst.font_match,
         "resolved_font_family": inst.resolved_font_family,
         "resolved_synthetic_italic": inst.resolved_synthetic_italic,
@@ -556,6 +590,7 @@ def _dict_to_manifest(data: dict) -> TextManifest:
                 ReconstructionProfile(**idict["reconstruction_profile"])
                 if isinstance(idict.get("reconstruction_profile"), dict) else None
             ),
+            material_evidence=idict.get("material_evidence"),
             garnish_override=_garnish_from_dict(idict.get("garnish_override")),
             garnish_enabled=idict.get("garnish_enabled"),
             garnish_scope=idict.get("garnish_scope", "whole_selection"),
@@ -569,9 +604,16 @@ def _dict_to_manifest(data: dict) -> TextManifest:
             characteristics=chars,
         ))
     atype = AssetType(data.get("asset_type", "image"))
+    ## The PERSISTED count, not `len(instances)`. Soft-deleted regions stay in
+    ## the array, so recomputing on load counted them: a manifest saved with
+    ## three live regions and two deleted ones came back claiming five, on
+    ## every load, no matter what the writer stored. Legacy files that predate
+    ## the field fall back to the LIVE count rather than the array length.
+    stored_total = data.get("total_regions")
+    live_total = sum(1 for i in instances if not getattr(i, "excluded", False))
     return TextManifest(
         asset_id=data["asset_id"],
-        total_regions=len(instances),
+        total_regions=stored_total if isinstance(stored_total, int) else live_total,
         instances=instances,
         src_lang=data.get("src_lang"),
         targ_lang=data.get("targ_lang"),

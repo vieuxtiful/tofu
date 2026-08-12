@@ -513,13 +513,12 @@ html.dark .save-anim {
   object-fit: contain;
   user-select: none;
   pointer-events: none;
-  will-change: transform;
-  /* fallback background so the block shape is visible before the image loads */
-  background: #f7f7f5;
-  border-radius: 2px;
-}
-html.dark .save-block {
-  background: #262626;
+  /* No fallback plate. `object-fit: contain` letterboxes the artwork inside
+   * this box, so the background was visible AROUND the block as a pale slab
+   * -- read as an unwanted panel or drop shadow behind the logo. A blank
+   * 23x26 gap for the few frames before a local image decodes is the lesser
+   * artefact, and the block no longer transforms, so `will-change` here was
+   * promoting a layer for a property that never changes. */
 }
 
 /* stink lines: absolutely positioned just above the block, centered on its
@@ -546,6 +545,17 @@ html.dark .save-block {
 .save-anim.saving .stink-line {
   animation: save-stink 1s ease-out infinite;
 }
+/* The block is still, so the stink lines are the whole animation -- and the
+ * only thing to suppress for a reader who has asked for less motion. Held at
+ * their settled state rather than hidden, so "saving" still looks different
+ * from nothing at all. */
+@media (prefers-reduced-motion: reduce) {
+  .save-anim.saving .stink-line {
+    animation: none;
+    opacity: 1;
+  }
+}
+
 @keyframes save-stink {
   0%   { transform: translateY(5px) translateX(0)   scaleY(0.2); opacity: 0; }
   10%  { opacity: 1; }
@@ -3130,8 +3140,8 @@ html.dark .basil-assign-id {
 /* ── Blocks field: capture lock ─────────────────────────────────────────
    A capture is running, so the request that started it is frozen. Editing
    Blocks mid-run would leave the results describing a question the user has
-   since changed. The stripes TRAVEL rather than sit still, so the state
-   reads as "working" instead of "broken" — a barber's pole, not a hatch. */
+   since changed. A tapered blue shimmer identifies the temporary working
+   state without making the field look permanently disabled. */
 .gt-locked { position: relative; }
 
 .gt-lock {
@@ -3146,36 +3156,30 @@ html.dark .basil-assign-id {
 :root[data-theme="dark"] .gt-lock,
 .dark .gt-lock { background: rgb(24 24 27 / 0.72); }
 
-.gt-lock-stripes {
+.gt-lock-shimmer {
   position: absolute;
-  /* Overdrawn on both sides so the diagonal never reveals a bare corner as
-     it travels. */
-  inset: -50% -60%;
-  background: repeating-linear-gradient(
-    /* forward diagonal: rises left-to-right, y_left < y_right */
-    60deg,
-    var(--gt-lock-a, rgb(161 161 170 / 0.55)) 0 14px,
-    transparent 14px 28px,
-    var(--gt-lock-b, rgb(8 145 178 / 0.40)) 28px 42px,
-    transparent 42px 56px
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    rgb(34 211 238 / 0) 0%,
+    rgb(34 211 238 / 0.24) 36%,
+    rgb(34 211 238 / 0.65) 65%,
+    rgb(34 211 238 / 0) 100%
   );
-  animation: gt-lock-travel 1.1s linear infinite;
-}
-:root[data-theme="dark"] .gt-lock-stripes,
-.dark .gt-lock-stripes {
-  --gt-lock-a: rgb(212 212 216 / 0.34);
-  --gt-lock-b: rgb(34 211 238 / 0.30);
+  transform: translateX(-100%);
+  animation: gt-lock-shimmer 1.84s linear infinite;
 }
 
-/* One full period is the repeating-gradient's own 56px cycle, measured
-   along X, so the loop is seamless: 56px / sin(60deg). */
-@keyframes gt-lock-travel {
-  from { transform: translateX(0); }
-  to   { transform: translateX(64.66px); }
+/* The shimmer crosses x -> x1 in 0.8s, then remains beyond x1 for 1.04s.
+   0.8 / 1.84 = 43.478%, which keeps the requested replay gap in one cycle. */
+@keyframes gt-lock-shimmer {
+  0%      { transform: translateX(-100%); }
+  43.478% { transform: translateX(100%); }
+  100%    { transform: translateX(100%); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .gt-lock-stripes { animation: none; }
+  .gt-lock-shimmer { animation: none; transform: none; opacity: 0.2; }
 }
 
 /* ── Notifications: clearing them all ───────────────────────────────────
@@ -3232,4 +3236,57 @@ html.dark .basil-assign-id {
 @media (prefers-reduced-motion: reduce) {
   .notif-item.clearing { animation-duration: 0.01s; }
   .notif-empty { animation: none; }
+}
+
+/* ── Dictionary hint: collapse, don't destroy ───────────────────────────────
+ *
+ * Dismissing used to unmount the hint, so the only way back was clearing
+ * site data — a permanent consequence for a click that reads as provisional.
+ * It now collapses to its own ✕, which rotates a quarter turn into a `+`.
+ * One glyph, two meanings: the control that closed it is visibly the control
+ * that reopens it.
+ */
+.dictionary-hint-body {
+  display: inline-flex;
+  align-items: center;
+  overflow: hidden;
+  /* `max-width` rather than `width`: the content is intrinsically sized and
+   * `width: auto` is not animatable. The ceiling is generous enough for the
+   * longest form of the label and is never the effective width when open. */
+  max-width: 16rem;
+  opacity: 1;
+  transition: max-width 260ms cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 180ms ease-out 60ms,
+              margin-left 260ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+[data-collapsed="true"] > .dictionary-hint-body {
+  max-width: 0;
+  opacity: 0;
+  margin-left: -0.25rem;   /* absorb the parent's gap so nothing is left over */
+  /* Fades out first, then closes: reversing it would slide an empty box. */
+  transition: max-width 260ms cubic-bezier(0.4, 0, 0.2, 1) 40ms,
+              opacity 120ms ease-in,
+              margin-left 260ms cubic-bezier(0.4, 0, 0.2, 1) 40ms;
+}
+
+.dictionary-hint-x {
+  transition: transform 260ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Counter-clockwise, so the ✕ settles as a `+`. */
+[data-collapsed="true"] .dictionary-hint-x {
+  transform: rotate(-90deg);
+}
+
+/* Collapsed, the toggle is the only thing left, so it has to look reachable. */
+[data-collapsed="true"] .dictionary-hint-toggle:hover {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dictionary-hint-body,
+  .dictionary-hint-x {
+    transition: none;
+  }
 }

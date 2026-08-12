@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { FontFamily, FontOption, InstText, LanguageOption } from "./api";
-import { AlertTriangle, AlertCircle, BookmarkCheck, ChevronDown, ChevronLeft, ChevronRight, Eye, EyeOff, GripVertical, Loader2, ScanText, Trash2, AlignLeft, AlignVerticalJustifyCenter, ArrowLeftRight } from "lucide-react";
+import { AlertTriangle, AlertCircle, BookmarkCheck, ChevronDown, ChevronLeft, ChevronRight, Eye, EyeOff, GripVertical, Loader2, ScanText, Trash2, AlignLeft, AlignVerticalJustifyCenter, ArrowLeftRight, VectorSquare } from "lucide-react";
 import { LuReplace } from "react-icons/lu";
 import { BsTranslate } from "react-icons/bs";
 import { langDisplayName } from "./languageData";
@@ -10,7 +10,7 @@ import { loadFontPreview, weightLabel, fontNameForPath } from "./FontCombobox";
 import { fontIdentity } from "./doppelganger";
 import { HiLockClosed, HiLockOpen } from "react-icons/hi";
 import { FaSearch } from "react-icons/fa";
-import { PiArrowsMergeBold } from "react-icons/pi";
+import { PiArrowsMergeBold, PiBoundingBoxFill } from "react-icons/pi";
 import { RiFunctionAiFill, RiFunctionAiLine } from "react-icons/ri";
 import { TbLanguageOff, TbLeafFilled, TbAlertSquare, TbAlertSquareFilled } from "react-icons/tb";
 import { MdFontDownload, MdOutlineFontDownload } from "react-icons/md";
@@ -410,11 +410,24 @@ export default function RegionTable({
           </span>
         </h2>
       )}
-      {/* stats bar */}
+      {/* Capture gets the same titled header Translate has. The card was the
+          only one of the two identified by a raw counter ("regions: 7"),
+          which named its CONTENTS rather than the step, so the two panels
+          did not read as the same kind of object. The count moves beside the
+          ID column, where Translate already puts it. */}
       {mode === "capture" && (
-        <div className="subtext flex items-center justify-between border-b border-zinc-300 px-3 py-2 text-xs text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
-          <span>regions: {regions.length}</span>
-          <div className="flex items-center gap-2">
+        /* Structured exactly like Translate's header: title left, controls
+           right, on ONE line. The controls used to sit in a separate stats
+           bar below the title, so the page dropdown sat a row lower here
+           than in the other card and the two panels did not line up. */
+        <h2 className="subtext mx-3 mb-3 mt-3 flex items-center justify-between text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+          <span className="flex items-center gap-2">
+            {/* Same light/dark pair the Capture STEP uses in the Stepper, so
+                the card and the tab that leads to it are the same object. */}
+            {theme === "dark" ? <PiBoundingBoxFill size={14} /> : <VectorSquare size={14} />}
+            Capture
+          </span>
+          <span className="flex items-center gap-2 normal-case tracking-normal">
             {/* Detection already joins the words of a line on its own and
               * declines where the geometry is ambiguous (across a column
               * gutter, over a gap wider than a word space). This is the
@@ -490,8 +503,8 @@ export default function RegionTable({
                 </button>
               </span>
             )}
-          </div>
-        </div>
+          </span>
+        </h2>
       )}
 
       {/* apply-to-selected bar (translation work only) */}
@@ -603,7 +616,10 @@ export default function RegionTable({
                           style={{ transform: sortKey === c.key && sortDir === "desc" ? "rotate(180deg)" : "none" }}
                         />
                       </button>
-                      {c.key === "id" && mode === "translate" && !hideRegionCounter && (
+                      {/* Both modes now. Capture lost its "regions: N"
+                          counter to the new header, and this is where
+                          Translate has always shown the same number. */}
+                      {c.key === "id" && !hideRegionCounter && (
                         <span
                           className="text-[10px] font-medium normal-case tracking-normal"
                           style={{ color: bboxColor ?? "#22d3ee" }}
@@ -971,13 +987,21 @@ export default function RegionTable({
                             <AnimatedCaretTextarea
                               label={`Source text for ${inst.id}`}
                               value={inst.text ?? ""}
+                              /* Source text is settled in Capture and READ
+                                 here. Editing it in Translate changed what
+                                 the translation was of after the fact, and
+                                 silently invalidated the TM record, the
+                                 provenance and any guided declaration
+                                 attached to the region. Still focusable and
+                                 copyable — only not writable. */
+                              readOnly
                               onChange={(text) => onTextChange(inst.id, text)}
                               onFocus={onBatchBegin}
                               onBlur={onBatchEnd}
                               onClick={(event) => event.stopPropagation()}
                               rows={1}
                               placeholder="no source text"
-                              suggestions={/^(ja|zh|ko)(-|$)/i.test(effectiveSrc ?? "") ? sourceSuggestions : []}
+                              suggestions={[]}
                               language={effectiveSrc}
                               trailingIcon={sourceProvenanceIcon ? <span title={sourceProvenanceTitle}>{sourceProvenanceIcon}</span> : null}
                               className={

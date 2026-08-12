@@ -69,15 +69,19 @@ describe("DetectionAttributionCard", () => {
     expect(card.textContent).toContain("History");
   });
 
-  it("reports a missing graph as missing, not as blindness", async () => {
-    // Absence of evidence said as such. Reporting it as "proposed nothing"
-    // would be inventing a finding.
+  it("says nothing extra about a missing graph", async () => {
+    // The `no_lineage` paragraph is gone. It fired whenever a user deleted
+    // every region -- the moment they are least served by an explanation of
+    // lineage provenance, where it read as an error report for an ordinary
+    // action. The rung still travels over the API for the attribution view;
+    // it just no longer renders a second sentence here.
     const card = await show(report({
       rung: "no_lineage",
       explanation: "no lineage was recorded for this asset, so the detector's own proposals cannot be inspected",
       lineage: null,
     }));
-    expect(card.textContent).toContain("predates lineage recording");
+    expect(card.textContent).not.toContain("predates lineage recording");
+    expect(card.textContent).not.toContain("Recapture to record it");
   });
 
   /* The fetch-failure path is deliberately not asserted here. The component

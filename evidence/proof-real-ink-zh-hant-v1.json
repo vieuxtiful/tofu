@@ -1,0 +1,136 @@
+{
+  "schema": 1,
+  "kind": "real_ink_pilot",
+  "image": "server\\uploads\\5ad31639a745.png",
+  "manifest": "server\\uploads\\5ad31639a745.manifest.json",
+  "checkpoint": "evidence\\proof-encoder-zh-hant-v1.pt",
+  "fonts": [
+    "C:\\Windows\\Fonts\\mingliu.ttc",
+    "C:\\Windows\\Fonts\\kaiu.ttf",
+    "C:\\Windows\\Fonts\\msjh.ttc",
+    "C:\\Windows\\Fonts\\NotoSansTC-VF.ttf",
+    "C:\\Windows\\Fonts\\NotoSerifTC-VF.ttf"
+  ],
+  "partial_annotation": true,
+  "scored": 5,
+  "candidate_count": 5,
+  "encoder_top1": 4,
+  "deterministic_top1": 2,
+  "rows": [
+    {
+      "region_id": "r1",
+      "truth": "鬣",
+      "bbox": {
+        "x": 1862,
+        "y": 897,
+        "width": 218,
+        "height": 249
+      },
+      "label_source": "manifest_read",
+      "encoder": {
+        "best": "鬣",
+        "support": 0.995189,
+        "margin": 0.000287,
+        "top1": true
+      },
+      "deterministic": {
+        "best": "試驗會合",
+        "support": 0.2732,
+        "margin": 0.0038,
+        "top1": false
+      }
+    },
+    {
+      "region_id": "r2",
+      "truth": "蠹",
+      "bbox": {
+        "x": 2356,
+        "y": 1031,
+        "width": 188,
+        "height": 201
+      },
+      "label_source": "manifest_read",
+      "encoder": {
+        "best": "蠹",
+        "support": 0.985032,
+        "margin": 0.002224,
+        "top1": true
+      },
+      "deterministic": {
+        "best": "試驗會合",
+        "support": 0.2812,
+        "margin": 0.0088,
+        "top1": false
+      }
+    },
+    {
+      "region_id": "r3",
+      "truth": "釁",
+      "bbox": {
+        "x": 885,
+        "y": 1372,
+        "width": 158,
+        "height": 182
+      },
+      "label_source": "manifest_read",
+      "encoder": {
+        "best": "鬣",
+        "support": 0.989551,
+        "margin": 0.002309,
+        "top1": false
+      },
+      "deterministic": {
+        "best": "試驗會合",
+        "support": 0.2468,
+        "margin": 0.0097,
+        "top1": false
+      }
+    },
+    {
+      "region_id": "r4",
+      "truth": "鼜㒪",
+      "bbox": {
+        "x": 1550,
+        "y": 1893,
+        "width": 448,
+        "height": 231
+      },
+      "label_source": "manifest_read",
+      "encoder": {
+        "best": "鼜㒪",
+        "support": 0.977148,
+        "margin": 0.17451,
+        "top1": true
+      },
+      "deterministic": {
+        "best": "鼜㒪",
+        "support": 0.2593,
+        "margin": 0.0321,
+        "top1": true
+      }
+    },
+    {
+      "region_id": "r5",
+      "truth": "試驗會合",
+      "bbox": {
+        "x": 2079,
+        "y": 2745,
+        "width": 764,
+        "height": 197
+      },
+      "label_source": "manifest_read",
+      "encoder": {
+        "best": "試驗會合",
+        "support": 0.98505,
+        "margin": 0.233606,
+        "top1": true
+      },
+      "deterministic": {
+        "best": "試驗會合",
+        "support": 0.306,
+        "margin": 0.0916,
+        "top1": true
+      }
+    }
+  ]
+}

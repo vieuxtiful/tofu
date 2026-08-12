@@ -1,0 +1,44 @@
+{
+  "schema": "manifest-quarantine/v1",
+  "purpose": "Manifests that are damaged in a way the region-id repair path must NOT be run against. Recorded rather than deleted so the damage stays attributable and a later recovery attempt has somewhere to start.",
+  "recorded_at": "2026-08-12",
+  "recorded_by": "corpus integrity sweep (tests/support/integrity.py) over server/uploads",
+  "sweep_result": {
+    "manifests_scanned": 75,
+    "clean": 67,
+    "structurally_recoverable": 7,
+    "quarantined": 1
+  },
+  "entries": [
+    {
+      "asset_id": "fa612c58ec4e",
+      "path": "server/uploads/fa612c58ec4e.manifest.json",
+      "bytes": 295,
+      "sha256_prefix": "7ad890fffffbfc85",
+      "content": "295 NUL bytes; not JSON at any offset",
+      "reason": "truncated_or_interrupted_write",
+      "why_not_repairable": "The region-id repair path reads a manifest and rewrites its references. There is no manifest here to read -- no regions, no ids, no references. Feeding it through that path would parse-fail, and any 'repair' would be fabrication rather than recovery.",
+      "recovery_sources_checked": {
+        "source_image": "present (fa612c58ec4e.png) -- the asset itself is intact and could be re-captured from scratch",
+        "project_assets_link": "none -- the asset is not linked to any project",
+        "snapshots": "none",
+        "tm_records": "none",
+        "filesystem_backups": "none found alongside the manifest"
+      },
+      "disposition": "quarantined; no owner and no dependents, so nothing is blocked by leaving it in place. Safe to delete on request, or to re-detect from the surviving PNG if the asset is ever re-linked to a project.",
+      "action_taken": "none — recorded only"
+    }
+  ],
+  "not_quarantined": {
+    "note": "Seven manifests have non-contiguous ids but are structurally intact and parse cleanly. They are repairable through scripts/repair_region_ids.py, and will also self-heal on their next ordinary write now that _settle_manifest compacts. Dry-run reports were produced; none has dangling references or stale semantic units.",
+    "asset_ids": [
+      "0334fa713fdf",
+      "58d7689edf4e",
+      "729107892c78",
+      "8b685ed2a5ab",
+      "af6c294e95b0",
+      "bc40c1eaebfd",
+      "eb98e9c9a15a"
+    ]
+  }
+}

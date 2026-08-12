@@ -28,6 +28,7 @@ import dataclasses
 import hashlib
 import io
 import json
+import logging
 import math
 import os
 import queue
@@ -49,7 +50,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from fastapi import BackgroundTasks, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse, Response, StreamingResponse
+from fastapi.responses import JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -66,6 +67,7 @@ from tofu.layers.fonts import (
 from tofu.layers.sift import sift
 from tofu.layers import cicerone, memory, scribe, garnish, cleanse, scene, verify, inpaint_providers
 from tofu.layers.cicerone import _to_easyocr_lang
+from tofu.layers.couvert import CompactionError as CouvertCompactionError
 from tofu.utils.manifest_store import save_manifest, load_manifest, _dict_to_manifest
 from tofu.utils import interchange
 from tofu.utils import glossary as glossary_utils
@@ -94,6 +96,17 @@ GLOSSARY_DIR.mkdir(parents=True, exist_ok=True)
 db.init_db()
 VIDEO_WORKER_STOP = threading.Event()
 VIDEO_WORKER_THREAD: Optional[threading.Thread] = None
+_OCR_CAPACITY = max(1, int(os.environ.get("TOFU_OCR_CONCURRENCY", "1")))
+_OCR_SLOTS = threading.BoundedSemaphore(_OCR_CAPACITY)
+
+
+@contextlib.contextmanager
+def _ocr_slot():
+    _OCR_SLOTS.acquire()
+    try:
+        yield
+    finally:
+        _OCR_SLOTS.release()
 
 
 def _font_dir() -> Optional[str]:
@@ -531,6 +544,37 @@ app = FastAPI(
         "translation memory, and video localization."
     ),
 )
+
+
+@app.exception_handler(CouvertCompactionError)
+def _compaction_refused(request: Request, exc: CouvertCompactionError):
+    """A manifest that cannot be made consistent is NOT written.
+
+    409, not 500: the request was well-formed and the server is healthy; the
+    stored state conflicts with an invariant the write would have to uphold.
+    The asset id is in the payload and the log line because the operator's
+    next step is to run `scripts/repair_region_ids.py` against exactly that
+    asset, and a message that omits it makes them go looking.
+
+    Refusing is the point. Saving the edit anyway -- the earlier behaviour --
+    is how a manifest with dangling references stayed on disk long enough for
+    its regions to be renumbered out from under them.
+    """
+    asset_id = request.path_params.get("asset_id", "?")
+    logging.getLogger("tofu.couvert").error(
+        "refused write to %s: %s", asset_id, exc,
+    )
+    return JSONResponse(
+        status_code=409,
+        content={
+            "error": "manifest integrity",
+            "asset_id": asset_id,
+            "detail": str(exc),
+            "remedy": "run scripts/repair_region_ids.py against this asset",
+        },
+    )
+
+
 ## Middleware order is the reverse of registration: the LAST registered runs
 ## first. Rate limiting is registered after auth so it runs before it, which
 ## means an unauthenticated flood is rejected by the cheap counter instead of
@@ -987,8 +1031,10 @@ class VideoRenderRequest(BaseModel):
 # --- upload + languages + fonts ---
 
 @app.post("/api/assets")
-async def upload_asset(file: UploadFile = File(...), project_id: Optional[str] = None):
-    if project_id and db.get_project(project_id) is None:
+async def upload_asset(file: UploadFile = File(...), project_id: Optional[str] = None,
+                       activate: bool = True):
+    project = db.get_project(project_id) if project_id else None
+    if project_id and project is None:
         raise HTTPException(404, f"project '{project_id}' not found")
     suffix = Path(file.filename or "upload.png").suffix.lower() or ".png"
     asset_id = uuid.uuid4().hex[:12]
@@ -1007,6 +1053,12 @@ async def upload_asset(file: UploadFile = File(...), project_id: Optional[str] =
         raise
     content_hash = hasher.hexdigest()
     info = infer_asset_info(str(dest))
+    if project and info.asset_type.value != project["asset_kind"]:
+        dest.unlink(missing_ok=True)
+        raise HTTPException(
+            415, f"this project takes {project['asset_kind']} assets; "
+            f"the upload is {info.asset_type.value}",
+        )
 
     # persist an empty manifest immediately so GET /api/manifest never 404s
     # ("failed to fetch manifest" on fresh uploads) and autosave has a target
@@ -1030,7 +1082,15 @@ async def upload_asset(file: UploadFile = File(...), project_id: Optional[str] =
     save_manifest(UPLOAD_DIR, asset_id, empty)
 
     if project_id:
-        db.link_asset(project_id, asset_id, file.filename, content_hash)
+        try:
+            db.link_asset(
+                project_id, asset_id, file.filename, content_hash,
+                make_active=activate, max_assets=30,
+            )
+        except ValueError as exc:
+            dest.unlink(missing_ok=True)
+            (UPLOAD_DIR / f"{asset_id}.manifest.json").unlink(missing_ok=True)
+            raise HTTPException(409, str(exc)) from exc
         db.log_event(project_id, "asset-uploaded",
                      f"uploaded '{file.filename}' ({asset_id})")
     return {
@@ -1853,7 +1913,15 @@ def get_project(pid: str):
     project = db.get_project(pid)
     if project is None:
         raise HTTPException(404, f"project '{pid}' not found")
-    # active asset needs a servable URL + manifest presence for session restore
+    # Every asset needs a URL for the Upload grid; active additionally drives
+    # session restore. Missing retained files stay visible but non-previewable.
+    for item in project.get("assets") or []:
+        try:
+            path = _asset_path(item["asset_id"])
+            item["asset_url"] = f"/uploads/{path.name}"
+        except HTTPException:
+            item["asset_url"] = None
+        item["has_manifest"] = load_manifest(UPLOAD_DIR, item["asset_id"]) is not None
     active = project.get("active_asset")
     if active:
         try:
@@ -1984,7 +2052,7 @@ def resolve_guided_block(asset_id: str, block_id: str, req: GuidedResolution):
     # Reconcile AFTER, so withdrawing an override recomputes from evidence
     # rather than leaving the Block frozen at whatever the override said.
     if req.resolution is None:
-        _reconcile_guided(manifest)
+        _settle_manifest(manifest)
     save_manifest(UPLOAD_DIR, asset_id, manifest)
     return {"asset_id": asset_id, **_guided_state(manifest)}
 
@@ -2171,9 +2239,10 @@ def scan_language(asset_id: str):
     try:
         # adaptive=False: the auto-probe suffices for language IDENTITY;
         # the full tuned re-detection is capture's job, not the scan's
-        manifest = cicerone.detect(
-            str(path), info, adaptive=False, font_registry=get_validator().font_registry
-        )
+        with _ocr_slot():
+            manifest = cicerone.detect(
+                str(path), info, adaptive=False, font_registry=get_validator().font_registry
+            )
     except Exception as exc:
         raise HTTPException(422, f"language scan could not read the asset: {exc}")
     detected = _infer_src_lang(manifest) if manifest.instances else None
@@ -2209,10 +2278,11 @@ def delete_project_asset(pid: str, asset_id: str):
     uploaded file are retained — deletion never destroys session data."""
     if db.get_project(pid) is None:
         raise HTTPException(404, f"project '{pid}' not found")
-    if not db.unlink_asset(pid, asset_id):
+    removed, successor = db.unlink_asset_with_successor(pid, asset_id)
+    if not removed:
         raise HTTPException(404, f"asset '{asset_id}' not in project")
     db.log_event(pid, "asset-removed", f"removed asset {asset_id} from project")
-    return {"ok": True}
+    return {"ok": True, "active_asset_id": successor}
 
 
 @app.patch("/api/assets/{asset_id}/ground-truth")
@@ -2390,14 +2460,15 @@ def detect(req: DetectRequest):
     except Exception:
         scene_regions = []
 
-    manifest = cicerone.detect(
-        str(path), info, backend=backend, scene_regions=scene_regions,
-        languages=hints,
-        ground_truth_pool=_ground_truth_pool(
-            req.asset_id, hints[0] if hints else None
-        ),
-        font_registry=get_validator().font_registry,
-    )
+    with _ocr_slot():
+        manifest = cicerone.detect(
+            str(path), info, backend=backend, scene_regions=scene_regions,
+            languages=hints,
+            ground_truth_pool=_ground_truth_pool(
+                req.asset_id, hints[0] if hints else None
+            ),
+            font_registry=get_validator().font_registry,
+        )
     manifest.src_lang = _infer_src_lang(manifest)
     # scene enrichment at CAPTURE time (not just render): style/background
     # profiles + typography power the capture tooltips and region table
@@ -2418,6 +2489,7 @@ def detect(req: DetectRequest):
     rescue = _gt_rescue(req.asset_id, path, manifest)
     tm_matched = _lookup_tm_for_manifest(req.asset_id, manifest, path)
     _resolve_auto_fonts(manifest)  # after TM lookup so manifest.targ_lang is set
+    _settle_manifest(manifest)
     save_manifest(UPLOAD_DIR, req.asset_id, manifest)
     # A Render-entry baseline is meaningful only for the exact detected
     # manifest it was captured from.  A fresh scan replaces that starting
@@ -2556,16 +2628,17 @@ def detect_stream(
 
             def run_detection():
                 try:
-                    outcome["manifest"] = cicerone.detect(
-                        str(path), asset_info=info, backend=backend,
-                        languages=list(lang_hints) if lang_hints else None,
-                        scene_regions=regions,
-                        ground_truth_pool=_ground_truth_pool(
-                            asset_id, lang_hints[0] if lang_hints else None
-                        ),
-                        font_registry=get_validator().font_registry,
-                        on_stage=events.put,
-                    )
+                    with _ocr_slot():
+                        outcome["manifest"] = cicerone.detect(
+                            str(path), asset_info=info, backend=backend,
+                            languages=list(lang_hints) if lang_hints else None,
+                            scene_regions=regions,
+                            ground_truth_pool=_ground_truth_pool(
+                                asset_id, lang_hints[0] if lang_hints else None
+                            ),
+                            font_registry=get_validator().font_registry,
+                            on_stage=events.put,
+                        )
                 except BaseException as exc:  # surfaced on the main thread
                     outcome["error"] = exc
                 finally:
@@ -2629,6 +2702,7 @@ def detect_stream(
             # SSE stage of its own, folded in silently before save
             _resolve_auto_fonts(manifest)
 
+            _settle_manifest(manifest)
             save_manifest(UPLOAD_DIR, asset_id, manifest)
             _localized_baseline_index(asset_id).unlink(missing_ok=True)
             _record_detection(asset_id, manifest)
@@ -3013,7 +3087,7 @@ def put_manifest(asset_id: str, manifest_data: Dict[str, Any]):
     # save, so this is the route where a whole set of regions can appear or
     # vanish at once -- and the one where stale Block coverage would be most
     # visible.
-    _reconcile_guided(manifest)
+    _settle_manifest(manifest)
     save_manifest(UPLOAD_DIR, asset_id, manifest)
     # autosave ledger: every accepted write is snapshotted (deduped) so a
     # session can always be rolled back
@@ -3169,6 +3243,91 @@ def _remember_operation(key: tuple, region_id: str) -> None:
     _OPERATION_IDS.move_to_end(key)
     while len(_OPERATION_IDS) > _OPERATION_MEMORY:
         _OPERATION_IDS.popitem(last=False)
+
+
+def _settle_manifest(manifest, *, on_dangling: str = "error") -> Dict[str, str]:
+    """Make a manifest consistent, or REFUSE. The write happens only after.
+
+    The single place a manifest is made whole before it is persisted, and a
+    hard boundary rather than a best-effort one. An earlier version caught
+    `CompactionError`, logged it and returned, letting the caller save
+    anyway -- which perpetuates exactly the corruption this layer exists to
+    stop. A manifest that cannot be made consistent must not reach disk.
+
+    ORDER MATTERS, and it is not the obvious one:
+
+      1. count live regions
+      2. detect dangling references and compute the whole plan
+      3. apply the plan to the manifest
+      4. reconcile Guided coverage against the FINAL ids
+      5. validate
+
+    Reconciliation runs AFTER compaction, not before. Reconciling first
+    rewrites `detection_assessment` from the current regions, which can
+    normalise away the very inconsistency step 2 needs to see -- the
+    integrity layer would then be diagnosing a manifest that had already
+    been tidied out from under it.
+
+    `on_dangling` defaults to `error`. Dropping references is data loss, and
+    routine writes are the wrong place for it; the repair tooling passes
+    `drop` explicitly, where a human has read a dry-run report first.
+
+    Returns the old->new id map, for callers that need to know what moved.
+
+    EXTERNAL REFERENCES ARE HISTORICAL AND ARE NOT MIGRATED. `tm_records`
+    carries a `region_id`, but it is written once and never appears in a
+    WHERE clause -- memory is looked up by `project_id` + `target_lang` +
+    text, never by region. So the column records WHERE A TRANSLATION CAME
+    FROM at the moment it was stored, in the same way an already-exported
+    XLIFF does. Rewriting it to follow a later renumbering would falsify
+    that record: it would claim the memory came from a region that did not
+    exist when the memory was made. Already-exported interchange files are
+    historical for the same reason; newly exported ones use current ids.
+
+    If a future feature resolves `tm_records.region_id` back to a live
+    region, that makes it a real foreign key and this decision has to be
+    revisited -- migrate it here, transactionally, using the returned map.
+    """
+    from tofu.layers import couvert
+
+    ## LIVE regions. `delete_region` soft-excludes and never touched this, so
+    ## the count kept including deleted regions; `add_region` set it to
+    ## `len(instances)`, which counts them too. Both are writes, so the count
+    ## belongs here with everything else that has to be true before a save.
+    manifest.total_regions = sum(
+        1 for i in (manifest.instances or []) if not getattr(i, "excluded", False)
+    )
+
+    ## DIAGNOSE FIRST, on the untouched object, and only on DURABLE
+    ## references. The distinction is the whole subtlety here:
+    ##
+    ##   * `semantic_units` and `semantic_assignment` are curated. Nothing
+    ##     regenerates them, so a reference into nowhere means an earlier
+    ##     write rebuilt the regions and abandoned them. Refuse.
+    ##   * Guided `detection_assessment` is DERIVED -- `aboyeur.reconcile`
+    ##     rewrites it wholesale from the live regions. A stale reference
+    ##     there is normal on a full manifest replace, where the client sends
+    ##     new instances and the server merges its own blocks back in.
+    ##
+    ## Diagnosing before reconciling matters because reconcile() silently
+    ## drops `explicit_region_ids` that no longer resolve -- so reconciling
+    ## first would destroy the evidence this check is looking for.
+    if on_dangling == "error":
+        durable = couvert.dangling_ids(manifest, durable_only=True)
+        if durable:
+            raise couvert.CompactionError(
+                "manifest references regions that do not exist: "
+                f"{sorted(durable)}"
+            )
+
+    ## Derived coverage recomputed from the live regions, which resolves the
+    ## assessment-level staleness the check above deliberately tolerated.
+    _reconcile_guided(manifest)
+    mapping = couvert.compact_region_ids(manifest, on_dangling="drop")
+    ## Again, against the ids that will actually be persisted.
+    _reconcile_guided(manifest)
+    couvert.validate(manifest)
+    return mapping
 
 
 def _reconcile_guided(
@@ -3351,14 +3510,69 @@ def add_region(asset_id: str, req: RegionCreate):
         if existing is not None:
             return {**jsonable(existing), **_guided_state(manifest)}
 
-    existing_nums = [int(i.id[1:]) for i in manifest.instances if i.id.startswith("r")]
+    ## GUIDED DECLARES ITS OWN TEXT.
+    ##
+    ## The user was asked to LOCATE a Block they had already typed, so the
+    ## string is known before the box exists and re-reading it can only
+    ## disagree with the request. That disagreement is not hypothetical: a
+    ## wrong read matched no atom, the Block stayed open, and the same phrase
+    ## was asked for again over a box that was already correct.
+    ##
+    ## Resolved HERE, from the stored Block, rather than trusting `req.text`.
+    ## A client may say WHICH Block a box belongs to; it may not say what that
+    ## Block reads. Same rule forage applies to a rescued request.
+    declared = None
+    if req.guided_block_id is not None:
+        declared = next(
+            (b for b in (manifest.guided_blocks or []) if b.id == req.guided_block_id),
+            None,
+        )
+        if declared is None:
+            ## Stale prompt state, a cleared Block list, or a fabricated id.
+            ## Accepting it would silently store client text under a Block
+            ## that cannot vouch for it.
+            raise HTTPException(
+                422,
+                f"unknown guided block '{req.guided_block_id}' for asset '{asset_id}'",
+            )
+
+    ## A TEMPORARY ordinal. `max+1` counting soft-deleted regions is what
+    ## burned numbers permanently and produced prem-sais-gt's r9-r15; forage
+    ## used lowest-free, so an id depended on which path made it. Neither
+    ## decides anything now -- this only has to be unique within this write,
+    ## and `_settle_manifest` renumbers the whole manifest before it is saved.
+    existing_nums = [
+        int(i.id[1:]) for i in manifest.instances
+        if len(i.id) > 1 and i.id[0] in "rx" and i.id[1:].isdigit()
+    ]
     next_num = max(existing_nums, default=0) + 1
     new_inst = InstText(
         id=f"r{next_num}",
         bounding_box=bbox,
-        text=req.text, target_text=req.target_text,
+        ## The bbox is the one that was DRAWN (clamped to the asset, nothing
+        ## more). Guided runs no refinement, so there is no snap to a
+        ## higher-confidence sub-detection to shrink it.
+        text=declared.raw_text if declared is not None else req.text,
+        target_text=req.target_text,
         reading_order=len(manifest.instances),
     )
+    if declared is not None:
+        ## The provenance shape forage uses for a rescued request, for the
+        ## same reason: this string is the user's assertion, not a reading,
+        ## and anything measuring recognition has to be able to tell.
+        new_inst.source_override = {
+            "kind": "guided_block",
+            "text": declared.raw_text,
+            "resource": "guided_blocks",
+        }
+        new_inst.recognition_history = [{
+            "stage": "guided_declaration",
+            "requested": declared.raw_text,
+            "block_id": declared.id,
+            ## Explicitly null rather than absent: no recogniser ran, which
+            ## is different from one running and returning nothing.
+            "recognized": None,
+        }]
     manifest.instances.append(new_inst)
     manifest.total_regions = len(manifest.instances)
 
@@ -3366,6 +3580,9 @@ def add_region(asset_id: str, req: RegionCreate):
         manifest,
         {new_inst.id: req.guided_block_id} if req.guided_block_id else None,
     )
+    ## Compaction AFTER association: the explicit link is recorded against
+    ## the id the region was created with, and the map rewrites it.
+    _settle_manifest(manifest)
 
     save_manifest(UPLOAD_DIR, asset_id, manifest)
     if operation_key is not None:
@@ -3471,7 +3688,7 @@ def merge_regions(asset_id: str, req: RegionMerge):
     # exist, so any Block that matched a member has to be recomputed. The
     # survivor keeps its id, so an explicit association on it survives; the
     # spares are now excluded and drop out of coverage.
-    _reconcile_guided(manifest)
+    _settle_manifest(manifest)
     save_manifest(UPLOAD_DIR, asset_id, manifest)
     pid = db.project_for_asset(asset_id)
     if pid:
@@ -3524,7 +3741,7 @@ def delete_region(asset_id: str, rid: str):
     # A Block whose only evidence just went away must REOPEN. `excluded` is
     # a mark rather than a splice, so nothing else in the manifest changes
     # shape here -- only reconciliation can notice.
-    _reconcile_guided(manifest)
+    _settle_manifest(manifest)
     save_manifest(UPLOAD_DIR, asset_id, manifest)
     active_count = sum(1 for i in manifest.instances if not i.excluded)
     return {"ok": True, "total_regions": active_count, **_guided_state(manifest)}
@@ -3549,7 +3766,20 @@ def update_region(asset_id: str, rid: str, req: RegionUpdate):
             "width": current.width if req.width is None else req.width,
             "height": current.height if req.height is None else req.height,
         })
-    if req.text is not None: inst.text = req.text
+    if req.text is not None:
+        inst.text = req.text
+        ## Retyping the source of a Guided region CONTRADICTS the declaration
+        ## that box was drawn under, and the later, region-specific statement
+        ## is the one the user means -- so the declaration is withdrawn and
+        ## the Block reopens on the next reconcile. Without this the override
+        ## would outvote the edit forever and a mis-located box could never be
+        ## taken back by correcting it.
+        ##
+        ## Scoped to `guided_block` on purpose: `gt_rescue` and arbitration
+        ## overrides answer a different question and keep their own rules.
+        if isinstance(inst.source_override, dict) \
+                and inst.source_override.get("kind") == "guided_block":
+            inst.source_override = None
     if req.target_text is not None: inst.target_text = req.target_text
     if req.dnt is not None: inst.dnt = req.dnt
     if req.excluded is not None: inst.excluded = req.excluded
@@ -3584,7 +3814,7 @@ def update_region(asset_id: str, rid: str, req: RegionUpdate):
     # Editing a region's source text changes what it READS, so the evidence
     # that matched it may no longer hold; excluding it removes the evidence
     # outright. Both arrive here.
-    _reconcile_guided(manifest)
+    _settle_manifest(manifest)
     save_manifest(UPLOAD_DIR, asset_id, manifest)
     return {**jsonable(inst), **_guided_state(manifest)}
 
@@ -3715,7 +3945,8 @@ def refine_region(req: RefineRegionRequest):
             raise HTTPException(500, "EasyOCR is not installed")
 
     try:
-        per_region = backend.detect_in_regions(str(path), [region], pad=0)
+        with _ocr_slot():
+            per_region = backend.detect_in_regions(str(path), [region], pad=0)
     except Exception as exc:
         raise HTTPException(500, f"detection failed: {exc}")
 
@@ -3750,6 +3981,8 @@ def _render_export_semantic(manifest, fmt: str, variant: str, targ_lang: str, pr
     caller that has not opted in, and the cheapest way to guarantee that is
     for this code to be unable to touch them.
     """
+    from tofu.layers import couvert
+    couvert.validate(manifest)
     src_lang = manifest.src_lang or "en"
     if fmt == "xliff":
         content = interchange.export_xliff_semantic(manifest, src_lang, targ_lang or "", variant or "standard")
@@ -3782,6 +4015,8 @@ def _render_export(manifest, fmt: str, variant: str, targ_lang: str):
 
     Returns (content, ext, media_type).
     """
+    from tofu.layers import couvert
+    couvert.validate(manifest)
     src_lang = manifest.src_lang or "en"
     if fmt == "xliff":
         content = interchange.export_xliff(manifest, src_lang, targ_lang or "", variant or "standard")

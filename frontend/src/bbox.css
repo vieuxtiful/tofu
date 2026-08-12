@@ -179,9 +179,32 @@
   animation: bbox-shimmer 0.5s ease-in-out 2;
 }
 
+/* ONE pass for a box the user just confirmed. Two passes announce a region
+ * that ARRIVED without being asked for -- the detector's work, which the
+ * reviewer has to notice. A confirmed box is one the user placed and
+ * approved a moment ago; it needs acknowledgement, not attention, and the
+ * second sweep reads as the app insisting on something already known. */
+.bbox-shimmer.once::after {
+  animation-iteration-count: 1;
+}
+
 @keyframes bbox-shimmer {
   from { transform: translateX(-170%); }
   to { transform: translateX(270%); }
+}
+
+/* A confirmed region FADES IN. The proposal used to animate out before the
+ * real region existed, so the box vanished for the length of the round trip
+ * and came back -- read as a flicker, or as the confirmation not having
+ * worked. The proposal now holds its place until the region replaces it,
+ * and the arrival is a fade rather than a hard cut. */
+.bbox-arriving {
+  animation: bbox-arrive 220ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes bbox-arrive {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 /* selected state */
@@ -459,4 +482,79 @@ html.dark .bbox-meta-tooltip-portal {
 }
 html.dark .guided-term {
   color: color-mix(in srgb, var(--bbox-color, #22d3ee) 90%, white);
+}
+
+/* ── Guided proposal: confirm or reject before it becomes a region ──────────
+ *
+ * A drawn box in Guided is a PROPOSAL. Guided declares its own text, so an
+ * accidental rectangle would be persisted carrying a string the user
+ * asserted — confidently wrong data with nothing to contradict it. The
+ * controls are the gate.
+ */
+.bbox-pending {
+  animation: bbox-pending-in 160ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes bbox-pending-in {
+  from { opacity: 0; transform: scale(0.97); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* Accepted: the proposal HOLDS ITS PLACE until the real region replaces it.
+ * It used to fade and scale away on click, which emptied the canvas for the
+ * length of the save and made the box appear to flicker out and back. A
+ * brief settle is all the acknowledgement the click needs -- the arrival
+ * animation on the real region does the rest. */
+.bbox-pending.committing {
+  animation: bbox-pending-commit 140ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes bbox-pending-commit {
+  from { transform: scale(1); }
+  50%  { transform: scale(0.985); }
+  to   { transform: scale(1); }
+}
+
+/* Bottom edges flush: y_bottom(icons) === y_bottom(bbox). */
+.bbox-confirm {
+  position: absolute;
+  bottom: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.bbox-confirm[data-side="right"] { left: 100%; margin-left: 4px; }
+.bbox-confirm[data-side="left"]  { right: 100%; margin-right: 4px; }
+
+.bbox-confirm-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border-radius: 4px;
+  cursor: pointer;
+  line-height: 0;
+  background: var(--bbox-confirm-bg, rgba(255, 255, 255, 0.92));
+  color: #3f3f46;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: transform 120ms cubic-bezier(0.4, 0, 0.2, 1),
+              background-color 120ms linear, color 120ms linear;
+}
+
+.dark .bbox-confirm-btn,
+html.dark .bbox-confirm-btn {
+  background: rgba(24, 24, 27, 0.92);
+  color: #e4e4e7;
+}
+
+.bbox-confirm-btn:hover { transform: scale(1.12); }
+/* The press itself, so a click that starts a 180ms hand-off still feels
+ * like it landed at the moment of the click. */
+.bbox-confirm-btn:active { transform: scale(0.9); }
+.bbox-confirm-btn.approve:hover { color: #16a34a; }
+.bbox-confirm-btn.reject:hover  { color: #dc2626; }
+.bbox-confirm-btn:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
 }

@@ -100,6 +100,18 @@ No weights, and deliberately no scalar: `decant` returns a state plus the
 measurements behind it. Combining these into a score is the ranker's job, and
 `layers/ticket.py` records why the ranker cannot be priced yet.
 
+## Glyph-margin calibration — `src/tofu/layers/proof_calibration.py`
+
+| Constant | Value | Provenance | Basis / note |
+|---|---:|---|---|
+| `MIN_CALIBRATION_SAMPLES` | 30 | `inherited` | Same floor as `temper.MIN_FIT_SAMPLES`. Below it, a fitted map records accidents in a small corpus; the first zh-Hant artifact has 12 and correctly remains unfitted. |
+| `MIN_ACCEPTED_SAMPLES` | 5 | `reasoned` | Prevents one lucky high-margin match from manufacturing a green threshold. Not a quality threshold and not yet swept. |
+| `TARGET_GREEN_PRECISION` | 0.98 | `preregistered` | Phase 1 safety gate. It is a fitting target: the actual probability threshold remains `None` until labelled evidence reaches it. |
+
+The logistic slope, intercept and acceptance threshold are fitted artifact
+values, never source constants. Unfitted or insufficient evidence may only
+produce `review_required` or `unresolvable`.
+
 ## Recognition — `src/tofu/utils/textmatch.py`
 
 | Constant | Value | Provenance | Basis / note |

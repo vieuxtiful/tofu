@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — Guided capture stops re-reading what the user already typed
+
+- **Guided draws no longer run OCR.** The draw handler called
+  `/api/detect/refine` on every box and used the highest-confidence result for
+  *both* the region's text and its geometry. In Guided the string is already
+  known — the user typed it and was asked only where it is — so the read had
+  nothing to contribute and two ways to do harm. Both are visible in the
+  `prem-sais-gt` manifest: a Block reading `鼜㒪` was stored as `孝支`, matched
+  no atom, left the Block open and asked for the same phrase again over a box
+  that was already correct; and the drawn rectangle was replaced by one
+  component of the phrase (`r11` 201×126 and `r12` 194×231 against the `r13`
+  403×236 the user eventually forced). Eight of that manifest's ten Blocks
+  ended `user_skipped`. `add_region` now takes the text from the stored Block,
+  keeps the submitted geometry, and rejects an unknown `guided_block_id` with
+  422 rather than storing client text under a Block that cannot vouch for it.
+  Auto and Manual keep refinement unchanged.
+
+- **`aboyeur` no longer 500s on a `source_override`.** `_region_text` returned
+  the override mapping whole and `_norm` handed it to
+  `unicodedata.normalize`, so a single rescued region turned every subsequent
+  reconcile into a `TypeError` — and Guided Capture stamps `gt_rescue`
+  overrides via `_gt_rescue`, whose own docstring cites `prem-sais`, so the
+  next autosave hit it. The existing test passed a bare string, a shape no
+  producer writes, which is why the mapping path went unexercised.
+
+- **Guided gestures are no longer lost in silence.** A box under the minimum
+  size now says so instead of vanishing, and the draw tool is visibly locked
+  (`cursor: progress`) while a box is saving rather than starting a draw the
+  handler would discard.
+
+- **The Blocks entry field stops implying it splits on whitespace.** Spaces
+  have always been ordinary text there — only Enter commits — but the field
+  coloured each word separately, so users committed words one at a time and
+  got three Blocks where they meant one. The Guided draft now renders as a
+  single token in the colour of the chip it becomes. Shift+Enter works as a
+  commit alias; Shift is not required for spaces.
+
+  **Measurement note:** a Guided region's text is now *declared*, not
+  recognised, and carries `source_override.kind == "guided_block"` plus a
+  `guided_declaration` entry in `recognition_history` recording that no
+  recogniser ran. Interactive Guided completion therefore measures
+  user-assisted **localization** and says nothing about recognition accuracy.
+  Any recall evaluation must score it on geometry (IoU against ground-truth
+  boxes) and must never count declared text as recognizer output. Gate 2 is
+  unaffected: `eval_guided_corpus.py` runs `detect_auto`/forage over the
+  frozen corpus and never exercises the interactive draw path.
+
 ### Added — ToFU Vision 2, Phase 1 baseline
 - **`layers/proof.py`** — canonical glyph rendering, a degradation catalogue
   named after physical processes (`fade`, `bleed`, `abrasion`, `blur`,

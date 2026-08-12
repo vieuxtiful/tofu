@@ -1,8 +1,6 @@
 import { useState } from "react";
-import { MdTipsAndUpdates } from "react-icons/md";
 import { X } from "lucide-react";
 import { Kbd, KbdGroup } from "@/components/ui/kbd";
-import KeyboardIcon from "./KeyboardIcon";
 
 /** Where the dismissal is remembered.
  *
@@ -22,52 +20,74 @@ function alreadyDismissed(): boolean {
   }
 }
 
-/** "Dictionary = ⌨ Ctrl + Space" — the user dictionary's activation
- *  shortcut, which until now was only discoverable by opening the
- *  suggestion popover that the shortcut opens.
+/** "⌨ Ctrl + Space — User Dictionary", collapsible rather than destroyable.
  *
  *  Alt+ArrowDown does the same thing (see `isRecommendationActivationKey`
  *  in AnimatedCaretTextarea). It is named in the accessible label rather
  *  than shown, because Ctrl+Space is taken by the input-source switcher on
  *  macOS and a hint that names only a shortcut the OS intercepts is worse
- *  than no hint at all. */
+ *  than no hint at all.
+ *
+ *  DISMISSAL COLLAPSES; IT DOES NOT DELETE. The hint used to return `null`,
+ *  so a user who dismissed it had no way back short of clearing site data --
+ *  a permanent consequence for a click that looks provisional. It now
+ *  collapses to its own ✕, which rotates a quarter turn to read as a `+`
+ *  affordance and expands the hint again on click. The stored flag persists
+ *  the COLLAPSED state, so the choice still survives a reload.
+ */
 export default function DictionaryHint() {
-  const [dismissed, setDismissed] = useState(alreadyDismissed);
+  const [collapsed, setCollapsed] = useState(alreadyDismissed);
 
-  if (dismissed) return null;
-
-  const dismiss = () => {
-    setDismissed(true);
-    try { window.localStorage.setItem(DISMISS_KEY, "1"); } catch { /* nothing to remember it with */ }
+  const remember = (value: boolean) => {
+    setCollapsed(value);
+    try {
+      window.localStorage.setItem(DISMISS_KEY, value ? "1" : "0");
+    } catch { /* nothing to remember it with */ }
   };
 
   return (
     <p
-      className="bezier-impression subtext flex items-start gap-1 px-3 py-2 text-xs text-zinc-500 dark:text-zinc-600"
+      /* 8.4px to match the status readouts it shares a line with. */
+      className="subtext flex items-center gap-1 text-[8.4px] text-zinc-500 dark:text-zinc-400"
       data-testid="dictionary-hint"
+      data-collapsed={collapsed ? "true" : "false"}
     >
-      <MdTipsAndUpdates size={14} className="mt-0.5 shrink-0 text-[#2d8cf0]" />
-      <span
-        className="flex flex-1 flex-wrap items-center gap-1.5"
-        aria-label="User dictionary: press Control plus Space, or Alt plus Down Arrow"
-      >
-        <span>Dictionary =</span>
-        <KeyboardIcon size={14} aria-hidden="true" />
-        <KbdGroup aria-hidden="true">
-          <Kbd>Ctrl</Kbd>
-          <span className="text-zinc-400 dark:text-zinc-600">+</span>
-          <Kbd>Space</Kbd>
-        </KbdGroup>
-      </span>
       <button
         type="button"
-        onClick={dismiss}
-        title="dismiss"
-        aria-label="Dismiss the dictionary shortcut hint"
-        className="shrink-0 rounded p-0.5 opacity-60 transition hover:opacity-100"
+        onClick={() => remember(!collapsed)}
+        title={collapsed ? "Show the dictionary shortcut" : "Hide the dictionary shortcut"}
+        aria-label={collapsed ? "Show the dictionary shortcut hint" : "Dismiss the dictionary shortcut hint"}
+        aria-expanded={!collapsed}
+        className="dictionary-hint-toggle shrink-0 rounded p-0.5 opacity-60 transition hover:opacity-100"
       >
-        <X size={12} />
+        {/* One glyph, two meanings. Rotating the ✕ a quarter turn lands it on
+            a `+`, so the control that closed the hint is visibly the control
+            that reopens it -- rather than a second, unrelated affordance
+            appearing where the first one used to be. */}
+        <X size={12} className="dictionary-hint-x" aria-hidden="true" />
       </button>
+      <span
+        className="dictionary-hint-body"
+        /* `inert` while collapsed: the width transition leaves the content in
+           the DOM, and a keyboard user must not tab into a hint that is not
+           on screen. */
+        aria-hidden={collapsed ? "true" : undefined}
+      >
+        <span
+          className="flex flex-nowrap items-center gap-1.5 whitespace-nowrap"
+          aria-label="User dictionary: press Control plus Space, or Alt plus Down Arrow"
+        >
+          {/* Keys first, then what they do — the same order the user performs
+              it in, and the shape every other shortcut readout on this row
+              already uses ("A draw", "Esc deselect"). */}
+          <KbdGroup aria-hidden="true">
+            <Kbd className="h-4 min-w-4 px-1 text-[10px] font-normal">Ctrl</Kbd>
+            <span className="text-zinc-400 dark:text-zinc-600">+</span>
+            <Kbd className="h-4 min-w-4 px-1 text-[10px] font-normal">Space</Kbd>
+          </KbdGroup>
+          <span>User Dictionary</span>
+        </span>
+      </span>
     </p>
   );
 }

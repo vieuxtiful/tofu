@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "kind": "scene_material_review_status",
+  "queue": "evidence\\scene-material-review-v1\\review-queue.json",
+  "review_schema": "evidence\\scene-material-review-schema-v1.json",
+  "queued": 44,
+  "submitted": 0,
+  "valid": 0,
+  "invalid": 0,
+  "label_eligible": 0,
+  "substrate_scoring_eligible": 0,
+  "pending": 44,
+  "agreement": {
+    "scored": 0,
+    "agreements": 0,
+    "raw_agreement": null,
+    "cohen_kappa": null
+  },
+  "production_decision_eligible": false,
+  "outcomes": []
+}

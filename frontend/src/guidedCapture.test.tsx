@@ -124,8 +124,11 @@ describe("GuidedPromptBubble", () => {
     expect(screen.getByRole("status").getAttribute("aria-live")).toBe("polite");
   });
 
-  it("hides the escape hatches while a box is being read", () => {
+  it("hides the escape hatches while a box is being saved", () => {
     // The lock has to be visible, not just felt as the canvas ignoring you.
+    // It says "saving", not "reading": Guided runs no recogniser, and the
+    // word described a refinement pass that overwrote the string the user
+    // had already typed.
     render(<GuidedPromptBubble
       prompt={{
         blockId: "g1", text: "釁", remainingText: "釁", matchedText: "",
@@ -134,7 +137,7 @@ describe("GuidedPromptBubble", () => {
       onSkip={() => {}}
     />);
     expect(screen.queryByText("skip")).toBeNull();
-    expect(screen.getByRole("status").textContent).toContain("reading…");
+    expect(screen.getByRole("status").textContent).toContain("saving…");
   });
 
   it("offers a way out of an unreadable Block", () => {

@@ -1,0 +1,3203 @@
+{
+  "schema": 1,
+  "kind": "scene_material_substrate_ablation",
+  "observational_only": true,
+  "decision_eligible": false,
+  "review_schema": "evidence/scene-material-review-schema-v1.json",
+  "surfaces": 44,
+  "glyph_excluded_measurable": 39,
+  "glyph_excluded_unmeasurable": 5,
+  "class_changes_among_measurable": 4,
+  "mean_substrate_coverage": 0.8191538461538461,
+  "transitions": [
+    {
+      "contaminated": "masonry",
+      "glyph_excluded": "masonry",
+      "count": 4
+    },
+    {
+      "contaminated": "masonry",
+      "glyph_excluded": "unknown",
+      "count": 1
+    },
+    {
+      "contaminated": "painted_panel",
+      "glyph_excluded": "unmeasured",
+      "count": 1
+    },
+    {
+      "contaminated": "textured_unknown",
+      "glyph_excluded": "textured_unknown",
+      "count": 1
+    },
+    {
+      "contaminated": "textured_unknown",
+      "glyph_excluded": "unmeasured",
+      "count": 1
+    },
+    {
+      "contaminated": "unknown",
+      "glyph_excluded": "masonry",
+      "count": 3
+    },
+    {
+      "contaminated": "unknown",
+      "glyph_excluded": "unknown",
+      "count": 30
+    },
+    {
+      "contaminated": "unknown",
+      "glyph_excluded": "unmeasured",
+      "count": 3
+    }
+  ],
+  "assets": [
+    {
+      "image": "images\\china-street.png",
+      "annotations": "images\\china-street.gt.json",
+      "exclusion_source": "tracked_gt_boxes",
+      "glyph_regions": 8,
+      "surfaces": 16,
+      "rows": [
+        {
+          "surface_id": "china-street:surface-1",
+          "contaminated": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.3164,
+              "luminance_std": 70.233,
+              "color_dispersion": 83.448,
+              "sample_pixels": 93796
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_crop",
+              "glyph_exclusion": false
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "surface crop may contain glyph pixels",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ]
+          },
+          "glyph_excluded": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.1262,
+              "luminance_std": 45.026,
+              "color_dispersion": 52.646,
+              "sample_pixels": 93796
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_substrate",
+              "glyph_exclusion": true,
+              "fallback_boxes": 8
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "excluded pixels are median-filled before spatial descriptor analysis",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ],
+            "substrate": {
+              "schema": 1,
+              "pixels": 37846,
+              "surface_pixels": 94500,
+              "coverage": 0.4,
+              "glyph_regions_excluded": 8,
+              "median_color": "#50358f",
+              "std": [
+                87.38,
+                78.71,
+                78.5
+              ],
+              "trustworthy": true
+            }
+          },
+          "class_changed": false
+        },
+        {
+          "surface_id": "china-street:surface-2",
+          "contaminated": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "masonry",
+            "display_name": "brick / masonry",
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.0636,
+              "luminance_std": 32.926,
+              "color_dispersion": 33.847,
+              "sample_pixels": 63756
+            },
+            "degradation_priors": [
+              {
+                "process": "abrasion",
+                "status": "plausible_not_measured"
+              },
+              {
+                "process": "speckle",
+                "status": "plausible_not_measured"
+              },
+              {
+                "process": "occlusion",
+                "status": "plausible_not_measured"
+              }
+            ],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_crop",
+              "glyph_exclusion": false
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "surface crop may contain glyph pixels",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ]
+          },
+          "glyph_excluded": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "masonry",
+            "display_name": "brick / masonry",
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.0535,
+              "luminance_std": 21.038,
+              "color_dispersion": 22.162,
+              "sample_pixels": 63756
+            },
+            "degradation_priors": [
+              {
+                "process": "abrasion",
+                "status": "plausible_not_measured"
+              },
+              {
+                "process": "speckle",
+                "status": "plausible_not_measured"
+              },
+              {
+                "process": "occlusion",
+                "status": "plausible_not_measured"
+              }
+            ],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_substrate",
+              "glyph_exclusion": true,
+              "fallback_boxes": 8
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "excluded pixels are median-filled before spatial descriptor analysis",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ],
+            "substrate": {
+              "schema": 1,
+              "pixels": 51237,
+              "surface_pixels": 53578,
+              "coverage": 0.956,
+              "glyph_regions_excluded": 8,
+              "median_color": "#030103",
+              "std": [
+                30.89,
+                22.08,
+                21.56
+              ],
+              "trustworthy": true
+            }
+          },
+          "class_changed": false
+        },
+        {
+          "surface_id": "china-street:surface-3",
+          "contaminated": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.2813,
+              "luminance_std": 68.444,
+              "color_dispersion": 84.585,
+              "sample_pixels": 52374
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_crop",
+              "glyph_exclusion": false
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "surface crop may contain glyph pixels",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ]
+          },
+          "glyph_excluded": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.072,
+              "luminance_std": 23.308,
+              "color_dispersion": 36.566,
+              "sample_pixels": 52374
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_substrate",
+              "glyph_exclusion": true,
+              "fallback_boxes": 8
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "excluded pixels are median-filled before spatial descriptor analysis",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ],
+            "substrate": {
+              "schema": 1,
+              "pixels": 13907,
+              "surface_pixels": 47928,
+              "coverage": 0.29,
+              "glyph_regions_excluded": 8,
+              "median_color": "#421021",
+              "std": [
+                90.33,
+                40.9,
+                73.51
+              ],
+              "trustworthy": true
+            }
+          },
+          "class_changed": false
+        },
+        {
+          "surface_id": "china-street:surface-4",
+          "contaminated": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.2993,
+              "luminance_std": 67.156,
+              "color_dispersion": 81.992,
+              "sample_pixels": 43989
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_crop",
+              "glyph_exclusion": false
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "surface crop may contain glyph pixels",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ]
+          },
+          "glyph_excluded": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.2261,
+              "luminance_std": 63.43,
+              "color_dispersion": 69.492,
+              "sample_pixels": 43989
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_substrate",
+              "glyph_exclusion": true,
+              "fallback_boxes": 8
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "excluded pixels are median-filled before spatial descriptor analysis",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ],
+            "substrate": {
+              "schema": 1,
+              "pixels": 32741,
+              "surface_pixels": 38414,
+              "coverage": 0.852,
+              "glyph_regions_excluded": 8,
+              "median_color": "#3f3a92",
+              "std": [
+                80.93,
+                81.61,
+                77.98
+              ],
+              "trustworthy": true
+            }
+          },
+          "class_changed": false
+        },
+        {
+          "surface_id": "china-street:surface-5",
+          "contaminated": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "masonry",
+            "display_name": "brick / masonry",
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.2054,
+              "luminance_std": 72.653,
+              "color_dispersion": 73.352,
+              "sample_pixels": 33855
+            },
+            "degradation_priors": [
+              {
+                "process": "abrasion",
+                "status": "plausible_not_measured"
+              },
+              {
+                "process": "speckle",
+                "status": "plausible_not_measured"
+              },
+              {
+                "process": "occlusion",
+                "status": "plausible_not_measured"
+              }
+            ],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_crop",
+              "glyph_exclusion": false
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "surface crop may contain glyph pixels",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ]
+          },
+          "glyph_excluded": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.1362,
+              "luminance_std": 52.94,
+              "color_dispersion": 51.613,
+              "sample_pixels": 33855
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_substrate",
+              "glyph_exclusion": true,
+              "fallback_boxes": 8
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "excluded pixels are median-filled before spatial descriptor analysis",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ],
+            "substrate": {
+              "schema": 1,
+              "pixels": 20791,
+              "surface_pixels": 28981,
+              "coverage": 0.717,
+              "glyph_regions_excluded": 8,
+              "median_color": "#271d09",
+              "std": [
+                78.23,
+                66.39,
+                46.48
+              ],
+              "trustworthy": true
+            }
+          },
+          "class_changed": true
+        },
+        {
+          "surface_id": "china-street:surface-6",
+          "contaminated": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.2199,
+              "luminance_std": 82.049,
+              "color_dispersion": 84.963,
+              "sample_pixels": 31823
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_crop",
+              "glyph_exclusion": false
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "surface crop may contain glyph pixels",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ]
+          },
+          "glyph_excluded": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.0697,
+              "luminance_std": 41.853,
+              "color_dispersion": 43.49,
+              "sample_pixels": 31823
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_substrate",
+              "glyph_exclusion": true,
+              "fallback_boxes": 8
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "excluded pixels are median-filled before spatial descriptor analysis",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ],
+            "substrate": {
+              "schema": 1,
+              "pixels": 7770,
+              "surface_pixels": 26272,
+              "coverage": 0.296,
+              "glyph_regions_excluded": 8,
+              "median_color": "#3a441b",
+              "std": [
+                82.4,
+                87.27,
+                83.81
+              ],
+              "trustworthy": true
+            }
+          },
+          "class_changed": false
+        },
+        {
+          "surface_id": "china-street:surface-7",
+          "contaminated": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.2655,
+              "luminance_std": 65.786,
+              "color_dispersion": 78.953,
+              "sample_pixels": 17907
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_crop",
+              "glyph_exclusion": false
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "surface crop may contain glyph pixels",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ]
+          },
+          "glyph_excluded": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.1632,
+              "luminance_std": 47.991,
+              "color_dispersion": 50.844,
+              "sample_pixels": 17907
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_substrate",
+              "glyph_exclusion": true,
+              "fallback_boxes": 8
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "excluded pixels are median-filled before spatial descriptor analysis",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ],
+            "substrate": {
+              "schema": 1,
+              "pixels": 8284,
+              "surface_pixels": 12190,
+              "coverage": 0.68,
+              "glyph_regions_excluded": 8,
+              "median_color": "#7491b6",
+              "std": [
+                81.75,
+                79.27,
+                63.05
+              ],
+              "trustworthy": true
+            }
+          },
+          "class_changed": false
+        },
+        {
+          "surface_id": "china-street:surface-8",
+          "contaminated": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.3184,
+              "luminance_std": 60.478,
+              "color_dispersion": 78.503,
+              "sample_pixels": 17822
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_crop",
+              "glyph_exclusion": false
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "surface crop may contain glyph pixels",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ]
+          },
+          "glyph_excluded": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.2364,
+              "luminance_std": 45.525,
+              "color_dispersion": 63.763,
+              "sample_pixels": 17822
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_substrate",
+              "glyph_exclusion": true,
+              "fallback_boxes": 8
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "excluded pixels are median-filled before spatial descriptor analysis",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ],
+            "substrate": {
+              "schema": 1,
+              "pixels": 12639,
+              "surface_pixels": 15651,
+              "coverage": 0.808,
+              "glyph_regions_excluded": 8,
+              "median_color": "#8d334c",
+              "std": [
+                88.85,
+                62.87,
+                76.22
+              ],
+              "trustworthy": true
+            }
+          },
+          "class_changed": false
+        },
+        {
+          "surface_id": "china-street:surface-9",
+          "contaminated": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.2803,
+              "luminance_std": 68.537,
+              "color_dispersion": 72.261,
+              "sample_pixels": 8383
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_crop",
+              "glyph_exclusion": false
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "surface crop may contain glyph pixels",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ]
+          },
+          "glyph_excluded": null,
+          "class_changed": true
+        },
+        {
+          "surface_id": "china-street:surface-10",
+          "contaminated": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.3174,
+              "luminance_std": 52.381,
+              "color_dispersion": 64.809,
+              "sample_pixels": 7605
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_crop",
+              "glyph_exclusion": false
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "surface crop may contain glyph pixels",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ]
+          },
+          "glyph_excluded": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.2285,
+              "luminance_std": 42.752,
+              "color_dispersion": 54.204,
+              "sample_pixels": 7605
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_substrate",
+              "glyph_exclusion": true,
+              "fallback_boxes": 8
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "excluded pixels are median-filled before spatial descriptor analysis",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ],
+            "substrate": {
+              "schema": 1,
+              "pixels": 5827,
+              "surface_pixels": 5827,
+              "coverage": 1.0,
+              "glyph_regions_excluded": 8,
+              "median_color": "#b53822",
+              "std": [
+                70.73,
+                61.54,
+                53.71
+              ],
+              "trustworthy": true
+            }
+          },
+          "class_changed": false
+        },
+        {
+          "surface_id": "china-street:surface-11",
+          "contaminated": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.2555,
+              "luminance_std": 66.004,
+              "color_dispersion": 67.595,
+              "sample_pixels": 5150
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_crop",
+              "glyph_exclusion": false
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "surface crop may contain glyph pixels",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ]
+          },
+          "glyph_excluded": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.0171,
+              "luminance_std": 17.848,
+              "color_dispersion": 17.424,
+              "sample_pixels": 5150
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_substrate",
+              "glyph_exclusion": true,
+              "fallback_boxes": 8
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "excluded pixels are median-filled before spatial descriptor analysis",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ],
+            "substrate": {
+              "schema": 1,
+              "pixels": 327,
+              "surface_pixels": 5244,
+              "coverage": 0.062,
+              "glyph_regions_excluded": 8,
+              "median_color": "#7e384d",
+              "std": [
+                56.57,
+                81.24,
+                76.16
+              ],
+              "trustworthy": true
+            }
+          },
+          "class_changed": false
+        },
+        {
+          "surface_id": "china-street:surface-12",
+          "contaminated": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.2494,
+              "luminance_std": 65.674,
+              "color_dispersion": 72.525,
+              "sample_pixels": 4800
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_crop",
+              "glyph_exclusion": false
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "surface crop may contain glyph pixels",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ]
+          },
+          "glyph_excluded": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.0829,
+              "luminance_std": 28.08,
+              "color_dispersion": 28.666,
+              "sample_pixels": 4800
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_substrate",
+              "glyph_exclusion": true,
+              "fallback_boxes": 8
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "excluded pixels are median-filled before spatial descriptor analysis",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ],
+            "substrate": {
+              "schema": 1,
+              "pixels": 1566,
+              "surface_pixels": 3470,
+              "coverage": 0.451,
+              "glyph_regions_excluded": 8,
+              "median_color": "#272215",
+              "std": [
+                57.94,
+                50.71,
+                40.38
+              ],
+              "trustworthy": true
+            }
+          },
+          "class_changed": false
+        },
+        {
+          "surface_id": "china-street:surface-13",
+          "contaminated": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.2824,
+              "luminance_std": 52.828,
+              "color_dispersion": 60.125,
+              "sample_pixels": 4628
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_crop",
+              "glyph_exclusion": false
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "surface crop may contain glyph pixels",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ]
+          },
+          "glyph_excluded": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.2545,
+              "luminance_std": 46.854,
+              "color_dispersion": 52.505,
+              "sample_pixels": 4628
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_substrate",
+              "glyph_exclusion": true,
+              "fallback_boxes": 8
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "excluded pixels are median-filled before spatial descriptor analysis",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ],
+            "substrate": {
+              "schema": 1,
+              "pixels": 3579,
+              "surface_pixels": 3688,
+              "coverage": 0.97,
+              "glyph_regions_excluded": 8,
+              "median_color": "#d24b5e",
+              "std": [
+                43.98,
+                68.81,
+                65.51
+              ],
+              "trustworthy": true
+            }
+          },
+          "class_changed": false
+        },
+        {
+          "surface_id": "china-street:surface-14",
+          "contaminated": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "textured_unknown",
+            "display_name": "textured surface",
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "surface",
+              "edge_density": 0.2787,
+              "luminance_std": 75.723,
+              "color_dispersion": 79.527,
+              "sample_pixels": 4489
+            },
+            "degradation_priors": [
+              {
+                "process": "abrasion",
+                "status": "plausible_not_measured"
+              },
+              {
+                "process": "speckle",
+                "status": "plausible_not_measured"
+              }
+            ],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_crop",
+              "glyph_exclusion": false
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "surface crop may contain glyph pixels",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ]
+          },
+          "glyph_excluded": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "textured_unknown",
+            "display_name": "textured surface",
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "surface",
+              "edge_density": 0.0662,
+              "luminance_std": 23.741,
+              "color_dispersion": 27.889,
+              "sample_pixels": 4489
+            },
+            "degradation_priors": [
+              {
+                "process": "abrasion",
+                "status": "plausible_not_measured"
+              },
+              {
+                "process": "speckle",
+                "status": "plausible_not_measured"
+              }
+            ],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_substrate",
+              "glyph_exclusion": true,
+              "fallback_boxes": 8
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "excluded pixels are median-filled before spatial descriptor analysis",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ],
+            "substrate": {
+              "schema": 1,
+              "pixels": 596,
+              "surface_pixels": 3423,
+              "coverage": 0.174,
+              "glyph_regions_excluded": 8,
+              "median_color": "#b85f3a",
+              "std": [
+                85.77,
+                70.02,
+                75.08
+              ],
+              "trustworthy": true
+            }
+          },
+          "class_changed": false
+        },
+        {
+          "surface_id": "china-street:surface-15",
+          "contaminated": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "textured_unknown",
+            "display_name": "textured surface",
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "surface",
+              "edge_density": 0.2206,
+              "luminance_std": 68.269,
+              "color_dispersion": 66.007,
+              "sample_pixels": 3300
+            },
+            "degradation_priors": [
+              {
+                "process": "abrasion",
+                "status": "plausible_not_measured"
+              },
+              {
+                "process": "speckle",
+                "status": "plausible_not_measured"
+              }
+            ],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_crop",
+              "glyph_exclusion": false
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "surface crop may contain glyph pixels",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ]
+          },
+          "glyph_excluded": null,
+          "class_changed": true
+        },
+        {
+          "surface_id": "china-street:surface-16",
+          "contaminated": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.2979,
+              "luminance_std": 69.166,
+              "color_dispersion": 71.178,
+              "sample_pixels": 3115
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_crop",
+              "glyph_exclusion": false
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "surface crop may contain glyph pixels",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ]
+          },
+          "glyph_excluded": null,
+          "class_changed": true
+        }
+      ]
+    },
+    {
+      "image": "images\\japan-street.jpeg",
+      "annotations": "images\\japan-street.gt.json",
+      "exclusion_source": "tracked_gt_boxes",
+      "glyph_regions": 7,
+      "surfaces": 12,
+      "rows": [
+        {
+          "surface_id": "japan-street:surface-1",
+          "contaminated": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.3361,
+              "luminance_std": 66.114,
+              "color_dispersion": 72.0,
+              "sample_pixels": 38250
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_crop",
+              "glyph_exclusion": false
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "surface crop may contain glyph pixels",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ]
+          },
+          "glyph_excluded": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.3361,
+              "luminance_std": 66.114,
+              "color_dispersion": 72.0,
+              "sample_pixels": 38250
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_substrate",
+              "glyph_exclusion": true,
+              "fallback_boxes": 7
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "excluded pixels are median-filled before spatial descriptor analysis",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ],
+            "substrate": {
+              "schema": 1,
+              "pixels": 38646,
+              "surface_pixels": 38646,
+              "coverage": 1.0,
+              "glyph_regions_excluded": 7,
+              "median_color": "#95603f",
+              "std": [
+                69.45,
+                72.45,
+                74.03
+              ],
+              "trustworthy": true
+            }
+          },
+          "class_changed": false
+        },
+        {
+          "surface_id": "japan-street:surface-2",
+          "contaminated": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.2641,
+              "luminance_std": 59.734,
+              "color_dispersion": 65.642,
+              "sample_pixels": 36685
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_crop",
+              "glyph_exclusion": false
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "surface crop may contain glyph pixels",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ]
+          },
+          "glyph_excluded": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.2044,
+              "luminance_std": 47.79,
+              "color_dispersion": 53.219,
+              "sample_pixels": 36685
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_substrate",
+              "glyph_exclusion": true,
+              "fallback_boxes": 7
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "excluded pixels are median-filled before spatial descriptor analysis",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ],
+            "substrate": {
+              "schema": 1,
+              "pixels": 27234,
+              "surface_pixels": 29046,
+              "coverage": 0.938,
+              "glyph_regions_excluded": 7,
+              "median_color": "#6b4e39",
+              "std": [
+                65.87,
+                61.77,
+                58.46
+              ],
+              "trustworthy": true
+            }
+          },
+          "class_changed": false
+        },
+        {
+          "surface_id": "japan-street:surface-3",
+          "contaminated": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.3093,
+              "luminance_std": 66.784,
+              "color_dispersion": 71.369,
+              "sample_pixels": 36520
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_crop",
+              "glyph_exclusion": false
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "surface crop may contain glyph pixels",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ]
+          },
+          "glyph_excluded": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "masonry",
+            "display_name": "brick / masonry",
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.2556,
+              "luminance_std": 56.648,
+              "color_dispersion": 60.823,
+              "sample_pixels": 36520
+            },
+            "degradation_priors": [
+              {
+                "process": "abrasion",
+                "status": "plausible_not_measured"
+              },
+              {
+                "process": "speckle",
+                "status": "plausible_not_measured"
+              },
+              {
+                "process": "occlusion",
+                "status": "plausible_not_measured"
+              }
+            ],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_substrate",
+              "glyph_exclusion": true,
+              "fallback_boxes": 7
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "excluded pixels are median-filled before spatial descriptor analysis",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ],
+            "substrate": {
+              "schema": 1,
+              "pixels": 27663,
+              "surface_pixels": 27846,
+              "coverage": 0.993,
+              "glyph_regions_excluded": 7,
+              "median_color": "#8d5e3d",
+              "std": [
+                70.18,
+                70.19,
+                68.32
+              ],
+              "trustworthy": true
+            }
+          },
+          "class_changed": true
+        },
+        {
+          "surface_id": "japan-street:surface-4",
+          "contaminated": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.2578,
+              "luminance_std": 51.406,
+              "color_dispersion": 57.238,
+              "sample_pixels": 33232
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_crop",
+              "glyph_exclusion": false
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "surface crop may contain glyph pixels",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ]
+          },
+          "glyph_excluded": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.2407,
+              "luminance_std": 46.114,
+              "color_dispersion": 51.285,
+              "sample_pixels": 33232
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_substrate",
+              "glyph_exclusion": true,
+              "fallback_boxes": 7
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "excluded pixels are median-filled before spatial descriptor analysis",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ],
+            "substrate": {
+              "schema": 1,
+              "pixels": 30953,
+              "surface_pixels": 32695,
+              "coverage": 0.947,
+              "glyph_regions_excluded": 7,
+              "median_color": "#683c1d",
+              "std": [
+                60.97,
+                51.87,
+                46.86
+              ],
+              "trustworthy": true
+            }
+          },
+          "class_changed": false
+        },
+        {
+          "surface_id": "japan-street:surface-5",
+          "contaminated": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.2899,
+              "luminance_std": 60.4,
+              "color_dispersion": 63.023,
+              "sample_pixels": 29526
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_crop",
+              "glyph_exclusion": false
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "surface crop may contain glyph pixels",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ]
+          },
+          "glyph_excluded": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.2599,
+              "luminance_std": 56.047,
+              "color_dispersion": 58.722,
+              "sample_pixels": 29526
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_substrate",
+              "glyph_exclusion": true,
+              "fallback_boxes": 7
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "excluded pixels are median-filled before spatial descriptor analysis",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ],
+            "substrate": {
+              "schema": 1,
+              "pixels": 25806,
+              "surface_pixels": 25806,
+              "coverage": 1.0,
+              "glyph_regions_excluded": 7,
+              "median_color": "#67371b",
+              "std": [
+                68.05,
+                61.62,
+                58.61
+              ],
+              "trustworthy": true
+            }
+          },
+          "class_changed": false
+        },
+        {
+          "surface_id": "japan-street:surface-6",
+          "contaminated": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.2969,
+              "luminance_std": 61.662,
+              "color_dispersion": 69.353,
+              "sample_pixels": 21109
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_crop",
+              "glyph_exclusion": false
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "surface crop may contain glyph pixels",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ]
+          },
+          "glyph_excluded": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.2537,
+              "luminance_std": 54.735,
+              "color_dispersion": 62.207,
+              "sample_pixels": 21109
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_substrate",
+              "glyph_exclusion": true,
+              "fallback_boxes": 7
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "excluded pixels are median-filled before spatial descriptor analysis",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ],
+            "substrate": {
+              "schema": 1,
+              "pixels": 16848,
+              "surface_pixels": 16874,
+              "coverage": 0.998,
+              "glyph_regions_excluded": 7,
+              "median_color": "#9d4c45",
+              "std": [
+                66.37,
+                72.06,
+                70.24
+              ],
+              "trustworthy": true
+            }
+          },
+          "class_changed": false
+        },
+        {
+          "surface_id": "japan-street:surface-7",
+          "contaminated": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.2119,
+              "luminance_std": 40.438,
+              "color_dispersion": 55.261,
+              "sample_pixels": 17205
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_crop",
+              "glyph_exclusion": false
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "surface crop may contain glyph pixels",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ]
+          },
+          "glyph_excluded": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.1599,
+              "luminance_std": 32.122,
+              "color_dispersion": 42.947,
+              "sample_pixels": 17205
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_substrate",
+              "glyph_exclusion": true,
+              "fallback_boxes": 7
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "excluded pixels are median-filled before spatial descriptor analysis",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ],
+            "substrate": {
+              "schema": 1,
+              "pixels": 12566,
+              "surface_pixels": 12566,
+              "coverage": 1.0,
+              "glyph_regions_excluded": 7,
+              "median_color": "#920d0b",
+              "std": [
+                71.15,
+                47.78,
+                30.52
+              ],
+              "trustworthy": true
+            }
+          },
+          "class_changed": false
+        },
+        {
+          "surface_id": "japan-street:surface-8",
+          "contaminated": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.215,
+              "luminance_std": 30.466,
+              "color_dispersion": 39.661,
+              "sample_pixels": 11616
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_crop",
+              "glyph_exclusion": false
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "surface crop may contain glyph pixels",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ]
+          },
+          "glyph_excluded": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.2097,
+              "luminance_std": 29.856,
+              "color_dispersion": 38.281,
+              "sample_pixels": 11616
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_substrate",
+              "glyph_exclusion": true,
+              "fallback_boxes": 7
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "excluded pixels are median-filled before spatial descriptor analysis",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ],
+            "substrate": {
+              "schema": 1,
+              "pixels": 10754,
+              "surface_pixels": 10754,
+              "coverage": 1.0,
+              "glyph_regions_excluded": 7,
+              "median_color": "#2d2621",
+              "std": [
+                50.84,
+                31.49,
+                37.12
+              ],
+              "trustworthy": true
+            }
+          },
+          "class_changed": false
+        },
+        {
+          "surface_id": "japan-street:surface-9",
+          "contaminated": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "painted_panel",
+            "display_name": "painted sign / panel",
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "bordered_region",
+              "edge_density": 0.2365,
+              "luminance_std": 74.143,
+              "color_dispersion": 74.515,
+              "sample_pixels": 9438
+            },
+            "degradation_priors": [
+              {
+                "process": "fade",
+                "status": "plausible_not_measured"
+              },
+              {
+                "process": "abrasion",
+                "status": "plausible_not_measured"
+              },
+              {
+                "process": "bleed",
+                "status": "plausible_not_measured"
+              }
+            ],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_crop",
+              "glyph_exclusion": false
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "surface crop may contain glyph pixels",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ]
+          },
+          "glyph_excluded": null,
+          "class_changed": true
+        },
+        {
+          "surface_id": "japan-street:surface-10",
+          "contaminated": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.2679,
+              "luminance_std": 69.683,
+              "color_dispersion": 76.872,
+              "sample_pixels": 5880
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_crop",
+              "glyph_exclusion": false
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "surface crop may contain glyph pixels",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ]
+          },
+          "glyph_excluded": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.1541,
+              "luminance_std": 38.363,
+              "color_dispersion": 46.111,
+              "sample_pixels": 5880
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_substrate",
+              "glyph_exclusion": true,
+              "fallback_boxes": 7
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "excluded pixels are median-filled before spatial descriptor analysis",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ],
+            "substrate": {
+              "schema": 1,
+              "pixels": 3442,
+              "surface_pixels": 4271,
+              "coverage": 0.806,
+              "glyph_regions_excluded": 7,
+              "median_color": "#732428",
+              "std": [
+                65.55,
+                59.78,
+                58.32
+              ],
+              "trustworthy": true
+            }
+          },
+          "class_changed": false
+        },
+        {
+          "surface_id": "japan-street:surface-11",
+          "contaminated": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.3066,
+              "luminance_std": 42.596,
+              "color_dispersion": 42.357,
+              "sample_pixels": 2616
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_crop",
+              "glyph_exclusion": false
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "surface crop may contain glyph pixels",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ]
+          },
+          "glyph_excluded": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.2768,
+              "luminance_std": 39.408,
+              "color_dispersion": 39.047,
+              "sample_pixels": 2616
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_substrate",
+              "glyph_exclusion": true,
+              "fallback_boxes": 7
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "excluded pixels are median-filled before spatial descriptor analysis",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ],
+            "substrate": {
+              "schema": 1,
+              "pixels": 2324,
+              "surface_pixels": 2324,
+              "coverage": 1.0,
+              "glyph_regions_excluded": 7,
+              "median_color": "#8b2a0a",
+              "std": [
+                55.47,
+                42.95,
+                26.06
+              ],
+              "trustworthy": true
+            }
+          },
+          "class_changed": false
+        },
+        {
+          "surface_id": "japan-street:surface-12",
+          "contaminated": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.2713,
+              "luminance_std": 63.603,
+              "color_dispersion": 71.859,
+              "sample_pixels": 2108
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_crop",
+              "glyph_exclusion": false
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "surface crop may contain glyph pixels",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ]
+          },
+          "glyph_excluded": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.2609,
+              "luminance_std": 62.994,
+              "color_dispersion": 71.349,
+              "sample_pixels": 2108
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_substrate",
+              "glyph_exclusion": true,
+              "fallback_boxes": 7
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "excluded pixels are median-filled before spatial descriptor analysis",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ],
+            "substrate": {
+              "schema": 1,
+              "pixels": 2039,
+              "surface_pixels": 2039,
+              "coverage": 1.0,
+              "glyph_regions_excluded": 7,
+              "median_color": "#9b9153",
+              "std": [
+                81.75,
+                68.5,
+                67.94
+              ],
+              "trustworthy": true
+            }
+          },
+          "class_changed": false
+        }
+      ]
+    },
+    {
+      "image": "images\\prem-sais.png",
+      "annotations": "server\\uploads\\5ad31639a745.manifest.json",
+      "exclusion_source": "manifest_masks_and_boxes",
+      "glyph_regions": 8,
+      "surfaces": 16,
+      "rows": [
+        {
+          "surface_id": "prem-sais:surface-1",
+          "contaminated": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.288,
+              "luminance_std": 45.374,
+              "color_dispersion": 44.428,
+              "sample_pixels": 223008
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_crop",
+              "glyph_exclusion": false
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "surface crop may contain glyph pixels",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ]
+          },
+          "glyph_excluded": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "masonry",
+            "display_name": "brick / masonry",
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.1361,
+              "luminance_std": 23.413,
+              "color_dispersion": 23.372,
+              "sample_pixels": 223008
+            },
+            "degradation_priors": [
+              {
+                "process": "abrasion",
+                "status": "plausible_not_measured"
+              },
+              {
+                "process": "speckle",
+                "status": "plausible_not_measured"
+              },
+              {
+                "process": "occlusion",
+                "status": "plausible_not_measured"
+              }
+            ],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_substrate",
+              "glyph_exclusion": true,
+              "fallback_boxes": 8
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "excluded pixels are median-filled before spatial descriptor analysis",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ],
+            "substrate": {
+              "schema": 1,
+              "pixels": 95126,
+              "surface_pixels": 197373,
+              "coverage": 0.482,
+              "glyph_regions_excluded": 8,
+              "median_color": "#aa723f",
+              "std": [
+                36.3,
+                36.97,
+                34.82
+              ],
+              "trustworthy": true
+            }
+          },
+          "class_changed": true
+        },
+        {
+          "surface_id": "prem-sais:surface-2",
+          "contaminated": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "masonry",
+            "display_name": "brick / masonry",
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.2221,
+              "luminance_std": 36.544,
+              "color_dispersion": 34.413,
+              "sample_pixels": 176384
+            },
+            "degradation_priors": [
+              {
+                "process": "abrasion",
+                "status": "plausible_not_measured"
+              },
+              {
+                "process": "speckle",
+                "status": "plausible_not_measured"
+              },
+              {
+                "process": "occlusion",
+                "status": "plausible_not_measured"
+              }
+            ],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_crop",
+              "glyph_exclusion": false
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "surface crop may contain glyph pixels",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ]
+          },
+          "glyph_excluded": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "masonry",
+            "display_name": "brick / masonry",
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.1705,
+              "luminance_std": 26.892,
+              "color_dispersion": 25.489,
+              "sample_pixels": 176384
+            },
+            "degradation_priors": [
+              {
+                "process": "abrasion",
+                "status": "plausible_not_measured"
+              },
+              {
+                "process": "speckle",
+                "status": "plausible_not_measured"
+              },
+              {
+                "process": "occlusion",
+                "status": "plausible_not_measured"
+              }
+            ],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_substrate",
+              "glyph_exclusion": true,
+              "fallback_boxes": 8
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "excluded pixels are median-filled before spatial descriptor analysis",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ],
+            "substrate": {
+              "schema": 1,
+              "pixels": 132051,
+              "surface_pixels": 162131,
+              "coverage": 0.814,
+              "glyph_regions_excluded": 8,
+              "median_color": "#8c5224",
+              "std": [
+                37.83,
+                30.21,
+                20.38
+              ],
+              "trustworthy": true
+            }
+          },
+          "class_changed": false
+        },
+        {
+          "surface_id": "prem-sais:surface-3",
+          "contaminated": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.3146,
+              "luminance_std": 52.136,
+              "color_dispersion": 50.654,
+              "sample_pixels": 174168
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_crop",
+              "glyph_exclusion": false
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "surface crop may contain glyph pixels",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ]
+          },
+          "glyph_excluded": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.2383,
+              "luminance_std": 48.742,
+              "color_dispersion": 47.451,
+              "sample_pixels": 174168
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_substrate",
+              "glyph_exclusion": true,
+              "fallback_boxes": 8
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "excluded pixels are median-filled before spatial descriptor analysis",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ],
+            "substrate": {
+              "schema": 1,
+              "pixels": 131291,
+              "surface_pixels": 131291,
+              "coverage": 1.0,
+              "glyph_regions_excluded": 8,
+              "median_color": "#7d5c42",
+              "std": [
+                61.85,
+                54.71,
+                45.86
+              ],
+              "trustworthy": true
+            }
+          },
+          "class_changed": false
+        },
+        {
+          "surface_id": "prem-sais:surface-4",
+          "contaminated": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.3187,
+              "luminance_std": 48.149,
+              "color_dispersion": 47.207,
+              "sample_pixels": 114124
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_crop",
+              "glyph_exclusion": false
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "surface crop may contain glyph pixels",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ]
+          },
+          "glyph_excluded": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.2406,
+              "luminance_std": 41.425,
+              "color_dispersion": 40.714,
+              "sample_pixels": 114124
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_substrate",
+              "glyph_exclusion": true,
+              "fallback_boxes": 8
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "excluded pixels are median-filled before spatial descriptor analysis",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ],
+            "substrate": {
+              "schema": 1,
+              "pixels": 83817,
+              "surface_pixels": 83817,
+              "coverage": 1.0,
+              "glyph_regions_excluded": 8,
+              "median_color": "#906a4a",
+              "std": [
+                54.51,
+                47.19,
+                40.63
+              ],
+              "trustworthy": true
+            }
+          },
+          "class_changed": false
+        },
+        {
+          "surface_id": "prem-sais:surface-5",
+          "contaminated": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.193,
+              "luminance_std": 34.837,
+              "color_dispersion": 33.485,
+              "sample_pixels": 111780
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_crop",
+              "glyph_exclusion": false
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "surface crop may contain glyph pixels",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ]
+          },
+          "glyph_excluded": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.1849,
+              "luminance_std": 33.937,
+              "color_dispersion": 32.614,
+              "sample_pixels": 111780
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_substrate",
+              "glyph_exclusion": true,
+              "fallback_boxes": 8
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "excluded pixels are median-filled before spatial descriptor analysis",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ],
+            "substrate": {
+              "schema": 1,
+              "pixels": 108738,
+              "surface_pixels": 108738,
+              "coverage": 1.0,
+              "glyph_regions_excluded": 8,
+              "median_color": "#8f5221",
+              "std": [
+                39.91,
+                34.12,
+                25.31
+              ],
+              "trustworthy": true
+            }
+          },
+          "class_changed": false
+        },
+        {
+          "surface_id": "prem-sais:surface-6",
+          "contaminated": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.1652,
+              "luminance_std": 30.612,
+              "color_dispersion": 29.294,
+              "sample_pixels": 69020
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_crop",
+              "glyph_exclusion": false
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "surface crop may contain glyph pixels",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ]
+          },
+          "glyph_excluded": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.1652,
+              "luminance_std": 30.612,
+              "color_dispersion": 29.294,
+              "sample_pixels": 69020
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_substrate",
+              "glyph_exclusion": true,
+              "fallback_boxes": 8
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "excluded pixels are median-filled before spatial descriptor analysis",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ],
+            "substrate": {
+              "schema": 1,
+              "pixels": 69549,
+              "surface_pixels": 69549,
+              "coverage": 1.0,
+              "glyph_regions_excluded": 8,
+              "median_color": "#372618",
+              "std": [
+                42.53,
+                27.84,
+                17.32
+              ],
+              "trustworthy": true
+            }
+          },
+          "class_changed": false
+        },
+        {
+          "surface_id": "prem-sais:surface-7",
+          "contaminated": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "masonry",
+            "display_name": "brick / masonry",
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.2926,
+              "luminance_std": 35.502,
+              "color_dispersion": 37.022,
+              "sample_pixels": 64500
+            },
+            "degradation_priors": [
+              {
+                "process": "abrasion",
+                "status": "plausible_not_measured"
+              },
+              {
+                "process": "speckle",
+                "status": "plausible_not_measured"
+              },
+              {
+                "process": "occlusion",
+                "status": "plausible_not_measured"
+              }
+            ],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_crop",
+              "glyph_exclusion": false
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "surface crop may contain glyph pixels",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ]
+          },
+          "glyph_excluded": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "masonry",
+            "display_name": "brick / masonry",
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.074,
+              "luminance_std": 15.071,
+              "color_dispersion": 14.887,
+              "sample_pixels": 64500
+            },
+            "degradation_priors": [
+              {
+                "process": "abrasion",
+                "status": "plausible_not_measured"
+              },
+              {
+                "process": "speckle",
+                "status": "plausible_not_measured"
+              },
+              {
+                "process": "occlusion",
+                "status": "plausible_not_measured"
+              }
+            ],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_substrate",
+              "glyph_exclusion": true,
+              "fallback_boxes": 8
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "excluded pixels are median-filled before spatial descriptor analysis",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ],
+            "substrate": {
+              "schema": 1,
+              "pixels": 16246,
+              "surface_pixels": 51986,
+              "coverage": 0.313,
+              "glyph_regions_excluded": 8,
+              "median_color": "#ae7540",
+              "std": [
+                33.37,
+                29.96,
+                26.22
+              ],
+              "trustworthy": true
+            }
+          },
+          "class_changed": false
+        },
+        {
+          "surface_id": "prem-sais:surface-8",
+          "contaminated": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.3519,
+              "luminance_std": 34.06,
+              "color_dispersion": 34.367,
+              "sample_pixels": 45792
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_crop",
+              "glyph_exclusion": false
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "surface crop may contain glyph pixels",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ]
+          },
+          "glyph_excluded": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.3519,
+              "luminance_std": 34.06,
+              "color_dispersion": 34.367,
+              "sample_pixels": 45792
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_substrate",
+              "glyph_exclusion": true,
+              "fallback_boxes": 8
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "excluded pixels are median-filled before spatial descriptor analysis",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ],
+            "substrate": {
+              "schema": 1,
+              "pixels": 46255,
+              "surface_pixels": 46255,
+              "coverage": 1.0,
+              "glyph_regions_excluded": 8,
+              "median_color": "#bb8d60",
+              "std": [
+                31.98,
+                34.99,
+                35.93
+              ],
+              "trustworthy": true
+            }
+          },
+          "class_changed": false
+        },
+        {
+          "surface_id": "prem-sais:surface-9",
+          "contaminated": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "masonry",
+            "display_name": "brick / masonry",
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.315,
+              "luminance_std": 44.213,
+              "color_dispersion": 42.656,
+              "sample_pixels": 42768
+            },
+            "degradation_priors": [
+              {
+                "process": "abrasion",
+                "status": "plausible_not_measured"
+              },
+              {
+                "process": "speckle",
+                "status": "plausible_not_measured"
+              },
+              {
+                "process": "occlusion",
+                "status": "plausible_not_measured"
+              }
+            ],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_crop",
+              "glyph_exclusion": false
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "surface crop may contain glyph pixels",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ]
+          },
+          "glyph_excluded": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "masonry",
+            "display_name": "brick / masonry",
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.315,
+              "luminance_std": 44.213,
+              "color_dispersion": 42.656,
+              "sample_pixels": 42768
+            },
+            "degradation_priors": [
+              {
+                "process": "abrasion",
+                "status": "plausible_not_measured"
+              },
+              {
+                "process": "speckle",
+                "status": "plausible_not_measured"
+              },
+              {
+                "process": "occlusion",
+                "status": "plausible_not_measured"
+              }
+            ],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_substrate",
+              "glyph_exclusion": true,
+              "fallback_boxes": 8
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "excluded pixels are median-filled before spatial descriptor analysis",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ],
+            "substrate": {
+              "schema": 1,
+              "pixels": 43183,
+              "surface_pixels": 43183,
+              "coverage": 1.0,
+              "glyph_regions_excluded": 8,
+              "median_color": "#bd8854",
+              "std": [
+                52.82,
+                42.73,
+                32.36
+              ],
+              "trustworthy": true
+            }
+          },
+          "class_changed": false
+        },
+        {
+          "surface_id": "prem-sais:surface-10",
+          "contaminated": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.2989,
+              "luminance_std": 38.727,
+              "color_dispersion": 37.25,
+              "sample_pixels": 30000
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_crop",
+              "glyph_exclusion": false
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "surface crop may contain glyph pixels",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ]
+          },
+          "glyph_excluded": null,
+          "class_changed": true
+        },
+        {
+          "surface_id": "prem-sais:surface-11",
+          "contaminated": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.3323,
+              "luminance_std": 29.674,
+              "color_dispersion": 30.53,
+              "sample_pixels": 22784
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_crop",
+              "glyph_exclusion": false
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "surface crop may contain glyph pixels",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ]
+          },
+          "glyph_excluded": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "masonry",
+            "display_name": "brick / masonry",
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.3058,
+              "luminance_std": 27.282,
+              "color_dispersion": 28.188,
+              "sample_pixels": 22784
+            },
+            "degradation_priors": [
+              {
+                "process": "abrasion",
+                "status": "plausible_not_measured"
+              },
+              {
+                "process": "speckle",
+                "status": "plausible_not_measured"
+              },
+              {
+                "process": "occlusion",
+                "status": "plausible_not_measured"
+              }
+            ],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_substrate",
+              "glyph_exclusion": true,
+              "fallback_boxes": 8
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "excluded pixels are median-filled before spatial descriptor analysis",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ],
+            "substrate": {
+              "schema": 1,
+              "pixels": 21133,
+              "surface_pixels": 21133,
+              "coverage": 1.0,
+              "glyph_regions_excluded": 8,
+              "median_color": "#cb9b6a",
+              "std": [
+                24.91,
+                29.75,
+                33.33
+              ],
+              "trustworthy": true
+            }
+          },
+          "class_changed": true
+        },
+        {
+          "surface_id": "prem-sais:surface-12",
+          "contaminated": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.348,
+              "luminance_std": 32.713,
+              "color_dispersion": 32.909,
+              "sample_pixels": 20928
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_crop",
+              "glyph_exclusion": false
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "surface crop may contain glyph pixels",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ]
+          },
+          "glyph_excluded": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.348,
+              "luminance_std": 32.713,
+              "color_dispersion": 32.909,
+              "sample_pixels": 20928
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_substrate",
+              "glyph_exclusion": true,
+              "fallback_boxes": 8
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "excluded pixels are median-filled before spatial descriptor analysis",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ],
+            "substrate": {
+              "schema": 1,
+              "pixels": 21243,
+              "surface_pixels": 21243,
+              "coverage": 1.0,
+              "glyph_regions_excluded": 8,
+              "median_color": "#b58454",
+              "std": [
+                32.33,
+                33.3,
+                32.98
+              ],
+              "trustworthy": true
+            }
+          },
+          "class_changed": false
+        },
+        {
+          "surface_id": "prem-sais:surface-13",
+          "contaminated": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.2878,
+              "luminance_std": 31.813,
+              "color_dispersion": 31.581,
+              "sample_pixels": 18200
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_crop",
+              "glyph_exclusion": false
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "surface crop may contain glyph pixels",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ]
+          },
+          "glyph_excluded": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.2878,
+              "luminance_std": 31.813,
+              "color_dispersion": 31.581,
+              "sample_pixels": 18200
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_substrate",
+              "glyph_exclusion": true,
+              "fallback_boxes": 8
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "excluded pixels are median-filled before spatial descriptor analysis",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ],
+            "substrate": {
+              "schema": 1,
+              "pixels": 18483,
+              "surface_pixels": 18483,
+              "coverage": 1.0,
+              "glyph_regions_excluded": 8,
+              "median_color": "#bc7f48",
+              "std": [
+                31.97,
+                32.51,
+                30.23
+              ],
+              "trustworthy": true
+            }
+          },
+          "class_changed": false
+        },
+        {
+          "surface_id": "prem-sais:surface-14",
+          "contaminated": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.3467,
+              "luminance_std": 30.224,
+              "color_dispersion": 30.595,
+              "sample_pixels": 12300
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_crop",
+              "glyph_exclusion": false
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "surface crop may contain glyph pixels",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ]
+          },
+          "glyph_excluded": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.3467,
+              "luminance_std": 30.224,
+              "color_dispersion": 30.595,
+              "sample_pixels": 12300
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_substrate",
+              "glyph_exclusion": true,
+              "fallback_boxes": 8
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "excluded pixels are median-filled before spatial descriptor analysis",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ],
+            "substrate": {
+              "schema": 1,
+              "pixels": 12533,
+              "surface_pixels": 12533,
+              "coverage": 1.0,
+              "glyph_regions_excluded": 8,
+              "median_color": "#c89c71",
+              "std": [
+                27.7,
+                31.18,
+                32.65
+              ],
+              "trustworthy": true
+            }
+          },
+          "class_changed": false
+        },
+        {
+          "surface_id": "prem-sais:surface-15",
+          "contaminated": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.3201,
+              "luminance_std": 31.889,
+              "color_dispersion": 30.417,
+              "sample_pixels": 11088
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_crop",
+              "glyph_exclusion": false
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "surface crop may contain glyph pixels",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ]
+          },
+          "glyph_excluded": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.3235,
+              "luminance_std": 31.491,
+              "color_dispersion": 30.052,
+              "sample_pixels": 11088
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_substrate",
+              "glyph_exclusion": true,
+              "fallback_boxes": 8
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "excluded pixels are median-filled before spatial descriptor analysis",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ],
+            "substrate": {
+              "schema": 1,
+              "pixels": 11047,
+              "surface_pixels": 11047,
+              "coverage": 1.0,
+              "glyph_regions_excluded": 8,
+              "median_color": "#65492e",
+              "std": [
+                37.93,
+                30.77,
+                22.35
+              ],
+              "trustworthy": true
+            }
+          },
+          "class_changed": false
+        },
+        {
+          "surface_id": "prem-sais:surface-16",
+          "contaminated": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.3558,
+              "luminance_std": 29.998,
+              "color_dispersion": 30.529,
+              "sample_pixels": 10080
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_crop",
+              "glyph_exclusion": false
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "surface crop may contain glyph pixels",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ]
+          },
+          "glyph_excluded": {
+            "schema": 1,
+            "revision": "scene-material-observation-v1",
+            "material_class": "unknown",
+            "display_name": null,
+            "descriptors": {
+              "texture": "textured",
+              "semantic_label": "text_cluster",
+              "edge_density": 0.3558,
+              "luminance_std": 29.998,
+              "color_dispersion": 30.529,
+              "sample_pixels": 10080
+            },
+            "degradation_priors": [],
+            "provenance": {
+              "method": "classical_surface_descriptors",
+              "source": "scene_region_substrate",
+              "glyph_exclusion": true,
+              "fallback_boxes": 8
+            },
+            "decision_eligible": false,
+            "limitations": [
+              "taxonomy is heuristic and uncalibrated",
+              "excluded pixels are median-filled before spatial descriptor analysis",
+              "degradation priors are hypotheses, not posterior probabilities"
+            ],
+            "substrate": {
+              "schema": 1,
+              "pixels": 10285,
+              "surface_pixels": 10285,
+              "coverage": 1.0,
+              "glyph_regions_excluded": 8,
+              "median_color": "#b88a5c",
+              "std": [
+                27.5,
+                31.09,
+                33.25
+              ],
+              "trustworthy": true
+            }
+          },
+          "class_changed": false
+        }
+      ]
+    }
+  ]
+}

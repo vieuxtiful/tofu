@@ -33,15 +33,17 @@ afterEach(() => cleanup());
 
 describe("GroundTruthField capture lock", () => {
   it("is editable when no capture is running", () => {
-    field(false);
+    const { container } = field(false);
     expect(screen.getByRole("textbox").hasAttribute("readonly")).toBe(false);
+    expect(container.querySelector(".gt-lock-shimmer")).toBeNull();
   });
 
   it("is locked, visibly, while a capture runs", () => {
     const { container } = field(true);
     expect(screen.getByRole("textbox").hasAttribute("readonly")).toBe(true);
-    // The stripes are the "working, not broken" signal -- a readOnly input
+    // The shimmer is the "working, not broken" signal -- a readOnly input
     // with no explanation reads as a disabled one.
     expect(container.querySelector(".gt-lock")).toBeTruthy();
+    expect(container.querySelector(".gt-lock-shimmer")).toBeTruthy();
   });
 });

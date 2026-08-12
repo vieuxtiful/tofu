@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "method": "platt_margin",
+  "slope": 1.0,
+  "intercept": 0.0,
+  "samples": 12,
+  "positives": 9,
+  "negatives": 3,
+  "fitted": false,
+  "acceptance_threshold": null,
+  "target_precision": 0.98,
+  "ece_before": 0.238295,
+  "ece_after": null,
+  "brier_before": 0.239187,
+  "brier_after": null,
+  "revision": "proof-margin-zh-hant-v1",
+  "notes": [
+    "only 12 labelled match(es); need 30"
+  ]
+}

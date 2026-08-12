@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "seed": 17,
+  "epochs": 30,
+  "train_strings": 98,
+  "holdout_strings": 32,
+  "reserved_ground_truth": [
+    "\u7228",
+    "\u7c54",
+    "\u8831",
+    "\u947f",
+    "\u9744",
+    "\u9744\u7c54\u8831\u7228\u947f"
+  ],
+  "train_fonts": [
+    "C:\\Windows\\Fonts\\mingliu.ttc",
+    "C:\\Windows\\Fonts\\kaiu.ttf",
+    "C:\\Windows\\Fonts\\msjh.ttc"
+  ],
+  "holdout_fonts": [
+    "C:\\Windows\\Fonts\\NotoSansTC-VF.ttf",
+    "C:\\Windows\\Fonts\\NotoSerifTC-VF.ttf"
+  ],
+  "final_loss": 6.793381214141846,
+  "initial_loss": 8.393634796142578,
+  "holdout_cross_face_top1": 0.375,
+  "checkpoint": "evidence\\proof-encoder-zh-hant-v1.pt"
+}

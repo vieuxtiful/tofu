@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://word2world.example/schemas/scene-material-review-v1.json",
+  "title": "ToFU Scene Material Review",
+  "type": "object",
+  "required": ["schema", "asset_id", "surface_id", "reviews", "adjudication"],
+  "properties": {
+    "schema": {"const": 1},
+    "asset_id": {"type": "string", "minLength": 1},
+    "surface_id": {"type": "string", "minLength": 1},
+    "reviews": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+        "type": "object",
+        "required": ["reviewer", "reviewed_at", "material_class", "visible_evidence"],
+        "properties": {
+          "reviewer": {"type": "string", "minLength": 1},
+          "reviewed_at": {"type": "string", "format": "date-time"},
+          "material_class": {
+            "enum": ["painted_panel", "painted_surface", "smooth_surface", "masonry", "wood", "metal", "glass", "paper", "fabric", "plastic", "textured_unknown", "unknown"]
+          },
+          "visible_evidence": {"type": "string", "minLength": 1},
+          "degradation_processes": {
+            "type": "array",
+            "items": {"enum": ["fade", "bleed", "abrasion", "blur", "resample", "compression", "occlusion", "speckle", "unknown"]},
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "adjudication": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": {"enum": ["pending", "agreed", "adjudicated", "unresolvable"]},
+        "material_class": {"enum": ["painted_panel", "painted_surface", "smooth_surface", "masonry", "wood", "metal", "glass", "paper", "fabric", "plastic", "textured_unknown", "unknown", null]},
+        "adjudicator": {"type": ["string", "null"]},
+        "reason": {"type": ["string", "null"]}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

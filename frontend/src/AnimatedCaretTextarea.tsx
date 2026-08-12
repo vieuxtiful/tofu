@@ -23,6 +23,12 @@ type Props = {
    * user's active Windows input method. */
   language?: string | null;
   trailingIcon?: ReactNode;
+  /** Display-only: the text stays selectable and copyable, and the caret
+   *  animation and suggestion popover stay out of the way. `readOnly`
+   *  rather than `disabled` on purpose — a disabled field cannot be focused
+   *  or its contents copied, and reading the source is the whole reason it
+   *  is on screen in Translate. */
+  readOnly?: boolean;
   statusMessage?: string | null;
   statusPulse?: number;
   onCompositionStateChange?: (composing: boolean, value: string) => void;
@@ -55,6 +61,7 @@ export function insertedRange(previous: string, next: string): { start: number; 
 export default function AnimatedCaretTextarea({
   value, onChange, label, placeholder, rows = 1, className = "", onFocus, onBlur, onClick,
   suggestions = [], language, trailingIcon, statusMessage, statusPulse = 0, onCompositionStateChange, expandable = false,
+  readOnly = false,
 }: Props) {
   const mirrorRef = useRef<HTMLDivElement>(null);
   const fieldRef = useRef<HTMLDivElement>(null);
@@ -210,6 +217,9 @@ export default function AnimatedCaretTextarea({
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    // A read-only field has nothing to accept a suggestion INTO, and offering
+    // one that silently does nothing is worse than offering none.
+    if (readOnly) return;
     if (composingRef.current || event.nativeEvent.isComposing || !suggestions.length) return;
     if (isRecommendationActivationKey(event.key, event.ctrlKey, event.altKey)) {
       event.preventDefault();
@@ -291,6 +301,7 @@ export default function AnimatedCaretTextarea({
         autoCapitalize="none"
         value={value}
         rows={rows}
+        readOnly={readOnly}
         placeholder={placeholder}
         onFocus={(event) => { setFocused(true); onFocus?.(event); }}
         onBlur={(event) => { setFocused(false); setSuggestionOpen(false); onBlur?.(event); }}

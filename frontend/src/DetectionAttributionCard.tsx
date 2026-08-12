@@ -82,14 +82,11 @@ export default function DetectionAttributionCard({ assetId }: { assetId: string 
           excluded — restore from History if that was not intended.
         </p>
       )}
-      {report.rung === "no_lineage" && (
-        <p className="mt-1.5 pl-5 opacity-80">
-          {/* Absence of evidence, said as such. Calling this "the detector
-              proposed nothing" would be inventing a finding. */}
-          This asset predates lineage recording, so there is nothing to
-          inspect. Recapture to record it.
-        </p>
-      )}
+      {/* `no_lineage` renders nothing. It fired whenever a user deleted every
+          region -- the moment they are least served by a paragraph about
+          lineage provenance, and it read as an error report for an ordinary
+          action. The rung is still returned by the API for the attribution
+          view; it just no longer surfaces here. */}
     </div>
   );
 }

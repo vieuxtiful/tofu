@@ -782,6 +782,70 @@ def _describe_surface_material(crop, texture: Optional[str], semantic_label: Opt
     return unnamed
 
 
+def _material_evidence(
+    crop,
+    texture: Optional[str],
+    semantic_label: Optional[str],
+    material: Optional[str],
+) -> Dict[str, Any]:
+    taxonomy = {
+        "painted sign / panel": "painted_panel",
+        "flat painted surface": "painted_surface",
+        "smooth shaded surface": "smooth_surface",
+        "brick / masonry": "masonry",
+        "textured surface": "textured_unknown",
+    }
+    material_class = taxonomy.get(material, "unknown")
+    priors = {
+        "painted_panel": ["fade", "abrasion", "bleed"],
+        "painted_surface": ["fade", "abrasion"],
+        "smooth_surface": ["fade", "blur"],
+        "masonry": ["abrasion", "speckle", "occlusion"],
+        "textured_unknown": ["abrasion", "speckle"],
+        "unknown": [],
+    }
+    descriptors: Dict[str, Any] = {
+        "texture": texture,
+        "semantic_label": semantic_label,
+    }
+    try:
+        import cv2
+        import numpy as np
+
+        array = np.asarray(crop, dtype=np.uint8)
+        gray = cv2.cvtColor(array, cv2.COLOR_RGB2GRAY)
+        descriptors.update({
+            "edge_density": round(float((cv2.Canny(gray, 55, 140) > 0).mean()), 4),
+            "luminance_std": round(float(gray.std()), 3),
+            "color_dispersion": round(float(array.reshape(-1, 3).std(axis=0).mean()), 3),
+            "sample_pixels": int(gray.size),
+        })
+    except Exception:
+        descriptors["measurement_error"] = "descriptor_unavailable"
+    return {
+        "schema": 1,
+        "revision": "scene-material-observation-v1",
+        "material_class": material_class,
+        "display_name": material,
+        "descriptors": descriptors,
+        "degradation_priors": [
+            {"process": process, "status": "plausible_not_measured"}
+            for process in priors[material_class]
+        ],
+        "provenance": {
+            "method": "classical_surface_descriptors",
+            "source": "scene_region_crop",
+            "glyph_exclusion": False,
+        },
+        "decision_eligible": False,
+        "limitations": [
+            "taxonomy is heuristic and uncalibrated",
+            "surface crop may contain glyph pixels",
+            "degradation priors are hypotheses, not posterior probabilities",
+        ],
+    }
+
+
 def _analyze_garnish_profile(crop, glyph_mask=None) -> GarnishProfile:
     """Estimate conservative surface-compatible text wear from local pixels.
 
@@ -866,7 +930,11 @@ def analyze(asset: ImageLike, text_manifest: TextManifest) -> TextManifest:
     if img is not None:
         h, w = img.shape[:2]
         for region in text_manifest.scene_regions:
-            if region.material is not None and region.garnish_profile is not None:
+            if (
+                region.material is not None
+                and region.material_evidence is not None
+                and region.garnish_profile is not None
+            ):
                 continue
             b = region.bbox
             x0, y0 = max(0, b.x), max(0, b.y)
@@ -878,6 +946,10 @@ def analyze(asset: ImageLike, text_manifest: TextManifest) -> TextManifest:
                 region.texture = texture
             if region.material is None:
                 region.material = _describe_surface_material(crop, texture, region.semantic_label)
+            if region.material_evidence is None:
+                region.material_evidence = _material_evidence(
+                    crop, texture, region.semantic_label, region.material
+                )
             if region.garnish_profile is None:
                 region.garnish_profile = _analyze_garnish_profile(crop)
 
@@ -894,7 +966,8 @@ def analyze(asset: ImageLike, text_manifest: TextManifest) -> TextManifest:
                 and bp.texture is not None and bp.gradients is not None
                 and bp.material is not None and ch is not None
                 and ch.font_style is not None and ch.size is not None
-                and ch.positioning is not None):
+                and ch.positioning is not None
+                and inst.material_evidence is not None):
             continue
         try:
             text_hex, bg_hex, bg_std, glyph_mask, crop = _estimate_colors(
@@ -918,12 +991,14 @@ def analyze(asset: ImageLike, text_manifest: TextManifest) -> TextManifest:
                     bp.texture = "flat" if bg_std < 24 else "textured"
             if bp.gradients is None and gradients:
                 bp.gradients = gradients
+        region = _containing_region(text_manifest.scene_regions, inst.bounding_box)
         if bp.semantic_label is None:
-            region = _containing_region(text_manifest.scene_regions, inst.bounding_box)
             if region is not None:
                 bp.semantic_label = region.semantic_label
                 if bp.material is None:
                     bp.material = region.material
+        if region is not None and inst.material_evidence is None:
+            inst.material_evidence = region.material_evidence
 
         if bp.material is None:
             bp.material = _describe_surface_material(crop, bp.texture, bp.semantic_label)
@@ -1094,3 +1169,84 @@ def substrate(
         "std": [round(float(v), 2) for v in values.std(axis=0)],
         "trustworthy": pixels >= SUBSTRATE_MIN_PIXELS,
     }
+
+
+def substrate_material_evidence(
+    asset: ImageLike,
+    region: SceneRegion,
+    instances: Optional[List[InstText]] = None,
+    *,
+    include_preview: bool = False,
+) -> Optional[Dict[str, Any]]:
+    try:
+        import cv2
+        import numpy as np
+    except ImportError:
+        return None
+    summary = substrate(asset, region, instances)
+    img = _load_rgb(asset)
+    if summary is None or img is None:
+        return None
+    height, width = img.shape[:2]
+    b = region.bbox
+    x0, y0 = max(0, int(b.x)), max(0, int(b.y))
+    x1 = min(width, x0 + int(b.width))
+    y1 = min(height, y0 + int(b.height))
+    if x1 <= x0 or y1 <= y0:
+        return None
+    crop = img[y0:y1, x0:x1].copy()
+    keep = np.ones(crop.shape[:2], dtype=np.uint8)
+    if region.polygon:
+        keep.fill(0)
+        points = np.array(
+            [[int(x) - x0, int(y) - y0] for x, y in region.polygon], dtype=np.int32
+        )
+        cv2.fillPoly(keep, [points], 1)
+    excluded = np.zeros(crop.shape[:2], dtype=np.uint8)
+    fallback_boxes = 0
+    for inst in instances or []:
+        mask = getattr(inst, "segmentation_mask", None)
+        if mask is not None and mask.polygon:
+            points = np.array(
+                [[int(x) - x0, int(y) - y0] for x, y in mask.polygon], dtype=np.int32
+            )
+            cv2.fillPoly(excluded, [points], 1)
+            for hole in mask.holes or []:
+                hole_points = np.array(
+                    [[int(x) - x0, int(y) - y0] for x, y in hole], dtype=np.int32
+                )
+                cv2.fillPoly(excluded, [hole_points], 0)
+        else:
+            box = getattr(inst, "bounding_box", None)
+            if box is None:
+                continue
+            bx0, by0 = int(box.x) - x0, int(box.y) - y0
+            bx1, by1 = bx0 + int(box.width), by0 + int(box.height)
+            cv2.rectangle(excluded, (bx0, by0), (bx1, by1), 1, thickness=-1)
+            fallback_boxes += 1
+    if excluded.any() and SUBSTRATE_EXCLUDE_PX > 0:
+        kernel = np.ones((SUBSTRATE_EXCLUDE_PX * 2 + 1,) * 2, np.uint8)
+        excluded = cv2.dilate(excluded, kernel, iterations=1)
+    sample = (keep > 0) & (excluded == 0)
+    if not sample.any():
+        return None
+    median = np.median(crop[sample].reshape(-1, 3), axis=0).astype(np.uint8)
+    cleaned = crop.copy()
+    cleaned[~sample] = median
+    texture, _ = _classify_background(cleaned, None)
+    material = _describe_surface_material(cleaned, texture, region.semantic_label)
+    evidence = _material_evidence(cleaned, texture, region.semantic_label, material)
+    evidence["provenance"].update({
+        "source": "scene_region_substrate",
+        "glyph_exclusion": True,
+        "fallback_boxes": fallback_boxes,
+    })
+    evidence["substrate"] = summary
+    evidence["limitations"] = [
+        "taxonomy is heuristic and uncalibrated",
+        "excluded pixels are median-filled before spatial descriptor analysis",
+        "degradation priors are hypotheses, not posterior probabilities",
+    ]
+    if include_preview:
+        evidence["analysis_preview"] = cleaned
+    return evidence

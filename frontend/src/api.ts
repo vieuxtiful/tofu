@@ -950,11 +950,17 @@ async function json<T>(res: Response): Promise<T> {
 
 // --- upload + languages + fonts ---
 
-export async function uploadAsset(file: File, projectId?: string): Promise<UploadResponse> {
+export async function uploadAsset(
+  file: File,
+  projectId?: string,
+  options?: { activate?: boolean },
+): Promise<UploadResponse> {
   const form = new FormData();
   form.append("file", file);
-  const qs = projectId ? `?project_id=${encodeURIComponent(projectId)}` : "";
-  return json(await fetch(`/api/assets${qs}`, { method: "POST", body: form }));
+  const qs = new URLSearchParams();
+  if (projectId) qs.set("project_id", projectId);
+  if (options?.activate !== undefined) qs.set("activate", String(options.activate));
+  return json(await fetch(`/api/assets${qs.size ? `?${qs}` : ""}`, { method: "POST", body: form }));
 }
 
 export async function sha256File(file: File): Promise<string> {
@@ -1088,16 +1094,27 @@ export async function deleteSnapshot(snapshotId: number): Promise<{ ok: boolean 
   return json(await fetch(`/api/snapshots/${snapshotId}`, { method: "DELETE" }));
 }
 
-export async function scanAssetLanguage(assetId: string): Promise<LanguageScanResult> {
+/** The upload language guard.
+ *
+ *  Takes an AbortSignal because this is a full `cicerone.detect()` on the
+ *  server -- CRAFT plus EasyOCR over the whole image, measured at 146s on a
+ *  3200x3200 upload. It is advisory, so when the user starts a real Capture
+ *  the scan must be abandoned rather than left competing with it for the
+ *  same CPU. Aborting the request does not stop the server-side work, but it
+ *  does stop a stale answer arriving and mutating state. */
+export async function scanAssetLanguage(
+  assetId: string, signal?: AbortSignal,
+): Promise<LanguageScanResult> {
   return json(
-    await fetch(`/api/assets/${encodeURIComponent(assetId)}/scan-language`, { method: "POST" })
+    await fetch(`/api/assets/${encodeURIComponent(assetId)}/scan-language`,
+      { method: "POST", signal })
   );
 }
 
 export async function deleteProjectAsset(
   projectId: string,
   assetId: string
-): Promise<{ ok: boolean }> {
+): Promise<{ ok: boolean; active_asset_id: string | null }> {
   return json(
     await fetch(
       `/api/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(assetId)}`,
@@ -1453,7 +1470,12 @@ export async function postReviewEvents(
   );
 }
 
-export async function deleteRegion(assetId: string, regionId: string): Promise<{ ok: boolean; total_regions: number }> {
+/** The response carries the reconciled Guided state, because deleting a
+ *  region can reopen the Block it was evidence for. Callers that discard it
+ *  leave the progress bar reporting coverage the manifest no longer has. */
+export async function deleteRegion(
+  assetId: string, regionId: string,
+): Promise<{ ok: boolean; total_regions: number; guided?: GuidedState }> {
   return json(
     await fetch(`/api/manifest/${assetId}/regions/${regionId}`, { method: "DELETE" })
   );

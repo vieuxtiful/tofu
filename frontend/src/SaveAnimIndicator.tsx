@@ -25,9 +25,8 @@ import { useEffect, useRef, useState } from "react";
 type Status = "idle" | "saving" | "saved";
 
 const HOP_MS = 900;                         // one hop == ~0.9s
-const HOP_H = 12;                           // px; ≤ 35% of 35px FlipButton
-const BASE_DPS = 360 / (HOP_MS / 1000);     // 400°/s → 1 rotation per hop
-const STAGE_MULT = [1, 1.15, 1.3225];       // +15% per stage, cap at stage 3
+// HOP_H / BASE_DPS / STAGE_MULT are gone with the hop and the spin. HOP_MS
+// survives as the cadence the "saved" hand-off is paced against.
 const LAND_HOLD_MS = 900;                   // rest after landing on "saved" before fade
 const FADE_MS = 300;                        // fade-out duration on "saved"
 
@@ -56,8 +55,6 @@ export default function SaveAnimIndicator({ status, theme }: { status: Status; t
   const blockRef = useRef<HTMLImageElement>(null);
   const rafRef = useRef<number | null>(null);
   const startRef = useRef(0);
-  const lastTsRef = useRef(0);
-  const angleRef = useRef(0);
   const savedAtRef = useRef<number | null>(null);
   const fadeStartRef = useRef<number | null>(null);
   // status is read inside the rAF loop; keep a ref so the loop (set up once on
@@ -80,10 +77,9 @@ export default function SaveAnimIndicator({ status, theme }: { status: Status; t
 
   useEffect(() => {
     if (!mounted) return;
-    const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    // Reduced motion is handled in CSS now: the stink lines are the only
+    // thing that moves, and their keyframes are the right place to stop.
     startRef.current = performance.now();
-    lastTsRef.current = startRef.current;
-    angleRef.current = 0;
     savedAtRef.current = null;
     fadeStartRef.current = null;
 
@@ -95,19 +91,11 @@ export default function SaveAnimIndicator({ status, theme }: { status: Status; t
         rafRef.current = requestAnimationFrame(tick);
         return;
       }
-      const dt = (now - lastTsRef.current) / 1000;
-      lastTsRef.current = now;
       const t = now - startRef.current;
 
-      // stage / spin rate: hops 0,1,2 escalate; hop ≥2 caps at stage 3 and
-      // keeps cycling (the hop motion itself is a sine over each 0.9s window,
-      // so it loops seamlessly forever once we're at the capped rate).
-      const hopIndex = Math.floor(t / HOP_MS);
-      const stage = Math.min(hopIndex, 2);
-      angleRef.current += BASE_DPS * STAGE_MULT[stage] * dt;
-
+      // `phase` still paces the "saved" hand-off below; it no longer moves
+      // anything. The block is STILL now -- only the stink lines animate.
       const phase = (t % HOP_MS) / HOP_MS;
-      const hopY = reduce ? 0 : Math.sin(Math.PI * phase) * HOP_H;
 
       // "saved" handoff: mark the moment, then wait until we're basically
       // landed (phase near 0) to schedule the fade — so a mid-hop save
@@ -131,9 +119,13 @@ export default function SaveAnimIndicator({ status, theme }: { status: Status; t
         }
       }
 
-      hop.style.transform = `translateY(${-hopY}px)`;
+      // The hop and the spin are gone: the block sits still and stinks. Two
+      // motions plus escalating rotation made a routine autosave the loudest
+      // thing on screen, and the block is a logo -- spinning it reads as a
+      // loading spinner, which is a different claim about how long this takes.
+      hop.style.transform = "none";
       wrap.style.opacity = String(opacity);
-      block.style.transform = reduce ? "none" : `rotate(${angleRef.current}deg)`;
+      block.style.transform = "none";
 
       if (opacity <= 0) {
         setMounted(false);

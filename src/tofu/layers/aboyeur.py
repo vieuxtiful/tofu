@@ -44,6 +44,7 @@ reload instead of replayed from a counter the reload lost.
 from __future__ import annotations
 
 import time
+from collections.abc import Mapping
 from typing import Any, Dict, List, Optional, Sequence
 
 from tofu.layers.mise import normalize_block_text
@@ -107,9 +108,25 @@ def _region_text(region: Any) -> str:
     A user-supplied `source_override` beats the recogniser's output: someone
     who retyped the text has said what is on the sign, and the OCR reading is
     the thing they were correcting.
+
+    THE OVERRIDE IS A MAPPING. Every producer -- `forage`'s gt_rescue,
+    `cicerone`'s arbitration, `menu` -- writes `{kind, text, ...}`, and this
+    used to return that whole dict, which `_norm` then handed to
+    `unicodedata.normalize`. One rescued region therefore turned every
+    reconcile into a TypeError: Guided capture stamps `gt_rescue` overrides
+    during detection, and the very next autosave reconciles. The bare string
+    is still accepted because that is what the tests asserted and what a
+    hand-edited manifest may hold, and a mapping carrying no usable text
+    falls back to the read rather than erasing the evidence.
     """
     override = getattr(region, "source_override", None)
-    return override if override else (getattr(region, "text", None) or "")
+    if isinstance(override, Mapping):
+        text = override.get("text")
+        if isinstance(text, str) and text.strip():
+            return text
+    elif isinstance(override, str) and override.strip():
+        return override
+    return getattr(region, "text", None) or ""
 
 
 def _match_region(

@@ -1,4 +1,5 @@
 import { X } from "lucide-react";
+import { Kbd } from "@/components/ui/kbd";
 import GroundTruthField from "./GroundTruthField";
 import { regionColorMap } from "./regionPalette";
 import type { GuidedBlockRecord, LanguageAssessment } from "./api";
@@ -45,8 +46,12 @@ export default function BlocksField({
   language, sourceLanguage, capturing, assess,
 }: Props) {
   // Keyed by index, not by text: two identical Blocks are two chips and must
-  // not collapse into one colour bucket.
-  const colors = regionColorMap(blocks.map((_, index) => `b${index}`));
+  // not collapse into one colour bucket. One extra key past the end is the
+  // colour the DRAFT wears, so the entry line already looks like the chip it
+  // becomes on Enter.
+  const colors = regionColorMap(
+    blocks.map((_, index) => `b${index}`).concat(`b${blocks.length}`),
+  );
 
   const commit = (value: string) => {
     const entry = value.trim();
@@ -63,19 +68,16 @@ export default function BlocksField({
       {blocks.length > 0 && (
         <ul className="flex flex-wrap items-center gap-1.5" aria-label="Blocks to locate">
           {blocks.map((block, index) => {
-            const record = records?.[index];
-            const atoms = record?.atoms?.length ?? 0;
             return (
               <li
                 key={`${block}-${index}`}
                 className="basil-token mapped flex max-w-full items-center gap-1 rounded-md px-2 py-0.5 text-xs"
                 style={{ "--bh-ink": colors[`b${index}`] } as React.CSSProperties}
-                /* The atom count is the honest way to show that a phrase
-                   stayed whole: it comes from `mise`, so if the server ever
-                   did split it the chip would say so. */
-                title={atoms
-                  ? `Block ${index + 1} — ${atoms} atom${atoms === 1 ? "" : "s"}`
-                  : `Block ${index + 1}`}
+                /* Just the Block. The atom count was an honesty check while
+                   whitespace splitting was in doubt; now that a Block is
+                   committed whole and located by one box, "3 atoms" only
+                   invites the reader to wonder whether it was split. */
+                title={`Block ${index + 1}`}
               >
                 <span className="truncate">{block}</span>
                 {!capturing && (
@@ -107,8 +109,20 @@ export default function BlocksField({
            still an entry the user meant, and losing it silently is worse
            than committing something they can delete in one click. */
         onBlur={() => commit(draft)}
-        placeholder="Add source text ToFU should locate, then press Enter."
+        /* Spaces are ordinary text here and always were; the old field just
+           coloured each word separately and so appeared to split them. The
+           placeholder now states the rule rather than leaving it to be
+           inferred from the colouring. */
+        singleToken
+        tokenColor={colors[`b${blocks.length}`]}
+        placeholder="Type source text; press 'Enter' to save."
       />
+      {/* BELOW the field, left-justified. */}
+      <span
+        className="flex items-center gap-1 text-[10px] text-zinc-500 dark:text-zinc-500"
+        data-testid="blocks-space-hint"
+      >
+      </span>
     </div>
   );
 }

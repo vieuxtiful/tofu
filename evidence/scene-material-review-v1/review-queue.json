@@ -1,0 +1,3122 @@
+{
+  "schema": 1,
+  "kind": "scene_material_review_queue",
+  "review_schema": "../scene-material-review-schema-v1.json",
+  "labels_prefilled": false,
+  "eligible_for_scoring": false,
+  "surfaces": 44,
+  "records": [
+    {
+      "asset_id": "china-street",
+      "surface_id": "china-street-surface-01",
+      "source_image": "images\\china-street.png",
+      "source_annotations": "images\\china-street.gt.json",
+      "exclusion_source": "tracked_gt_boxes",
+      "bbox": {
+        "x": 486,
+        "y": 188,
+        "width": 179,
+        "height": 524
+      },
+      "context_crop": "crops/china-street-surface-01-context.png",
+      "contaminated_crop": "crops/china-street-surface-01-contaminated.png",
+      "glyph_excluded_crop": "crops/china-street-surface-01-glyph-excluded.png",
+      "observation": {
+        "schema": 1,
+        "revision": "scene-material-observation-v1",
+        "material_class": "unknown",
+        "display_name": null,
+        "descriptors": {
+          "texture": "textured",
+          "semantic_label": "text_cluster",
+          "edge_density": 0.1262,
+          "luminance_std": 45.026,
+          "color_dispersion": 52.646,
+          "sample_pixels": 93796
+        },
+        "degradation_priors": [],
+        "provenance": {
+          "method": "classical_surface_descriptors",
+          "source": "scene_region_substrate",
+          "glyph_exclusion": true,
+          "fallback_boxes": 8
+        },
+        "decision_eligible": false,
+        "limitations": [
+          "taxonomy is heuristic and uncalibrated",
+          "excluded pixels are median-filled before spatial descriptor analysis",
+          "degradation priors are hypotheses, not posterior probabilities"
+        ],
+        "substrate": {
+          "schema": 1,
+          "pixels": 37846,
+          "surface_pixels": 94500,
+          "coverage": 0.4,
+          "glyph_regions_excluded": 8,
+          "median_color": "#50358f",
+          "std": [
+            87.38,
+            78.71,
+            78.5
+          ],
+          "trustworthy": true
+        }
+      },
+      "review_slots": [
+        {
+          "slot": 1,
+          "status": "pending",
+          "review": null
+        },
+        {
+          "slot": 2,
+          "status": "pending",
+          "review": null
+        }
+      ],
+      "adjudication": {
+        "status": "pending"
+      },
+      "eligible_for_scoring": false
+    },
+    {
+      "asset_id": "china-street",
+      "surface_id": "china-street-surface-02",
+      "source_image": "images\\china-street.png",
+      "source_annotations": "images\\china-street.gt.json",
+      "exclusion_source": "tracked_gt_boxes",
+      "bbox": {
+        "x": 56,
+        "y": 135,
+        "width": 198,
+        "height": 322
+      },
+      "context_crop": "crops/china-street-surface-02-context.png",
+      "contaminated_crop": "crops/china-street-surface-02-contaminated.png",
+      "glyph_excluded_crop": "crops/china-street-surface-02-glyph-excluded.png",
+      "observation": {
+        "schema": 1,
+        "revision": "scene-material-observation-v1",
+        "material_class": "masonry",
+        "display_name": "brick / masonry",
+        "descriptors": {
+          "texture": "textured",
+          "semantic_label": "text_cluster",
+          "edge_density": 0.0535,
+          "luminance_std": 21.038,
+          "color_dispersion": 22.162,
+          "sample_pixels": 63756
+        },
+        "degradation_priors": [
+          {
+            "process": "abrasion",
+            "status": "plausible_not_measured"
+          },
+          {
+            "process": "speckle",
+            "status": "plausible_not_measured"
+          },
+          {
+            "process": "occlusion",
+            "status": "plausible_not_measured"
+          }
+        ],
+        "provenance": {
+          "method": "classical_surface_descriptors",
+          "source": "scene_region_substrate",
+          "glyph_exclusion": true,
+          "fallback_boxes": 8
+        },
+        "decision_eligible": false,
+        "limitations": [
+          "taxonomy is heuristic and uncalibrated",
+          "excluded pixels are median-filled before spatial descriptor analysis",
+          "degradation priors are hypotheses, not posterior probabilities"
+        ],
+        "substrate": {
+          "schema": 1,
+          "pixels": 51237,
+          "surface_pixels": 53578,
+          "coverage": 0.956,
+          "glyph_regions_excluded": 8,
+          "median_color": "#030103",
+          "std": [
+            30.89,
+            22.08,
+            21.56
+          ],
+          "trustworthy": true
+        }
+      },
+      "review_slots": [
+        {
+          "slot": 1,
+          "status": "pending",
+          "review": null
+        },
+        {
+          "slot": 2,
+          "status": "pending",
+          "review": null
+        }
+      ],
+      "adjudication": {
+        "status": "pending"
+      },
+      "eligible_for_scoring": false
+    },
+    {
+      "asset_id": "china-street",
+      "surface_id": "china-street-surface-03",
+      "source_image": "images\\china-street.png",
+      "source_annotations": "images\\china-street.gt.json",
+      "exclusion_source": "tracked_gt_boxes",
+      "bbox": {
+        "x": 344,
+        "y": 1,
+        "width": 174,
+        "height": 301
+      },
+      "context_crop": "crops/china-street-surface-03-context.png",
+      "contaminated_crop": "crops/china-street-surface-03-contaminated.png",
+      "glyph_excluded_crop": "crops/china-street-surface-03-glyph-excluded.png",
+      "observation": {
+        "schema": 1,
+        "revision": "scene-material-observation-v1",
+        "material_class": "unknown",
+        "display_name": null,
+        "descriptors": {
+          "texture": "textured",
+          "semantic_label": "text_cluster",
+          "edge_density": 0.072,
+          "luminance_std": 23.308,
+          "color_dispersion": 36.566,
+          "sample_pixels": 52374
+        },
+        "degradation_priors": [],
+        "provenance": {
+          "method": "classical_surface_descriptors",
+          "source": "scene_region_substrate",
+          "glyph_exclusion": true,
+          "fallback_boxes": 8
+        },
+        "decision_eligible": false,
+        "limitations": [
+          "taxonomy is heuristic and uncalibrated",
+          "excluded pixels are median-filled before spatial descriptor analysis",
+          "degradation priors are hypotheses, not posterior probabilities"
+        ],
+        "substrate": {
+          "schema": 1,
+          "pixels": 13907,
+          "surface_pixels": 47928,
+          "coverage": 0.29,
+          "glyph_regions_excluded": 8,
+          "median_color": "#421021",
+          "std": [
+            90.33,
+            40.9,
+            73.51
+          ],
+          "trustworthy": true
+        }
+      },
+      "review_slots": [
+        {
+          "slot": 1,
+          "status": "pending",
+          "review": null
+        },
+        {
+          "slot": 2,
+          "status": "pending",
+          "review": null
+        }
+      ],
+      "adjudication": {
+        "status": "pending"
+      },
+      "eligible_for_scoring": false
+    },
+    {
+      "asset_id": "china-street",
+      "surface_id": "china-street-surface-04",
+      "source_image": "images\\china-street.png",
+      "source_annotations": "images\\china-street.gt.json",
+      "exclusion_source": "tracked_gt_boxes",
+      "bbox": {
+        "x": 459,
+        "y": 188,
+        "width": 93,
+        "height": 473
+      },
+      "context_crop": "crops/china-street-surface-04-context.png",
+      "contaminated_crop": "crops/china-street-surface-04-contaminated.png",
+      "glyph_excluded_crop": "crops/china-street-surface-04-glyph-excluded.png",
+      "observation": {
+        "schema": 1,
+        "revision": "scene-material-observation-v1",
+        "material_class": "unknown",
+        "display_name": null,
+        "descriptors": {
+          "texture": "textured",
+          "semantic_label": "text_cluster",
+          "edge_density": 0.2261,
+          "luminance_std": 63.43,
+          "color_dispersion": 69.492,
+          "sample_pixels": 43989
+        },
+        "degradation_priors": [],
+        "provenance": {
+          "method": "classical_surface_descriptors",
+          "source": "scene_region_substrate",
+          "glyph_exclusion": true,
+          "fallback_boxes": 8
+        },
+        "decision_eligible": false,
+        "limitations": [
+          "taxonomy is heuristic and uncalibrated",
+          "excluded pixels are median-filled before spatial descriptor analysis",
+          "degradation priors are hypotheses, not posterior probabilities"
+        ],
+        "substrate": {
+          "schema": 1,
+          "pixels": 32741,
+          "surface_pixels": 38414,
+          "coverage": 0.852,
+          "glyph_regions_excluded": 8,
+          "median_color": "#3f3a92",
+          "std": [
+            80.93,
+            81.61,
+            77.98
+          ],
+          "trustworthy": true
+        }
+      },
+      "review_slots": [
+        {
+          "slot": 1,
+          "status": "pending",
+          "review": null
+        },
+        {
+          "slot": 2,
+          "status": "pending",
+          "review": null
+        }
+      ],
+      "adjudication": {
+        "status": "pending"
+      },
+      "eligible_for_scoring": false
+    },
+    {
+      "asset_id": "china-street",
+      "surface_id": "china-street-surface-05",
+      "source_image": "images\\china-street.png",
+      "source_annotations": "images\\china-street.gt.json",
+      "exclusion_source": "tracked_gt_boxes",
+      "bbox": {
+        "x": 4,
+        "y": 600,
+        "width": 185,
+        "height": 183
+      },
+      "context_crop": "crops/china-street-surface-05-context.png",
+      "contaminated_crop": "crops/china-street-surface-05-contaminated.png",
+      "glyph_excluded_crop": "crops/china-street-surface-05-glyph-excluded.png",
+      "observation": {
+        "schema": 1,
+        "revision": "scene-material-observation-v1",
+        "material_class": "unknown",
+        "display_name": null,
+        "descriptors": {
+          "texture": "textured",
+          "semantic_label": "text_cluster",
+          "edge_density": 0.1362,
+          "luminance_std": 52.94,
+          "color_dispersion": 51.613,
+          "sample_pixels": 33855
+        },
+        "degradation_priors": [],
+        "provenance": {
+          "method": "classical_surface_descriptors",
+          "source": "scene_region_substrate",
+          "glyph_exclusion": true,
+          "fallback_boxes": 8
+        },
+        "decision_eligible": false,
+        "limitations": [
+          "taxonomy is heuristic and uncalibrated",
+          "excluded pixels are median-filled before spatial descriptor analysis",
+          "degradation priors are hypotheses, not posterior probabilities"
+        ],
+        "substrate": {
+          "schema": 1,
+          "pixels": 20791,
+          "surface_pixels": 28981,
+          "coverage": 0.717,
+          "glyph_regions_excluded": 8,
+          "median_color": "#271d09",
+          "std": [
+            78.23,
+            66.39,
+            46.48
+          ],
+          "trustworthy": true
+        }
+      },
+      "review_slots": [
+        {
+          "slot": 1,
+          "status": "pending",
+          "review": null
+        },
+        {
+          "slot": 2,
+          "status": "pending",
+          "review": null
+        }
+      ],
+      "adjudication": {
+        "status": "pending"
+      },
+      "eligible_for_scoring": false
+    },
+    {
+      "asset_id": "china-street",
+      "surface_id": "china-street-surface-06",
+      "source_image": "images\\china-street.png",
+      "source_annotations": "images\\china-street.gt.json",
+      "exclusion_source": "tracked_gt_boxes",
+      "bbox": {
+        "x": 152,
+        "y": 398,
+        "width": 121,
+        "height": 263
+      },
+      "context_crop": "crops/china-street-surface-06-context.png",
+      "contaminated_crop": "crops/china-street-surface-06-contaminated.png",
+      "glyph_excluded_crop": "crops/china-street-surface-06-glyph-excluded.png",
+      "observation": {
+        "schema": 1,
+        "revision": "scene-material-observation-v1",
+        "material_class": "unknown",
+        "display_name": null,
+        "descriptors": {
+          "texture": "textured",
+          "semantic_label": "text_cluster",
+          "edge_density": 0.0697,
+          "luminance_std": 41.853,
+          "color_dispersion": 43.49,
+          "sample_pixels": 31823
+        },
+        "degradation_priors": [],
+        "provenance": {
+          "method": "classical_surface_descriptors",
+          "source": "scene_region_substrate",
+          "glyph_exclusion": true,
+          "fallback_boxes": 8
+        },
+        "decision_eligible": false,
+        "limitations": [
+          "taxonomy is heuristic and uncalibrated",
+          "excluded pixels are median-filled before spatial descriptor analysis",
+          "degradation priors are hypotheses, not posterior probabilities"
+        ],
+        "substrate": {
+          "schema": 1,
+          "pixels": 7770,
+          "surface_pixels": 26272,
+          "coverage": 0.296,
+          "glyph_regions_excluded": 8,
+          "median_color": "#3a441b",
+          "std": [
+            82.4,
+            87.27,
+            83.81
+          ],
+          "trustworthy": true
+        }
+      },
+      "review_slots": [
+        {
+          "slot": 1,
+          "status": "pending",
+          "review": null
+        },
+        {
+          "slot": 2,
+          "status": "pending",
+          "review": null
+        }
+      ],
+      "adjudication": {
+        "status": "pending"
+      },
+      "eligible_for_scoring": false
+    },
+    {
+      "asset_id": "china-street",
+      "surface_id": "china-street-surface-07",
+      "source_image": "images\\china-street.png",
+      "source_annotations": "images\\china-street.gt.json",
+      "exclusion_source": "tracked_gt_boxes",
+      "bbox": {
+        "x": 415,
+        "y": 410,
+        "width": 127,
+        "height": 141
+      },
+      "context_crop": "crops/china-street-surface-07-context.png",
+      "contaminated_crop": "crops/china-street-surface-07-contaminated.png",
+      "glyph_excluded_crop": "crops/china-street-surface-07-glyph-excluded.png",
+      "observation": {
+        "schema": 1,
+        "revision": "scene-material-observation-v1",
+        "material_class": "unknown",
+        "display_name": null,
+        "descriptors": {
+          "texture": "textured",
+          "semantic_label": "text_cluster",
+          "edge_density": 0.1632,
+          "luminance_std": 47.991,
+          "color_dispersion": 50.844,
+          "sample_pixels": 17907
+        },
+        "degradation_priors": [],
+        "provenance": {
+          "method": "classical_surface_descriptors",
+          "source": "scene_region_substrate",
+          "glyph_exclusion": true,
+          "fallback_boxes": 8
+        },
+        "decision_eligible": false,
+        "limitations": [
+          "taxonomy is heuristic and uncalibrated",
+          "excluded pixels are median-filled before spatial descriptor analysis",
+          "degradation priors are hypotheses, not posterior probabilities"
+        ],
+        "substrate": {
+          "schema": 1,
+          "pixels": 8284,
+          "surface_pixels": 12190,
+          "coverage": 0.68,
+          "glyph_regions_excluded": 8,
+          "median_color": "#7491b6",
+          "std": [
+            81.75,
+            79.27,
+            63.05
+          ],
+          "trustworthy": true
+        }
+      },
+      "review_slots": [
+        {
+          "slot": 1,
+          "status": "pending",
+          "review": null
+        },
+        {
+          "slot": 2,
+          "status": "pending",
+          "review": null
+        }
+      ],
+      "adjudication": {
+        "status": "pending"
+      },
+      "eligible_for_scoring": false
+    },
+    {
+      "asset_id": "china-street",
+      "surface_id": "china-street-surface-08",
+      "source_image": "images\\china-street.png",
+      "source_annotations": "images\\china-street.gt.json",
+      "exclusion_source": "tracked_gt_boxes",
+      "bbox": {
+        "x": 546,
+        "y": 645,
+        "width": 133,
+        "height": 134
+      },
+      "context_crop": "crops/china-street-surface-08-context.png",
+      "contaminated_crop": "crops/china-street-surface-08-contaminated.png",
+      "glyph_excluded_crop": "crops/china-street-surface-08-glyph-excluded.png",
+      "observation": {
+        "schema": 1,
+        "revision": "scene-material-observation-v1",
+        "material_class": "unknown",
+        "display_name": null,
+        "descriptors": {
+          "texture": "textured",
+          "semantic_label": "text_cluster",
+          "edge_density": 0.2364,
+          "luminance_std": 45.525,
+          "color_dispersion": 63.763,
+          "sample_pixels": 17822
+        },
+        "degradation_priors": [],
+        "provenance": {
+          "method": "classical_surface_descriptors",
+          "source": "scene_region_substrate",
+          "glyph_exclusion": true,
+          "fallback_boxes": 8
+        },
+        "decision_eligible": false,
+        "limitations": [
+          "taxonomy is heuristic and uncalibrated",
+          "excluded pixels are median-filled before spatial descriptor analysis",
+          "degradation priors are hypotheses, not posterior probabilities"
+        ],
+        "substrate": {
+          "schema": 1,
+          "pixels": 12639,
+          "surface_pixels": 15651,
+          "coverage": 0.808,
+          "glyph_regions_excluded": 8,
+          "median_color": "#8d334c",
+          "std": [
+            88.85,
+            62.87,
+            76.22
+          ],
+          "trustworthy": true
+        }
+      },
+      "review_slots": [
+        {
+          "slot": 1,
+          "status": "pending",
+          "review": null
+        },
+        {
+          "slot": 2,
+          "status": "pending",
+          "review": null
+        }
+      ],
+      "adjudication": {
+        "status": "pending"
+      },
+      "eligible_for_scoring": false
+    },
+    {
+      "asset_id": "china-street",
+      "surface_id": "china-street-surface-09",
+      "source_image": "images\\china-street.png",
+      "source_annotations": "images\\china-street.gt.json",
+      "exclusion_source": "tracked_gt_boxes",
+      "bbox": {
+        "x": 558,
+        "y": 192,
+        "width": 101,
+        "height": 83
+      },
+      "context_crop": "crops/china-street-surface-09-context.png",
+      "contaminated_crop": "crops/china-street-surface-09-contaminated.png",
+      "glyph_excluded_crop": null,
+      "observation": null,
+      "review_slots": [
+        {
+          "slot": 1,
+          "status": "pending",
+          "review": null
+        },
+        {
+          "slot": 2,
+          "status": "pending",
+          "review": null
+        }
+      ],
+      "adjudication": {
+        "status": "pending"
+      },
+      "eligible_for_scoring": false
+    },
+    {
+      "asset_id": "china-street",
+      "surface_id": "china-street-surface-10",
+      "source_image": "images\\china-street.png",
+      "source_annotations": "images\\china-street.gt.json",
+      "exclusion_source": "tracked_gt_boxes",
+      "bbox": {
+        "x": 401,
+        "y": 718,
+        "width": 117,
+        "height": 65
+      },
+      "context_crop": "crops/china-street-surface-10-context.png",
+      "contaminated_crop": "crops/china-street-surface-10-contaminated.png",
+      "glyph_excluded_crop": "crops/china-street-surface-10-glyph-excluded.png",
+      "observation": {
+        "schema": 1,
+        "revision": "scene-material-observation-v1",
+        "material_class": "unknown",
+        "display_name": null,
+        "descriptors": {
+          "texture": "textured",
+          "semantic_label": "text_cluster",
+          "edge_density": 0.2285,
+          "luminance_std": 42.752,
+          "color_dispersion": 54.204,
+          "sample_pixels": 7605
+        },
+        "degradation_priors": [],
+        "provenance": {
+          "method": "classical_surface_descriptors",
+          "source": "scene_region_substrate",
+          "glyph_exclusion": true,
+          "fallback_boxes": 8
+        },
+        "decision_eligible": false,
+        "limitations": [
+          "taxonomy is heuristic and uncalibrated",
+          "excluded pixels are median-filled before spatial descriptor analysis",
+          "degradation priors are hypotheses, not posterior probabilities"
+        ],
+        "substrate": {
+          "schema": 1,
+          "pixels": 5827,
+          "surface_pixels": 5827,
+          "coverage": 1.0,
+          "glyph_regions_excluded": 8,
+          "median_color": "#b53822",
+          "std": [
+            70.73,
+            61.54,
+            53.71
+          ],
+          "trustworthy": true
+        }
+      },
+      "review_slots": [
+        {
+          "slot": 1,
+          "status": "pending",
+          "review": null
+        },
+        {
+          "slot": 2,
+          "status": "pending",
+          "review": null
+        }
+      ],
+      "adjudication": {
+        "status": "pending"
+      },
+      "eligible_for_scoring": false
+    },
+    {
+      "asset_id": "china-street",
+      "surface_id": "china-street-surface-11",
+      "source_image": "images\\china-street.png",
+      "source_annotations": "images\\china-street.gt.json",
+      "exclusion_source": "tracked_gt_boxes",
+      "bbox": {
+        "x": 416,
+        "y": 566,
+        "width": 50,
+        "height": 103
+      },
+      "context_crop": "crops/china-street-surface-11-context.png",
+      "contaminated_crop": "crops/china-street-surface-11-contaminated.png",
+      "glyph_excluded_crop": "crops/china-street-surface-11-glyph-excluded.png",
+      "observation": {
+        "schema": 1,
+        "revision": "scene-material-observation-v1",
+        "material_class": "unknown",
+        "display_name": null,
+        "descriptors": {
+          "texture": "textured",
+          "semantic_label": "text_cluster",
+          "edge_density": 0.0171,
+          "luminance_std": 17.848,
+          "color_dispersion": 17.424,
+          "sample_pixels": 5150
+        },
+        "degradation_priors": [],
+        "provenance": {
+          "method": "classical_surface_descriptors",
+          "source": "scene_region_substrate",
+          "glyph_exclusion": true,
+          "fallback_boxes": 8
+        },
+        "decision_eligible": false,
+        "limitations": [
+          "taxonomy is heuristic and uncalibrated",
+          "excluded pixels are median-filled before spatial descriptor analysis",
+          "degradation priors are hypotheses, not posterior probabilities"
+        ],
+        "substrate": {
+          "schema": 1,
+          "pixels": 327,
+          "surface_pixels": 5244,
+          "coverage": 0.062,
+          "glyph_regions_excluded": 8,
+          "median_color": "#7e384d",
+          "std": [
+            56.57,
+            81.24,
+            76.16
+          ],
+          "trustworthy": true
+        }
+      },
+      "review_slots": [
+        {
+          "slot": 1,
+          "status": "pending",
+          "review": null
+        },
+        {
+          "slot": 2,
+          "status": "pending",
+          "review": null
+        }
+      ],
+      "adjudication": {
+        "status": "pending"
+      },
+      "eligible_for_scoring": false
+    },
+    {
+      "asset_id": "china-street",
+      "surface_id": "china-street-surface-12",
+      "source_image": "images\\china-street.png",
+      "source_annotations": "images\\china-street.gt.json",
+      "exclusion_source": "tracked_gt_boxes",
+      "bbox": {
+        "x": 237,
+        "y": 735,
+        "width": 100,
+        "height": 48
+      },
+      "context_crop": "crops/china-street-surface-12-context.png",
+      "contaminated_crop": "crops/china-street-surface-12-contaminated.png",
+      "glyph_excluded_crop": "crops/china-street-surface-12-glyph-excluded.png",
+      "observation": {
+        "schema": 1,
+        "revision": "scene-material-observation-v1",
+        "material_class": "unknown",
+        "display_name": null,
+        "descriptors": {
+          "texture": "textured",
+          "semantic_label": "text_cluster",
+          "edge_density": 0.0829,
+          "luminance_std": 28.08,
+          "color_dispersion": 28.666,
+          "sample_pixels": 4800
+        },
+        "degradation_priors": [],
+        "provenance": {
+          "method": "classical_surface_descriptors",
+          "source": "scene_region_substrate",
+          "glyph_exclusion": true,
+          "fallback_boxes": 8
+        },
+        "decision_eligible": false,
+        "limitations": [
+          "taxonomy is heuristic and uncalibrated",
+          "excluded pixels are median-filled before spatial descriptor analysis",
+          "degradation priors are hypotheses, not posterior probabilities"
+        ],
+        "substrate": {
+          "schema": 1,
+          "pixels": 1566,
+          "surface_pixels": 3470,
+          "coverage": 0.451,
+          "glyph_regions_excluded": 8,
+          "median_color": "#272215",
+          "std": [
+            57.94,
+            50.71,
+            40.38
+          ],
+          "trustworthy": true
+        }
+      },
+      "review_slots": [
+        {
+          "slot": 1,
+          "status": "pending",
+          "review": null
+        },
+        {
+          "slot": 2,
+          "status": "pending",
+          "review": null
+        }
+      ],
+      "adjudication": {
+        "status": "pending"
+      },
+      "eligible_for_scoring": false
+    },
+    {
+      "asset_id": "china-street",
+      "surface_id": "china-street-surface-13",
+      "source_image": "images\\china-street.png",
+      "source_annotations": "images\\china-street.gt.json",
+      "exclusion_source": "tracked_gt_boxes",
+      "bbox": {
+        "x": 383,
+        "y": 402,
+        "width": 52,
+        "height": 89
+      },
+      "context_crop": "crops/china-street-surface-13-context.png",
+      "contaminated_crop": "crops/china-street-surface-13-contaminated.png",
+      "glyph_excluded_crop": "crops/china-street-surface-13-glyph-excluded.png",
+      "observation": {
+        "schema": 1,
+        "revision": "scene-material-observation-v1",
+        "material_class": "unknown",
+        "display_name": null,
+        "descriptors": {
+          "texture": "textured",
+          "semantic_label": "text_cluster",
+          "edge_density": 0.2545,
+          "luminance_std": 46.854,
+          "color_dispersion": 52.505,
+          "sample_pixels": 4628
+        },
+        "degradation_priors": [],
+        "provenance": {
+          "method": "classical_surface_descriptors",
+          "source": "scene_region_substrate",
+          "glyph_exclusion": true,
+          "fallback_boxes": 8
+        },
+        "decision_eligible": false,
+        "limitations": [
+          "taxonomy is heuristic and uncalibrated",
+          "excluded pixels are median-filled before spatial descriptor analysis",
+          "degradation priors are hypotheses, not posterior probabilities"
+        ],
+        "substrate": {
+          "schema": 1,
+          "pixels": 3579,
+          "surface_pixels": 3688,
+          "coverage": 0.97,
+          "glyph_regions_excluded": 8,
+          "median_color": "#d24b5e",
+          "std": [
+            43.98,
+            68.81,
+            65.51
+          ],
+          "trustworthy": true
+        }
+      },
+      "review_slots": [
+        {
+          "slot": 1,
+          "status": "pending",
+          "review": null
+        },
+        {
+          "slot": 2,
+          "status": "pending",
+          "review": null
+        }
+      ],
+      "adjudication": {
+        "status": "pending"
+      },
+      "eligible_for_scoring": false
+    },
+    {
+      "asset_id": "china-street",
+      "surface_id": "china-street-surface-14",
+      "source_image": "images\\china-street.png",
+      "source_annotations": "images\\china-street.gt.json",
+      "exclusion_source": "tracked_gt_boxes",
+      "bbox": {
+        "x": 201,
+        "y": 398,
+        "width": 67,
+        "height": 67
+      },
+      "context_crop": "crops/china-street-surface-14-context.png",
+      "contaminated_crop": "crops/china-street-surface-14-contaminated.png",
+      "glyph_excluded_crop": "crops/china-street-surface-14-glyph-excluded.png",
+      "observation": {
+        "schema": 1,
+        "revision": "scene-material-observation-v1",
+        "material_class": "textured_unknown",
+        "display_name": "textured surface",
+        "descriptors": {
+          "texture": "textured",
+          "semantic_label": "surface",
+          "edge_density": 0.0662,
+          "luminance_std": 23.741,
+          "color_dispersion": 27.889,
+          "sample_pixels": 4489
+        },
+        "degradation_priors": [
+          {
+            "process": "abrasion",
+            "status": "plausible_not_measured"
+          },
+          {
+            "process": "speckle",
+            "status": "plausible_not_measured"
+          }
+        ],
+        "provenance": {
+          "method": "classical_surface_descriptors",
+          "source": "scene_region_substrate",
+          "glyph_exclusion": true,
+          "fallback_boxes": 8
+        },
+        "decision_eligible": false,
+        "limitations": [
+          "taxonomy is heuristic and uncalibrated",
+          "excluded pixels are median-filled before spatial descriptor analysis",
+          "degradation priors are hypotheses, not posterior probabilities"
+        ],
+        "substrate": {
+          "schema": 1,
+          "pixels": 596,
+          "surface_pixels": 3423,
+          "coverage": 0.174,
+          "glyph_regions_excluded": 8,
+          "median_color": "#b85f3a",
+          "std": [
+            85.77,
+            70.02,
+            75.08
+          ],
+          "trustworthy": true
+        }
+      },
+      "review_slots": [
+        {
+          "slot": 1,
+          "status": "pending",
+          "review": null
+        },
+        {
+          "slot": 2,
+          "status": "pending",
+          "review": null
+        }
+      ],
+      "adjudication": {
+        "status": "pending"
+      },
+      "eligible_for_scoring": false
+    },
+    {
+      "asset_id": "china-street",
+      "surface_id": "china-street-surface-15",
+      "source_image": "images\\china-street.png",
+      "source_annotations": "images\\china-street.gt.json",
+      "exclusion_source": "tracked_gt_boxes",
+      "bbox": {
+        "x": 573,
+        "y": 231,
+        "width": 75,
+        "height": 44
+      },
+      "context_crop": "crops/china-street-surface-15-context.png",
+      "contaminated_crop": "crops/china-street-surface-15-contaminated.png",
+      "glyph_excluded_crop": null,
+      "observation": null,
+      "review_slots": [
+        {
+          "slot": 1,
+          "status": "pending",
+          "review": null
+        },
+        {
+          "slot": 2,
+          "status": "pending",
+          "review": null
+        }
+      ],
+      "adjudication": {
+        "status": "pending"
+      },
+      "eligible_for_scoring": false
+    },
+    {
+      "asset_id": "china-street",
+      "surface_id": "china-street-surface-16",
+      "source_image": "images\\china-street.png",
+      "source_annotations": "images\\china-street.gt.json",
+      "exclusion_source": "tracked_gt_boxes",
+      "bbox": {
+        "x": 569,
+        "y": 102,
+        "width": 89,
+        "height": 35
+      },
+      "context_crop": "crops/china-street-surface-16-context.png",
+      "contaminated_crop": "crops/china-street-surface-16-contaminated.png",
+      "glyph_excluded_crop": null,
+      "observation": null,
+      "review_slots": [
+        {
+          "slot": 1,
+          "status": "pending",
+          "review": null
+        },
+        {
+          "slot": 2,
+          "status": "pending",
+          "review": null
+        }
+      ],
+      "adjudication": {
+        "status": "pending"
+      },
+      "eligible_for_scoring": false
+    },
+    {
+      "asset_id": "japan-street",
+      "surface_id": "japan-street-surface-01",
+      "source_image": "images\\japan-street.jpeg",
+      "source_annotations": "images\\japan-street.gt.json",
+      "exclusion_source": "tracked_gt_boxes",
+      "bbox": {
+        "x": 222,
+        "y": 295,
+        "width": 225,
+        "height": 170
+      },
+      "context_crop": "crops/japan-street-surface-01-context.png",
+      "contaminated_crop": "crops/japan-street-surface-01-contaminated.png",
+      "glyph_excluded_crop": "crops/japan-street-surface-01-glyph-excluded.png",
+      "observation": {
+        "schema": 1,
+        "revision": "scene-material-observation-v1",
+        "material_class": "unknown",
+        "display_name": null,
+        "descriptors": {
+          "texture": "textured",
+          "semantic_label": "text_cluster",
+          "edge_density": 0.3361,
+          "luminance_std": 66.114,
+          "color_dispersion": 72.0,
+          "sample_pixels": 38250
+        },
+        "degradation_priors": [],
+        "provenance": {
+          "method": "classical_surface_descriptors",
+          "source": "scene_region_substrate",
+          "glyph_exclusion": true,
+          "fallback_boxes": 7
+        },
+        "decision_eligible": false,
+        "limitations": [
+          "taxonomy is heuristic and uncalibrated",
+          "excluded pixels are median-filled before spatial descriptor analysis",
+          "degradation priors are hypotheses, not posterior probabilities"
+        ],
+        "substrate": {
+          "schema": 1,
+          "pixels": 38646,
+          "surface_pixels": 38646,
+          "coverage": 1.0,
+          "glyph_regions_excluded": 7,
+          "median_color": "#95603f",
+          "std": [
+            69.45,
+            72.45,
+            74.03
+          ],
+          "trustworthy": true
+        }
+      },
+      "review_slots": [
+        {
+          "slot": 1,
+          "status": "pending",
+          "review": null
+        },
+        {
+          "slot": 2,
+          "status": "pending",
+          "review": null
+        }
+      ],
+      "adjudication": {
+        "status": "pending"
+      },
+      "eligible_for_scoring": false
+    },
+    {
+      "asset_id": "japan-street",
+      "surface_id": "japan-street-surface-02",
+      "source_image": "images\\japan-street.jpeg",
+      "source_annotations": "images\\japan-street.gt.json",
+      "exclusion_source": "tracked_gt_boxes",
+      "bbox": {
+        "x": 449,
+        "y": 235,
+        "width": 145,
+        "height": 253
+      },
+      "context_crop": "crops/japan-street-surface-02-context.png",
+      "contaminated_crop": "crops/japan-street-surface-02-contaminated.png",
+      "glyph_excluded_crop": "crops/japan-street-surface-02-glyph-excluded.png",
+      "observation": {
+        "schema": 1,
+        "revision": "scene-material-observation-v1",
+        "material_class": "unknown",
+        "display_name": null,
+        "descriptors": {
+          "texture": "textured",
+          "semantic_label": "text_cluster",
+          "edge_density": 0.2044,
+          "luminance_std": 47.79,
+          "color_dispersion": 53.219,
+          "sample_pixels": 36685
+        },
+        "degradation_priors": [],
+        "provenance": {
+          "method": "classical_surface_descriptors",
+          "source": "scene_region_substrate",
+          "glyph_exclusion": true,
+          "fallback_boxes": 7
+        },
+        "decision_eligible": false,
+        "limitations": [
+          "taxonomy is heuristic and uncalibrated",
+          "excluded pixels are median-filled before spatial descriptor analysis",
+          "degradation priors are hypotheses, not posterior probabilities"
+        ],
+        "substrate": {
+          "schema": 1,
+          "pixels": 27234,
+          "surface_pixels": 29046,
+          "coverage": 0.938,
+          "glyph_regions_excluded": 7,
+          "median_color": "#6b4e39",
+          "std": [
+            65.87,
+            61.77,
+            58.46
+          ],
+          "trustworthy": true
+        }
+      },
+      "review_slots": [
+        {
+          "slot": 1,
+          "status": "pending",
+          "review": null
+        },
+        {
+          "slot": 2,
+          "status": "pending",
+          "review": null
+        }
+      ],
+      "adjudication": {
+        "status": "pending"
+      },
+      "eligible_for_scoring": false
+    },
+    {
+      "asset_id": "japan-street",
+      "surface_id": "japan-street-surface-03",
+      "source_image": "images\\japan-street.jpeg",
+      "source_annotations": "images\\japan-street.gt.json",
+      "exclusion_source": "tracked_gt_boxes",
+      "bbox": {
+        "x": 288,
+        "y": 268,
+        "width": 166,
+        "height": 220
+      },
+      "context_crop": "crops/japan-street-surface-03-context.png",
+      "contaminated_crop": "crops/japan-street-surface-03-contaminated.png",
+      "glyph_excluded_crop": "crops/japan-street-surface-03-glyph-excluded.png",
+      "observation": {
+        "schema": 1,
+        "revision": "scene-material-observation-v1",
+        "material_class": "masonry",
+        "display_name": "brick / masonry",
+        "descriptors": {
+          "texture": "textured",
+          "semantic_label": "text_cluster",
+          "edge_density": 0.2556,
+          "luminance_std": 56.648,
+          "color_dispersion": 60.823,
+          "sample_pixels": 36520
+        },
+        "degradation_priors": [
+          {
+            "process": "abrasion",
+            "status": "plausible_not_measured"
+          },
+          {
+            "process": "speckle",
+            "status": "plausible_not_measured"
+          },
+          {
+            "process": "occlusion",
+            "status": "plausible_not_measured"
+          }
+        ],
+        "provenance": {
+          "method": "classical_surface_descriptors",
+          "source": "scene_region_substrate",
+          "glyph_exclusion": true,
+          "fallback_boxes": 7
+        },
+        "decision_eligible": false,
+        "limitations": [
+          "taxonomy is heuristic and uncalibrated",
+          "excluded pixels are median-filled before spatial descriptor analysis",
+          "degradation priors are hypotheses, not posterior probabilities"
+        ],
+        "substrate": {
+          "schema": 1,
+          "pixels": 27663,
+          "surface_pixels": 27846,
+          "coverage": 0.993,
+          "glyph_regions_excluded": 7,
+          "median_color": "#8d5e3d",
+          "std": [
+            70.18,
+            70.19,
+            68.32
+          ],
+          "trustworthy": true
+        }
+      },
+      "review_slots": [
+        {
+          "slot": 1,
+          "status": "pending",
+          "review": null
+        },
+        {
+          "slot": 2,
+          "status": "pending",
+          "review": null
+        }
+      ],
+      "adjudication": {
+        "status": "pending"
+      },
+      "eligible_for_scoring": false
+    },
+    {
+      "asset_id": "japan-street",
+      "surface_id": "japan-street-surface-04",
+      "source_image": "images\\japan-street.jpeg",
+      "source_annotations": "images\\japan-street.gt.json",
+      "exclusion_source": "tracked_gt_boxes",
+      "bbox": {
+        "x": 2,
+        "y": 240,
+        "width": 134,
+        "height": 248
+      },
+      "context_crop": "crops/japan-street-surface-04-context.png",
+      "contaminated_crop": "crops/japan-street-surface-04-contaminated.png",
+      "glyph_excluded_crop": "crops/japan-street-surface-04-glyph-excluded.png",
+      "observation": {
+        "schema": 1,
+        "revision": "scene-material-observation-v1",
+        "material_class": "unknown",
+        "display_name": null,
+        "descriptors": {
+          "texture": "textured",
+          "semantic_label": "text_cluster",
+          "edge_density": 0.2407,
+          "luminance_std": 46.114,
+          "color_dispersion": 51.285,
+          "sample_pixels": 33232
+        },
+        "degradation_priors": [],
+        "provenance": {
+          "method": "classical_surface_descriptors",
+          "source": "scene_region_substrate",
+          "glyph_exclusion": true,
+          "fallback_boxes": 7
+        },
+        "decision_eligible": false,
+        "limitations": [
+          "taxonomy is heuristic and uncalibrated",
+          "excluded pixels are median-filled before spatial descriptor analysis",
+          "degradation priors are hypotheses, not posterior probabilities"
+        ],
+        "substrate": {
+          "schema": 1,
+          "pixels": 30953,
+          "surface_pixels": 32695,
+          "coverage": 0.947,
+          "glyph_regions_excluded": 7,
+          "median_color": "#683c1d",
+          "std": [
+            60.97,
+            51.87,
+            46.86
+          ],
+          "trustworthy": true
+        }
+      },
+      "review_slots": [
+        {
+          "slot": 1,
+          "status": "pending",
+          "review": null
+        },
+        {
+          "slot": 2,
+          "status": "pending",
+          "review": null
+        }
+      ],
+      "adjudication": {
+        "status": "pending"
+      },
+      "eligible_for_scoring": false
+    },
+    {
+      "asset_id": "japan-street",
+      "surface_id": "japan-street-surface-05",
+      "source_image": "images\\japan-street.jpeg",
+      "source_annotations": "images\\japan-street.gt.json",
+      "exclusion_source": "tracked_gt_boxes",
+      "bbox": {
+        "x": 103,
+        "y": 374,
+        "width": 259,
+        "height": 114
+      },
+      "context_crop": "crops/japan-street-surface-05-context.png",
+      "contaminated_crop": "crops/japan-street-surface-05-contaminated.png",
+      "glyph_excluded_crop": "crops/japan-street-surface-05-glyph-excluded.png",
+      "observation": {
+        "schema": 1,
+        "revision": "scene-material-observation-v1",
+        "material_class": "unknown",
+        "display_name": null,
+        "descriptors": {
+          "texture": "textured",
+          "semantic_label": "text_cluster",
+          "edge_density": 0.2599,
+          "luminance_std": 56.047,
+          "color_dispersion": 58.722,
+          "sample_pixels": 29526
+        },
+        "degradation_priors": [],
+        "provenance": {
+          "method": "classical_surface_descriptors",
+          "source": "scene_region_substrate",
+          "glyph_exclusion": true,
+          "fallback_boxes": 7
+        },
+        "decision_eligible": false,
+        "limitations": [
+          "taxonomy is heuristic and uncalibrated",
+          "excluded pixels are median-filled before spatial descriptor analysis",
+          "degradation priors are hypotheses, not posterior probabilities"
+        ],
+        "substrate": {
+          "schema": 1,
+          "pixels": 25806,
+          "surface_pixels": 25806,
+          "coverage": 1.0,
+          "glyph_regions_excluded": 7,
+          "median_color": "#67371b",
+          "std": [
+            68.05,
+            61.62,
+            58.61
+          ],
+          "trustworthy": true
+        }
+      },
+      "review_slots": [
+        {
+          "slot": 1,
+          "status": "pending",
+          "review": null
+        },
+        {
+          "slot": 2,
+          "status": "pending",
+          "review": null
+        }
+      ],
+      "adjudication": {
+        "status": "pending"
+      },
+      "eligible_for_scoring": false
+    },
+    {
+      "asset_id": "japan-street",
+      "surface_id": "japan-street-surface-06",
+      "source_image": "images\\japan-street.jpeg",
+      "source_annotations": "images\\japan-street.gt.json",
+      "exclusion_source": "tracked_gt_boxes",
+      "bbox": {
+        "x": 180,
+        "y": 182,
+        "width": 101,
+        "height": 209
+      },
+      "context_crop": "crops/japan-street-surface-06-context.png",
+      "contaminated_crop": "crops/japan-street-surface-06-contaminated.png",
+      "glyph_excluded_crop": "crops/japan-street-surface-06-glyph-excluded.png",
+      "observation": {
+        "schema": 1,
+        "revision": "scene-material-observation-v1",
+        "material_class": "unknown",
+        "display_name": null,
+        "descriptors": {
+          "texture": "textured",
+          "semantic_label": "text_cluster",
+          "edge_density": 0.2537,
+          "luminance_std": 54.735,
+          "color_dispersion": 62.207,
+          "sample_pixels": 21109
+        },
+        "degradation_priors": [],
+        "provenance": {
+          "method": "classical_surface_descriptors",
+          "source": "scene_region_substrate",
+          "glyph_exclusion": true,
+          "fallback_boxes": 7
+        },
+        "decision_eligible": false,
+        "limitations": [
+          "taxonomy is heuristic and uncalibrated",
+          "excluded pixels are median-filled before spatial descriptor analysis",
+          "degradation priors are hypotheses, not posterior probabilities"
+        ],
+        "substrate": {
+          "schema": 1,
+          "pixels": 16848,
+          "surface_pixels": 16874,
+          "coverage": 0.998,
+          "glyph_regions_excluded": 7,
+          "median_color": "#9d4c45",
+          "std": [
+            66.37,
+            72.06,
+            70.24
+          ],
+          "trustworthy": true
+        }
+      },
+      "review_slots": [
+        {
+          "slot": 1,
+          "status": "pending",
+          "review": null
+        },
+        {
+          "slot": 2,
+          "status": "pending",
+          "review": null
+        }
+      ],
+      "adjudication": {
+        "status": "pending"
+      },
+      "eligible_for_scoring": false
+    },
+    {
+      "asset_id": "japan-street",
+      "surface_id": "japan-street-surface-07",
+      "source_image": "images\\japan-street.jpeg",
+      "source_annotations": "images\\japan-street.gt.json",
+      "exclusion_source": "tracked_gt_boxes",
+      "bbox": {
+        "x": 446,
+        "y": 67,
+        "width": 111,
+        "height": 155
+      },
+      "context_crop": "crops/japan-street-surface-07-context.png",
+      "contaminated_crop": "crops/japan-street-surface-07-contaminated.png",
+      "glyph_excluded_crop": "crops/japan-street-surface-07-glyph-excluded.png",
+      "observation": {
+        "schema": 1,
+        "revision": "scene-material-observation-v1",
+        "material_class": "unknown",
+        "display_name": null,
+        "descriptors": {
+          "texture": "textured",
+          "semantic_label": "text_cluster",
+          "edge_density": 0.1599,
+          "luminance_std": 32.122,
+          "color_dispersion": 42.947,
+          "sample_pixels": 17205
+        },
+        "degradation_priors": [],
+        "provenance": {
+          "method": "classical_surface_descriptors",
+          "source": "scene_region_substrate",
+          "glyph_exclusion": true,
+          "fallback_boxes": 7
+        },
+        "decision_eligible": false,
+        "limitations": [
+          "taxonomy is heuristic and uncalibrated",
+          "excluded pixels are median-filled before spatial descriptor analysis",
+          "degradation priors are hypotheses, not posterior probabilities"
+        ],
+        "substrate": {
+          "schema": 1,
+          "pixels": 12566,
+          "surface_pixels": 12566,
+          "coverage": 1.0,
+          "glyph_regions_excluded": 7,
+          "median_color": "#920d0b",
+          "std": [
+            71.15,
+            47.78,
+            30.52
+          ],
+          "trustworthy": true
+        }
+      },
+      "review_slots": [
+        {
+          "slot": 1,
+          "status": "pending",
+          "review": null
+        },
+        {
+          "slot": 2,
+          "status": "pending",
+          "review": null
+        }
+      ],
+      "adjudication": {
+        "status": "pending"
+      },
+      "eligible_for_scoring": false
+    },
+    {
+      "asset_id": "japan-street",
+      "surface_id": "japan-street-surface-08",
+      "source_image": "images\\japan-street.jpeg",
+      "source_annotations": "images\\japan-street.gt.json",
+      "exclusion_source": "tracked_gt_boxes",
+      "bbox": {
+        "x": 4,
+        "y": 1,
+        "width": 66,
+        "height": 176
+      },
+      "context_crop": "crops/japan-street-surface-08-context.png",
+      "contaminated_crop": "crops/japan-street-surface-08-contaminated.png",
+      "glyph_excluded_crop": "crops/japan-street-surface-08-glyph-excluded.png",
+      "observation": {
+        "schema": 1,
+        "revision": "scene-material-observation-v1",
+        "material_class": "unknown",
+        "display_name": null,
+        "descriptors": {
+          "texture": "textured",
+          "semantic_label": "text_cluster",
+          "edge_density": 0.2097,
+          "luminance_std": 29.856,
+          "color_dispersion": 38.281,
+          "sample_pixels": 11616
+        },
+        "degradation_priors": [],
+        "provenance": {
+          "method": "classical_surface_descriptors",
+          "source": "scene_region_substrate",
+          "glyph_exclusion": true,
+          "fallback_boxes": 7
+        },
+        "decision_eligible": false,
+        "limitations": [
+          "taxonomy is heuristic and uncalibrated",
+          "excluded pixels are median-filled before spatial descriptor analysis",
+          "degradation priors are hypotheses, not posterior probabilities"
+        ],
+        "substrate": {
+          "schema": 1,
+          "pixels": 10754,
+          "surface_pixels": 10754,
+          "coverage": 1.0,
+          "glyph_regions_excluded": 7,
+          "median_color": "#2d2621",
+          "std": [
+            50.84,
+            31.49,
+            37.12
+          ],
+          "trustworthy": true
+        }
+      },
+      "review_slots": [
+        {
+          "slot": 1,
+          "status": "pending",
+          "review": null
+        },
+        {
+          "slot": 2,
+          "status": "pending",
+          "review": null
+        }
+      ],
+      "adjudication": {
+        "status": "pending"
+      },
+      "eligible_for_scoring": false
+    },
+    {
+      "asset_id": "japan-street",
+      "surface_id": "japan-street-surface-09",
+      "source_image": "images\\japan-street.jpeg",
+      "source_annotations": "images\\japan-street.gt.json",
+      "exclusion_source": "tracked_gt_boxes",
+      "bbox": {
+        "x": 191,
+        "y": 125,
+        "width": 242,
+        "height": 39
+      },
+      "context_crop": "crops/japan-street-surface-09-context.png",
+      "contaminated_crop": "crops/japan-street-surface-09-contaminated.png",
+      "glyph_excluded_crop": null,
+      "observation": null,
+      "review_slots": [
+        {
+          "slot": 1,
+          "status": "pending",
+          "review": null
+        },
+        {
+          "slot": 2,
+          "status": "pending",
+          "review": null
+        }
+      ],
+      "adjudication": {
+        "status": "pending"
+      },
+      "eligible_for_scoring": false
+    },
+    {
+      "asset_id": "japan-street",
+      "surface_id": "japan-street-surface-10",
+      "source_image": "images\\japan-street.jpeg",
+      "source_annotations": "images\\japan-street.gt.json",
+      "exclusion_source": "tracked_gt_boxes",
+      "bbox": {
+        "x": 384,
+        "y": 195,
+        "width": 105,
+        "height": 56
+      },
+      "context_crop": "crops/japan-street-surface-10-context.png",
+      "contaminated_crop": "crops/japan-street-surface-10-contaminated.png",
+      "glyph_excluded_crop": "crops/japan-street-surface-10-glyph-excluded.png",
+      "observation": {
+        "schema": 1,
+        "revision": "scene-material-observation-v1",
+        "material_class": "unknown",
+        "display_name": null,
+        "descriptors": {
+          "texture": "textured",
+          "semantic_label": "text_cluster",
+          "edge_density": 0.1541,
+          "luminance_std": 38.363,
+          "color_dispersion": 46.111,
+          "sample_pixels": 5880
+        },
+        "degradation_priors": [],
+        "provenance": {
+          "method": "classical_surface_descriptors",
+          "source": "scene_region_substrate",
+          "glyph_exclusion": true,
+          "fallback_boxes": 7
+        },
+        "decision_eligible": false,
+        "limitations": [
+          "taxonomy is heuristic and uncalibrated",
+          "excluded pixels are median-filled before spatial descriptor analysis",
+          "degradation priors are hypotheses, not posterior probabilities"
+        ],
+        "substrate": {
+          "schema": 1,
+          "pixels": 3442,
+          "surface_pixels": 4271,
+          "coverage": 0.806,
+          "glyph_regions_excluded": 7,
+          "median_color": "#732428",
+          "std": [
+            65.55,
+            59.78,
+            58.32
+          ],
+          "trustworthy": true
+        }
+      },
+      "review_slots": [
+        {
+          "slot": 1,
+          "status": "pending",
+          "review": null
+        },
+        {
+          "slot": 2,
+          "status": "pending",
+          "review": null
+        }
+      ],
+      "adjudication": {
+        "status": "pending"
+      },
+      "eligible_for_scoring": false
+    },
+    {
+      "asset_id": "japan-street",
+      "surface_id": "japan-street-surface-11",
+      "source_image": "images\\japan-street.jpeg",
+      "source_annotations": "images\\japan-street.gt.json",
+      "exclusion_source": "tracked_gt_boxes",
+      "bbox": {
+        "x": 108,
+        "y": 1,
+        "width": 24,
+        "height": 109
+      },
+      "context_crop": "crops/japan-street-surface-11-context.png",
+      "contaminated_crop": "crops/japan-street-surface-11-contaminated.png",
+      "glyph_excluded_crop": "crops/japan-street-surface-11-glyph-excluded.png",
+      "observation": {
+        "schema": 1,
+        "revision": "scene-material-observation-v1",
+        "material_class": "unknown",
+        "display_name": null,
+        "descriptors": {
+          "texture": "textured",
+          "semantic_label": "text_cluster",
+          "edge_density": 0.2768,
+          "luminance_std": 39.408,
+          "color_dispersion": 39.047,
+          "sample_pixels": 2616
+        },
+        "degradation_priors": [],
+        "provenance": {
+          "method": "classical_surface_descriptors",
+          "source": "scene_region_substrate",
+          "glyph_exclusion": true,
+          "fallback_boxes": 7
+        },
+        "decision_eligible": false,
+        "limitations": [
+          "taxonomy is heuristic and uncalibrated",
+          "excluded pixels are median-filled before spatial descriptor analysis",
+          "degradation priors are hypotheses, not posterior probabilities"
+        ],
+        "substrate": {
+          "schema": 1,
+          "pixels": 2324,
+          "surface_pixels": 2324,
+          "coverage": 1.0,
+          "glyph_regions_excluded": 7,
+          "median_color": "#8b2a0a",
+          "std": [
+            55.47,
+            42.95,
+            26.06
+          ],
+          "trustworthy": true
+        }
+      },
+      "review_slots": [
+        {
+          "slot": 1,
+          "status": "pending",
+          "review": null
+        },
+        {
+          "slot": 2,
+          "status": "pending",
+          "review": null
+        }
+      ],
+      "adjudication": {
+        "status": "pending"
+      },
+      "eligible_for_scoring": false
+    },
+    {
+      "asset_id": "japan-street",
+      "surface_id": "japan-street-surface-12",
+      "source_image": "images\\japan-street.jpeg",
+      "source_annotations": "images\\japan-street.gt.json",
+      "exclusion_source": "tracked_gt_boxes",
+      "bbox": {
+        "x": 524,
+        "y": 1,
+        "width": 62,
+        "height": 34
+      },
+      "context_crop": "crops/japan-street-surface-12-context.png",
+      "contaminated_crop": "crops/japan-street-surface-12-contaminated.png",
+      "glyph_excluded_crop": "crops/japan-street-surface-12-glyph-excluded.png",
+      "observation": {
+        "schema": 1,
+        "revision": "scene-material-observation-v1",
+        "material_class": "unknown",
+        "display_name": null,
+        "descriptors": {
+          "texture": "textured",
+          "semantic_label": "text_cluster",
+          "edge_density": 0.2609,
+          "luminance_std": 62.994,
+          "color_dispersion": 71.349,
+          "sample_pixels": 2108
+        },
+        "degradation_priors": [],
+        "provenance": {
+          "method": "classical_surface_descriptors",
+          "source": "scene_region_substrate",
+          "glyph_exclusion": true,
+          "fallback_boxes": 7
+        },
+        "decision_eligible": false,
+        "limitations": [
+          "taxonomy is heuristic and uncalibrated",
+          "excluded pixels are median-filled before spatial descriptor analysis",
+          "degradation priors are hypotheses, not posterior probabilities"
+        ],
+        "substrate": {
+          "schema": 1,
+          "pixels": 2039,
+          "surface_pixels": 2039,
+          "coverage": 1.0,
+          "glyph_regions_excluded": 7,
+          "median_color": "#9b9153",
+          "std": [
+            81.75,
+            68.5,
+            67.94
+          ],
+          "trustworthy": true
+        }
+      },
+      "review_slots": [
+        {
+          "slot": 1,
+          "status": "pending",
+          "review": null
+        },
+        {
+          "slot": 2,
+          "status": "pending",
+          "review": null
+        }
+      ],
+      "adjudication": {
+        "status": "pending"
+      },
+      "eligible_for_scoring": false
+    },
+    {
+      "asset_id": "prem-sais",
+      "surface_id": "prem-sais-surface-01",
+      "source_image": "images\\prem-sais.png",
+      "source_annotations": "server\\uploads\\5ad31639a745.manifest.json",
+      "exclusion_source": "manifest_masks_and_boxes",
+      "bbox": {
+        "x": 1520,
+        "y": 1900,
+        "width": 606,
+        "height": 368
+      },
+      "context_crop": "crops/prem-sais-surface-01-context.png",
+      "contaminated_crop": "crops/prem-sais-surface-01-contaminated.png",
+      "glyph_excluded_crop": "crops/prem-sais-surface-01-glyph-excluded.png",
+      "observation": {
+        "schema": 1,
+        "revision": "scene-material-observation-v1",
+        "material_class": "masonry",
+        "display_name": "brick / masonry",
+        "descriptors": {
+          "texture": "textured",
+          "semantic_label": "text_cluster",
+          "edge_density": 0.1361,
+          "luminance_std": 23.413,
+          "color_dispersion": 23.372,
+          "sample_pixels": 223008
+        },
+        "degradation_priors": [
+          {
+            "process": "abrasion",
+            "status": "plausible_not_measured"
+          },
+          {
+            "process": "speckle",
+            "status": "plausible_not_measured"
+          },
+          {
+            "process": "occlusion",
+            "status": "plausible_not_measured"
+          }
+        ],
+        "provenance": {
+          "method": "classical_surface_descriptors",
+          "source": "scene_region_substrate",
+          "glyph_exclusion": true,
+          "fallback_boxes": 8
+        },
+        "decision_eligible": false,
+        "limitations": [
+          "taxonomy is heuristic and uncalibrated",
+          "excluded pixels are median-filled before spatial descriptor analysis",
+          "degradation priors are hypotheses, not posterior probabilities"
+        ],
+        "substrate": {
+          "schema": 1,
+          "pixels": 95126,
+          "surface_pixels": 197373,
+          "coverage": 0.482,
+          "glyph_regions_excluded": 8,
+          "median_color": "#aa723f",
+          "std": [
+            36.3,
+            36.97,
+            34.82
+          ],
+          "trustworthy": true
+        }
+      },
+      "review_slots": [
+        {
+          "slot": 1,
+          "status": "pending",
+          "review": null
+        },
+        {
+          "slot": 2,
+          "status": "pending",
+          "review": null
+        }
+      ],
+      "adjudication": {
+        "status": "pending"
+      },
+      "eligible_for_scoring": false
+    },
+    {
+      "asset_id": "prem-sais",
+      "surface_id": "prem-sais-surface-02",
+      "source_image": "images\\prem-sais.png",
+      "source_annotations": "server\\uploads\\5ad31639a745.manifest.json",
+      "exclusion_source": "manifest_masks_and_boxes",
+      "bbox": {
+        "x": 886,
+        "y": 1214,
+        "width": 416,
+        "height": 424
+      },
+      "context_crop": "crops/prem-sais-surface-02-context.png",
+      "contaminated_crop": "crops/prem-sais-surface-02-contaminated.png",
+      "glyph_excluded_crop": "crops/prem-sais-surface-02-glyph-excluded.png",
+      "observation": {
+        "schema": 1,
+        "revision": "scene-material-observation-v1",
+        "material_class": "masonry",
+        "display_name": "brick / masonry",
+        "descriptors": {
+          "texture": "textured",
+          "semantic_label": "text_cluster",
+          "edge_density": 0.1705,
+          "luminance_std": 26.892,
+          "color_dispersion": 25.489,
+          "sample_pixels": 176384
+        },
+        "degradation_priors": [
+          {
+            "process": "abrasion",
+            "status": "plausible_not_measured"
+          },
+          {
+            "process": "speckle",
+            "status": "plausible_not_measured"
+          },
+          {
+            "process": "occlusion",
+            "status": "plausible_not_measured"
+          }
+        ],
+        "provenance": {
+          "method": "classical_surface_descriptors",
+          "source": "scene_region_substrate",
+          "glyph_exclusion": true,
+          "fallback_boxes": 8
+        },
+        "decision_eligible": false,
+        "limitations": [
+          "taxonomy is heuristic and uncalibrated",
+          "excluded pixels are median-filled before spatial descriptor analysis",
+          "degradation priors are hypotheses, not posterior probabilities"
+        ],
+        "substrate": {
+          "schema": 1,
+          "pixels": 132051,
+          "surface_pixels": 162131,
+          "coverage": 0.814,
+          "glyph_regions_excluded": 8,
+          "median_color": "#8c5224",
+          "std": [
+            37.83,
+            30.21,
+            20.38
+          ],
+          "trustworthy": true
+        }
+      },
+      "review_slots": [
+        {
+          "slot": 1,
+          "status": "pending",
+          "review": null
+        },
+        {
+          "slot": 2,
+          "status": "pending",
+          "review": null
+        }
+      ],
+      "adjudication": {
+        "status": "pending"
+      },
+      "eligible_for_scoring": false
+    },
+    {
+      "asset_id": "prem-sais",
+      "surface_id": "prem-sais-surface-03",
+      "source_image": "images\\prem-sais.png",
+      "source_annotations": "server\\uploads\\5ad31639a745.manifest.json",
+      "exclusion_source": "manifest_masks_and_boxes",
+      "bbox": {
+        "x": 2440,
+        "y": 2,
+        "width": 354,
+        "height": 492
+      },
+      "context_crop": "crops/prem-sais-surface-03-context.png",
+      "contaminated_crop": "crops/prem-sais-surface-03-contaminated.png",
+      "glyph_excluded_crop": "crops/prem-sais-surface-03-glyph-excluded.png",
+      "observation": {
+        "schema": 1,
+        "revision": "scene-material-observation-v1",
+        "material_class": "unknown",
+        "display_name": null,
+        "descriptors": {
+          "texture": "textured",
+          "semantic_label": "text_cluster",
+          "edge_density": 0.2383,
+          "luminance_std": 48.742,
+          "color_dispersion": 47.451,
+          "sample_pixels": 174168
+        },
+        "degradation_priors": [],
+        "provenance": {
+          "method": "classical_surface_descriptors",
+          "source": "scene_region_substrate",
+          "glyph_exclusion": true,
+          "fallback_boxes": 8
+        },
+        "decision_eligible": false,
+        "limitations": [
+          "taxonomy is heuristic and uncalibrated",
+          "excluded pixels are median-filled before spatial descriptor analysis",
+          "degradation priors are hypotheses, not posterior probabilities"
+        ],
+        "substrate": {
+          "schema": 1,
+          "pixels": 131291,
+          "surface_pixels": 131291,
+          "coverage": 1.0,
+          "glyph_regions_excluded": 8,
+          "median_color": "#7d5c42",
+          "std": [
+            61.85,
+            54.71,
+            45.86
+          ],
+          "trustworthy": true
+        }
+      },
+      "review_slots": [
+        {
+          "slot": 1,
+          "status": "pending",
+          "review": null
+        },
+        {
+          "slot": 2,
+          "status": "pending",
+          "review": null
+        }
+      ],
+      "adjudication": {
+        "status": "pending"
+      },
+      "eligible_for_scoring": false
+    },
+    {
+      "asset_id": "prem-sais",
+      "surface_id": "prem-sais-surface-04",
+      "source_image": "images\\prem-sais.png",
+      "source_annotations": "server\\uploads\\5ad31639a745.manifest.json",
+      "exclusion_source": "manifest_masks_and_boxes",
+      "bbox": {
+        "x": 1602,
+        "y": 2,
+        "width": 206,
+        "height": 554
+      },
+      "context_crop": "crops/prem-sais-surface-04-context.png",
+      "contaminated_crop": "crops/prem-sais-surface-04-contaminated.png",
+      "glyph_excluded_crop": "crops/prem-sais-surface-04-glyph-excluded.png",
+      "observation": {
+        "schema": 1,
+        "revision": "scene-material-observation-v1",
+        "material_class": "unknown",
+        "display_name": null,
+        "descriptors": {
+          "texture": "textured",
+          "semantic_label": "text_cluster",
+          "edge_density": 0.2406,
+          "luminance_std": 41.425,
+          "color_dispersion": 40.714,
+          "sample_pixels": 114124
+        },
+        "degradation_priors": [],
+        "provenance": {
+          "method": "classical_surface_descriptors",
+          "source": "scene_region_substrate",
+          "glyph_exclusion": true,
+          "fallback_boxes": 8
+        },
+        "decision_eligible": false,
+        "limitations": [
+          "taxonomy is heuristic and uncalibrated",
+          "excluded pixels are median-filled before spatial descriptor analysis",
+          "degradation priors are hypotheses, not posterior probabilities"
+        ],
+        "substrate": {
+          "schema": 1,
+          "pixels": 83817,
+          "surface_pixels": 83817,
+          "coverage": 1.0,
+          "glyph_regions_excluded": 8,
+          "median_color": "#906a4a",
+          "std": [
+            54.51,
+            47.19,
+            40.63
+          ],
+          "trustworthy": true
+        }
+      },
+      "review_slots": [
+        {
+          "slot": 1,
+          "status": "pending",
+          "review": null
+        },
+        {
+          "slot": 2,
+          "status": "pending",
+          "review": null
+        }
+      ],
+      "adjudication": {
+        "status": "pending"
+      },
+      "eligible_for_scoring": false
+    },
+    {
+      "asset_id": "prem-sais",
+      "surface_id": "prem-sais-surface-05",
+      "source_image": "images\\prem-sais.png",
+      "source_annotations": "server\\uploads\\5ad31639a745.manifest.json",
+      "exclusion_source": "manifest_masks_and_boxes",
+      "bbox": {
+        "x": 1076,
+        "y": 2306,
+        "width": 414,
+        "height": 270
+      },
+      "context_crop": "crops/prem-sais-surface-05-context.png",
+      "contaminated_crop": "crops/prem-sais-surface-05-contaminated.png",
+      "glyph_excluded_crop": "crops/prem-sais-surface-05-glyph-excluded.png",
+      "observation": {
+        "schema": 1,
+        "revision": "scene-material-observation-v1",
+        "material_class": "unknown",
+        "display_name": null,
+        "descriptors": {
+          "texture": "textured",
+          "semantic_label": "text_cluster",
+          "edge_density": 0.1849,
+          "luminance_std": 33.937,
+          "color_dispersion": 32.614,
+          "sample_pixels": 111780
+        },
+        "degradation_priors": [],
+        "provenance": {
+          "method": "classical_surface_descriptors",
+          "source": "scene_region_substrate",
+          "glyph_exclusion": true,
+          "fallback_boxes": 8
+        },
+        "decision_eligible": false,
+        "limitations": [
+          "taxonomy is heuristic and uncalibrated",
+          "excluded pixels are median-filled before spatial descriptor analysis",
+          "degradation priors are hypotheses, not posterior probabilities"
+        ],
+        "substrate": {
+          "schema": 1,
+          "pixels": 108738,
+          "surface_pixels": 108738,
+          "coverage": 1.0,
+          "glyph_regions_excluded": 8,
+          "median_color": "#8f5221",
+          "std": [
+            39.91,
+            34.12,
+            25.31
+          ],
+          "trustworthy": true
+        }
+      },
+      "review_slots": [
+        {
+          "slot": 1,
+          "status": "pending",
+          "review": null
+        },
+        {
+          "slot": 2,
+          "status": "pending",
+          "review": null
+        }
+      ],
+      "adjudication": {
+        "status": "pending"
+      },
+      "eligible_for_scoring": false
+    },
+    {
+      "asset_id": "prem-sais",
+      "surface_id": "prem-sais-surface-06",
+      "source_image": "images\\prem-sais.png",
+      "source_annotations": "server\\uploads\\5ad31639a745.manifest.json",
+      "exclusion_source": "manifest_masks_and_boxes",
+      "bbox": {
+        "x": 2640,
+        "y": 1008,
+        "width": 238,
+        "height": 290
+      },
+      "context_crop": "crops/prem-sais-surface-06-context.png",
+      "contaminated_crop": "crops/prem-sais-surface-06-contaminated.png",
+      "glyph_excluded_crop": "crops/prem-sais-surface-06-glyph-excluded.png",
+      "observation": {
+        "schema": 1,
+        "revision": "scene-material-observation-v1",
+        "material_class": "unknown",
+        "display_name": null,
+        "descriptors": {
+          "texture": "textured",
+          "semantic_label": "text_cluster",
+          "edge_density": 0.1652,
+          "luminance_std": 30.612,
+          "color_dispersion": 29.294,
+          "sample_pixels": 69020
+        },
+        "degradation_priors": [],
+        "provenance": {
+          "method": "classical_surface_descriptors",
+          "source": "scene_region_substrate",
+          "glyph_exclusion": true,
+          "fallback_boxes": 8
+        },
+        "decision_eligible": false,
+        "limitations": [
+          "taxonomy is heuristic and uncalibrated",
+          "excluded pixels are median-filled before spatial descriptor analysis",
+          "degradation priors are hypotheses, not posterior probabilities"
+        ],
+        "substrate": {
+          "schema": 1,
+          "pixels": 69549,
+          "surface_pixels": 69549,
+          "coverage": 1.0,
+          "glyph_regions_excluded": 8,
+          "median_color": "#372618",
+          "std": [
+            42.53,
+            27.84,
+            17.32
+          ],
+          "trustworthy": true
+        }
+      },
+      "review_slots": [
+        {
+          "slot": 1,
+          "status": "pending",
+          "review": null
+        },
+        {
+          "slot": 2,
+          "status": "pending",
+          "review": null
+        }
+      ],
+      "adjudication": {
+        "status": "pending"
+      },
+      "eligible_for_scoring": false
+    },
+    {
+      "asset_id": "prem-sais",
+      "surface_id": "prem-sais-surface-07",
+      "source_image": "images\\prem-sais.png",
+      "source_annotations": "server\\uploads\\5ad31639a745.manifest.json",
+      "exclusion_source": "manifest_masks_and_boxes",
+      "bbox": {
+        "x": 2292,
+        "y": 1038,
+        "width": 258,
+        "height": 250
+      },
+      "context_crop": "crops/prem-sais-surface-07-context.png",
+      "contaminated_crop": "crops/prem-sais-surface-07-contaminated.png",
+      "glyph_excluded_crop": "crops/prem-sais-surface-07-glyph-excluded.png",
+      "observation": {
+        "schema": 1,
+        "revision": "scene-material-observation-v1",
+        "material_class": "masonry",
+        "display_name": "brick / masonry",
+        "descriptors": {
+          "texture": "textured",
+          "semantic_label": "text_cluster",
+          "edge_density": 0.074,
+          "luminance_std": 15.071,
+          "color_dispersion": 14.887,
+          "sample_pixels": 64500
+        },
+        "degradation_priors": [
+          {
+            "process": "abrasion",
+            "status": "plausible_not_measured"
+          },
+          {
+            "process": "speckle",
+            "status": "plausible_not_measured"
+          },
+          {
+            "process": "occlusion",
+            "status": "plausible_not_measured"
+          }
+        ],
+        "provenance": {
+          "method": "classical_surface_descriptors",
+          "source": "scene_region_substrate",
+          "glyph_exclusion": true,
+          "fallback_boxes": 8
+        },
+        "decision_eligible": false,
+        "limitations": [
+          "taxonomy is heuristic and uncalibrated",
+          "excluded pixels are median-filled before spatial descriptor analysis",
+          "degradation priors are hypotheses, not posterior probabilities"
+        ],
+        "substrate": {
+          "schema": 1,
+          "pixels": 16246,
+          "surface_pixels": 51986,
+          "coverage": 0.313,
+          "glyph_regions_excluded": 8,
+          "median_color": "#ae7540",
+          "std": [
+            33.37,
+            29.96,
+            26.22
+          ],
+          "trustworthy": true
+        }
+      },
+      "review_slots": [
+        {
+          "slot": 1,
+          "status": "pending",
+          "review": null
+        },
+        {
+          "slot": 2,
+          "status": "pending",
+          "review": null
+        }
+      ],
+      "adjudication": {
+        "status": "pending"
+      },
+      "eligible_for_scoring": false
+    },
+    {
+      "asset_id": "prem-sais",
+      "surface_id": "prem-sais-surface-08",
+      "source_image": "images\\prem-sais.png",
+      "source_annotations": "server\\uploads\\5ad31639a745.manifest.json",
+      "exclusion_source": "manifest_masks_and_boxes",
+      "bbox": {
+        "x": 1922,
+        "y": 1456,
+        "width": 318,
+        "height": 144
+      },
+      "context_crop": "crops/prem-sais-surface-08-context.png",
+      "contaminated_crop": "crops/prem-sais-surface-08-contaminated.png",
+      "glyph_excluded_crop": "crops/prem-sais-surface-08-glyph-excluded.png",
+      "observation": {
+        "schema": 1,
+        "revision": "scene-material-observation-v1",
+        "material_class": "unknown",
+        "display_name": null,
+        "descriptors": {
+          "texture": "textured",
+          "semantic_label": "text_cluster",
+          "edge_density": 0.3519,
+          "luminance_std": 34.06,
+          "color_dispersion": 34.367,
+          "sample_pixels": 45792
+        },
+        "degradation_priors": [],
+        "provenance": {
+          "method": "classical_surface_descriptors",
+          "source": "scene_region_substrate",
+          "glyph_exclusion": true,
+          "fallback_boxes": 8
+        },
+        "decision_eligible": false,
+        "limitations": [
+          "taxonomy is heuristic and uncalibrated",
+          "excluded pixels are median-filled before spatial descriptor analysis",
+          "degradation priors are hypotheses, not posterior probabilities"
+        ],
+        "substrate": {
+          "schema": 1,
+          "pixels": 46255,
+          "surface_pixels": 46255,
+          "coverage": 1.0,
+          "glyph_regions_excluded": 8,
+          "median_color": "#bb8d60",
+          "std": [
+            31.98,
+            34.99,
+            35.93
+          ],
+          "trustworthy": true
+        }
+      },
+      "review_slots": [
+        {
+          "slot": 1,
+          "status": "pending",
+          "review": null
+        },
+        {
+          "slot": 2,
+          "status": "pending",
+          "review": null
+        }
+      ],
+      "adjudication": {
+        "status": "pending"
+      },
+      "eligible_for_scoring": false
+    },
+    {
+      "asset_id": "prem-sais",
+      "surface_id": "prem-sais-surface-09",
+      "source_image": "images\\prem-sais.png",
+      "source_annotations": "server\\uploads\\5ad31639a745.manifest.json",
+      "exclusion_source": "manifest_masks_and_boxes",
+      "bbox": {
+        "x": 958,
+        "y": 484,
+        "width": 198,
+        "height": 216
+      },
+      "context_crop": "crops/prem-sais-surface-09-context.png",
+      "contaminated_crop": "crops/prem-sais-surface-09-contaminated.png",
+      "glyph_excluded_crop": "crops/prem-sais-surface-09-glyph-excluded.png",
+      "observation": {
+        "schema": 1,
+        "revision": "scene-material-observation-v1",
+        "material_class": "masonry",
+        "display_name": "brick / masonry",
+        "descriptors": {
+          "texture": "textured",
+          "semantic_label": "text_cluster",
+          "edge_density": 0.315,
+          "luminance_std": 44.213,
+          "color_dispersion": 42.656,
+          "sample_pixels": 42768
+        },
+        "degradation_priors": [
+          {
+            "process": "abrasion",
+            "status": "plausible_not_measured"
+          },
+          {
+            "process": "speckle",
+            "status": "plausible_not_measured"
+          },
+          {
+            "process": "occlusion",
+            "status": "plausible_not_measured"
+          }
+        ],
+        "provenance": {
+          "method": "classical_surface_descriptors",
+          "source": "scene_region_substrate",
+          "glyph_exclusion": true,
+          "fallback_boxes": 8
+        },
+        "decision_eligible": false,
+        "limitations": [
+          "taxonomy is heuristic and uncalibrated",
+          "excluded pixels are median-filled before spatial descriptor analysis",
+          "degradation priors are hypotheses, not posterior probabilities"
+        ],
+        "substrate": {
+          "schema": 1,
+          "pixels": 43183,
+          "surface_pixels": 43183,
+          "coverage": 1.0,
+          "glyph_regions_excluded": 8,
+          "median_color": "#bd8854",
+          "std": [
+            52.82,
+            42.73,
+            32.36
+          ],
+          "trustworthy": true
+        }
+      },
+      "review_slots": [
+        {
+          "slot": 1,
+          "status": "pending",
+          "review": null
+        },
+        {
+          "slot": 2,
+          "status": "pending",
+          "review": null
+        }
+      ],
+      "adjudication": {
+        "status": "pending"
+      },
+      "eligible_for_scoring": false
+    },
+    {
+      "asset_id": "prem-sais",
+      "surface_id": "prem-sais-surface-10",
+      "source_image": "images\\prem-sais.png",
+      "source_annotations": "server\\uploads\\5ad31639a745.manifest.json",
+      "exclusion_source": "manifest_masks_and_boxes",
+      "bbox": {
+        "x": 1870,
+        "y": 948,
+        "width": 150,
+        "height": 200
+      },
+      "context_crop": "crops/prem-sais-surface-10-context.png",
+      "contaminated_crop": "crops/prem-sais-surface-10-contaminated.png",
+      "glyph_excluded_crop": null,
+      "observation": null,
+      "review_slots": [
+        {
+          "slot": 1,
+          "status": "pending",
+          "review": null
+        },
+        {
+          "slot": 2,
+          "status": "pending",
+          "review": null
+        }
+      ],
+      "adjudication": {
+        "status": "pending"
+      },
+      "eligible_for_scoring": false
+    },
+    {
+      "asset_id": "prem-sais",
+      "surface_id": "prem-sais-surface-11",
+      "source_image": "images\\prem-sais.png",
+      "source_annotations": "server\\uploads\\5ad31639a745.manifest.json",
+      "exclusion_source": "manifest_masks_and_boxes",
+      "bbox": {
+        "x": 2292,
+        "y": 1640,
+        "width": 128,
+        "height": 178
+      },
+      "context_crop": "crops/prem-sais-surface-11-context.png",
+      "contaminated_crop": "crops/prem-sais-surface-11-contaminated.png",
+      "glyph_excluded_crop": "crops/prem-sais-surface-11-glyph-excluded.png",
+      "observation": {
+        "schema": 1,
+        "revision": "scene-material-observation-v1",
+        "material_class": "masonry",
+        "display_name": "brick / masonry",
+        "descriptors": {
+          "texture": "textured",
+          "semantic_label": "text_cluster",
+          "edge_density": 0.3058,
+          "luminance_std": 27.282,
+          "color_dispersion": 28.188,
+          "sample_pixels": 22784
+        },
+        "degradation_priors": [
+          {
+            "process": "abrasion",
+            "status": "plausible_not_measured"
+          },
+          {
+            "process": "speckle",
+            "status": "plausible_not_measured"
+          },
+          {
+            "process": "occlusion",
+            "status": "plausible_not_measured"
+          }
+        ],
+        "provenance": {
+          "method": "classical_surface_descriptors",
+          "source": "scene_region_substrate",
+          "glyph_exclusion": true,
+          "fallback_boxes": 8
+        },
+        "decision_eligible": false,
+        "limitations": [
+          "taxonomy is heuristic and uncalibrated",
+          "excluded pixels are median-filled before spatial descriptor analysis",
+          "degradation priors are hypotheses, not posterior probabilities"
+        ],
+        "substrate": {
+          "schema": 1,
+          "pixels": 21133,
+          "surface_pixels": 21133,
+          "coverage": 1.0,
+          "glyph_regions_excluded": 8,
+          "median_color": "#cb9b6a",
+          "std": [
+            24.91,
+            29.75,
+            33.33
+          ],
+          "trustworthy": true
+        }
+      },
+      "review_slots": [
+        {
+          "slot": 1,
+          "status": "pending",
+          "review": null
+        },
+        {
+          "slot": 2,
+          "status": "pending",
+          "review": null
+        }
+      ],
+      "adjudication": {
+        "status": "pending"
+      },
+      "eligible_for_scoring": false
+    },
+    {
+      "asset_id": "prem-sais",
+      "surface_id": "prem-sais-surface-12",
+      "source_image": "images\\prem-sais.png",
+      "source_annotations": "server\\uploads\\5ad31639a745.manifest.json",
+      "exclusion_source": "manifest_masks_and_boxes",
+      "bbox": {
+        "x": 1404,
+        "y": 1568,
+        "width": 218,
+        "height": 96
+      },
+      "context_crop": "crops/prem-sais-surface-12-context.png",
+      "contaminated_crop": "crops/prem-sais-surface-12-contaminated.png",
+      "glyph_excluded_crop": "crops/prem-sais-surface-12-glyph-excluded.png",
+      "observation": {
+        "schema": 1,
+        "revision": "scene-material-observation-v1",
+        "material_class": "unknown",
+        "display_name": null,
+        "descriptors": {
+          "texture": "textured",
+          "semantic_label": "text_cluster",
+          "edge_density": 0.348,
+          "luminance_std": 32.713,
+          "color_dispersion": 32.909,
+          "sample_pixels": 20928
+        },
+        "degradation_priors": [],
+        "provenance": {
+          "method": "classical_surface_descriptors",
+          "source": "scene_region_substrate",
+          "glyph_exclusion": true,
+          "fallback_boxes": 8
+        },
+        "decision_eligible": false,
+        "limitations": [
+          "taxonomy is heuristic and uncalibrated",
+          "excluded pixels are median-filled before spatial descriptor analysis",
+          "degradation priors are hypotheses, not posterior probabilities"
+        ],
+        "substrate": {
+          "schema": 1,
+          "pixels": 21243,
+          "surface_pixels": 21243,
+          "coverage": 1.0,
+          "glyph_regions_excluded": 8,
+          "median_color": "#b58454",
+          "std": [
+            32.33,
+            33.3,
+            32.98
+          ],
+          "trustworthy": true
+        }
+      },
+      "review_slots": [
+        {
+          "slot": 1,
+          "status": "pending",
+          "review": null
+        },
+        {
+          "slot": 2,
+          "status": "pending",
+          "review": null
+        }
+      ],
+      "adjudication": {
+        "status": "pending"
+      },
+      "eligible_for_scoring": false
+    },
+    {
+      "asset_id": "prem-sais",
+      "surface_id": "prem-sais-surface-13",
+      "source_image": "images\\prem-sais.png",
+      "source_annotations": "server\\uploads\\5ad31639a745.manifest.json",
+      "exclusion_source": "manifest_masks_and_boxes",
+      "bbox": {
+        "x": 1420,
+        "y": 714,
+        "width": 182,
+        "height": 100
+      },
+      "context_crop": "crops/prem-sais-surface-13-context.png",
+      "contaminated_crop": "crops/prem-sais-surface-13-contaminated.png",
+      "glyph_excluded_crop": "crops/prem-sais-surface-13-glyph-excluded.png",
+      "observation": {
+        "schema": 1,
+        "revision": "scene-material-observation-v1",
+        "material_class": "unknown",
+        "display_name": null,
+        "descriptors": {
+          "texture": "textured",
+          "semantic_label": "text_cluster",
+          "edge_density": 0.2878,
+          "luminance_std": 31.813,
+          "color_dispersion": 31.581,
+          "sample_pixels": 18200
+        },
+        "degradation_priors": [],
+        "provenance": {
+          "method": "classical_surface_descriptors",
+          "source": "scene_region_substrate",
+          "glyph_exclusion": true,
+          "fallback_boxes": 8
+        },
+        "decision_eligible": false,
+        "limitations": [
+          "taxonomy is heuristic and uncalibrated",
+          "excluded pixels are median-filled before spatial descriptor analysis",
+          "degradation priors are hypotheses, not posterior probabilities"
+        ],
+        "substrate": {
+          "schema": 1,
+          "pixels": 18483,
+          "surface_pixels": 18483,
+          "coverage": 1.0,
+          "glyph_regions_excluded": 8,
+          "median_color": "#bc7f48",
+          "std": [
+            31.97,
+            32.51,
+            30.23
+          ],
+          "trustworthy": true
+        }
+      },
+      "review_slots": [
+        {
+          "slot": 1,
+          "status": "pending",
+          "review": null
+        },
+        {
+          "slot": 2,
+          "status": "pending",
+          "review": null
+        }
+      ],
+      "adjudication": {
+        "status": "pending"
+      },
+      "eligible_for_scoring": false
+    },
+    {
+      "asset_id": "prem-sais",
+      "surface_id": "prem-sais-surface-14",
+      "source_image": "images\\prem-sais.png",
+      "source_annotations": "server\\uploads\\5ad31639a745.manifest.json",
+      "exclusion_source": "manifest_masks_and_boxes",
+      "bbox": {
+        "x": 2030,
+        "y": 750,
+        "width": 150,
+        "height": 82
+      },
+      "context_crop": "crops/prem-sais-surface-14-context.png",
+      "contaminated_crop": "crops/prem-sais-surface-14-contaminated.png",
+      "glyph_excluded_crop": "crops/prem-sais-surface-14-glyph-excluded.png",
+      "observation": {
+        "schema": 1,
+        "revision": "scene-material-observation-v1",
+        "material_class": "unknown",
+        "display_name": null,
+        "descriptors": {
+          "texture": "textured",
+          "semantic_label": "text_cluster",
+          "edge_density": 0.3467,
+          "luminance_std": 30.224,
+          "color_dispersion": 30.595,
+          "sample_pixels": 12300
+        },
+        "degradation_priors": [],
+        "provenance": {
+          "method": "classical_surface_descriptors",
+          "source": "scene_region_substrate",
+          "glyph_exclusion": true,
+          "fallback_boxes": 8
+        },
+        "decision_eligible": false,
+        "limitations": [
+          "taxonomy is heuristic and uncalibrated",
+          "excluded pixels are median-filled before spatial descriptor analysis",
+          "degradation priors are hypotheses, not posterior probabilities"
+        ],
+        "substrate": {
+          "schema": 1,
+          "pixels": 12533,
+          "surface_pixels": 12533,
+          "coverage": 1.0,
+          "glyph_regions_excluded": 8,
+          "median_color": "#c89c71",
+          "std": [
+            27.7,
+            31.18,
+            32.65
+          ],
+          "trustworthy": true
+        }
+      },
+      "review_slots": [
+        {
+          "slot": 1,
+          "status": "pending",
+          "review": null
+        },
+        {
+          "slot": 2,
+          "status": "pending",
+          "review": null
+        }
+      ],
+      "adjudication": {
+        "status": "pending"
+      },
+      "eligible_for_scoring": false
+    },
+    {
+      "asset_id": "prem-sais",
+      "surface_id": "prem-sais-surface-15",
+      "source_image": "images\\prem-sais.png",
+      "source_annotations": "server\\uploads\\5ad31639a745.manifest.json",
+      "exclusion_source": "manifest_masks_and_boxes",
+      "bbox": {
+        "x": 518,
+        "y": 150,
+        "width": 56,
+        "height": 198
+      },
+      "context_crop": "crops/prem-sais-surface-15-context.png",
+      "contaminated_crop": "crops/prem-sais-surface-15-contaminated.png",
+      "glyph_excluded_crop": "crops/prem-sais-surface-15-glyph-excluded.png",
+      "observation": {
+        "schema": 1,
+        "revision": "scene-material-observation-v1",
+        "material_class": "unknown",
+        "display_name": null,
+        "descriptors": {
+          "texture": "textured",
+          "semantic_label": "text_cluster",
+          "edge_density": 0.3235,
+          "luminance_std": 31.491,
+          "color_dispersion": 30.052,
+          "sample_pixels": 11088
+        },
+        "degradation_priors": [],
+        "provenance": {
+          "method": "classical_surface_descriptors",
+          "source": "scene_region_substrate",
+          "glyph_exclusion": true,
+          "fallback_boxes": 8
+        },
+        "decision_eligible": false,
+        "limitations": [
+          "taxonomy is heuristic and uncalibrated",
+          "excluded pixels are median-filled before spatial descriptor analysis",
+          "degradation priors are hypotheses, not posterior probabilities"
+        ],
+        "substrate": {
+          "schema": 1,
+          "pixels": 11047,
+          "surface_pixels": 11047,
+          "coverage": 1.0,
+          "glyph_regions_excluded": 8,
+          "median_color": "#65492e",
+          "std": [
+            37.93,
+            30.77,
+            22.35
+          ],
+          "trustworthy": true
+        }
+      },
+      "review_slots": [
+        {
+          "slot": 1,
+          "status": "pending",
+          "review": null
+        },
+        {
+          "slot": 2,
+          "status": "pending",
+          "review": null
+        }
+      ],
+      "adjudication": {
+        "status": "pending"
+      },
+      "eligible_for_scoring": false
+    },
+    {
+      "asset_id": "prem-sais",
+      "surface_id": "prem-sais-surface-16",
+      "source_image": "images\\prem-sais.png",
+      "source_annotations": "server\\uploads\\5ad31639a745.manifest.json",
+      "exclusion_source": "manifest_masks_and_boxes",
+      "bbox": {
+        "x": 2060,
+        "y": 2264,
+        "width": 120,
+        "height": 84
+      },
+      "context_crop": "crops/prem-sais-surface-16-context.png",
+      "contaminated_crop": "crops/prem-sais-surface-16-contaminated.png",
+      "glyph_excluded_crop": "crops/prem-sais-surface-16-glyph-excluded.png",
+      "observation": {
+        "schema": 1,
+        "revision": "scene-material-observation-v1",
+        "material_class": "unknown",
+        "display_name": null,
+        "descriptors": {
+          "texture": "textured",
+          "semantic_label": "text_cluster",
+          "edge_density": 0.3558,
+          "luminance_std": 29.998,
+          "color_dispersion": 30.529,
+          "sample_pixels": 10080
+        },
+        "degradation_priors": [],
+        "provenance": {
+          "method": "classical_surface_descriptors",
+          "source": "scene_region_substrate",
+          "glyph_exclusion": true,
+          "fallback_boxes": 8
+        },
+        "decision_eligible": false,
+        "limitations": [
+          "taxonomy is heuristic and uncalibrated",
+          "excluded pixels are median-filled before spatial descriptor analysis",
+          "degradation priors are hypotheses, not posterior probabilities"
+        ],
+        "substrate": {
+          "schema": 1,
+          "pixels": 10285,
+          "surface_pixels": 10285,
+          "coverage": 1.0,
+          "glyph_regions_excluded": 8,
+          "median_color": "#b88a5c",
+          "std": [
+            27.5,
+            31.09,
+            33.25
+          ],
+          "trustworthy": true
+        }
+      },
+      "review_slots": [
+        {
+          "slot": 1,
+          "status": "pending",
+          "review": null
+        },
+        {
+          "slot": 2,
+          "status": "pending",
+          "review": null
+        }
+      ],
+      "adjudication": {
+        "status": "pending"
+      },
+      "eligible_for_scoring": false
+    }
+  ]
+}

@@ -1,0 +1,526 @@
+technical information about Tofu
+
+Yes. The two developments fit into a single probabilistic vision architecture:
+
+- **Cicerone reasons discriminatively:** “Which glyph identities remain possible, and which can I eliminate?”
+- **Scene reasons generatively/counterfactually:** “What physical surface and inscription process could have produced these surviving pixels?”
+- **Fusion answers:** “Given both the visible evidence and the world that produced it, what was most probably written here?”
+
+The crucial safety constraint is that neither layer should manufacture certainty when the glyph evidence has been destroyed.
+
+# Proposed program: ToFU Vision 2
+
+## 1. Unifying theoretical model
+
+Treat an observed text region \(X\) as the result of a latent physical process:
+
+\[
+X = \mathcal I\big(\mathcal P(G,S,M),D,L,V\big)+\epsilon
+\]
+
+where:
+
+- \(G\): original glyph or GT string;
+- \(S\): typographic style—font, weight, spacing, orientation;
+- \(M\): material—painted metal, paper, glass, fabric, brick, plastic, wood, emissive display, etc.;
+- \(\mathcal P\): inscription process—paint, print, engraving, embossing, vinyl, chalk, illumination;
+- \(D\): physical degradation—abrasion, fading, corrosion, peeling, occlusion;
+- \(L\): illumination and reflection;
+- \(V\): camera geometry, perspective, blur and resolution;
+- \(\epsilon\): sensor/compression noise.
+
+The intended posterior is:
+
+\[
+P(G\mid X,\mathrm{GT})
+\propto
+P_{\text{Cicerone}}(G\mid X,\mathrm{GT})
+\,
+P_{\text{Scene}}(X\mid G,M,S,\mathcal P,D,L,V)
+\,
+P(G\mid\mathrm{GT},\text{language}).
+\]
+
+This formulation keeps the responsibilities clean:
+
+- Cicerone estimates a discriminative posterior.
+- Scene estimates whether a proposed glyph could plausibly have generated the observation under the inferred world.
+- GT and language supply constrained priors, not answers imposed regardless of pixels.
+
+Word2World’s multimodal fusion, contrastive organization and context-conditioned Siamese scoring provide a conceptual starting point, though ToFU needs a physical-image generative model rather than Word2World’s social hierarchy :codex-file-citation{path="C:/Users/mvalc/OneDrive - Middlebury College/MIIS - Projects for Peace - Word2World/Technical Paper/Word2World - Technical Paper - ver. 24 Oct 2025.docx" purpose="source"}.
+
+# Track A: Cicerone — degradation-aware glyph identity
+
+## Objective
+
+Teach Cicerone to recover identity-preserving features from degraded glyphs and eliminate visually incompatible GT candidates.
+
+Its reasoning sequence becomes:
+
+```text
+Observed pixels
+  → degradation-robust features
+  → incompatible glyphs eliminated
+  → surviving identities ranked
+  → calibrated match or abstention
+```
+
+This is “what the glyph is not” leading to “what the glyph is.”
+
+## A1. Canonical glyph encoder
+
+Create a shared encoder \(E_\theta\) for:
+
+- observed scene glyphs;
+- canonical GT renderings;
+- synthetically degraded versions of those renderings.
+
+Canonical class masks are well supported by recent scene-text research: class-aware mask guidance was reported to suppress background/style noise and improve challenging-dataset recognition by an average 4.1% in CAM. [Class-Aware Mask-Guided Feature Refinement](https://arxiv.org/abs/2402.13643)
+
+Training positives:
+
+\[
+(E_\theta(R(G)), E_\theta(D(R(G))))
+\]
+
+Training hard negatives:
+
+\[
+(E_\theta(D(R(G_i))),E_\theta(R(G_j))),\quad G_i\neq G_j
+\]
+
+with negative sampling concentrated on:
+
+- Unicode confusables;
+- OCR confusion history;
+- same-radical CJK characters;
+- accent and detached-mark variants;
+- `0/O`, `1/I/l`, `5/S`, `8/B`;
+- font-dependent near-homoglyphs.
+
+## A2. Combined loss
+
+\[
+\mathcal L_C =
+\mathcal L_{\mathrm{NLL}}
++\lambda_1\mathcal L_{\mathrm{contrastive}}
++\lambda_2\mathcal L_{\mathrm{hard-negative}}
++\lambda_3\mathcal L_{\mathrm{consistency}}
++\lambda_4\mathcal L_{\mathrm{OT}}
++\lambda_5\mathcal L_{\mathrm{calibration}}.
+\]
+
+Components:
+
+- **Negative log-likelihood:** makes the correct GT match probable.
+- **Contrastive loss:** makes degradation variants invariant while separating identities.
+- **Hard-negative loss:** explicitly attacks known confusions.
+- **Consistency loss:** requires blur, compression and partial occlusion variants to produce stable predictions.
+- **Entropy-regularized optimal transport:** softly aligns observed components or feature patches with GT glyph components.
+- **Calibration loss:** prevents high scores from becoming synonymous with correctness.
+
+The OT term is especially useful when one-to-one connected-component alignment fails:
+
+\[
+\mathcal L_{\mathrm{OT}}
+=
+\min_{\pi\in\Pi}
+\langle \pi,C\rangle
++
+\varepsilon\sum_{ij}\pi_{ij}\log\pi_{ij}.
+\]
+
+## A3. Explicit negative evidence
+
+Cicerone should record both support and contradiction:
+
+```json
+{
+  "candidate": "嶽",
+  "support": {
+    "global_shape": 0.81,
+    "component_alignment": 0.76,
+    "ocr_agreement": 0.52
+  },
+  "contradictions": {
+    "missing_discriminating_component": 0.14,
+    "incompatible_left_radical": 0.03
+  },
+  "match_probability": 0.74,
+  "evidence_survival": 0.61
+}
+```
+
+A candidate may win because alternatives are contradicted, but it cannot be green unless sufficient positive evidence survives.
+
+## A4. Evidence-survival estimate
+
+Introduce:
+
+\[
+q_{\text{visible}}=P(\text{identity-bearing evidence survives}\mid X).
+\]
+
+This separates two questions:
+
+1. Which candidate scores highest?
+2. Is enough information present to justify choosing any candidate?
+
+If \(q_{\text{visible}}\) is low, the result remains indeterminate even if one GT term ranks first.
+
+# Track B: Scene — material-conditioned glyph reconstruction
+
+## Objective
+
+Upgrade Scene from surface detection and appearance description into a physical-material inference layer:
+
+```text
+Surface pixels
+  → material + inscription process
+  → degradation and imaging model
+  → counterfactual clean glyph hypotheses
+  → likelihood of each GT candidate
+```
+
+This is “what the glyph was in this world” leading to “what the glyph is.”
+
+Material recognition is a legitimate contextual signal: MINC demonstrated large-scale material classification and per-pixel material segmentation in unconstrained images, while geometry-informed recognition showed that surface geometry improves material classification across scales and viewpoints. [MINC](https://openaccess.thecvf.com/content_cvpr_2015/html/Bell_Material_Recognition_in_2015_CVPR_paper.html), [Geometry-Informed Material Recognition](https://openaccess.thecvf.com/content_cvpr_2016/html/DeGol_Geometry-Informed_Material_Recognition_CVPR_2016_paper.html)
+
+## B1. Hierarchical material taxonomy
+
+Scene should predict a distribution, not one brittle label:
+
+```text
+surface
+├── rigid
+│   ├── metal
+│   │   ├── painted
+│   │   ├── corroded
+│   │   └── reflective
+│   ├── stone/masonry
+│   ├── glass
+│   └── plastic
+├── fibrous
+│   ├── paper
+│   ├── fabric
+│   └── wood
+└── emissive
+    ├── LED
+    ├── LCD
+    └── neon/backlit
+```
+
+Predict associated traits:
+
+- roughness;
+- reflectance/specularity;
+- porosity;
+- texture frequency;
+- surface normal/perspective;
+- periodicity;
+- translucency;
+- deformation;
+- likely inscription process.
+
+A hierarchical output allows Scene to remain useful when it knows “rough masonry” but cannot distinguish brick from concrete.
+
+## B2. Inscription-process model
+
+Material alone is insufficient. Scene should infer how the glyph was applied:
+
+- printed;
+- painted;
+- sprayed/stenciled;
+- engraved;
+- embossed;
+- etched;
+- vinyl/appliqué;
+- chalked;
+- illuminated;
+- displayed electronically.
+
+Each process constrains plausible degradation:
+
+| Process | Likely degradation |
+|---|---|
+| Paint on metal | fading, rust breakthrough, peeling |
+| Ink on paper | bleed, wrinkles, stains, fiber absorption |
+| Engraving | shadows, highlights, relief, occlusion |
+| Vinyl | lifting edges, tears, specular reflections |
+| Chalk | granular loss, smearing, low contrast |
+| LED/display | bloom, scan patterns, saturation, moiré |
+| Paint on brick | discontinuity across mortar and roughness |
+
+## B3. Learn a surface-conditioned forward model
+
+Given a clean glyph \(G\), material \(M\), process \(\mathcal P\), and degradation code \(z_D\):
+
+\[
+\hat X =
+F_\phi(G,M,\mathcal P,z_D,L,V).
+\]
+
+This model predicts how a candidate would appear on the observed surface. Scene then compares \(\hat X\) with the actual crop:
+
+\[
+S_{\text{world}}(G)
+=
+-\operatorname{Dist}(\hat X_G,X).
+\]
+
+The distance should combine:
+
+- perceptual feature distance;
+- edge/stroke agreement;
+- local texture residual;
+- color/reflectance agreement;
+- glyph-mask overlap;
+- frequency-domain agreement.
+
+This is safer than asking an unconstrained restoration model to output one clean image: Scene evaluates candidate-specific counterfactuals.
+
+## B4. Degradation-code inference
+
+Infer:
+
+\[
+z_D = H_\psi(X,\text{surrounding surface}).
+\]
+
+The surrounding non-glyph surface is important because it reveals:
+
+- blur and compression shared by the image;
+- material texture underneath the inscription;
+- lighting direction;
+- specularity;
+- corrosion or weathering;
+- repeating structural patterns.
+
+Recent restoration work supports explicitly separating degradation information from content information rather than treating restoration as an undifferentiated mapping. [Improving Image Restoration through Removing Degradations in Textual Representations](https://openaccess.thecvf.com/content/CVPR2024/papers/Lin_Improving_Image_Restoration_through_Removing_Degradations_in_Textual_Representations_CVPR_2024_paper.pdf)
+
+## B5. Restoration is evidence, not source truth
+
+Any restored visualization must carry:
+
+- restoration method;
+- material hypothesis;
+- candidate that conditioned it;
+- uncertainty;
+- changed-pixel mask;
+- whether the discriminating feature was observed or synthesized.
+
+A diffusion or super-resolution model must not silently feed hallucinated strokes back as observed evidence. The verifier should compare candidate-generated observations with the original image, not OCR an unconstrained “cleaned” image and treat that output as fact.
+
+# Track C: Cicerone–Scene fusion
+
+## C1. New evidence contract
+
+Add a structured, optional evidence object without changing the layer boundary:
+
+```python
+MaterialEvidence:
+    class_distribution
+    traits
+    inscription_process
+    geometry
+    degradation_code
+    confidence
+    provenance
+
+GlyphMatchEvidence:
+    gt_candidate
+    discriminative_score
+    counterfactual_score
+    contradiction_score
+    evidence_survival
+    calibration
+    decision
+```
+
+These objects should live inside the manifest’s per-instance evidence/provenance fields.
+
+## C2. Bidirectional execution
+
+ToFU already runs Scene before and after Cicerone. Extend that pattern:
+
+```mermaid
+flowchart LR
+    A["Scene pre-pass"] --> B["Surface/material proposals"]
+    B --> C["Cicerone detection and OCR"]
+    C --> D["Degradation-aware GT matcher"]
+    D --> E["Scene counterfactual evaluator"]
+    E --> F["Cicerone candidate reranking"]
+    F --> G["Verify calibration and abstention"]
+```
+
+Avoid an unbounded feedback loop. Permit exactly one structured reconsideration pass initially.
+
+## C3. Posterior fusion
+
+For GT candidate \(g\):
+
+\[
+\log S(g)=
+w_c\log P_C(g\mid X)
++w_s\log P_S(X\mid g,M,\mathcal P,D)
++w_l\log P_{\text{lang}}(g)
++w_o\log P_{\text{OCR}}(g)
+-w_nC(g).
+\]
+
+Here \(C(g)\) is accumulated contradiction evidence.
+
+Weights should be calibrated by script, material and degradation stratum. They should not be manually inferred from Word2World’s social-modality weights.
+
+## C4. Decision policy
+
+- **Green:** high calibrated posterior, sufficient evidence survival, no serious contradiction, and stable across degradation/material hypotheses.
+- **Amber:** one leading candidate, but low surviving evidence or material ambiguity.
+- **Red:** candidates inconsistent with pixels or no credible surface model.
+- **Indeterminate:** observation is information-theoretically inadequate.
+
+# Development roadmap
+
+## Phase 0 — Measurement foundation
+
+Duration: 2–3 weeks.
+
+- Extend fixture annotations with material, process and degradation labels.
+- Define paired clean/degraded glyph examples.
+- Record whether identity-bearing features remain genuinely visible.
+- Freeze train/validation/test assets by scene, not crop, to prevent leakage.
+- Establish Cicerone-only and current Scene baselines.
+
+Exit gate: inter-annotator agreement and a reproducible degradation-stratified benchmark.
+
+## Phase 1 — Cicerone degradation matcher
+
+Duration: 4–6 weeks.
+
+- Build canonical GT renderer and degradation generator.
+- Train a small Euclidean Siamese glyph encoder.
+- Add hard-negative mining from current OCR correction history.
+- Add calibrated match, contradiction and evidence-survival outputs.
+- Integrate only as an amber recommendation.
+
+Exit gates:
+
+- ≥8-point exact-match improvement on risky GT-covered regions;
+- ≥98% green precision;
+- expected calibration error ≤0.05;
+- no script stratum regresses by more than 2 points.
+
+## Phase 2 — Entropic component alignment
+
+Duration: 3–4 weeks.
+
+- Extract patch/component embeddings.
+- Add Sinkhorn/entropy-regularized OT.
+- Test split, merged, occluded and detached-mark glyphs.
+- Compare against Savor’s deterministic alignment.
+
+Exit gate: significant gain on segmentation-damaged strata without increasing false substitutions.
+
+## Phase 3 — Scene material intelligence
+
+Duration: 5–8 weeks.
+
+- Add hierarchical material and trait classification.
+- Predict inscription process and degradation family.
+- Use context outside the glyph mask.
+- Store uncertainty and provenance in `TextManifest`.
+- Keep all new signals observational; no restoration yet.
+
+Exit gates:
+
+- useful top-level material accuracy;
+- calibrated material probabilities;
+- measurable improvement in downstream glyph matching when material evidence is supplied.
+
+## Phase 4 — Surface-conditioned forward rendering
+
+Duration: 6–10 weeks.
+
+- Train or implement candidate-conditioned degradation simulation.
+- Generate \(\hat X_G\) for top-\(k\) GT candidates.
+- Score candidates against original pixels.
+- Add material-marginalized likelihood:
+
+\[
+P(X\mid G)=\sum_m P(X\mid G,m)P(m\mid X).
+\]
+
+Exit gate: candidate-conditioned counterfactual scores improve ranking over the Cicerone-only arm.
+
+## Phase 5 — Controlled fusion
+
+Duration: 3–5 weeks.
+
+Run four preregistered arms:
+
+1. current ToFU;
+2. Cicerone degradation matcher;
+3. Cicerone + material descriptors;
+4. Cicerone + full Scene counterfactual scoring.
+
+Hyperbolic embeddings should be a fifth ablation, not part of the baseline.
+
+## Phase 6 — Green automation
+
+Only after held-out evidence:
+
+- allow automatic GT correction for strongly calibrated cases;
+- retain amber review for destructive ambiguity;
+- expose why candidates were eliminated;
+- monitor post-deployment corrections by material/script/degradation.
+
+# Research hypotheses
+
+### Cicerone hypothesis
+
+\[
+H_{0C}:
+\]
+
+Degradation-aware contrastive matching does not improve exact GT identification after controlling for script, resolution and OCR confidence.
+
+\[
+H_{1C}:
+\]
+
+It improves risky-region exact identification by at least 8 absolute points while maintaining green precision ≥98%.
+
+### Scene hypothesis
+
+\[
+H_{0S}:
+\]
+
+Material/process information provides no additional predictive value after conditioning on crop pixels and OCR evidence.
+
+\[
+H_{1S}:
+\]
+
+Material-conditioned counterfactual scoring improves top-1 GT ranking by at least 5 points on physically degraded text and reduces confident confusions without increasing abstention by more than 10%.
+
+### Fusion hypothesis
+
+\[
+H_{1F}:
+\]
+
+Cicerone and Scene provide complementary information: the combined model significantly outperforms either layer alone, particularly for abrasion, reflectance, substrate discontinuity and partial occlusion.
+
+# Recommended priority
+
+1. **Cicerone degradation-invariant matcher:** highest feasibility and clearest evaluation.
+2. **Evidence-survival/calibration model:** essential safety mechanism.
+3. **Scene material and process taxonomy:** creates world context without hallucination.
+4. **Entropic component alignment:** targeted solution for damaged segmentation.
+5. **Candidate-conditioned forward restoration:** high potential, higher research risk.
+6. **Hyperbolic representation:** retain only if an ablation proves that the script/glyph/material hierarchy benefits retrieval.
+
+The eventual conceptual identity is strong:
+
+> **Cicerone reconstructs identity from surviving evidence. Scene reconstructs the physical process that produced the evidence. Verify decides whether their agreement deserves trust.**

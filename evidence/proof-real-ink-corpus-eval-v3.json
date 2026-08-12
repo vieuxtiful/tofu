@@ -1,0 +1,385 @@
+{
+  "schema": 1,
+  "kind": "proof_real_ink_corpus_evaluation",
+  "corpus": "evidence\\proof-real-ink-corpus-v1.json",
+  "checkpoint": "evidence\\proof-encoder-zh-hant-v1.pt",
+  "geometry_checkpoint": "evidence\\proof-geometry-zh-hant-v1.pt",
+  "normalization": {
+    "vertical": "rotate counter-clockwise so top-to-bottom becomes left-to-right",
+    "length": "report exact Unicode code-point length strata; do not use the unknown answer to filter candidates"
+  },
+  "scored": 9,
+  "primary_scored": 0,
+  "calibration_scored": 0,
+  "encoder_top1": 4,
+  "deterministic_top1": 3,
+  "raw_encoder_top1": 1,
+  "raw_deterministic_top1": 1,
+  "length_top1": 1,
+  "length_mae": 1.7777777777777777,
+  "length_strata": {
+    "3": {
+      "scored": 2,
+      "encoder_top1": 2,
+      "deterministic_top1": 1
+    },
+    "4": {
+      "scored": 3,
+      "encoder_top1": 1,
+      "deterministic_top1": 1
+    },
+    "5": {
+      "scored": 1,
+      "encoder_top1": 0,
+      "deterministic_top1": 0
+    },
+    "6": {
+      "scored": 2,
+      "encoder_top1": 1,
+      "deterministic_top1": 1
+    },
+    "7": {
+      "scored": 1,
+      "encoder_top1": 0,
+      "deterministic_top1": 0
+    }
+  },
+  "assets": [
+    {
+      "id": "china-street",
+      "stratum": "cross-script-transfer",
+      "score_eligible": true,
+      "primary_eligible": false,
+      "calibration_eligible": false,
+      "reason": "Human crop verification supports diagnostic scoring, but Simplified Chinese is not the target script.",
+      "rows": [
+        {
+          "region_id": "gt-1",
+          "truth": "美珠宝",
+          "characters": 3,
+          "vertical": true,
+          "geometry": {
+            "length": 2,
+            "support": 0.976329
+          },
+          "raw": {
+            "encoder_best": "茂昌眼镜公司",
+            "encoder_top1": false,
+            "deterministic_best": "上海明牌",
+            "deterministic_top1": false
+          },
+          "encoder": {
+            "best": "美珠宝",
+            "support": 0.842438,
+            "margin": 0.040616,
+            "predicted_length": null,
+            "length_support": null,
+            "top1": true
+          },
+          "deterministic": {
+            "best": "茂昌眼镜公司",
+            "support": 0.412,
+            "margin": 0.0249,
+            "top1": false
+          }
+        },
+        {
+          "region_id": "gt-2",
+          "truth": "华联店3F",
+          "characters": 5,
+          "vertical": false,
+          "geometry": {
+            "length": 2,
+            "support": 0.719034
+          },
+          "raw": {
+            "encoder_best": "美珠宝",
+            "encoder_top1": false,
+            "deterministic_best": "美珠宝",
+            "deterministic_top1": false
+          },
+          "encoder": {
+            "best": "美珠宝",
+            "support": 0.883261,
+            "margin": 0.014359,
+            "predicted_length": null,
+            "length_support": null,
+            "top1": false
+          },
+          "deterministic": {
+            "best": "美珠宝",
+            "support": 0.4473,
+            "margin": 0.0508,
+            "top1": false
+          }
+        },
+        {
+          "region_id": "gt-3",
+          "truth": "茂昌眼镜公司",
+          "characters": 6,
+          "vertical": true,
+          "geometry": {
+            "length": 4,
+            "support": 0.86491
+          },
+          "raw": {
+            "encoder_best": "茂昌眼镜公司",
+            "encoder_top1": true,
+            "deterministic_best": "上海明牌",
+            "deterministic_top1": false
+          },
+          "encoder": {
+            "best": "茂昌眼镜公司",
+            "support": 0.986425,
+            "margin": 0.000328,
+            "predicted_length": null,
+            "length_support": null,
+            "top1": true
+          },
+          "deterministic": {
+            "best": "茂昌眼镜公司",
+            "support": 0.3829,
+            "margin": 0.0551,
+            "top1": true
+          }
+        },
+        {
+          "region_id": "gt-6",
+          "truth": "上海明牌",
+          "characters": 4,
+          "vertical": true,
+          "geometry": {
+            "length": 2,
+            "support": 0.760639
+          },
+          "raw": {
+            "encoder_best": "茂昌眼镜公司",
+            "encoder_top1": false,
+            "deterministic_best": "美珠宝",
+            "deterministic_top1": false
+          },
+          "encoder": {
+            "best": "美珠宝",
+            "support": 0.870146,
+            "margin": 0.01754,
+            "predicted_length": null,
+            "length_support": null,
+            "top1": false
+          },
+          "deterministic": {
+            "best": "上海明牌",
+            "support": 0.4451,
+            "margin": 0.0084,
+            "top1": true
+          }
+        },
+        {
+          "region_id": "gt-7",
+          "truth": "大娘水饺",
+          "characters": 4,
+          "vertical": true,
+          "geometry": {
+            "length": 2,
+            "support": 0.806145
+          },
+          "raw": {
+            "encoder_best": "茂昌眼镜公司",
+            "encoder_top1": false,
+            "deterministic_best": "美珠宝",
+            "deterministic_top1": false
+          },
+          "encoder": {
+            "best": "美珠宝",
+            "support": 0.901371,
+            "margin": 0.021944,
+            "predicted_length": null,
+            "length_support": null,
+            "top1": false
+          },
+          "deterministic": {
+            "best": "上海明牌",
+            "support": 0.4626,
+            "margin": 0.0029,
+            "top1": false
+          }
+        }
+      ],
+      "scored": 5,
+      "encoder_top1": 2,
+      "deterministic_top1": 2,
+      "raw_encoder_top1": 1,
+      "raw_deterministic_top1": 0,
+      "length_top1": 0,
+      "length_mae": 2.0
+    },
+    {
+      "id": "japan-street",
+      "stratum": "regional-glyph-transfer",
+      "score_eligible": true,
+      "primary_eligible": false,
+      "calibration_eligible": false,
+      "reason": "Human crop verification supports diagnostic scoring, but Japanese glyph forms are not zh-Hant ground truth.",
+      "rows": [
+        {
+          "region_id": "gt-1",
+          "truth": "歌舞伎町一番街",
+          "characters": 7,
+          "vertical": false,
+          "geometry": {
+            "length": 4,
+            "support": 0.980305
+          },
+          "raw": {
+            "encoder_best": "劇場通り",
+            "encoder_top1": false,
+            "deterministic_best": "お好み焼本陣",
+            "deterministic_top1": false
+          },
+          "encoder": {
+            "best": "劇場通り",
+            "support": 0.988678,
+            "margin": 0.015862,
+            "predicted_length": null,
+            "length_support": null,
+            "top1": false
+          },
+          "deterministic": {
+            "best": "お好み焼本陣",
+            "support": 0.5975,
+            "margin": 0.0986,
+            "top1": false
+          }
+        },
+        {
+          "region_id": "gt-2",
+          "truth": "劇場通り",
+          "characters": 4,
+          "vertical": true,
+          "geometry": {
+            "length": 4,
+            "support": 0.975736
+          },
+          "raw": {
+            "encoder_best": "歌舞伎町一番街",
+            "encoder_top1": false,
+            "deterministic_best": "東南荘",
+            "deterministic_top1": false
+          },
+          "encoder": {
+            "best": "劇場通り",
+            "support": 0.988581,
+            "margin": 0.004875,
+            "predicted_length": null,
+            "length_support": null,
+            "top1": true
+          },
+          "deterministic": {
+            "best": "お好み焼本陣",
+            "support": 0.3385,
+            "margin": 0.0615,
+            "top1": false
+          }
+        },
+        {
+          "region_id": "gt-3",
+          "truth": "お好み焼本陣",
+          "characters": 6,
+          "vertical": true,
+          "geometry": {
+            "length": 4,
+            "support": 0.998953
+          },
+          "raw": {
+            "encoder_best": "歌舞伎町一番街",
+            "encoder_top1": false,
+            "deterministic_best": "東南荘",
+            "deterministic_top1": false
+          },
+          "encoder": {
+            "best": "劇場通り",
+            "support": 0.983181,
+            "margin": 0.015951,
+            "predicted_length": null,
+            "length_support": null,
+            "top1": false
+          },
+          "deterministic": {
+            "best": "劇場通り",
+            "support": 0.4487,
+            "margin": 0.0747,
+            "top1": false
+          }
+        },
+        {
+          "region_id": "gt-6",
+          "truth": "東南荘",
+          "characters": 3,
+          "vertical": true,
+          "geometry": {
+            "length": 2,
+            "support": 0.637359
+          },
+          "raw": {
+            "encoder_best": "歌舞伎町一番街",
+            "encoder_top1": false,
+            "deterministic_best": "東南荘",
+            "deterministic_top1": true
+          },
+          "encoder": {
+            "best": "東南荘",
+            "support": 0.896154,
+            "margin": 0.077731,
+            "predicted_length": null,
+            "length_support": null,
+            "top1": true
+          },
+          "deterministic": {
+            "best": "東南荘",
+            "support": 0.3023,
+            "margin": 0.0179,
+            "top1": true
+          }
+        }
+      ],
+      "scored": 4,
+      "encoder_top1": 2,
+      "deterministic_top1": 1,
+      "raw_encoder_top1": 0,
+      "raw_deterministic_top1": 1,
+      "length_top1": 1,
+      "length_mae": 1.5
+    },
+    {
+      "id": "gemini-street",
+      "stratum": "synthetic-scene-diagnostic",
+      "score_eligible": false,
+      "primary_eligible": false,
+      "calibration_eligible": false,
+      "reason": "The scene is AI-generated and therefore is not real ink.",
+      "rows": [],
+      "scored": 0,
+      "encoder_top1": 0,
+      "deterministic_top1": 0,
+      "raw_encoder_top1": 0,
+      "raw_deterministic_top1": 0,
+      "length_top1": 0,
+      "length_mae": null
+    },
+    {
+      "id": "prem-sais",
+      "stratum": "primary-candidate",
+      "score_eligible": false,
+      "primary_eligible": false,
+      "calibration_eligible": false,
+      "reason": "The five transcriptions await two independent reviews; the existing 4/5 result remains a non-scoring pilot.",
+      "rows": [],
+      "scored": 0,
+      "encoder_top1": 0,
+      "deterministic_top1": 0,
+      "raw_encoder_top1": 0,
+      "raw_deterministic_top1": 0,
+      "length_top1": 0,
+      "length_mae": null
+    }
+  ]
+}

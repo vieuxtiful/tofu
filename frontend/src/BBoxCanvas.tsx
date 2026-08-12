@@ -2,8 +2,10 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { createPortal } from "react-dom";
 import { TbZoomInFilled, TbCircleDashedPlus, TbCircleDashedMinus } from "react-icons/tb";
 import { FaPlus, FaMinus } from "react-icons/fa";
+import { BiCheckSquare, BiSolidCheckSquare } from "react-icons/bi";
+import { MdCancel, MdOutlineCancel } from "react-icons/md";
 import { InstText, BBox, SceneRegion } from "./api";
-import GuidedPromptBubble from "./GuidedPromptBubble";
+import GuidedPromptBubble, { type HintFill } from "./GuidedPromptBubble";
 import type { GuidedPrompt } from "./useGuidedCapture";
 import "./bbox.css";
 
@@ -22,6 +24,15 @@ interface BBoxCanvasProps {
   onAddRegion: (bbox: BBox) => void;
   onUpdateRegion: (id: string, bbox: BBox) => void;
   drawMode: boolean;
+  /** The draw tool is armed but inert while a previous box is being saved.
+   *  Deliberately not `drawMode: false`: turning the tool off would hand the
+   *  gesture to the panner, so the user would drag the image instead of
+   *  being told to wait. */
+  drawLocked?: boolean;
+  /** A draw was discarded for being under the minimum size. The rule lives
+   *  here, so the only place that can report it is here -- and before this
+   *  the gesture simply vanished. */
+  onDrawTooSmall?: () => void;
   imgNaturalSize: { width: number; height: number } | null;
   onImgLoad: (size: { width: number; height: number }) => void;
   onExpandToggle?: (expanded: boolean) => void;
@@ -46,7 +57,15 @@ interface BBoxCanvasProps {
   /** Guided capture: what to ask for next. PRESENTATION ONLY -- the parent
    *  owns the workflow, and this component never advances it. */
   guidedPrompt?: GuidedPrompt | null;
-  onGuidedComplete?: () => void;
+  /** Opaque hides the image behind the guided hint; fill lets it through. */
+  hintFill?: HintFill;
+  /** Guided: a drawn box is PROPOSED, not applied. The user confirms or
+   *  rejects it before it becomes a region. Guided declares its own text, so
+   *  an accidental box would be persisted carrying a string the user
+   *  asserted -- confidently wrong data, with nothing to contradict it. */
+  requireConfirm?: boolean;
+  /** Picks the light/dark form of the confirm and reject glyphs. */
+  theme?: "light" | "dark";
   onGuidedSkip?: () => void;
 }
 
@@ -73,12 +92,13 @@ function confColor(conf: number | null): string {
 
 export default function BBoxCanvas({
   imageUrl, manifest, sceneRegions, selectedId, hoveredId, onSelect, onHover,
-  onAddRegion, onUpdateRegion, drawMode, imgNaturalSize, onImgLoad, onExpandToggle,
+  onAddRegion, onUpdateRegion, drawMode, drawLocked = false, onDrawTooSmall,
+  imgNaturalSize, onImgLoad, onExpandToggle,
   preview = false, canvasLabel, showPreviewControls = false,
   controlledZoom, onZoomChange, controlledScroll, onScrollChange,
   controlledHeight, onHeightChange, onDoubleClickExpand,
   bboxColor = "#22d3ee", bboxBlink = false, newRegionIds, onDragStart, onDragEnd,
-  guidedPrompt, onGuidedComplete, onGuidedSkip,
+  guidedPrompt, onGuidedSkip, hintFill, requireConfirm = false, theme = "light",
 }: BBoxCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const syncBarRef = useRef<HTMLDivElement>(null);
@@ -105,6 +125,32 @@ export default function BBoxCanvas({
   const [showSurfaces, setShowSurfaces] = useState(true);
   const [drag, setDrag] = useState<DragState>(null);
   const [drawRect, setDrawRect] = useState<BBox | null>(null);
+  /** A drawn box awaiting the user's verdict. Held here rather than pushed
+   *  to the parent: until it is confirmed it is not a region, and letting it
+   *  reach the manifest "provisionally" is exactly the state this exists to
+   *  prevent. */
+  const [pendingRect, setPendingRect] = useState<BBox | null>(null);
+  /** Drives the one-shot commit animation, so the box is seen to be accepted
+   *  rather than just vanishing into the table. */
+  const [committing, setCommitting] = useState(false);
+
+  /** Retire an accepted proposal only once the manifest has grown.
+   *
+   *  Length rather than identity: the canvas is handed regions, it does not
+   *  mint them, so it cannot know which id the server chose. What it can
+   *  know is that the region it was waiting for now exists. */
+  const committedCountRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!committing) { committedCountRef.current = null; return; }
+    if (committedCountRef.current === null) {
+      committedCountRef.current = manifest.length;
+      return;
+    }
+    if (manifest.length > committedCountRef.current) {
+      setCommitting(false);
+      setPendingRect(null);
+    }
+  }, [committing, manifest.length]);
   const [loupeOn, setLoupeOn] = useState(false);
   const [loupe, setLoupe] = useState<{ clientX: number; clientY: number; imgX: number; imgY: number } | null>(null);
   const [canvasHeight, setCanvasHeight] = useState<number | null>(null);
@@ -290,6 +336,13 @@ export default function BBoxCanvas({
       return;
     }
     if (drawMode) {
+      // Armed but saving: swallow the gesture rather than start a box the
+      // parent would then drop on the floor.
+      if (drawLocked) return;
+      // One question at a time: a proposal has to be accepted or rejected
+      // before another box can be drawn, or the confirmation would silently
+      // apply to whichever rectangle happened to be last.
+      if (pendingRect) return;
       // raw (unclamped) hit-test: a draw must start ON the image, not in
       // the container gutter around it
       const raw = toImgCoords(e.clientX, e.clientY, false);
@@ -309,7 +362,7 @@ export default function BBoxCanvas({
         });
       }
     }
-  }, [preview, drawMode, toImgCoords, natural, onSelect]);
+  }, [preview, drawMode, drawLocked, pendingRect, toImgCoords, natural, onSelect]);
 
   const onMouseMove = useCallback((e: React.MouseEvent) => {
     if (loupeOn) {
@@ -372,15 +425,21 @@ export default function BBoxCanvas({
   }, [drag, toImgCoords, onUpdateRegion, loupeOn, natural]);
 
   const onMouseUp = useCallback(() => {
-    if (drag?.type === "draw" && drawRect && drawRect.width > 5 && drawRect.height > 5) {
-      onAddRegion(drawRect);
+    if (drag?.type === "draw" && drawRect) {
+      // A stray click is a 0x0 rect and must stay silent; a deliberate but
+      // too-small drag has to say so. Reporting both would fire a toast on
+      // every click that missed a box.
+      if (drawRect.width > 5 && drawRect.height > 5) {
+        if (requireConfirm) setPendingRect(drawRect);
+        else onAddRegion(drawRect);
+      } else if (drawRect.width > 0 || drawRect.height > 0) onDrawTooSmall?.();
     }
     if (drag && (drag.type === "move" || drag.type === "resize")) {
       onDragEnd?.();
     }
     setDrag(null);
     setDrawRect(null);
-  }, [drag, drawRect, onAddRegion, onDragEnd]);
+  }, [drag, drawRect, onAddRegion, onDrawTooSmall, onDragEnd, requireConfirm]);
 
   useEffect(() => {
     if (!drag) return;
@@ -499,7 +558,7 @@ export default function BBoxCanvas({
     {guidedPrompt && (
       <GuidedPromptBubble
         prompt={guidedPrompt}
-        onComplete={onGuidedComplete}
+        fill={hintFill}
         onSkip={onGuidedSkip}
       />
     )}
@@ -507,7 +566,10 @@ export default function BBoxCanvas({
       ref={containerRef}
       className="bbox-canvas-scroll relative flex-1 mr-6 select-none"
       style={{
-        cursor: preview ? (drag?.type === "pan" ? "grabbing" : "grab") : drawMode ? "crosshair" : drag?.type === "pan" ? "grabbing" : "grab",
+        // `progress` while locked: the tool is still the draw tool, it just
+        // is not accepting a gesture yet. A crosshair that ignores the mouse
+        // reads as a broken canvas.
+        cursor: preview ? (drag?.type === "pan" ? "grabbing" : "grab") : drawMode ? (drawLocked ? "progress" : "crosshair") : drag?.type === "pan" ? "grabbing" : "grab",
       }}
       onMouseDown={onMouseDown}
       onMouseMove={onMouseMove}
@@ -577,7 +639,13 @@ export default function BBoxCanvas({
                   <div
                     key={inst.id}
                     data-region-id={inst.id}
-                    className={`${bboxClass(inst)} ${isSel ? "selected" : ""} ${isHovered && !isSel ? "hovered" : ""}`}
+                    /* `bbox-arriving` fades the region in instead of cutting
+                       it on. Paired with the proposal holding its place until
+                       this element exists, the hand-off has no frame in which
+                       neither box is drawn -- which is what read as a flicker. */
+                    className={`${bboxClass(inst)} ${isSel ? "selected" : ""} ${isHovered && !isSel ? "hovered" : ""}${
+                      requireConfirm && newRegionIds?.has(inst.id) ? " bbox-arriving" : ""
+                    }`}
                     style={{
                       left: px(inst.bounding_box.x),
                       top: px(inst.bounding_box.y),
@@ -613,7 +681,14 @@ export default function BBoxCanvas({
                         and .bbox::after (scan sweep) are both already taken.
                         Boxes are keyed on inst.id, so this mounts exactly
                         once per arrival and rerenders never restart it. */}
-                    {newRegionIds?.has(inst.id) && <div className="bbox-shimmer" aria-hidden="true" />}
+                    {newRegionIds?.has(inst.id) && (
+                      /* One pass in Guided: the user placed and approved this
+                         box a moment ago, so it needs acknowledgement, not
+                         attention. Two passes stay for regions that arrived
+                         WITHOUT being asked for -- the detector's work, which
+                         a reviewer has to notice. */
+                      <div className={`bbox-shimmer${requireConfirm ? " once" : ""}`} aria-hidden="true" />
+                    )}
                     {inst.reading_order !== null && (
                       <div
                         className="bbox-badge"
@@ -671,6 +746,81 @@ export default function BBoxCanvas({
                   <div className="bbox-corners" />
                 </div>
               )}
+              {pendingRect && (() => {
+                const Approve = theme === "dark" ? BiSolidCheckSquare : BiCheckSquare;
+                const Reject = theme === "dark" ? MdCancel : MdOutlineCancel;
+                // Right of the box by default. `natural.width` is the only
+                // edge that can clip them: the canvas scrolls vertically but
+                // is bounded horizontally by the image, so a box drawn hard
+                // against the right edge would push the controls off-canvas.
+                // They flip to the left side there rather than being cut off.
+                const CONTROLS_W = 64;
+                const flip = natural
+                  ? pendingRect.x + pendingRect.width + CONTROLS_W > natural.width
+                  : false;
+                return (
+                  <div
+                    className={`bbox bbox-manual bbox-pending${committing ? " committing" : ""}`}
+                    style={{
+                      left: px(pendingRect.x),
+                      top: px(pendingRect.y),
+                      width: px(pendingRect.width),
+                      height: px(pendingRect.height),
+                      pointerEvents: "none",
+                    }}
+                    data-testid="pending-region"
+                  >
+                    <div className="bbox-corners" />
+                    <div
+                      // Bottom-aligned with the box: the icons' bottom edge
+                      // sits on the box's bottom edge, so the control reads as
+                      // belonging to that rectangle and not to the one above.
+                      className="bbox-confirm"
+                      data-side={flip ? "left" : "right"}
+                      style={{ pointerEvents: "auto" }}
+                    >
+                      <button
+                        type="button"
+                        aria-label="Confirm this region"
+                        title="Confirm this region"
+                        onMouseDown={(event) => event.stopPropagation()}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          if (committing) return;
+                          // Animate first, hand over after: the box is seen to
+                          // be accepted instead of blinking out of existence.
+                          // Hand over IMMEDIATELY and keep the proposal on
+                          // screen. Clearing it on a timer emptied the canvas
+                          // for the length of the round trip, which read as
+                          // the box flickering out and back -- or as the
+                          // confirmation not having registered. The effect
+                          // below retires it once the real region exists.
+                          setCommitting(true);
+                          onAddRegion(pendingRect);
+                        }}
+                        className="bbox-confirm-btn approve"
+                      >
+                        <Approve size={20} />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Reject and redraw this region"
+                        title="Reject and redraw"
+                        onMouseDown={(event) => event.stopPropagation()}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          // Nothing was ever created, so nothing is undone --
+                          // the draw tool is simply free again.
+                          setPendingRect(null);
+                        }}
+                        className="bbox-confirm-btn reject"
+                      >
+                        <Reject size={20} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           )}
         </div>

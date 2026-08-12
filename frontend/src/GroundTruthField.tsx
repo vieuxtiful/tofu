@@ -4,7 +4,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { TbLanguageOff } from "react-icons/tb";
-import { regionColorMap } from "./regionPalette";
+import { regionColor, regionColorMap } from "./regionPalette";
 import { insertedRange } from "./AnimatedCaretTextarea";
 import { useSelectionSync } from "./useSelectionSync";
 import { textLangMatchesTarget } from "./detectLanguage";
@@ -38,10 +38,25 @@ type Props = {
   /** Backspace at a collapsed caret in an empty entry.  The tag-input
    *  idiom: nothing left to delete here, so remove the chip behind. */
   onBackspaceEmpty?: () => void;
+  /** Render the whole draft as ONE token instead of one per whitespace-
+   *  separated word.
+   *
+   *  Guided needs this and Auto must not have it. Auto's Ground Truth IS a
+   *  bag of whitespace-delimited terms, so colouring each word separately
+   *  describes it exactly. A Block is one thing to locate, and the per-word
+   *  colouring told users that "la première saisie" was already being split
+   *  into three -- so they committed the words one at a time and got three
+   *  Blocks, which is precisely what the mode exists to avoid. The entry
+   *  rule never changed: whitespace has always been ordinary text here and
+   *  only Enter commits. This makes the field say so. */
+  singleToken?: boolean;
+  /** The colour that single token wears -- the Block it is about to become,
+   *  so the draft matches the chip it turns into. */
+  tokenColor?: string;
 };
 
 /** IME-safe native input with Basil's delimiter-settled colour mirror. */
-export default function GroundTruthField({ value, onChange, onBlur, label, placeholder, language, sourceLanguage, assess, capturing, onCommit, onBackspaceEmpty }: Props) {
+export default function GroundTruthField({ value, onChange, onBlur, label, placeholder, language, sourceLanguage, assess, capturing, onCommit, onBackspaceEmpty, singleToken = false, tokenColor }: Props) {
   const mirrorRef = useRef<HTMLDivElement>(null);
   const fieldRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
@@ -169,7 +184,18 @@ export default function GroundTruthField({ value, onChange, onBlur, label, place
     <div ref={fieldRef} className={`basil-plate ground-truth-field animated-caret-field${warning ? " ground-truth-language-warning" : ""}${capturing ? " gt-locked" : ""}`}>
       <div className="basil-plate-mirror" aria-hidden="true" ref={mirrorRef}>
         {!value && <span className="font-mono text-zinc-400 dark:text-zinc-600">{placeholder}</span>}
-        {pieces.map((piece, index) => {
+        {singleToken && value && (
+          /* One span over the WHOLE draft, interior spaces included, so the
+             phrase reads as the single Block it will become on Enter. */
+          <span
+            className="basil-token mapped"
+            data-testid="single-block-token"
+            style={{ "--bh-ink": tokenColor ?? regionColor(0) } as CSSProperties}
+          >
+            {animatedPiece(value, 0)}
+          </span>
+        )}
+        {!singleToken && pieces.map((piece, index) => {
           if (!piece) return null;
           const start = pieceOffset;
           pieceOffset += piece.length;
@@ -265,10 +291,10 @@ export default function GroundTruthField({ value, onChange, onBlur, label, place
       {capturing && (
         /* Locked, and shown to be locked: editing Blocks mid-capture would
            mean the run no longer matches the request that started it. The
-           stripes travel horizontally so the state reads as "working", not
-           "disabled". */
+           blue shimmer marks the temporary working state without making the
+           field read as permanently disabled. */
         <div className="gt-lock" aria-hidden="true">
-          <div className="gt-lock-stripes" />
+          <div className="gt-lock-shimmer" />
         </div>
       )}
       {assessment?.warns && (

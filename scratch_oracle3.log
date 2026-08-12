@@ -1,0 +1,467 @@
+  [1/46] arabic-bilingual-panel ...
+Using CPU. Note: This module is much faster with a GPU.
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\ao\nn\quantized\dynamic\modules\rnn.py:162: UserWarning: torch.quantize_per_tensor, torch.quantize_per_channel and other quantized tensor creation functions that produce tensors with dtype torch.quint8, torch.qint8, and torch.qint32 are deprecated and will be removed in a future PyTorch release. Please see https://github.com/pytorch/pytorch/issues/184982 for more information. (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\aten\src\ATen\quantized\Quantizer.cpp:116.)
+  w_ih = torch.quantize_per_tensor(
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+  [2/46] arabic-market ...
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+  [3/46] arabic-street ...
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+  [4/46] avenue-de-la-république ...
+Using CPU. Note: This module is much faster with a GPU.
+  [5/46] china-street ...
+  [6/46] cjk-horizontal ...
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+  [7/46] cjk-vertical ...
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+  [8/46] cjk-vertical-banner ...
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+  [9/46] cjk-vertical-menu ...
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+  [10/46] decolonisons-nos-rues ...
+  [11/46] degraded-ink ...
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+  [12/46] dense-layout ...
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+  [13/46] expansion-en ...
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+  [14/46] flat-sign ...
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+  [15/46] gemini-street ...
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+  [16/46] gradient-banner ...
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+  [17/46] hebrew-notice ...
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+  [18/46] indic-shaping ...
+  [19/46] japan-street ...
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+  [20/46] japanese-poster ...
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+  [21/46] japanese-shopfront ...
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+  [22/46] japanese-station ...
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+  [23/46] la-bastille-1789 ...
+  [24/46] la-rue-sans-nom-example ...
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+  [25/46] low-confidence ...
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+  [26/46] mixed-orientation ...
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+  [27/46] mixed-script ...
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+  [28/46] multicolour-text ...
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+  [29/46] museum-labels ...
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+  [30/46] parking-levels ...
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+  [31/46] perspective-sign ...
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+  [32/46] product-label ...
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+  [33/46] quai-des-orfevres ...
+  [34/46] repeated-exits ...
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+  [35/46] repeated-platform ...
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+  [36/46] rtl-sign ...
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+  [37/46] rue-des-martyrs ...
+  [38/46] russian-billboard ...
+  [39/46] russian-billboard-2 ...
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+  [40/46] serif-vs-sans ...
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+  [41/46] shadow-effects ...
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+  [42/46] stylized-italic ...
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+  [43/46] textured-wall ...
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+  [44/46] tight-space ...
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+  [45/46] transit-board ...
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+  [46/46] ui-controls ...
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\mvalc\Desktop\ToFU\project-tofu\.venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+Using CPU. Note: This module is much faster with a GPU.
+wrote evidence\guided-oracle-v3.json
+
+
+corpus        guided-corpus-v1   arm=guided_oracle   IoU>=0.5
+review status machine_derived
+elapsed       1235.7s
+
+stratum                  assets   exp  found  recall%
+japanese_horizontal           4    23     16     69.6
+japanese_vertical             3     9      4     44.4
+latin_horizontal             16    39     33     84.6
+mixed_script_numeric         12    55     40     72.7
+nonlinear_irregular           7    41     15     36.6
+rtl_bidi                      4    22     13     59.1
+
+DEV      assets= 40  recall=62.7%  (101/161)  false-region=23.3% (over 31 fully-annotated assets)
+
+HOLDOUT  assets=  6  recall=71.4%  (20/28)  false-region=25.9% (over 6 fully-annotated assets)
+
+--------------------------------------------------------------------
+GATE 2 NOT CERTIFIED. Reasons:
+  - corpus review_status is 'machine_derived': Blocks are machine-derived and have not been confirmed by a human
+
+Gate 2 requires: guided recall >= auto + 8.0 points, false-region <= auto + 2.0 points.

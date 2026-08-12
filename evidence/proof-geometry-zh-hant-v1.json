@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "kind": "detached_geometry_training",
+  "seed": 17,
+  "epochs": 30,
+  "train_strings": 98,
+  "holdout_strings": 32,
+  "train_samples": 3528,
+  "holdout_samples": 768,
+  "initial_loss": 2.73071551322937,
+  "final_loss": 0.49802473187446594,
+  "holdout_length_top1": 0.7838541666666666,
+  "orientation": {
+    "horizontal": {
+      "scored": 384,
+      "top1": 307
+    },
+    "vertical": {
+      "scored": 384,
+      "top1": 295
+    }
+  },
+  "identity_checkpoint_loaded": false,
+  "checkpoint": "evidence\\proof-geometry-zh-hant-v1.pt"
+}

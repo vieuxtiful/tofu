@@ -1,0 +1,65 @@
+{
+  "schema": 1,
+  "kind": "proof_real_ink_corpus",
+  "frozen": "2026-08-11",
+  "target_locale": "zh-Hant",
+  "policy": {
+    "score_requires": "crop-verified transcription on a photographed surface",
+    "primary_requires": "independently reviewed zh-Hant transcription",
+    "calibration_requires": "two independent reviewers plus adjudication of disagreements"
+  },
+  "assets": [
+    {
+      "id": "china-street",
+      "image": "images/china-street.png",
+      "annotations": "images/china-street.gt.json",
+      "locale": "zh-Hans",
+      "medium": "photograph",
+      "annotation_provenance": "tracked crop-verified ground-truth fixture",
+      "stratum": "cross-script-transfer",
+      "score_eligible": true,
+      "primary_eligible": false,
+      "calibration_eligible": false,
+      "reason": "Human crop verification supports diagnostic scoring, but Simplified Chinese is not the target script."
+    },
+    {
+      "id": "japan-street",
+      "image": "images/japan-street.jpeg",
+      "annotations": "images/japan-street.gt.json",
+      "locale": "ja",
+      "medium": "photograph",
+      "annotation_provenance": "tracked crop-verified ground-truth fixture",
+      "stratum": "regional-glyph-transfer",
+      "score_eligible": true,
+      "primary_eligible": false,
+      "calibration_eligible": false,
+      "reason": "Human crop verification supports diagnostic scoring, but Japanese glyph forms are not zh-Hant ground truth."
+    },
+    {
+      "id": "gemini-street",
+      "image": "images/gemini-street.png",
+      "annotations": "images/gemini-street.gt.json",
+      "locale": "ja",
+      "medium": "generated-image",
+      "annotation_provenance": "tracked crop-verified ground-truth fixture",
+      "stratum": "synthetic-scene-diagnostic",
+      "score_eligible": false,
+      "primary_eligible": false,
+      "calibration_eligible": false,
+      "reason": "The scene is AI-generated and therefore is not real ink."
+    },
+    {
+      "id": "prem-sais",
+      "image": "server/uploads/5ad31639a745.png",
+      "annotations": "server/uploads/5ad31639a745.manifest.json",
+      "locale": "zh-Hant",
+      "medium": "photograph",
+      "annotation_provenance": "machine manifest aligned to regions",
+      "stratum": "primary-candidate",
+      "score_eligible": false,
+      "primary_eligible": false,
+      "calibration_eligible": false,
+      "reason": "The five transcriptions await two independent reviews; the existing 4/5 result remains a non-scoring pilot."
+    }
+  ]
+}

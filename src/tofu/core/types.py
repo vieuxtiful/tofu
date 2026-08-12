@@ -155,6 +155,7 @@ class SceneRegion: ## candidate text-bearing surface from scene's pre-pass
     polygon: Optional[Polygon] = None
     texture: Optional[str] = None          ## region-interior classification: "flat" | "smooth_gradient" | "textured" -- the surface half of the scene/cleanse agreement gate
     material: Optional[str] = None         ## user-facing descriptor: "brick / masonry" | "painted sign" | "textured surface"
+    material_evidence: Optional[Dict[str, Any]] = None
     garnish_profile: Optional[GarnishProfile] = None
 
 @dataclass(frozen=True)
@@ -281,6 +282,7 @@ class InstText:
     ocr_quality: Optional[Dict[str, Any]] = None  ## deterministic observability assessment; informs review-only OCR/Savor gating
     repair_provenance: Optional[Dict[str, Any]] = None  ## cleanse provider, confidence gate, fallback and review evidence
     reconstruction_profile: Optional[ReconstructionProfile] = None
+    material_evidence: Optional[Dict[str, Any]] = None
     font_match: Optional[Dict[str, Any]] = None  ## evidence-gated visual font identification + installed/commercial alternatives; never silently overrides a user font choice
     semantic_assignment: Optional[Dict[str, Any]] = None  ## Basil's explicit target-span-to-immutable-region assignment provenance
     garnish_override: Optional[GarnishProfile] = None
