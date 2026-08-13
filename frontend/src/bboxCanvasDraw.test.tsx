@@ -101,6 +101,36 @@ describe("BBoxCanvas draw gestures", () => {
   });
 });
 
+describe("surface visibility", () => {
+  const sceneRegions = [{
+    bbox: { x: 5, y: 5, width: 100, height: 40 },
+    semantic_label: "sign",
+    confidence: 0.9,
+    background_color: null,
+    border_detected: false,
+    polygon: null,
+    texture: null,
+  }];
+
+  it("starts with surface outlines off", () => {
+    canvas({ sceneRegions });
+    expect(screen.queryByTestId("surface-overlay")).toBeNull();
+    expect(screen.getByRole("button", { name: "surfaces" }).className).not.toContain("bg-cyan-900");
+  });
+
+  it("uses the same controlled setting in preview mode", () => {
+    const { container } = canvas({ sceneRegions, showSurfaces: false, preview: true, showPreviewControls: true });
+    expect(container.querySelector("[data-testid='surface-overlay']")).toBeNull();
+  });
+
+  it("reports Capture's toggle so its parent can share it with Translate", () => {
+    const onShowSurfacesChange = vi.fn();
+    canvas({ sceneRegions, showSurfaces: false, onShowSurfacesChange });
+    fireEvent.click(screen.getByRole("button", { name: "surfaces" }));
+    expect(onShowSurfacesChange).toHaveBeenCalledWith(true);
+  });
+});
+
 describe("Guided confirm/reject gate", () => {
   it("proposes rather than applies a drawn box", () => {
     // Guided persists the Block's DECLARED text onto whatever rectangle it

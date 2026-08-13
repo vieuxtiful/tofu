@@ -912,6 +912,7 @@ export default function App() {
   // the Blocks the user supplies, Manual skips detection entirely.  Kept apart
   // from the pipeline's LayerMode, whose HYBRID value is a pause checkpoint.
   const [captureMode, setCaptureMode] = useState<CaptureMode>("auto");
+  const [showCaptureSurfaces, setShowCaptureSurfaces] = useState(false);
   // A draft survives a trip through Manual: switching mode must not silently
   // discard text the user typed.
   const [blockDraft, setBlockDraft] = useState("");
@@ -4653,6 +4654,8 @@ export default function App() {
               onExpandToggle={setCanvasExpandedH}
               bboxColor={bboxColor}
               bboxBlink={bboxBlink}
+              showSurfaces={showCaptureSurfaces}
+              onShowSurfacesChange={setShowCaptureSurfaces}
               newRegionIds={newRegionIds}
               onDragStart={beginManifestBatch}
               onDragEnd={endManifestBatch}
@@ -4985,6 +4988,7 @@ export default function App() {
                 onHeightChange={canvasesLinked ? setSharedCanvasH : undefined}
                 onDoubleClickExpand={canvasesLinked ? toggleLinkedCanvasHeight : undefined}
                 bboxColor={bboxColor}
+                showSurfaces={showCaptureSurfaces}
                 onDragStart={beginManifestBatch}
                 onDragEnd={endManifestBatch}
               />
@@ -5527,6 +5531,7 @@ export default function App() {
                           onChange={(e) => updateStyle({ color: e.target.value })}
                           className="h-7 w-10 rounded-sm border border-zinc-300 dark:border-zinc-700"
                         />
+                        <HexColorInput value={currentColor} onChange={(color) => updateStyle({ color })} />
                         <button
                           onClick={() => updateStyle({ color: null })}
                           className="subtext rounded-sm px-2 py-0.5 text-xs text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800"
@@ -5534,7 +5539,6 @@ export default function App() {
                         <button onClick={() => setColorPickMode((mode) => mode ? null : "active")}
                           className={`subtext flex items-center gap-1 rounded-sm px-2 py-0.5 text-xs ${colorPickMode ? "bg-cyan-600 text-white" : "text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800"}`}
                           title="pick color" aria-label="Pick color"><FaEyeDropper size={11} /></button>
-                        <HexColorInput value={currentColor} onChange={(color) => updateStyle({ color })} />
                       </div>
                     </div>
 

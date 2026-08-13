@@ -48,6 +48,10 @@ interface BBoxCanvasProps {
   onDoubleClickExpand?: () => void;
   bboxColor?: string;
   bboxBlink?: boolean;
+  /** Surface outlines are one workspace preference shared by Capture and
+   * Translate's source preview. Uncontrolled callers default them off. */
+  showSurfaces?: boolean;
+  onShowSurfacesChange?: (visible: boolean) => void;
   /** ids of regions that just arrived from the server. Each gets a one-off
    * two-pass shimmer. The set is owned (and cleared) by the caller so the
    * animation cannot replay on an ordinary rerender. */
@@ -98,6 +102,7 @@ export default function BBoxCanvas({
   controlledZoom, onZoomChange, controlledScroll, onScrollChange,
   controlledHeight, onHeightChange, onDoubleClickExpand,
   bboxColor = "#22d3ee", bboxBlink = false, newRegionIds, onDragStart, onDragEnd,
+  showSurfaces: controlledShowSurfaces, onShowSurfacesChange,
   guidedPrompt, onGuidedSkip, hintFill, requireConfirm = false, theme = "light",
 }: BBoxCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -122,7 +127,13 @@ export default function BBoxCanvas({
   }, [onZoomChange]);
 
   const [fitWidth, setFitWidth] = useState<number | null>(null);
-  const [showSurfaces, setShowSurfaces] = useState(true);
+  const [localShowSurfaces, setLocalShowSurfaces] = useState(false);
+  const showSurfaces = controlledShowSurfaces ?? localShowSurfaces;
+  const toggleSurfaces = useCallback(() => {
+    const next = !showSurfaces;
+    setLocalShowSurfaces(next);
+    onShowSurfacesChange?.(next);
+  }, [showSurfaces, onShowSurfacesChange]);
   const [drag, setDrag] = useState<DragState>(null);
   const [drawRect, setDrawRect] = useState<BBox | null>(null);
   /** A drawn box awaiting the user's verdict. Held here rather than pushed
@@ -620,14 +631,14 @@ export default function BBoxCanvas({
                 if (r.polygon && r.polygon.length >= 3) {
                   const points = r.polygon.map(([x, y]) => `${px(x)},${px(y)}`).join(" ");
                   return (
-                    <svg key={`sr-${i}`} className="absolute inset-0 overflow-visible" width={renderedW} height={natural.height * scale}>
+                    <svg key={`sr-${i}`} data-testid="surface-overlay" className="absolute inset-0 overflow-visible" width={renderedW} height={natural.height * scale}>
                       <polygon points={points} fill={`${bboxColor}0D`} stroke={`${bboxColor}80`} strokeWidth="1" strokeDasharray="4 3" />
                       <text x={px(r.bbox.x + 3)} y={px(r.bbox.y + 14)} className="bbox-surface-label">{label}</text>
                     </svg>
                   );
                 }
                 return (
-                  <div key={`sr-${i}`} style={{ position: "absolute", left: px(r.bbox.x), top: px(r.bbox.y), width: px(r.bbox.width), height: px(r.bbox.height), border: `1px dashed ${bboxColor}59`, borderRadius: 4, pointerEvents: "none" }}>
+                  <div key={`sr-${i}`} data-testid="surface-overlay" style={{ position: "absolute", left: px(r.bbox.x), top: px(r.bbox.y), width: px(r.bbox.width), height: px(r.bbox.height), border: `1px dashed ${bboxColor}59`, borderRadius: 4, pointerEvents: "none" }}>
                     <span className="bbox-surface-label">{label}</span>
                   </div>
                 );
@@ -908,7 +919,7 @@ export default function BBoxCanvas({
         )}
         {!showPreviewControls && (sceneRegions?.length ?? 0) > 0 && (
           <button
-            onClick={() => setShowSurfaces((s) => !s)}
+            onClick={toggleSurfaces}
             className={`rounded-sm px-2 py-1 text-xs ${showSurfaces ? "bg-cyan-900/70 text-cyan-300" : "bg-white text-zinc-500 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-500 dark:hover:bg-zinc-700"}`}
             title="Toggle detected surface outlines"
           >
