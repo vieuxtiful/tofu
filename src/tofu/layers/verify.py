@@ -1561,26 +1561,18 @@ def _normalize_words(text: str) -> List[str]:
 
 
 def _edit_distance(reference: Sequence[Any], hypothesis: Sequence[Any]) -> int:
-    """Levenshtein distance (Levenshtein 1966), two-row dynamic programming.
+    """Levenshtein distance, delegated to the one shared implementation.
 
-    Works over characters for CER and over word tokens for WER; the algorithm
-    is identical and only the unit changes.
+    Kept as a name here because `error_rates` and its tests read it, but the
+    recurrence now lives in `utils/distance.py` alongside NED. The
+    NORMALIZATION stays here: CER divides by the reference length and clamps,
+    which is a per-reference error rate, and NED divides by the longer string,
+    which is a symmetric distance. Sharing the primitive without sharing the
+    normalization is deliberate -- see that module's docstring.
     """
-    if not reference:
-        return len(hypothesis)
-    if not hypothesis:
-        return len(reference)
-    previous = list(range(len(hypothesis) + 1))
-    for i, ref_item in enumerate(reference, start=1):
-        current = [i]
-        for j, hyp_item in enumerate(hypothesis, start=1):
-            current.append(min(
-                previous[j] + 1,                                  # deletion
-                current[j - 1] + 1,                               # insertion
-                previous[j - 1] + (ref_item != hyp_item),         # substitution
-            ))
-        previous = current
-    return previous[-1]
+    from tofu.utils.distance import levenshtein
+
+    return levenshtein(reference, hypothesis)
 
 
 def error_rates(expected: str, recognized: str, lang: Optional[str] = None) -> Dict[str, Any]:

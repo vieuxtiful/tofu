@@ -71,6 +71,9 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+from tofu.layers import flight  # noqa: E402
+from tofu.utils.distance import is_unreadable  # noqa: E402
+
 ## CRAFT's character-region map is a probability surface. low_text is the
 ## threshold at which a pixel is admitted to a character component at all,
 ## and the pipeline's loosest rung (PASS_THRESHOLDS[-1]) sets it to 0.2 --
@@ -221,20 +224,24 @@ def crop_legibility(backend, image_path, bbox, gt_text):
 
 
 def _norm_ed(a: str, b: str) -> float:
-    """Levenshtein distance normalized by the longer string."""
-    a, b = a or "", b or ""
-    if not a and not b:
-        return 0.0
-    if not a or not b:
-        return 1.0
-    previous = list(range(len(b) + 1))
-    for i, ca in enumerate(a, 1):
-        current = [i]
-        for j, cb in enumerate(b, 1):
-            current.append(min(previous[j] + 1, current[j - 1] + 1,
-                               previous[j - 1] + (ca != cb)))
-        previous = current
-    return previous[-1] / max(len(a), len(b))
+    """Levenshtein distance normalized by the longer string.
+
+    Delegates to the shared measurement so the evaluation metric, the
+    NED-graded training target, and the channel-regret target cannot drift
+    apart. The value is unchanged: this function's empty-string cases were
+    already the ones `normalized_edit_distance` defines.
+    """
+    from tofu.utils.distance import normalized_edit_distance
+
+    return normalized_edit_distance(a, b)
+
+
+def _crop_channel(bbox) -> str:
+    """The registered identifier for the fixed crop path at this box."""
+    return flight.Channel(
+        engine="easyocr", route=flight.REGION_CROP, view="crop",
+        crop=tuple(int(v) for v in bbox),
+    ).channel_id
 
 
 def text_free_surfaces(image_path: Path, gt, limit: int = 12):
@@ -339,6 +346,16 @@ def report(image_path: Path, languages, gt_path: Path, mag_ratio=1.0,
             "raw_overlaps": len(overlaps),
             "crop_ned": crop_ned,
             "crop_text": crop_text,
+            ## D_{e,c}: which measurement channel this NED came through.
+            ## `crop_ned` is a property of the image-CHANNEL pair, not of the
+            ## scene -- this row measures `detect_in_regions`, the fixed crop
+            ## path, which on CJK is a strict garbling of what the full
+            ## pipeline recovers. Naming it stops the number being reported
+            ## as a scene-level legibility fact. See layers/flight.py.
+            "engine": "easyocr",
+            "channel_id": _crop_channel(b),
+            "channel_route": flight.REGION_CROP,
+            "unreadable": is_unreadable(crop_ned),
             "verdict": classify(peak_r, best, len(overlaps)),
         })
     ## The negative arm: the same measurement where there is no text.
