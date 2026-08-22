@@ -1,0 +1,4549 @@
+{
+  "schema": "channel-envelope-v1",
+  "corpus_id": "detection-corpus-v1",
+  "split_hash": "d542cbde8d4a647fbe0f7b1250b5907ea6703524acb3e5ebc8a2ed4a9bf7b4ba",
+  "split": "all",
+  "script_vocabulary": "envelope-script-v1",
+  "match_iou": 0.5,
+  "tau_unreadable": 0.8,
+  "regions": 66,
+  "oracle_notice": "envelope and regret are computed from ground truth; training, benchmarking and error analysis only, never inference",
+  "limitations": [
+    "region_crop is measured from the ANNOTATED box and full_pipeline includes localization; per-probe means over all regions are not a like-for-like recognition comparison. Use localized_only for that.",
+    "zoom and the merge routes are not separately probed; they appear only where full_pipeline routed through them.",
+    "nine of eleven fixtures carry partial annotations, so these are per-annotated-region measurements and imply nothing about precision.",
+    "equivalence classes are fitted on the dev split only, at margin=0.05, alpha=0.05, min_pairs=8; 'underpowered' is not 'equivalent'."
+  ],
+  "by_declared_stratum": {
+    "cjk_horizontal": {
+      "regions": 7,
+      "localized": 6,
+      "envelope": {
+        "n": 7,
+        "mean": 0.2,
+        "median": 0.0,
+        "unreadable_rate": 0.1429
+      },
+      "envelope_localized": {
+        "n": 6,
+        "mean": 0.0667,
+        "median": 0.0,
+        "unreadable_rate": 0.0
+      },
+      "fixed_gap_localized": 0.0,
+      "route_mixture": {
+        "full_pipeline": {
+          "independent_verifier": 3,
+          "paddle_rescue": 3,
+          "unregistered": 1
+        },
+        "region_crop": {
+          "region_crop": 7
+        }
+      },
+      "probes": {
+        "full_pipeline": {
+          "n": 7,
+          "mean": 0.2,
+          "median": 0.0,
+          "unreadable_rate": 0.1429,
+          "localized_only": {
+            "n": 6,
+            "mean": 0.0667,
+            "median": 0.0,
+            "unreadable_rate": 0.0
+          },
+          "argmin_wins": 6,
+          "envelope_gap": 0.0
+        },
+        "region_crop": {
+          "n": 7,
+          "mean": 0.8667,
+          "median": 1.0,
+          "unreadable_rate": 0.7143,
+          "localized_only": {
+            "n": 6,
+            "mean": 0.8444,
+            "median": 1.0,
+            "unreadable_rate": 0.6667
+          },
+          "argmin_wins": 1,
+          "envelope_gap": 0.6667
+        }
+      }
+    },
+    "cjk_vertical": {
+      "regions": 7,
+      "localized": 4,
+      "envelope": {
+        "n": 7,
+        "mean": 0.6548,
+        "median": 1.0,
+        "unreadable_rate": 0.5714
+      },
+      "envelope_localized": {
+        "n": 4,
+        "mean": 0.3958,
+        "median": 0.2917,
+        "unreadable_rate": 0.25
+      },
+      "fixed_gap_localized": 0.0,
+      "route_mixture": {
+        "full_pipeline": {
+          "unregistered": 3,
+          "independent_verifier": 2,
+          "paddle_rescue": 1,
+          "zoom": 1
+        },
+        "region_crop": {
+          "region_crop": 7
+        }
+      },
+      "probes": {
+        "full_pipeline": {
+          "n": 7,
+          "mean": 0.6548,
+          "median": 1.0,
+          "unreadable_rate": 0.5714,
+          "localized_only": {
+            "n": 4,
+            "mean": 0.3958,
+            "median": 0.2917,
+            "unreadable_rate": 0.25
+          },
+          "argmin_wins": 3,
+          "envelope_gap": 0.0
+        },
+        "region_crop": {
+          "n": 7,
+          "mean": 0.8571,
+          "median": 1.0,
+          "unreadable_rate": 0.8571,
+          "localized_only": {
+            "n": 4,
+            "mean": 0.75,
+            "median": 1.0,
+            "unreadable_rate": 0.75
+          },
+          "argmin_wins": 4,
+          "envelope_gap": 0.2023
+        }
+      }
+    },
+    "cyrillic": {
+      "regions": 11,
+      "localized": 11,
+      "envelope": {
+        "n": 11,
+        "mean": 0.1403,
+        "median": 0.0,
+        "unreadable_rate": 0.0
+      },
+      "envelope_localized": {
+        "n": 11,
+        "mean": 0.1403,
+        "median": 0.0,
+        "unreadable_rate": 0.0
+      },
+      "fixed_gap_localized": 0.0,
+      "route_mixture": {
+        "full_pipeline": {
+          "independent_verifier": 6,
+          "detection_pass_1": 2,
+          "detection_pass_3": 2,
+          "detection_pass_2": 1
+        },
+        "region_crop": {
+          "region_crop": 11
+        }
+      },
+      "probes": {
+        "full_pipeline": {
+          "n": 11,
+          "mean": 0.1403,
+          "median": 0.0,
+          "unreadable_rate": 0.0,
+          "localized_only": {
+            "n": 11,
+            "mean": 0.1403,
+            "median": 0.0,
+            "unreadable_rate": 0.0
+          },
+          "argmin_wins": 11,
+          "envelope_gap": 0.0
+        },
+        "region_crop": {
+          "n": 11,
+          "mean": 0.4901,
+          "median": 0.3636,
+          "unreadable_rate": 0.3636,
+          "localized_only": {
+            "n": 11,
+            "mean": 0.4901,
+            "median": 0.3636,
+            "unreadable_rate": 0.3636
+          },
+          "argmin_wins": 0,
+          "envelope_gap": 0.3498
+        }
+      }
+    },
+    "latin_plaque": {
+      "regions": 11,
+      "localized": 11,
+      "envelope": {
+        "n": 11,
+        "mean": 0.0,
+        "median": 0.0,
+        "unreadable_rate": 0.0
+      },
+      "envelope_localized": {
+        "n": 11,
+        "mean": 0.0,
+        "median": 0.0,
+        "unreadable_rate": 0.0
+      },
+      "fixed_gap_localized": 0.0,
+      "route_mixture": {
+        "full_pipeline": {
+          "independent_verifier": 9,
+          "zoom": 2
+        },
+        "region_crop": {
+          "region_crop": 11
+        }
+      },
+      "probes": {
+        "full_pipeline": {
+          "n": 11,
+          "mean": 0.0,
+          "median": 0.0,
+          "unreadable_rate": 0.0,
+          "localized_only": {
+            "n": 11,
+            "mean": 0.0,
+            "median": 0.0,
+            "unreadable_rate": 0.0
+          },
+          "argmin_wins": 11,
+          "envelope_gap": 0.0
+        },
+        "region_crop": {
+          "n": 11,
+          "mean": 0.1146,
+          "median": 0.0,
+          "unreadable_rate": 0.0,
+          "localized_only": {
+            "n": 11,
+            "mean": 0.1146,
+            "median": 0.0,
+            "unreadable_rate": 0.0
+          },
+          "argmin_wins": 0,
+          "envelope_gap": 0.1146
+        }
+      }
+    },
+    "latin_poster": {
+      "regions": 14,
+      "localized": 8,
+      "envelope": {
+        "n": 14,
+        "mean": 0.4613,
+        "median": 0.5,
+        "unreadable_rate": 0.3571
+      },
+      "envelope_localized": {
+        "n": 8,
+        "mean": 0.1823,
+        "median": 0.0,
+        "unreadable_rate": 0.125
+      },
+      "fixed_gap_localized": 0.0355,
+      "route_mixture": {
+        "full_pipeline": {
+          "unregistered": 6,
+          "independent_verifier": 4,
+          "baseline_row_merge": 2,
+          "detection_pass_2": 1,
+          "detection_pass_3": 1
+        },
+        "region_crop": {
+          "region_crop": 14
+        }
+      },
+      "probes": {
+        "full_pipeline": {
+          "n": 14,
+          "mean": 0.553,
+          "median": 0.7045,
+          "unreadable_rate": 0.5,
+          "localized_only": {
+            "n": 8,
+            "mean": 0.2178,
+            "median": 0.0417,
+            "unreadable_rate": 0.125
+          },
+          "argmin_wins": 6,
+          "envelope_gap": 0.0917
+        },
+        "region_crop": {
+          "n": 14,
+          "mean": 0.4895,
+          "median": 0.5,
+          "unreadable_rate": 0.3571,
+          "localized_only": {
+            "n": 8,
+            "mean": 0.2316,
+            "median": 0.0888,
+            "unreadable_rate": 0.125
+          },
+          "argmin_wins": 8,
+          "envelope_gap": 0.0282
+        }
+      }
+    },
+    "mixed_dense": {
+      "regions": 16,
+      "localized": 7,
+      "envelope": {
+        "n": 16,
+        "mean": 0.625,
+        "median": 1.0,
+        "unreadable_rate": 0.5625
+      },
+      "envelope_localized": {
+        "n": 7,
+        "mean": 0.2857,
+        "median": 0.0,
+        "unreadable_rate": 0.1429
+      },
+      "fixed_gap_localized": 0.0857,
+      "route_mixture": {
+        "full_pipeline": {
+          "unregistered": 9,
+          "paddle_rescue": 5,
+          "composed_crop": 1,
+          "vertical_column_merge": 1
+        },
+        "region_crop": {
+          "region_crop": 16
+        }
+      },
+      "probes": {
+        "full_pipeline": {
+          "n": 16,
+          "mean": 0.725,
+          "median": 1.0,
+          "unreadable_rate": 0.625,
+          "localized_only": {
+            "n": 7,
+            "mean": 0.3714,
+            "median": 0.5,
+            "unreadable_rate": 0.1429
+          },
+          "argmin_wins": 6,
+          "envelope_gap": 0.1
+        },
+        "region_crop": {
+          "n": 16,
+          "mean": 0.8594,
+          "median": 1.0,
+          "unreadable_rate": 0.8125,
+          "localized_only": {
+            "n": 7,
+            "mean": 0.8214,
+            "median": 1.0,
+            "unreadable_rate": 0.7143
+          },
+          "argmin_wins": 10,
+          "envelope_gap": 0.2344
+        }
+      }
+    }
+  },
+  "by_script_stratum": {
+    "cyrillic": {
+      "regions": 6,
+      "localized": 6,
+      "envelope": {
+        "n": 6,
+        "mean": 0.0,
+        "median": 0.0,
+        "unreadable_rate": 0.0
+      },
+      "envelope_localized": {
+        "n": 6,
+        "mean": 0.0,
+        "median": 0.0,
+        "unreadable_rate": 0.0
+      },
+      "fixed_gap_localized": 0.0,
+      "route_mixture": {
+        "full_pipeline": {
+          "independent_verifier": 4,
+          "detection_pass_1": 1,
+          "detection_pass_3": 1
+        },
+        "region_crop": {
+          "region_crop": 6
+        }
+      },
+      "probes": {
+        "full_pipeline": {
+          "n": 6,
+          "mean": 0.0,
+          "median": 0.0,
+          "unreadable_rate": 0.0,
+          "localized_only": {
+            "n": 6,
+            "mean": 0.0,
+            "median": 0.0,
+            "unreadable_rate": 0.0
+          },
+          "argmin_wins": 6,
+          "envelope_gap": 0.0
+        },
+        "region_crop": {
+          "n": 6,
+          "mean": 0.2608,
+          "median": 0.2374,
+          "unreadable_rate": 0.0,
+          "localized_only": {
+            "n": 6,
+            "mean": 0.2608,
+            "median": 0.2374,
+            "unreadable_rate": 0.0
+          },
+          "argmin_wins": 0,
+          "envelope_gap": 0.2608
+        }
+      }
+    },
+    "han": {
+      "regions": 8,
+      "localized": 7,
+      "envelope": {
+        "n": 8,
+        "mean": 0.2917,
+        "median": 0.0,
+        "unreadable_rate": 0.25
+      },
+      "envelope_localized": {
+        "n": 7,
+        "mean": 0.1905,
+        "median": 0.0,
+        "unreadable_rate": 0.1429
+      },
+      "fixed_gap_localized": 0.0,
+      "route_mixture": {
+        "full_pipeline": {
+          "independent_verifier": 4,
+          "paddle_rescue": 2,
+          "composed_crop": 1,
+          "unregistered": 1
+        },
+        "region_crop": {
+          "region_crop": 8
+        }
+      },
+      "probes": {
+        "full_pipeline": {
+          "n": 8,
+          "mean": 0.2917,
+          "median": 0.0,
+          "unreadable_rate": 0.25,
+          "localized_only": {
+            "n": 7,
+            "mean": 0.1905,
+            "median": 0.0,
+            "unreadable_rate": 0.1429
+          },
+          "argmin_wins": 7,
+          "envelope_gap": 0.0
+        },
+        "region_crop": {
+          "n": 8,
+          "mean": 0.8333,
+          "median": 1.0,
+          "unreadable_rate": 0.75,
+          "localized_only": {
+            "n": 7,
+            "mean": 0.8095,
+            "median": 1.0,
+            "unreadable_rate": 0.7143
+          },
+          "argmin_wins": 1,
+          "envelope_gap": 0.5416
+        }
+      }
+    },
+    "hangul": {
+      "regions": 13,
+      "localized": 6,
+      "envelope": {
+        "n": 13,
+        "mean": 0.5385,
+        "median": 0.5,
+        "unreadable_rate": 0.4615
+      },
+      "envelope_localized": {
+        "n": 6,
+        "mean": 0.1667,
+        "median": 0.0,
+        "unreadable_rate": 0.0
+      },
+      "fixed_gap_localized": 0.1,
+      "route_mixture": {
+        "full_pipeline": {
+          "unregistered": 7,
+          "paddle_rescue": 5,
+          "vertical_column_merge": 1
+        },
+        "region_crop": {
+          "region_crop": 13
+        }
+      },
+      "probes": {
+        "full_pipeline": {
+          "n": 13,
+          "mean": 0.6615,
+          "median": 1.0,
+          "unreadable_rate": 0.5385,
+          "localized_only": {
+            "n": 6,
+            "mean": 0.2667,
+            "median": 0.25,
+            "unreadable_rate": 0.0
+          },
+          "argmin_wins": 5,
+          "envelope_gap": 0.123
+        },
+        "region_crop": {
+          "n": 13,
+          "mean": 0.8269,
+          "median": 1.0,
+          "unreadable_rate": 0.7692,
+          "localized_only": {
+            "n": 6,
+            "mean": 0.7917,
+            "median": 1.0,
+            "unreadable_rate": 0.6667
+          },
+          "argmin_wins": 8,
+          "envelope_gap": 0.2884
+        }
+      }
+    },
+    "japanese_or_han": {
+      "regions": 4,
+      "localized": 1,
+      "envelope": {
+        "n": 4,
+        "mean": 0.8125,
+        "median": 1.0,
+        "unreadable_rate": 0.75
+      },
+      "envelope_localized": {
+        "n": 1,
+        "mean": 0.25,
+        "median": 0.25,
+        "unreadable_rate": 0.0
+      },
+      "fixed_gap_localized": 0.0,
+      "route_mixture": {
+        "full_pipeline": {
+          "unregistered": 3,
+          "independent_verifier": 1
+        },
+        "region_crop": {
+          "region_crop": 4
+        }
+      },
+      "probes": {
+        "full_pipeline": {
+          "n": 4,
+          "mean": 0.8125,
+          "median": 1.0,
+          "unreadable_rate": 0.75,
+          "localized_only": {
+            "n": 1,
+            "mean": 0.25,
+            "median": 0.25,
+            "unreadable_rate": 0.0
+          },
+          "argmin_wins": 1,
+          "envelope_gap": 0.0
+        },
+        "region_crop": {
+          "n": 4,
+          "mean": 1.0,
+          "median": 1.0,
+          "unreadable_rate": 1.0,
+          "localized_only": {
+            "n": 1,
+            "mean": 1.0,
+            "median": 1.0,
+            "unreadable_rate": 1.0
+          },
+          "argmin_wins": 3,
+          "envelope_gap": 0.1875
+        }
+      }
+    },
+    "latin": {
+      "regions": 31,
+      "localized": 23,
+      "envelope": {
+        "n": 31,
+        "mean": 0.3549,
+        "median": 0.0435,
+        "unreadable_rate": 0.2581
+      },
+      "envelope_localized": {
+        "n": 23,
+        "mean": 0.174,
+        "median": 0.0,
+        "unreadable_rate": 0.087
+      },
+      "fixed_gap_localized": 0.0015,
+      "route_mixture": {
+        "full_pipeline": {
+          "independent_verifier": 13,
+          "unregistered": 8,
+          "zoom": 3,
+          "baseline_row_merge": 2,
+          "detection_pass_2": 2,
+          "detection_pass_1": 1,
+          "detection_pass_3": 1,
+          "paddle_rescue": 1
+        },
+        "region_crop": {
+          "region_crop": 31
+        }
+      },
+      "probes": {
+        "full_pipeline": {
+          "n": 31,
+          "mean": 0.3883,
+          "median": 0.0435,
+          "unreadable_rate": 0.3226,
+          "localized_only": {
+            "n": 23,
+            "mean": 0.1755,
+            "median": 0.0,
+            "unreadable_rate": 0.087
+          },
+          "argmin_wins": 21,
+          "envelope_gap": 0.0334
+        },
+        "region_crop": {
+          "n": 31,
+          "mean": 0.498,
+          "median": 0.5,
+          "unreadable_rate": 0.4194,
+          "localized_only": {
+            "n": 23,
+            "mean": 0.3669,
+            "median": 0.1875,
+            "unreadable_rate": 0.3043
+          },
+          "argmin_wins": 10,
+          "envelope_gap": 0.1431
+        }
+      }
+    },
+    "mixed": {
+      "regions": 2,
+      "localized": 2,
+      "envelope": {
+        "n": 2,
+        "mean": 0.2,
+        "median": 0.2,
+        "unreadable_rate": 0.0
+      },
+      "envelope_localized": {
+        "n": 2,
+        "mean": 0.2,
+        "median": 0.2,
+        "unreadable_rate": 0.0
+      },
+      "fixed_gap_localized": 0.0,
+      "route_mixture": {
+        "full_pipeline": {
+          "independent_verifier": 1,
+          "paddle_rescue": 1
+        },
+        "region_crop": {
+          "region_crop": 2
+        }
+      },
+      "probes": {
+        "full_pipeline": {
+          "n": 2,
+          "mean": 0.2,
+          "median": 0.2,
+          "unreadable_rate": 0.0,
+          "localized_only": {
+            "n": 2,
+            "mean": 0.2,
+            "median": 0.2,
+            "unreadable_rate": 0.0
+          },
+          "argmin_wins": 2,
+          "envelope_gap": 0.0
+        },
+        "region_crop": {
+          "n": 2,
+          "mean": 0.45,
+          "median": 0.45,
+          "unreadable_rate": 0.0,
+          "localized_only": {
+            "n": 2,
+            "mean": 0.45,
+            "median": 0.45,
+            "unreadable_rate": 0.0
+          },
+          "argmin_wins": 0,
+          "envelope_gap": 0.25
+        }
+      }
+    },
+    "unscripted": {
+      "regions": 2,
+      "localized": 2,
+      "envelope": {
+        "n": 2,
+        "mean": 0.0,
+        "median": 0.0,
+        "unreadable_rate": 0.0
+      },
+      "envelope_localized": {
+        "n": 2,
+        "mean": 0.0,
+        "median": 0.0,
+        "unreadable_rate": 0.0
+      },
+      "fixed_gap_localized": 0.0,
+      "route_mixture": {
+        "full_pipeline": {
+          "detection_pass_3": 1,
+          "independent_verifier": 1
+        },
+        "region_crop": {
+          "region_crop": 2
+        }
+      },
+      "probes": {
+        "full_pipeline": {
+          "n": 2,
+          "mean": 0.125,
+          "median": 0.125,
+          "unreadable_rate": 0.0,
+          "localized_only": {
+            "n": 2,
+            "mean": 0.125,
+            "median": 0.125,
+            "unreadable_rate": 0.0
+          },
+          "argmin_wins": 1,
+          "envelope_gap": 0.125
+        },
+        "region_crop": {
+          "n": 2,
+          "mean": 0.0,
+          "median": 0.0,
+          "unreadable_rate": 0.0,
+          "localized_only": {
+            "n": 2,
+            "mean": 0.0,
+            "median": 0.0,
+            "unreadable_rate": 0.0
+          },
+          "argmin_wins": 1,
+          "envelope_gap": 0.0
+        }
+      }
+    }
+  },
+  "equivalence_by_declared_stratum": {
+    "cjk_horizontal": {
+      "full_pipeline|region_crop": {
+        "verdict": "underpowered",
+        "pairs": 7,
+        "mean_difference": null,
+        "p_value": null,
+        "reasons": [
+          "below_min_pairs"
+        ],
+        "criterion": {
+          "margin": 0.05,
+          "alpha": 0.05,
+          "min_pairs": 8
+        }
+      }
+    },
+    "cjk_vertical": {
+      "full_pipeline|region_crop": {
+        "verdict": "underpowered",
+        "pairs": 7,
+        "mean_difference": null,
+        "p_value": null,
+        "reasons": [
+          "below_min_pairs"
+        ],
+        "criterion": {
+          "margin": 0.05,
+          "alpha": 0.05,
+          "min_pairs": 8
+        }
+      }
+    },
+    "cyrillic": {
+      "full_pipeline|region_crop": {
+        "verdict": "not_equivalent",
+        "pairs": 8,
+        "mean_difference": -0.355332,
+        "p_value": 0.03125,
+        "reasons": [
+          "margin_exceeded",
+          "direction_detected"
+        ],
+        "criterion": {
+          "margin": 0.05,
+          "alpha": 0.05,
+          "min_pairs": 8
+        }
+      }
+    },
+    "latin_plaque": {
+      "full_pipeline|region_crop": {
+        "verdict": "not_equivalent",
+        "pairs": 8,
+        "mean_difference": -0.120028,
+        "p_value": 0.25,
+        "reasons": [
+          "margin_exceeded"
+        ],
+        "criterion": {
+          "margin": 0.05,
+          "alpha": 0.05,
+          "min_pairs": 8
+        }
+      }
+    },
+    "latin_poster": {
+      "full_pipeline|region_crop": {
+        "verdict": "underpowered",
+        "pairs": 5,
+        "mean_difference": null,
+        "p_value": null,
+        "reasons": [
+          "below_min_pairs"
+        ],
+        "criterion": {
+          "margin": 0.05,
+          "alpha": 0.05,
+          "min_pairs": 8
+        }
+      }
+    },
+    "mixed_dense": {
+      "full_pipeline|region_crop": {
+        "verdict": "not_equivalent",
+        "pairs": 16,
+        "mean_difference": -0.134375,
+        "p_value": 0.453125,
+        "reasons": [
+          "margin_exceeded"
+        ],
+        "criterion": {
+          "margin": 0.05,
+          "alpha": 0.05,
+          "min_pairs": 8
+        }
+      }
+    }
+  },
+  "equivalence_by_script_stratum": {
+    "cyrillic": {
+      "full_pipeline|region_crop": {
+        "verdict": "underpowered",
+        "pairs": 4,
+        "mean_difference": null,
+        "p_value": null,
+        "reasons": [
+          "below_min_pairs"
+        ],
+        "criterion": {
+          "margin": 0.05,
+          "alpha": 0.05,
+          "min_pairs": 8
+        }
+      }
+    },
+    "han": {
+      "full_pipeline|region_crop": {
+        "verdict": "not_equivalent",
+        "pairs": 8,
+        "mean_difference": -0.541667,
+        "p_value": 0.0625,
+        "reasons": [
+          "margin_exceeded"
+        ],
+        "criterion": {
+          "margin": 0.05,
+          "alpha": 0.05,
+          "min_pairs": 8
+        }
+      }
+    },
+    "hangul": {
+      "full_pipeline|region_crop": {
+        "verdict": "not_equivalent",
+        "pairs": 13,
+        "mean_difference": -0.165385,
+        "p_value": 0.453125,
+        "reasons": [
+          "margin_exceeded"
+        ],
+        "criterion": {
+          "margin": 0.05,
+          "alpha": 0.05,
+          "min_pairs": 8
+        }
+      }
+    },
+    "japanese_or_han": {
+      "full_pipeline|region_crop": {
+        "verdict": "underpowered",
+        "pairs": 4,
+        "mean_difference": null,
+        "p_value": null,
+        "reasons": [
+          "below_min_pairs"
+        ],
+        "criterion": {
+          "margin": 0.05,
+          "alpha": 0.05,
+          "min_pairs": 8
+        }
+      }
+    },
+    "latin": {
+      "full_pipeline|region_crop": {
+        "verdict": "not_equivalent",
+        "pairs": 19,
+        "mean_difference": -0.176554,
+        "p_value": 0.003906,
+        "reasons": [
+          "margin_exceeded",
+          "direction_detected"
+        ],
+        "criterion": {
+          "margin": 0.05,
+          "alpha": 0.05,
+          "min_pairs": 8
+        }
+      }
+    },
+    "mixed": {
+      "full_pipeline|region_crop": {
+        "verdict": "underpowered",
+        "pairs": 2,
+        "mean_difference": null,
+        "p_value": null,
+        "reasons": [
+          "below_min_pairs"
+        ],
+        "criterion": {
+          "margin": 0.05,
+          "alpha": 0.05,
+          "min_pairs": 8
+        }
+      }
+    },
+    "unscripted": {
+      "full_pipeline|region_crop": {
+        "verdict": "underpowered",
+        "pairs": 1,
+        "mean_difference": null,
+        "p_value": null,
+        "reasons": [
+          "below_min_pairs"
+        ],
+        "criterion": {
+          "margin": 0.05,
+          "alpha": 0.05,
+          "min_pairs": 8
+        }
+      }
+    }
+  },
+  "rows": [
+    {
+      "fixture": "avenue-de-la-république",
+      "region_id": "avenue-de-la-république#0",
+      "stratum_declared": "latin_plaque",
+      "stratum_script": "latin",
+      "split": "dev",
+      "text": "AVENUE",
+      "bbox": [
+        150,
+        122,
+        155,
+        51
+      ],
+      "vertical": false,
+      "best_iou": 1.0,
+      "localized": true,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-8e72b0ad3b",
+          "ned": 0.0,
+          "unreadable": false,
+          "reading": "AVENUE",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "independent_verifier-acd56efe4c",
+          "ned": 0.0,
+          "unreadable": false,
+          "reading": "AVENUE",
+          "route": "independent_verifier",
+          "localized": true
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.0,
+        "best_channel_id": "independent_verifier-acd56efe4c",
+        "channels": 2,
+        "regret": {
+          "region_crop-8e72b0ad3b": 0.0,
+          "independent_verifier-acd56efe4c": 0.0
+        }
+      },
+      "pipeline_seconds": 16.17
+    },
+    {
+      "fixture": "avenue-de-la-république",
+      "region_id": "avenue-de-la-république#1",
+      "stratum_declared": "latin_plaque",
+      "stratum_script": "latin",
+      "split": "dev",
+      "text": "de la RÉPUBLIQUE",
+      "bbox": [
+        120,
+        171,
+        214,
+        57
+      ],
+      "vertical": false,
+      "best_iou": 1.0,
+      "localized": true,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-395fa8a4d4",
+          "ned": 0.1875,
+          "unreadable": false,
+          "reading": "de Jo REPUBLIQUE",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "independent_verifier-7cc4fafc3c",
+          "ned": 0.0,
+          "unreadable": false,
+          "reading": "de la RÉPUBLIQUE",
+          "route": "independent_verifier",
+          "localized": true
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.0,
+        "best_channel_id": "independent_verifier-7cc4fafc3c",
+        "channels": 2,
+        "regret": {
+          "region_crop-395fa8a4d4": 0.1875,
+          "independent_verifier-7cc4fafc3c": 0.0
+        }
+      },
+      "pipeline_seconds": 16.17
+    },
+    {
+      "fixture": "china-street",
+      "region_id": "china-street#0",
+      "stratum_declared": "cjk_horizontal",
+      "stratum_script": "han",
+      "split": "dev",
+      "text": "美珠宝",
+      "bbox": [
+        358,
+        8,
+        116,
+        238
+      ],
+      "vertical": true,
+      "best_iou": 0.841,
+      "localized": true,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-43595a9fc0",
+          "ned": 0.666667,
+          "unreadable": false,
+          "reading": "美銮",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "independent_verifier-bc9bdd8041",
+          "ned": 0.0,
+          "unreadable": false,
+          "reading": "美珠宝",
+          "route": "independent_verifier",
+          "localized": true
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.0,
+        "best_channel_id": "independent_verifier-bc9bdd8041",
+        "channels": 2,
+        "regret": {
+          "region_crop-43595a9fc0": 0.666667,
+          "independent_verifier-bc9bdd8041": 0.0
+        }
+      },
+      "pipeline_seconds": 49.3
+    },
+    {
+      "fixture": "china-street",
+      "region_id": "china-street#1",
+      "stratum_declared": "cjk_horizontal",
+      "stratum_script": "mixed",
+      "split": "dev",
+      "text": "华联店3F",
+      "bbox": [
+        355,
+        245,
+        110,
+        65
+      ],
+      "vertical": false,
+      "best_iou": 0.507,
+      "localized": true,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-7f5f6dc934",
+          "ned": 0.4,
+          "unreadable": false,
+          "reading": "华联3",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "paddle_rescue-5ebe724680",
+          "ned": 0.4,
+          "unreadable": false,
+          "reading": "华联店",
+          "route": "paddle_rescue",
+          "localized": true
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.4,
+        "best_channel_id": "paddle_rescue-5ebe724680",
+        "channels": 2,
+        "regret": {
+          "region_crop-7f5f6dc934": 0.0,
+          "paddle_rescue-5ebe724680": 0.0
+        }
+      },
+      "pipeline_seconds": 49.3
+    },
+    {
+      "fixture": "china-street",
+      "region_id": "china-street#2",
+      "stratum_declared": "cjk_horizontal",
+      "stratum_script": "han",
+      "split": "dev",
+      "text": "茂昌眼镜公司",
+      "bbox": [
+        545,
+        13,
+        127,
+        603
+      ],
+      "vertical": true,
+      "best_iou": 0.805,
+      "localized": true,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-64763a9fe4",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "〉",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "independent_verifier-86505b161c",
+          "ned": 0.0,
+          "unreadable": false,
+          "reading": "茂昌眼镜公司",
+          "route": "independent_verifier",
+          "localized": true
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.0,
+        "best_channel_id": "independent_verifier-86505b161c",
+        "channels": 2,
+        "regret": {
+          "region_crop-64763a9fe4": 1.0,
+          "independent_verifier-86505b161c": 0.0
+        }
+      },
+      "pipeline_seconds": 49.3
+    },
+    {
+      "fixture": "china-street",
+      "region_id": "china-street#3",
+      "stratum_declared": "cjk_horizontal",
+      "stratum_script": "latin",
+      "split": "dev",
+      "text": "OPTICAL",
+      "bbox": [
+        562,
+        646,
+        102,
+        24
+      ],
+      "vertical": false,
+      "best_iou": 0.877,
+      "localized": true,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-91f6f7a5f8",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "0钤",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "paddle_rescue-1fc43c5348",
+          "ned": 0.0,
+          "unreadable": false,
+          "reading": "OPTICAL",
+          "route": "paddle_rescue",
+          "localized": true
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.0,
+        "best_channel_id": "paddle_rescue-1fc43c5348",
+        "channels": 2,
+        "regret": {
+          "region_crop-91f6f7a5f8": 1.0,
+          "paddle_rescue-1fc43c5348": 0.0
+        }
+      },
+      "pipeline_seconds": 49.3
+    },
+    {
+      "fixture": "china-street",
+      "region_id": "china-street#4",
+      "stratum_declared": "cjk_horizontal",
+      "stratum_script": "latin",
+      "split": "dev",
+      "text": "MING",
+      "bbox": [
+        195,
+        415,
+        75,
+        30
+      ],
+      "vertical": false,
+      "best_iou": 0.274,
+      "localized": false,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-ba4b387e2e",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "unregistered-unlocalized",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "",
+          "route": "unregistered",
+          "localized": false
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 1.0,
+        "best_channel_id": "region_crop-ba4b387e2e",
+        "channels": 2,
+        "regret": {
+          "region_crop-ba4b387e2e": 0.0,
+          "unregistered-unlocalized": 0.0
+        }
+      },
+      "pipeline_seconds": 49.3
+    },
+    {
+      "fixture": "china-street",
+      "region_id": "china-street#5",
+      "stratum_declared": "cjk_horizontal",
+      "stratum_script": "han",
+      "split": "dev",
+      "text": "上海明牌",
+      "bbox": [
+        175,
+        455,
+        95,
+        155
+      ],
+      "vertical": true,
+      "best_iou": 0.511,
+      "localized": true,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-0553cf6c3e",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "羞朋怕",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "paddle_rescue-43e3d82424",
+          "ned": 0.0,
+          "unreadable": false,
+          "reading": "上海明牌",
+          "route": "paddle_rescue",
+          "localized": true
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.0,
+        "best_channel_id": "paddle_rescue-43e3d82424",
+        "channels": 2,
+        "regret": {
+          "region_crop-0553cf6c3e": 1.0,
+          "paddle_rescue-43e3d82424": 0.0
+        }
+      },
+      "pipeline_seconds": 49.3
+    },
+    {
+      "fixture": "china-street",
+      "region_id": "china-street#6",
+      "stratum_declared": "cjk_horizontal",
+      "stratum_script": "han",
+      "split": "dev",
+      "text": "大娘水饺",
+      "bbox": [
+        390,
+        490,
+        85,
+        170
+      ],
+      "vertical": true,
+      "best_iou": 0.554,
+      "localized": true,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-c3c5131f5c",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "态",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "independent_verifier-589ec088e5",
+          "ned": 0.0,
+          "unreadable": false,
+          "reading": "大娘水饺",
+          "route": "independent_verifier",
+          "localized": true
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.0,
+        "best_channel_id": "independent_verifier-589ec088e5",
+        "channels": 2,
+        "regret": {
+          "region_crop-c3c5131f5c": 1.0,
+          "independent_verifier-589ec088e5": 0.0
+        }
+      },
+      "pipeline_seconds": 49.3
+    },
+    {
+      "fixture": "decolonisons-nos-rues",
+      "region_id": "decolonisons-nos-rues#0",
+      "stratum_declared": "latin_poster",
+      "stratum_script": "latin",
+      "split": "dev",
+      "text": "Décolonisons",
+      "bbox": [
+        35,
+        51,
+        413,
+        47
+      ],
+      "vertical": false,
+      "best_iou": 0.72,
+      "localized": true,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-61d3d832d1",
+          "ned": 0.0,
+          "unreadable": false,
+          "reading": "Décolonisons",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "independent_verifier-6b9e494fe9",
+          "ned": 0.0,
+          "unreadable": false,
+          "reading": "Décolonisons",
+          "route": "independent_verifier",
+          "localized": true
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.0,
+        "best_channel_id": "independent_verifier-6b9e494fe9",
+        "channels": 2,
+        "regret": {
+          "region_crop-61d3d832d1": 0.0,
+          "independent_verifier-6b9e494fe9": 0.0
+        }
+      },
+      "pipeline_seconds": 16.06
+    },
+    {
+      "fixture": "decolonisons-nos-rues",
+      "region_id": "decolonisons-nos-rues#1",
+      "stratum_declared": "latin_poster",
+      "stratum_script": "latin",
+      "split": "dev",
+      "text": "nos rues !",
+      "bbox": [
+        96,
+        123,
+        304,
+        42
+      ],
+      "vertical": false,
+      "best_iou": 0.787,
+      "localized": true,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-d3d56e31c0",
+          "ned": 0.3,
+          "unreadable": false,
+          "reading": "nosrues4",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "independent_verifier-5e779e33bf",
+          "ned": 0.0,
+          "unreadable": false,
+          "reading": "nos rues !",
+          "route": "independent_verifier",
+          "localized": true
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.0,
+        "best_channel_id": "independent_verifier-5e779e33bf",
+        "channels": 2,
+        "regret": {
+          "region_crop-d3d56e31c0": 0.3,
+          "independent_verifier-5e779e33bf": 0.0
+        }
+      },
+      "pipeline_seconds": 16.06
+    },
+    {
+      "fixture": "decolonisons-nos-rues",
+      "region_id": "decolonisons-nos-rues#2",
+      "stratum_declared": "latin_poster",
+      "stratum_script": "latin",
+      "split": "dev",
+      "text": "Pour une mémoire des luttes contre les",
+      "bbox": [
+        60,
+        499,
+        347,
+        13
+      ],
+      "vertical": false,
+      "best_iou": 0.801,
+      "localized": true,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-954e74fd35",
+          "ned": 0.052632,
+          "unreadable": false,
+          "reading": "Pourunemémoire des luttes contre les",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "baseline_row_merge-f682c0f617",
+          "ned": 0.0,
+          "unreadable": false,
+          "reading": "Pour une mémoire des luttes contre les",
+          "route": "baseline_row_merge",
+          "localized": true
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.0,
+        "best_channel_id": "baseline_row_merge-f682c0f617",
+        "channels": 2,
+        "regret": {
+          "region_crop-954e74fd35": 0.052632,
+          "baseline_row_merge-f682c0f617": 0.0
+        }
+      },
+      "pipeline_seconds": 16.06
+    },
+    {
+      "fixture": "decolonisons-nos-rues",
+      "region_id": "decolonisons-nos-rues#3",
+      "stratum_declared": "latin_poster",
+      "stratum_script": "latin",
+      "split": "dev",
+      "text": "crimes coloniaux et esclavagistes",
+      "bbox": [
+        85,
+        518,
+        296,
+        15
+      ],
+      "vertical": false,
+      "best_iou": 0.779,
+      "localized": true,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-dddbc6f70c",
+          "ned": 0.0,
+          "unreadable": false,
+          "reading": "crimes coloniaux et esclavagistes",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "independent_verifier-2b4b64cd9c",
+          "ned": 0.0,
+          "unreadable": false,
+          "reading": "crimes coloniaux et esclavagistes",
+          "route": "independent_verifier",
+          "localized": true
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.0,
+        "best_channel_id": "independent_verifier-2b4b64cd9c",
+        "channels": 2,
+        "regret": {
+          "region_crop-dddbc6f70c": 0.0,
+          "independent_verifier-2b4b64cd9c": 0.0
+        }
+      },
+      "pipeline_seconds": 16.06
+    },
+    {
+      "fixture": "decolonisons-nos-rues",
+      "region_id": "decolonisons-nos-rues#4",
+      "stratum_declared": "latin_poster",
+      "stratum_script": "latin",
+      "split": "dev",
+      "text": "Texte : Naïké Desquesnes",
+      "bbox": [
+        45,
+        585,
+        163,
+        12
+      ],
+      "vertical": false,
+      "best_iou": 0.786,
+      "localized": true,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-06550da543",
+          "ned": 0.125,
+          "unreadable": false,
+          "reading": "TexteNaïké Desquesnes",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "baseline_row_merge-2e74916e79",
+          "ned": 0.083333,
+          "unreadable": false,
+          "reading": "Texte Naïké Desquesnes",
+          "route": "baseline_row_merge",
+          "localized": true
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.083333,
+        "best_channel_id": "baseline_row_merge-2e74916e79",
+        "channels": 2,
+        "regret": {
+          "region_crop-06550da543": 0.041667,
+          "baseline_row_merge-2e74916e79": 0.0
+        }
+      },
+      "pipeline_seconds": 16.06
+    },
+    {
+      "fixture": "gemini-street",
+      "region_id": "gemini-street#0",
+      "stratum_declared": "mixed_dense",
+      "stratum_script": "hangul",
+      "split": "dev",
+      "text": "감접",
+      "bbox": [
+        28,
+        2,
+        70,
+        66
+      ],
+      "vertical": false,
+      "best_iou": 0.205,
+      "localized": false,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-6618864f43",
+          "ned": 0.0,
+          "unreadable": false,
+          "reading": "감접",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "unregistered-unlocalized",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "",
+          "route": "unregistered",
+          "localized": false
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.0,
+        "best_channel_id": "region_crop-6618864f43",
+        "channels": 2,
+        "regret": {
+          "region_crop-6618864f43": 0.0,
+          "unregistered-unlocalized": 1.0
+        }
+      },
+      "pipeline_seconds": 76.25
+    },
+    {
+      "fixture": "gemini-street",
+      "region_id": "gemini-street#1",
+      "stratum_declared": "mixed_dense",
+      "stratum_script": "hangul",
+      "split": "dev",
+      "text": "포차",
+      "bbox": [
+        28,
+        70,
+        77,
+        240
+      ],
+      "vertical": true,
+      "best_iou": 0.686,
+      "localized": true,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-b5b9d8da46",
+          "ned": 0.0,
+          "unreadable": false,
+          "reading": "포차",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "vertical_column_merge-8a0ab6fb4a",
+          "ned": 0.6,
+          "unreadable": false,
+          "reading": "감접포 차",
+          "route": "vertical_column_merge",
+          "localized": true
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.0,
+        "best_channel_id": "region_crop-b5b9d8da46",
+        "channels": 2,
+        "regret": {
+          "region_crop-b5b9d8da46": 0.0,
+          "vertical_column_merge-8a0ab6fb4a": 0.6
+        }
+      },
+      "pipeline_seconds": 76.25
+    },
+    {
+      "fixture": "gemini-street",
+      "region_id": "gemini-street#3",
+      "stratum_declared": "mixed_dense",
+      "stratum_script": "hangul",
+      "split": "dev",
+      "text": "고깃집",
+      "bbox": [
+        215,
+        55,
+        127,
+        280
+      ],
+      "vertical": true,
+      "best_iou": 0.423,
+      "localized": false,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-28013c0eb6",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "줄",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "unregistered-unlocalized",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "",
+          "route": "unregistered",
+          "localized": false
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 1.0,
+        "best_channel_id": "region_crop-28013c0eb6",
+        "channels": 2,
+        "regret": {
+          "region_crop-28013c0eb6": 0.0,
+          "unregistered-unlocalized": 0.0
+        }
+      },
+      "pipeline_seconds": 76.25
+    },
+    {
+      "fixture": "gemini-street",
+      "region_id": "gemini-street#4",
+      "stratum_declared": "mixed_dense",
+      "stratum_script": "hangul",
+      "split": "dev",
+      "text": "라면·국수",
+      "bbox": [
+        345,
+        50,
+        90,
+        285
+      ],
+      "vertical": true,
+      "best_iou": 0.554,
+      "localized": true,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-f21fa9b465",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "물",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "paddle_rescue-9e6fad8b05",
+          "ned": 0.0,
+          "unreadable": false,
+          "reading": "라면·국수",
+          "route": "paddle_rescue",
+          "localized": true
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.0,
+        "best_channel_id": "paddle_rescue-9e6fad8b05",
+        "channels": 2,
+        "regret": {
+          "region_crop-f21fa9b465": 1.0,
+          "paddle_rescue-9e6fad8b05": 0.0
+        }
+      },
+      "pipeline_seconds": 76.25
+    },
+    {
+      "fixture": "gemini-street",
+      "region_id": "gemini-street#5",
+      "stratum_declared": "mixed_dense",
+      "stratum_script": "hangul",
+      "split": "dev",
+      "text": "차",
+      "bbox": [
+        382,
+        8,
+        43,
+        54
+      ],
+      "vertical": false,
+      "best_iou": 0.403,
+      "localized": false,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-ab908e5229",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "unregistered-unlocalized",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "",
+          "route": "unregistered",
+          "localized": false
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 1.0,
+        "best_channel_id": "region_crop-ab908e5229",
+        "channels": 2,
+        "regret": {
+          "region_crop-ab908e5229": 0.0,
+          "unregistered-unlocalized": 0.0
+        }
+      },
+      "pipeline_seconds": 76.25
+    },
+    {
+      "fixture": "gemini-street",
+      "region_id": "gemini-street#6",
+      "stratum_declared": "mixed_dense",
+      "stratum_script": "hangul",
+      "split": "dev",
+      "text": "대박식당",
+      "bbox": [
+        148,
+        335,
+        132,
+        80
+      ],
+      "vertical": false,
+      "best_iou": 0.734,
+      "localized": true,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-65a0916f80",
+          "ned": 0.75,
+          "unreadable": false,
+          "reading": "계빛식히",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "paddle_rescue-87b21d90e1",
+          "ned": 0.0,
+          "unreadable": false,
+          "reading": "대박식당",
+          "route": "paddle_rescue",
+          "localized": true
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.0,
+        "best_channel_id": "paddle_rescue-87b21d90e1",
+        "channels": 2,
+        "regret": {
+          "region_crop-65a0916f80": 0.75,
+          "paddle_rescue-87b21d90e1": 0.0
+        }
+      },
+      "pipeline_seconds": 76.25
+    },
+    {
+      "fixture": "gemini-street",
+      "region_id": "gemini-street#7",
+      "stratum_declared": "mixed_dense",
+      "stratum_script": "hangul",
+      "split": "dev",
+      "text": "대박식당",
+      "bbox": [
+        282,
+        332,
+        58,
+        36
+      ],
+      "vertical": false,
+      "best_iou": 0.478,
+      "localized": false,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-baa1bf8803",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "비비)다",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "unregistered-unlocalized",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "",
+          "route": "unregistered",
+          "localized": false
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 1.0,
+        "best_channel_id": "region_crop-baa1bf8803",
+        "channels": 2,
+        "regret": {
+          "region_crop-baa1bf8803": 0.0,
+          "unregistered-unlocalized": 0.0
+        }
+      },
+      "pipeline_seconds": 76.25
+    },
+    {
+      "fixture": "gemini-street",
+      "region_id": "gemini-street#8",
+      "stratum_declared": "mixed_dense",
+      "stratum_script": "hangul",
+      "split": "dev",
+      "text": "전주삼겹살",
+      "bbox": [
+        430,
+        180,
+        62,
+        172
+      ],
+      "vertical": true,
+      "best_iou": 0.519,
+      "localized": true,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-3aa5b4d5a0",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "'",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "paddle_rescue-54e1076972",
+          "ned": 0.0,
+          "unreadable": false,
+          "reading": "전주삼겹살",
+          "route": "paddle_rescue",
+          "localized": true
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.0,
+        "best_channel_id": "paddle_rescue-54e1076972",
+        "channels": 2,
+        "regret": {
+          "region_crop-3aa5b4d5a0": 1.0,
+          "paddle_rescue-54e1076972": 0.0
+        }
+      },
+      "pipeline_seconds": 76.25
+    },
+    {
+      "fixture": "gemini-street",
+      "region_id": "gemini-street#10",
+      "stratum_declared": "mixed_dense",
+      "stratum_script": "hangul",
+      "split": "dev",
+      "text": "파식당",
+      "bbox": [
+        545,
+        180,
+        41,
+        152
+      ],
+      "vertical": true,
+      "best_iou": 0.347,
+      "localized": false,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-895fc6b399",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "초풍",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "unregistered-unlocalized",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "",
+          "route": "unregistered",
+          "localized": false
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 1.0,
+        "best_channel_id": "region_crop-895fc6b399",
+        "channels": 2,
+        "regret": {
+          "region_crop-895fc6b399": 0.0,
+          "unregistered-unlocalized": 0.0
+        }
+      },
+      "pipeline_seconds": 76.25
+    },
+    {
+      "fixture": "gemini-street",
+      "region_id": "gemini-street#11",
+      "stratum_declared": "mixed_dense",
+      "stratum_script": "han",
+      "split": "dev",
+      "text": "居酒屋",
+      "bbox": [
+        118,
+        485,
+        60,
+        120
+      ],
+      "vertical": true,
+      "best_iou": 0.335,
+      "localized": false,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-7cc44932c7",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "터",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "unregistered-unlocalized",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "",
+          "route": "unregistered",
+          "localized": false
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 1.0,
+        "best_channel_id": "region_crop-7cc44932c7",
+        "channels": 2,
+        "regret": {
+          "region_crop-7cc44932c7": 0.0,
+          "unregistered-unlocalized": 0.0
+        }
+      },
+      "pipeline_seconds": 76.25
+    },
+    {
+      "fixture": "gemini-street",
+      "region_id": "gemini-street#12",
+      "stratum_declared": "mixed_dense",
+      "stratum_script": "japanese_or_han",
+      "split": "dev",
+      "text": "ラーメン",
+      "bbox": [
+        210,
+        468,
+        46,
+        122
+      ],
+      "vertical": true,
+      "best_iou": 0.283,
+      "localized": false,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-a03cf6f270",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "3",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "unregistered-unlocalized",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "",
+          "route": "unregistered",
+          "localized": false
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 1.0,
+        "best_channel_id": "region_crop-a03cf6f270",
+        "channels": 2,
+        "regret": {
+          "region_crop-a03cf6f270": 0.0,
+          "unregistered-unlocalized": 0.0
+        }
+      },
+      "pipeline_seconds": 76.25
+    },
+    {
+      "fixture": "gemini-street",
+      "region_id": "gemini-street#13",
+      "stratum_declared": "mixed_dense",
+      "stratum_script": "han",
+      "split": "dev",
+      "text": "道頓堀",
+      "bbox": [
+        750,
+        75,
+        48,
+        80
+      ],
+      "vertical": true,
+      "best_iou": 0.539,
+      "localized": true,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-fbf2a09838",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "품",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "composed_crop-ae0572aa8b",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "품",
+          "route": "composed_crop",
+          "localized": true
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 1.0,
+        "best_channel_id": "composed_crop-ae0572aa8b",
+        "channels": 2,
+        "regret": {
+          "region_crop-fbf2a09838": 0.0,
+          "composed_crop-ae0572aa8b": 0.0
+        }
+      },
+      "pipeline_seconds": 76.25
+    },
+    {
+      "fixture": "gemini-street",
+      "region_id": "gemini-street#14",
+      "stratum_declared": "mixed_dense",
+      "stratum_script": "hangul",
+      "split": "dev",
+      "text": "노래방",
+      "bbox": [
+        1008,
+        12,
+        70,
+        110
+      ],
+      "vertical": true,
+      "best_iou": 0.41,
+      "localized": false,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-a5923cf983",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "푹",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "unregistered-unlocalized",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "",
+          "route": "unregistered",
+          "localized": false
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 1.0,
+        "best_channel_id": "region_crop-a5923cf983",
+        "channels": 2,
+        "regret": {
+          "region_crop-a5923cf983": 0.0,
+          "unregistered-unlocalized": 0.0
+        }
+      },
+      "pipeline_seconds": 76.25
+    },
+    {
+      "fixture": "gemini-street",
+      "region_id": "gemini-street#15",
+      "stratum_declared": "mixed_dense",
+      "stratum_script": "hangul",
+      "split": "dev",
+      "text": "피시개방",
+      "bbox": [
+        1078,
+        15,
+        64,
+        220
+      ],
+      "vertical": true,
+      "best_iou": 0.548,
+      "localized": true,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-ee9be7fbae",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "\"",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "paddle_rescue-4f09ed15e6",
+          "ned": 0.5,
+          "unreadable": false,
+          "reading": "시게방",
+          "route": "paddle_rescue",
+          "localized": true
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.5,
+        "best_channel_id": "paddle_rescue-4f09ed15e6",
+        "channels": 2,
+        "regret": {
+          "region_crop-ee9be7fbae": 0.5,
+          "paddle_rescue-4f09ed15e6": 0.0
+        }
+      },
+      "pipeline_seconds": 76.25
+    },
+    {
+      "fixture": "gemini-street",
+      "region_id": "gemini-street#16",
+      "stratum_declared": "mixed_dense",
+      "stratum_script": "hangul",
+      "split": "dev",
+      "text": "맥주",
+      "bbox": [
+        1168,
+        5,
+        77,
+        117
+      ],
+      "vertical": true,
+      "best_iou": 0.581,
+      "localized": true,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-c39cbd42c1",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "똑",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "paddle_rescue-5ba997ceef",
+          "ned": 0.5,
+          "unreadable": false,
+          "reading": "주",
+          "route": "paddle_rescue",
+          "localized": true
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.5,
+        "best_channel_id": "paddle_rescue-5ba997ceef",
+        "channels": 2,
+        "regret": {
+          "region_crop-c39cbd42c1": 0.5,
+          "paddle_rescue-5ba997ceef": 0.0
+        }
+      },
+      "pipeline_seconds": 76.25
+    },
+    {
+      "fixture": "gemini-street",
+      "region_id": "gemini-street#17",
+      "stratum_declared": "mixed_dense",
+      "stratum_script": "hangul",
+      "split": "dev",
+      "text": "편의맥주",
+      "bbox": [
+        1158,
+        135,
+        87,
+        220
+      ],
+      "vertical": true,
+      "best_iou": 0.433,
+      "localized": false,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-eb6f565bbc",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "품",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "unregistered-unlocalized",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "",
+          "route": "unregistered",
+          "localized": false
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 1.0,
+        "best_channel_id": "region_crop-eb6f565bbc",
+        "channels": 2,
+        "regret": {
+          "region_crop-eb6f565bbc": 0.0,
+          "unregistered-unlocalized": 0.0
+        }
+      },
+      "pipeline_seconds": 76.25
+    },
+    {
+      "fixture": "japan-street",
+      "region_id": "japan-street#0",
+      "stratum_declared": "cjk_vertical",
+      "stratum_script": "han",
+      "split": "dev",
+      "text": "歌舞伎町一番街",
+      "bbox": [
+        190,
+        122,
+        243,
+        47
+      ],
+      "vertical": false,
+      "best_iou": 0.865,
+      "localized": true,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-86e503fe07",
+          "ned": 0.0,
+          "unreadable": false,
+          "reading": "歌舞伎町一番街",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "paddle_rescue-8ccaed601b",
+          "ned": 0.0,
+          "unreadable": false,
+          "reading": "歌舞伎町一番街",
+          "route": "paddle_rescue",
+          "localized": true
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.0,
+        "best_channel_id": "paddle_rescue-8ccaed601b",
+        "channels": 2,
+        "regret": {
+          "region_crop-86e503fe07": 0.0,
+          "paddle_rescue-8ccaed601b": 0.0
+        }
+      },
+      "pipeline_seconds": 43.98
+    },
+    {
+      "fixture": "japan-street",
+      "region_id": "japan-street#1",
+      "stratum_declared": "cjk_vertical",
+      "stratum_script": "japanese_or_han",
+      "split": "dev",
+      "text": "劇場通り",
+      "bbox": [
+        53,
+        335,
+        20,
+        61
+      ],
+      "vertical": true,
+      "best_iou": 0.774,
+      "localized": true,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-171c7713a3",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "8",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "independent_verifier-3fee175f36",
+          "ned": 0.25,
+          "unreadable": false,
+          "reading": "劇場通",
+          "route": "independent_verifier",
+          "localized": true
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.25,
+        "best_channel_id": "independent_verifier-3fee175f36",
+        "channels": 2,
+        "regret": {
+          "region_crop-171c7713a3": 0.75,
+          "independent_verifier-3fee175f36": 0.0
+        }
+      },
+      "pipeline_seconds": 43.98
+    },
+    {
+      "fixture": "japan-street",
+      "region_id": "japan-street#2",
+      "stratum_declared": "cjk_vertical",
+      "stratum_script": "japanese_or_han",
+      "split": "dev",
+      "text": "お好み焼本陣",
+      "bbox": [
+        455,
+        287,
+        27,
+        73
+      ],
+      "vertical": true,
+      "best_iou": 0.0,
+      "localized": false,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-8ece145631",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "@",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "unregistered-unlocalized",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "",
+          "route": "unregistered",
+          "localized": false
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 1.0,
+        "best_channel_id": "region_crop-8ece145631",
+        "channels": 2,
+        "regret": {
+          "region_crop-8ece145631": 0.0,
+          "unregistered-unlocalized": 0.0
+        }
+      },
+      "pipeline_seconds": 43.98
+    },
+    {
+      "fixture": "japan-street",
+      "region_id": "japan-street#3",
+      "stratum_declared": "cjk_vertical",
+      "stratum_script": "japanese_or_han",
+      "split": "dev",
+      "text": "バンダイ",
+      "bbox": [
+        137,
+        222,
+        41,
+        46
+      ],
+      "vertical": true,
+      "best_iou": 0.0,
+      "localized": false,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-3c6e80e6c9",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "unregistered-unlocalized",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "",
+          "route": "unregistered",
+          "localized": false
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 1.0,
+        "best_channel_id": "region_crop-3c6e80e6c9",
+        "channels": 2,
+        "regret": {
+          "region_crop-3c6e80e6c9": 0.0,
+          "unregistered-unlocalized": 0.0
+        }
+      },
+      "pipeline_seconds": 43.98
+    },
+    {
+      "fixture": "japan-street",
+      "region_id": "japan-street#4",
+      "stratum_declared": "cjk_vertical",
+      "stratum_script": "latin",
+      "split": "dev",
+      "text": "3F",
+      "bbox": [
+        140,
+        272,
+        25,
+        15
+      ],
+      "vertical": false,
+      "best_iou": 0.0,
+      "localized": false,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-984c2d2ecb",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "unregistered-unlocalized",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "",
+          "route": "unregistered",
+          "localized": false
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 1.0,
+        "best_channel_id": "region_crop-984c2d2ecb",
+        "channels": 2,
+        "regret": {
+          "region_crop-984c2d2ecb": 0.0,
+          "unregistered-unlocalized": 0.0
+        }
+      },
+      "pipeline_seconds": 43.98
+    },
+    {
+      "fixture": "japan-street",
+      "region_id": "japan-street#5",
+      "stratum_declared": "cjk_vertical",
+      "stratum_script": "han",
+      "split": "dev",
+      "text": "東南荘",
+      "bbox": [
+        435,
+        217,
+        23,
+        38
+      ],
+      "vertical": true,
+      "best_iou": 0.661,
+      "localized": true,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-41271d80aa",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "independent_verifier-6dbede9bfd",
+          "ned": 0.333333,
+          "unreadable": false,
+          "reading": "東南",
+          "route": "independent_verifier",
+          "localized": true
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.333333,
+        "best_channel_id": "independent_verifier-6dbede9bfd",
+        "channels": 2,
+        "regret": {
+          "region_crop-41271d80aa": 0.666667,
+          "independent_verifier-6dbede9bfd": 0.0
+        }
+      },
+      "pipeline_seconds": 43.98
+    },
+    {
+      "fixture": "japan-street",
+      "region_id": "japan-street#6",
+      "stratum_declared": "cjk_vertical",
+      "stratum_script": "latin",
+      "split": "dev",
+      "text": "2F",
+      "bbox": [
+        463,
+        371,
+        19,
+        11
+      ],
+      "vertical": false,
+      "best_iou": 1.0,
+      "localized": true,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-458c90e624",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "zoom-0a5aa5187c",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "T",
+          "route": "zoom",
+          "localized": true
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 1.0,
+        "best_channel_id": "region_crop-458c90e624",
+        "channels": 2,
+        "regret": {
+          "region_crop-458c90e624": 0.0,
+          "zoom-0a5aa5187c": 0.0
+        }
+      },
+      "pipeline_seconds": 43.98
+    },
+    {
+      "fixture": "la-bastille-1789",
+      "region_id": "la-bastille-1789#0",
+      "stratum_declared": "latin_poster",
+      "stratum_script": "latin",
+      "split": "holdout",
+      "text": "LA",
+      "bbox": [
+        27,
+        19,
+        49,
+        53
+      ],
+      "vertical": false,
+      "best_iou": 0.133,
+      "localized": false,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-89c886a27b",
+          "ned": 0.5,
+          "unreadable": false,
+          "reading": "La",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "unregistered-unlocalized",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "",
+          "route": "unregistered",
+          "localized": false
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.5,
+        "best_channel_id": "region_crop-89c886a27b",
+        "channels": 2,
+        "regret": {
+          "region_crop-89c886a27b": 0.0,
+          "unregistered-unlocalized": 0.5
+        }
+      },
+      "pipeline_seconds": 25.54
+    },
+    {
+      "fixture": "la-bastille-1789",
+      "region_id": "la-bastille-1789#1",
+      "stratum_declared": "latin_poster",
+      "stratum_script": "latin",
+      "split": "holdout",
+      "text": "BASTILLE",
+      "bbox": [
+        80,
+        13,
+        254,
+        61
+      ],
+      "vertical": false,
+      "best_iou": 0.796,
+      "localized": true,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-7040588717",
+          "ned": 0.875,
+          "unreadable": true,
+          "reading": "Babtille",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "detection_pass_2-2c262f79e8",
+          "ned": 0.909091,
+          "unreadable": true,
+          "reading": "la Bastille",
+          "route": "detection_pass_2",
+          "localized": true
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.875,
+        "best_channel_id": "region_crop-7040588717",
+        "channels": 2,
+        "regret": {
+          "region_crop-7040588717": 0.0,
+          "detection_pass_2-2c262f79e8": 0.034091
+        }
+      },
+      "pipeline_seconds": 25.54
+    },
+    {
+      "fixture": "la-bastille-1789",
+      "region_id": "la-bastille-1789#2",
+      "stratum_declared": "latin_poster",
+      "stratum_script": "latin",
+      "split": "holdout",
+      "text": "ET",
+      "bbox": [
+        346,
+        27,
+        57,
+        42
+      ],
+      "vertical": false,
+      "best_iou": 0.53,
+      "localized": true,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-1223d53860",
+          "ned": 0.5,
+          "unreadable": false,
+          "reading": "BT",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "independent_verifier-8f7a6f3107",
+          "ned": 0.5,
+          "unreadable": false,
+          "reading": "ETLA",
+          "route": "independent_verifier",
+          "localized": true
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.5,
+        "best_channel_id": "independent_verifier-8f7a6f3107",
+        "channels": 2,
+        "regret": {
+          "region_crop-1223d53860": 0.0,
+          "independent_verifier-8f7a6f3107": 0.0
+        }
+      },
+      "pipeline_seconds": 25.54
+    },
+    {
+      "fixture": "la-bastille-1789",
+      "region_id": "la-bastille-1789#3",
+      "stratum_declared": "latin_poster",
+      "stratum_script": "latin",
+      "split": "holdout",
+      "text": "LA",
+      "bbox": [
+        406,
+        10,
+        63,
+        64
+      ],
+      "vertical": false,
+      "best_iou": 0.293,
+      "localized": false,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-1adc6fe12e",
+          "ned": 0.5,
+          "unreadable": false,
+          "reading": "La",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "unregistered-unlocalized",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "",
+          "route": "unregistered",
+          "localized": false
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.5,
+        "best_channel_id": "region_crop-1adc6fe12e",
+        "channels": 2,
+        "regret": {
+          "region_crop-1adc6fe12e": 0.0,
+          "unregistered-unlocalized": 0.5
+        }
+      },
+      "pipeline_seconds": 25.54
+    },
+    {
+      "fixture": "la-bastille-1789",
+      "region_id": "la-bastille-1789#4",
+      "stratum_declared": "latin_poster",
+      "stratum_script": "latin",
+      "split": "holdout",
+      "text": "RUE",
+      "bbox": [
+        20,
+        75,
+        72,
+        49
+      ],
+      "vertical": false,
+      "best_iou": 0.215,
+      "localized": false,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-d855553f5e",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "Bue",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "unregistered-unlocalized",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "",
+          "route": "unregistered",
+          "localized": false
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 1.0,
+        "best_channel_id": "region_crop-d855553f5e",
+        "channels": 2,
+        "regret": {
+          "region_crop-d855553f5e": 0.0,
+          "unregistered-unlocalized": 0.0
+        }
+      },
+      "pipeline_seconds": 25.54
+    },
+    {
+      "fixture": "la-bastille-1789",
+      "region_id": "la-bastille-1789#5",
+      "stratum_declared": "latin_poster",
+      "stratum_script": "latin",
+      "split": "holdout",
+      "text": "St",
+      "bbox": [
+        95,
+        78,
+        44,
+        46
+      ],
+      "vertical": false,
+      "best_iou": 0.123,
+      "localized": false,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-f536d7003a",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "8;",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "unregistered-unlocalized",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "",
+          "route": "unregistered",
+          "localized": false
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 1.0,
+        "best_channel_id": "region_crop-f536d7003a",
+        "channels": 2,
+        "regret": {
+          "region_crop-f536d7003a": 0.0,
+          "unregistered-unlocalized": 0.0
+        }
+      },
+      "pipeline_seconds": 25.54
+    },
+    {
+      "fixture": "la-bastille-1789",
+      "region_id": "la-bastille-1789#6",
+      "stratum_declared": "latin_poster",
+      "stratum_script": "latin",
+      "split": "holdout",
+      "text": "ANTOINE",
+      "bbox": [
+        140,
+        78,
+        155,
+        46
+      ],
+      "vertical": false,
+      "best_iou": 0.434,
+      "localized": false,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-59a7f9c78c",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "antoinG",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "unregistered-unlocalized",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "",
+          "route": "unregistered",
+          "localized": false
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 1.0,
+        "best_channel_id": "region_crop-59a7f9c78c",
+        "channels": 2,
+        "regret": {
+          "region_crop-59a7f9c78c": 0.0,
+          "unregistered-unlocalized": 0.0
+        }
+      },
+      "pipeline_seconds": 25.54
+    },
+    {
+      "fixture": "la-bastille-1789",
+      "region_id": "la-bastille-1789#7",
+      "stratum_declared": "latin_poster",
+      "stratum_script": "latin",
+      "split": "holdout",
+      "text": "EN",
+      "bbox": [
+        299,
+        92,
+        36,
+        31
+      ],
+      "vertical": false,
+      "best_iou": 0.186,
+      "localized": false,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-88e4ffbc12",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "BO",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "unregistered-unlocalized",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "",
+          "route": "unregistered",
+          "localized": false
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 1.0,
+        "best_channel_id": "region_crop-88e4ffbc12",
+        "channels": 2,
+        "regret": {
+          "region_crop-88e4ffbc12": 0.0,
+          "unregistered-unlocalized": 0.0
+        }
+      },
+      "pipeline_seconds": 25.54
+    },
+    {
+      "fixture": "la-bastille-1789",
+      "region_id": "la-bastille-1789#8",
+      "stratum_declared": "latin_poster",
+      "stratum_script": "unscripted",
+      "split": "holdout",
+      "text": "1789",
+      "bbox": [
+        337,
+        79,
+        92,
+        47
+      ],
+      "vertical": false,
+      "best_iou": 0.572,
+      "localized": true,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-be95d55a78",
+          "ned": 0.0,
+          "unreadable": false,
+          "reading": "1789",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "detection_pass_3-6b8401af30",
+          "ned": 0.25,
+          "unreadable": false,
+          "reading": "7789",
+          "route": "detection_pass_3",
+          "localized": true
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.0,
+        "best_channel_id": "region_crop-be95d55a78",
+        "channels": 2,
+        "regret": {
+          "region_crop-be95d55a78": 0.0,
+          "detection_pass_3-6b8401af30": 0.25
+        }
+      },
+      "pipeline_seconds": 25.54
+    },
+    {
+      "fixture": "la-rue-sans-nom-example",
+      "region_id": "la-rue-sans-nom-example#0",
+      "stratum_declared": "latin_plaque",
+      "stratum_script": "latin",
+      "split": "dev",
+      "text": "La rue",
+      "bbox": [
+        361,
+        268,
+        314,
+        100
+      ],
+      "vertical": false,
+      "best_iou": 0.884,
+      "localized": true,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-0fd4a8022b",
+          "ned": 0.0,
+          "unreadable": false,
+          "reading": "La rue",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "independent_verifier-ae65042b7c",
+          "ned": 0.0,
+          "unreadable": false,
+          "reading": "La rue",
+          "route": "independent_verifier",
+          "localized": true
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.0,
+        "best_channel_id": "independent_verifier-ae65042b7c",
+        "channels": 2,
+        "regret": {
+          "region_crop-0fd4a8022b": 0.0,
+          "independent_verifier-ae65042b7c": 0.0
+        }
+      },
+      "pipeline_seconds": 12.39
+    },
+    {
+      "fixture": "la-rue-sans-nom-example",
+      "region_id": "la-rue-sans-nom-example#1",
+      "stratum_declared": "latin_plaque",
+      "stratum_script": "latin",
+      "split": "dev",
+      "text": "SANS-NOM",
+      "bbox": [
+        241,
+        415,
+        543,
+        110
+      ],
+      "vertical": false,
+      "best_iou": 1.0,
+      "localized": true,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-cd11b52cc1",
+          "ned": 0.0,
+          "unreadable": false,
+          "reading": "SANS-NOM",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "independent_verifier-067295234e",
+          "ned": 0.0,
+          "unreadable": false,
+          "reading": "SANS-NOM",
+          "route": "independent_verifier",
+          "localized": true
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.0,
+        "best_channel_id": "independent_verifier-067295234e",
+        "channels": 2,
+        "regret": {
+          "region_crop-cd11b52cc1": 0.0,
+          "independent_verifier-067295234e": 0.0
+        }
+      },
+      "pipeline_seconds": 12.39
+    },
+    {
+      "fixture": "quai-des-orfevres",
+      "region_id": "quai-des-orfevres#0",
+      "stratum_declared": "latin_plaque",
+      "stratum_script": "mixed",
+      "split": "dev",
+      "text": "1er Arrᵗ",
+      "bbox": [
+        239,
+        162,
+        75,
+        47
+      ],
+      "vertical": false,
+      "best_iou": 1.0,
+      "localized": true,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-6fa60bd806",
+          "ned": 0.5,
+          "unreadable": false,
+          "reading": "JerArr !",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "independent_verifier-606fbce0e6",
+          "ned": 0.0,
+          "unreadable": false,
+          "reading": "1er Arrᵗ",
+          "route": "independent_verifier",
+          "localized": true
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.0,
+        "best_channel_id": "independent_verifier-606fbce0e6",
+        "channels": 2,
+        "regret": {
+          "region_crop-6fa60bd806": 0.5,
+          "independent_verifier-606fbce0e6": 0.0
+        }
+      },
+      "pipeline_seconds": 10.96
+    },
+    {
+      "fixture": "quai-des-orfevres",
+      "region_id": "quai-des-orfevres#1",
+      "stratum_declared": "latin_plaque",
+      "stratum_script": "latin",
+      "split": "dev",
+      "text": "QUAI",
+      "bbox": [
+        214,
+        219,
+        113,
+        69
+      ],
+      "vertical": false,
+      "best_iou": 1.0,
+      "localized": true,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-d6a0f3a66c",
+          "ned": 0.0,
+          "unreadable": false,
+          "reading": "QUAI",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "independent_verifier-802a15eebd",
+          "ned": 0.0,
+          "unreadable": false,
+          "reading": "QUAI",
+          "route": "independent_verifier",
+          "localized": true
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.0,
+        "best_channel_id": "independent_verifier-802a15eebd",
+        "channels": 2,
+        "regret": {
+          "region_crop-d6a0f3a66c": 0.0,
+          "independent_verifier-802a15eebd": 0.0
+        }
+      },
+      "pipeline_seconds": 10.96
+    },
+    {
+      "fixture": "quai-des-orfevres",
+      "region_id": "quai-des-orfevres#2",
+      "stratum_declared": "latin_plaque",
+      "stratum_script": "latin",
+      "split": "dev",
+      "text": "DES",
+      "bbox": [
+        236,
+        278,
+        50,
+        33
+      ],
+      "vertical": false,
+      "best_iou": 1.0,
+      "localized": true,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-0bf3b97de2",
+          "ned": 0.0,
+          "unreadable": false,
+          "reading": "DES",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "independent_verifier-0019438fe2",
+          "ned": 0.0,
+          "unreadable": false,
+          "reading": "DES",
+          "route": "independent_verifier",
+          "localized": true
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.0,
+        "best_channel_id": "independent_verifier-0019438fe2",
+        "channels": 2,
+        "regret": {
+          "region_crop-0bf3b97de2": 0.0,
+          "independent_verifier-0019438fe2": 0.0
+        }
+      },
+      "pipeline_seconds": 10.96
+    },
+    {
+      "fixture": "quai-des-orfevres",
+      "region_id": "quai-des-orfevres#3",
+      "stratum_declared": "latin_plaque",
+      "stratum_script": "latin",
+      "split": "dev",
+      "text": "ORFÈVRES",
+      "bbox": [
+        156,
+        291,
+        225,
+        83
+      ],
+      "vertical": false,
+      "best_iou": 1.0,
+      "localized": true,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-f86e5dc9e0",
+          "ned": 0.272727,
+          "unreadable": false,
+          "reading": "DESORFÈVRES",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "zoom-0d104e449c",
+          "ned": 0.0,
+          "unreadable": false,
+          "reading": "ORFÈVRES",
+          "route": "zoom",
+          "localized": true
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.0,
+        "best_channel_id": "zoom-0d104e449c",
+        "channels": 2,
+        "regret": {
+          "region_crop-f86e5dc9e0": 0.272727,
+          "zoom-0d104e449c": 0.0
+        }
+      },
+      "pipeline_seconds": 10.96
+    },
+    {
+      "fixture": "rue-des-martyrs",
+      "region_id": "rue-des-martyrs#0",
+      "stratum_declared": "latin_plaque",
+      "stratum_script": "latin",
+      "split": "holdout",
+      "text": "RUE",
+      "bbox": [
+        530,
+        62,
+        61,
+        45
+      ],
+      "vertical": false,
+      "best_iou": 1.0,
+      "localized": true,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-9a925ba744",
+          "ned": 0.0,
+          "unreadable": false,
+          "reading": "RUE",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "independent_verifier-e2997c50cf",
+          "ned": 0.0,
+          "unreadable": false,
+          "reading": "RUE",
+          "route": "independent_verifier",
+          "localized": true
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.0,
+        "best_channel_id": "independent_verifier-e2997c50cf",
+        "channels": 2,
+        "regret": {
+          "region_crop-9a925ba744": 0.0,
+          "independent_verifier-e2997c50cf": 0.0
+        }
+      },
+      "pipeline_seconds": 13.8
+    },
+    {
+      "fixture": "rue-des-martyrs",
+      "region_id": "rue-des-martyrs#1",
+      "stratum_declared": "latin_plaque",
+      "stratum_script": "latin",
+      "split": "holdout",
+      "text": "DES",
+      "bbox": [
+        489,
+        111,
+        43,
+        39
+      ],
+      "vertical": false,
+      "best_iou": 0.838,
+      "localized": true,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-f1339bebf5",
+          "ned": 0.0,
+          "unreadable": false,
+          "reading": "DES",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "independent_verifier-8afaf72883",
+          "ned": 0.0,
+          "unreadable": false,
+          "reading": "DES",
+          "route": "independent_verifier",
+          "localized": true
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.0,
+        "best_channel_id": "independent_verifier-8afaf72883",
+        "channels": 2,
+        "regret": {
+          "region_crop-f1339bebf5": 0.0,
+          "independent_verifier-8afaf72883": 0.0
+        }
+      },
+      "pipeline_seconds": 13.8
+    },
+    {
+      "fixture": "rue-des-martyrs",
+      "region_id": "rue-des-martyrs#2",
+      "stratum_declared": "latin_plaque",
+      "stratum_script": "latin",
+      "split": "holdout",
+      "text": "MARTYRS",
+      "bbox": [
+        527,
+        89,
+        129,
+        59
+      ],
+      "vertical": false,
+      "best_iou": 1.0,
+      "localized": true,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-9727cf1081",
+          "ned": 0.3,
+          "unreadable": false,
+          "reading": "RUlMARTYRS",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "zoom-b33e59b88d",
+          "ned": 0.0,
+          "unreadable": false,
+          "reading": "MARTYRS",
+          "route": "zoom",
+          "localized": true
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.0,
+        "best_channel_id": "zoom-b33e59b88d",
+        "channels": 2,
+        "regret": {
+          "region_crop-9727cf1081": 0.3,
+          "zoom-b33e59b88d": 0.0
+        }
+      },
+      "pipeline_seconds": 13.8
+    },
+    {
+      "fixture": "russian-billboard",
+      "region_id": "russian-billboard#0",
+      "stratum_declared": "cyrillic",
+      "stratum_script": "unscripted",
+      "split": "dev",
+      "text": "23",
+      "bbox": [
+        466,
+        33,
+        66,
+        46
+      ],
+      "vertical": false,
+      "best_iou": 1.0,
+      "localized": true,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-953ab32bf7",
+          "ned": 0.0,
+          "unreadable": false,
+          "reading": "23",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "independent_verifier-42da4bbdff",
+          "ned": 0.0,
+          "unreadable": false,
+          "reading": "23",
+          "route": "independent_verifier",
+          "localized": true
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.0,
+        "best_channel_id": "independent_verifier-42da4bbdff",
+        "channels": 2,
+        "regret": {
+          "region_crop-953ab32bf7": 0.0,
+          "independent_verifier-42da4bbdff": 0.0
+        }
+      },
+      "pipeline_seconds": 20.56
+    },
+    {
+      "fixture": "russian-billboard",
+      "region_id": "russian-billboard#1",
+      "stratum_declared": "cyrillic",
+      "stratum_script": "cyrillic",
+      "split": "dev",
+      "text": "ФЕВРАЛЯ",
+      "bbox": [
+        468,
+        80,
+        63,
+        14
+      ],
+      "vertical": false,
+      "best_iou": 1.0,
+      "localized": true,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-a91b6f2cec",
+          "ned": 0.0,
+          "unreadable": false,
+          "reading": "ФЕВРАЛЯ",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "independent_verifier-e9b55941a2",
+          "ned": 0.0,
+          "unreadable": false,
+          "reading": "ФЕВРАЛЯ",
+          "route": "independent_verifier",
+          "localized": true
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.0,
+        "best_channel_id": "independent_verifier-e9b55941a2",
+        "channels": 2,
+        "regret": {
+          "region_crop-a91b6f2cec": 0.0,
+          "independent_verifier-e9b55941a2": 0.0
+        }
+      },
+      "pipeline_seconds": 20.56
+    },
+    {
+      "fixture": "russian-billboard",
+      "region_id": "russian-billboard#2",
+      "stratum_declared": "cyrillic",
+      "stratum_script": "latin",
+      "split": "dev",
+      "text": "Za",
+      "bbox": [
+        347,
+        109,
+        35,
+        26
+      ],
+      "vertical": false,
+      "best_iou": 0.581,
+      "localized": true,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-68fcd37132",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "2А",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "independent_verifier-38a1b4bdb2",
+          "ned": 0.5,
+          "unreadable": false,
+          "reading": "ZA",
+          "route": "independent_verifier",
+          "localized": true
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.5,
+        "best_channel_id": "independent_verifier-38a1b4bdb2",
+        "channels": 2,
+        "regret": {
+          "region_crop-68fcd37132": 0.5,
+          "independent_verifier-38a1b4bdb2": 0.0
+        }
+      },
+      "pipeline_seconds": 20.56
+    },
+    {
+      "fixture": "russian-billboard",
+      "region_id": "russian-billboard#3",
+      "stratum_declared": "cyrillic",
+      "stratum_script": "cyrillic",
+      "split": "dev",
+      "text": "ПОБЕДУ!",
+      "bbox": [
+        385,
+        92,
+        129,
+        46
+      ],
+      "vertical": false,
+      "best_iou": 1.0,
+      "localized": true,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-6eefb9e6d9",
+          "ned": 0.363636,
+          "unreadable": false,
+          "reading": "ЧАШИПОБЕДУ!",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "independent_verifier-90c02ac427",
+          "ned": 0.0,
+          "unreadable": false,
+          "reading": "ПОБЕДУ!",
+          "route": "independent_verifier",
+          "localized": true
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.0,
+        "best_channel_id": "independent_verifier-90c02ac427",
+        "channels": 2,
+        "regret": {
+          "region_crop-6eefb9e6d9": 0.363636,
+          "independent_verifier-90c02ac427": 0.0
+        }
+      },
+      "pipeline_seconds": 20.56
+    },
+    {
+      "fixture": "russian-billboard",
+      "region_id": "russian-billboard#4",
+      "stratum_declared": "cyrillic",
+      "stratum_script": "latin",
+      "split": "dev",
+      "text": "Za",
+      "bbox": [
+        391,
+        133,
+        35,
+        26
+      ],
+      "vertical": false,
+      "best_iou": 1.0,
+      "localized": true,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-ef6533d81d",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "2А",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "detection_pass_1-8d2d1755d1",
+          "ned": 0.5,
+          "unreadable": false,
+          "reading": "ZA",
+          "route": "detection_pass_1",
+          "localized": true
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.5,
+        "best_channel_id": "detection_pass_1-8d2d1755d1",
+        "channels": 2,
+        "regret": {
+          "region_crop-ef6533d81d": 0.5,
+          "detection_pass_1-8d2d1755d1": 0.0
+        }
+      },
+      "pipeline_seconds": 20.56
+    },
+    {
+      "fixture": "russian-billboard",
+      "region_id": "russian-billboard#5",
+      "stratum_declared": "cyrillic",
+      "stratum_script": "cyrillic",
+      "split": "dev",
+      "text": "НАШИХ!",
+      "bbox": [
+        427,
+        115,
+        108,
+        41
+      ],
+      "vertical": false,
+      "best_iou": 1.0,
+      "localized": true,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-db1abc5e7f",
+          "ned": 0.615385,
+          "unreadable": false,
+          "reading": ")ЬЕн71лНАШИХЕ",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "independent_verifier-7062db2536",
+          "ned": 0.0,
+          "unreadable": false,
+          "reading": "НАШИХ!",
+          "route": "independent_verifier",
+          "localized": true
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.0,
+        "best_channel_id": "independent_verifier-7062db2536",
+        "channels": 2,
+        "regret": {
+          "region_crop-db1abc5e7f": 0.615385,
+          "independent_verifier-7062db2536": 0.0
+        }
+      },
+      "pipeline_seconds": 20.56
+    },
+    {
+      "fixture": "russian-billboard",
+      "region_id": "russian-billboard#6",
+      "stratum_declared": "cyrillic",
+      "stratum_script": "latin",
+      "split": "dev",
+      "text": "Za",
+      "bbox": [
+        361,
+        153,
+        37,
+        29
+      ],
+      "vertical": false,
+      "best_iou": 0.536,
+      "localized": true,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-f54be5e634",
+          "ned": 1.0,
+          "unreadable": true,
+          "reading": "24",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "detection_pass_2-04595aa86e",
+          "ned": 0.5,
+          "unreadable": false,
+          "reading": "ZA",
+          "route": "detection_pass_2",
+          "localized": true
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.5,
+        "best_channel_id": "detection_pass_2-04595aa86e",
+        "channels": 2,
+        "regret": {
+          "region_crop-f54be5e634": 0.5,
+          "detection_pass_2-04595aa86e": 0.0
+        }
+      },
+      "pipeline_seconds": 20.56
+    },
+    {
+      "fixture": "russian-billboard",
+      "region_id": "russian-billboard#7",
+      "stratum_declared": "cyrillic",
+      "stratum_script": "cyrillic",
+      "split": "dev",
+      "text": "ПРАВДУ!",
+      "bbox": [
+        399,
+        144,
+        114,
+        41
+      ],
+      "vertical": false,
+      "best_iou": 1.0,
+      "localized": true,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-9d3b0dc752",
+          "ned": 0.363636,
+          "unreadable": false,
+          "reading": "2им ПРАВДУ!",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "detection_pass_1-3adedefe6b",
+          "ned": 0.0,
+          "unreadable": false,
+          "reading": "ПРАВДУ!",
+          "route": "detection_pass_1",
+          "localized": true
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.0,
+        "best_channel_id": "detection_pass_1-3adedefe6b",
+        "channels": 2,
+        "regret": {
+          "region_crop-9d3b0dc752": 0.363636,
+          "detection_pass_1-3adedefe6b": 0.0
+        }
+      },
+      "pipeline_seconds": 20.56
+    },
+    {
+      "fixture": "russian-billboard-2",
+      "region_id": "russian-billboard-2#0",
+      "stratum_declared": "cyrillic",
+      "stratum_script": "cyrillic",
+      "split": "holdout",
+      "text": "В БУДУЩЕЕ",
+      "bbox": [
+        79,
+        57,
+        125,
+        30
+      ],
+      "vertical": false,
+      "best_iou": 0.862,
+      "localized": true,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-7db210a5af",
+          "ned": 0.111111,
+          "unreadable": false,
+          "reading": "ВБУДУЩЕЕ",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "independent_verifier-4e9bb8a3e4",
+          "ned": 0.0,
+          "unreadable": false,
+          "reading": "В БУДУЩЕЕ",
+          "route": "independent_verifier",
+          "localized": true
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.0,
+        "best_channel_id": "independent_verifier-4e9bb8a3e4",
+        "channels": 2,
+        "regret": {
+          "region_crop-7db210a5af": 0.111111,
+          "independent_verifier-4e9bb8a3e4": 0.0
+        }
+      },
+      "pipeline_seconds": 10.8
+    },
+    {
+      "fixture": "russian-billboard-2",
+      "region_id": "russian-billboard-2#1",
+      "stratum_declared": "cyrillic",
+      "stratum_script": "cyrillic",
+      "split": "holdout",
+      "text": "ВМЕСТЕ С РОССИЕЙ!",
+      "bbox": [
+        76,
+        79,
+        222,
+        31
+      ],
+      "vertical": false,
+      "best_iou": 0.827,
+      "localized": true,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-4381f018aa",
+          "ned": 0.111111,
+          "unreadable": false,
+          "reading": "|ВМЕСТЕ € РОССИЕЙ!",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "detection_pass_3-b0dbced4f7",
+          "ned": 0.0,
+          "unreadable": false,
+          "reading": "ВМЕСТЕ С РОССИЕЙ!",
+          "route": "detection_pass_3",
+          "localized": true
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.0,
+        "best_channel_id": "detection_pass_3-b0dbced4f7",
+        "channels": 2,
+        "regret": {
+          "region_crop-4381f018aa": 0.111111,
+          "detection_pass_3-b0dbced4f7": 0.0
+        }
+      },
+      "pipeline_seconds": 10.8
+    },
+    {
+      "fixture": "russian-billboard-2",
+      "region_id": "russian-billboard-2#2",
+      "stratum_declared": "cyrillic",
+      "stratum_script": "latin",
+      "split": "holdout",
+      "text": "Valentina Ursu (RFE/RL)",
+      "bbox": [
+        291,
+        203,
+        117,
+        27
+      ],
+      "vertical": false,
+      "best_iou": 0.577,
+      "localized": true,
+      "measurements": [
+        {
+          "probe": "region_crop",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "region_crop-4e1f29c574",
+          "ned": 0.826087,
+          "unreadable": true,
+          "reading": "Фа:^па >г:ш (@-Е@Ц)",
+          "route": "region_crop",
+          "localized": true
+        },
+        {
+          "probe": "full_pipeline",
+          "schema": "tofu-channel-v1",
+          "engine": "easyocr",
+          "channel_id": "detection_pass_3-c2aa5baafd",
+          "ned": 0.043478,
+          "unreadable": false,
+          "reading": "Valentina Ursu (RFEIRL)",
+          "route": "detection_pass_3",
+          "localized": true
+        }
+      ],
+      "envelope": {
+        "schema": "tofu-channel-v1",
+        "oracle": true,
+        "context": "benchmark",
+        "best_ned": 0.043478,
+        "best_channel_id": "detection_pass_3-c2aa5baafd",
+        "channels": 2,
+        "regret": {
+          "region_crop-4e1f29c574": 0.782609,
+          "detection_pass_3-c2aa5baafd": 0.0
+        }
+      },
+      "pipeline_seconds": 10.8
+    }
+  ]
+}
