@@ -37,12 +37,17 @@ from tofu.core.types import (
     StyleProfil, BgProfil, CharactText, SceneRegion, SemanticTextUnit, GarnishProfile, GarnishRegion,
     ReconstructionProfile,
 )
+from tofu.core.vision2 import (
+    ArtifactRevision, CandidateLedger, CandidateProposal, FusionEvidence,
+    GlyphCandidateEvidence, GlyphMatchEvidence, Vision2Decision, Vision2State,
+)
 
 ## Fields this serializer persists that NO frontend payload is expected to
 ## carry.  Everything here is computed or curated server-side.
 SERVER_OWNED_FIELDS = (
     "guided_blocks",      ## Guided Blocks + their detection_assessment
     "candidate_lineage",  ## okara's append-only proposal DAG
+    "vision2_candidate_ledger",
 )
 
 ## Per-INSTANCE fields with the same problem, listed for the same reason.
@@ -55,7 +60,128 @@ SERVER_OWNED_INSTANCE_FIELDS = (
     "review_features",       ## layers/ticket.py's per-candidate ticket
     "lineage_candidate_id",  ## the join from a shipped region to its okara node
     "evidence_survival",     ## layers/decant.py's survival verdict
+    "channel",               ## layers/flight.py's measurement-channel record
+    "channel_id",            ## its identifier, denormalized for joins
+    "glyph_match_evidence",
+    "fusion_evidence",
+    "surface_observation",
+    "vision2_decision_history",
 )
+
+
+def _artifact_revision_from_dict(data: Any) -> Optional[ArtifactRevision]:
+    if not isinstance(data, dict) or not data.get("feature_schema"):
+        return None
+    return ArtifactRevision(
+        feature_schema=str(data["feature_schema"]), model=data.get("model"),
+        calibration=data.get("calibration"), corpus=data.get("corpus"),
+        candidate_pool=data.get("candidate_pool"),
+    )
+
+
+def _vision2_decision(value: Any) -> Vision2Decision:
+    if isinstance(value, Vision2Decision):
+        return value
+    try:
+        return Vision2Decision(str(value))
+    except ValueError:
+        return Vision2Decision.NOT_EVALUATED
+
+
+def _glyph_match_from_dict(data: Any) -> Optional[GlyphMatchEvidence]:
+    if not isinstance(data, dict) or not data.get("schema"):
+        return None
+    candidates = []
+    for item in data.get("candidates") or []:
+        if not isinstance(item, dict) or "text" not in item:
+            continue
+        candidates.append(GlyphCandidateEvidence(
+            text=str(item["text"]), rank=int(item.get("rank", 0)),
+            support=float(item.get("support", 0.0)), source=str(item.get("source", "unknown")),
+            margin=item.get("margin"), contradiction=item.get("contradiction"),
+            probability=item.get("probability"),
+            lineage_candidate_id=item.get("lineage_candidate_id"),
+            features=dict(item.get("features") or {}),
+        ))
+    return GlyphMatchEvidence(
+        schema=str(data["schema"]), decision=_vision2_decision(data.get("decision")),
+        candidates=candidates, evidence_survival_state=data.get("evidence_survival_state"),
+        calibrated_probability=data.get("calibrated_probability"),
+        supported_domain=bool(data.get("supported_domain", False)),
+        reason_codes=[str(code) for code in data.get("reason_codes") or []],
+        revisions=_artifact_revision_from_dict(data.get("revisions")),
+        lineage_candidate_id=data.get("lineage_candidate_id"),
+        diagnostics=dict(data.get("diagnostics") or {}),
+    )
+
+
+def _fusion_from_dict(data: Any) -> Optional[FusionEvidence]:
+    if not isinstance(data, dict) or not data.get("schema"):
+        return None
+    return FusionEvidence(
+        schema=str(data["schema"]), decision=_vision2_decision(data.get("decision")),
+        calibrated_probability=data.get("calibrated_probability"),
+        reconsideration_count=int(data.get("reconsideration_count", 0)),
+        reason_codes=[str(code) for code in data.get("reason_codes") or []],
+        revisions=_artifact_revision_from_dict(data.get("revisions")),
+        feature_values=dict(data.get("feature_values") or {}),
+        missing_features=[str(name) for name in data.get("missing_features") or []],
+        lineage_candidate_id=data.get("lineage_candidate_id"),
+        reconsideration_candidate_id=data.get("reconsideration_candidate_id"),
+        recommendation_revision=data.get("recommendation_revision"),
+    )
+
+
+def _typed_evidence_to_dict(value: Any) -> Optional[dict]:
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        return dict(value)
+    return asdict(value)
+
+
+def _candidate_ledger_from_dict(data: Any) -> Optional[CandidateLedger]:
+    if not isinstance(data, dict) or not data.get("schema"):
+        return None
+    raw_state = data.get("state", "off")
+    if isinstance(raw_state, Vision2State):
+        state = raw_state
+    else:
+        try:
+            state = Vision2State(str(raw_state))
+        except ValueError:
+            state = Vision2State.OFF
+    proposals = []
+    for item in data.get("proposals") or []:
+        if not isinstance(item, dict) or not item.get("candidate_id"):
+            continue
+        geometry = item.get("geometry") or (0, 0, 0, 0)
+        if len(geometry) != 4:
+            continue
+        proposals.append(CandidateProposal(
+            candidate_id=str(item["candidate_id"]),
+            source_stage=str(item.get("source_stage", "unknown")),
+            geometry=tuple(int(value) for value in geometry),
+            text=item.get("text"), confidence=item.get("confidence"),
+            suppression_state=str(item.get("suppression_state", "active")),
+            rejection_reason=item.get("rejection_reason"),
+            parent_candidate_ids=[str(value) for value in item.get("parent_candidate_ids") or []],
+            scene_eligibility=(
+                dict(item["scene_eligibility"])
+                if isinstance(item.get("scene_eligibility"), dict) else None
+            ),
+            final_eligible=bool(item.get("final_eligible", False)),
+            glyph_match_evidence=_glyph_match_from_dict(item.get("glyph_match_evidence")),
+        ))
+    return CandidateLedger(
+        schema=str(data["schema"]), state=state, proposals=proposals,
+        total_candidates=int(data.get("total_candidates", len(proposals))),
+        retained_candidates=int(data.get("retained_candidates", len(proposals))),
+        omitted_candidates=int(data.get("omitted_candidates", 0)),
+        source_counts={str(key): int(value) for key, value in (data.get("source_counts") or {}).items()},
+        suppression_counts={str(key): int(value) for key, value in (data.get("suppression_counts") or {}).items()},
+        max_candidates=int(data.get("max_candidates", 0)),
+    )
 
 
 def _garnish_to_dict(profile: Optional[GarnishProfile]) -> Optional[dict]:
@@ -119,6 +245,24 @@ def merge_server_owned(
     for field_name in SERVER_OWNED_FIELDS:
         if field_name not in merged:
             merged[field_name] = stored_data.get(field_name)
+    stored_instances = {
+        item.get("id"): item for item in stored_data.get("instances", [])
+        if isinstance(item, dict) and item.get("id") is not None
+    }
+    incoming_instances = merged.get("instances")
+    if isinstance(incoming_instances, list):
+        protected_instances = []
+        for item in incoming_instances:
+            if not isinstance(item, dict):
+                protected_instances.append(item)
+                continue
+            protected = dict(item)
+            previous = stored_instances.get(item.get("id"), {})
+            for field_name in SERVER_OWNED_INSTANCE_FIELDS:
+                if field_name not in protected and field_name in previous:
+                    protected[field_name] = previous[field_name]
+            protected_instances.append(protected)
+        merged["instances"] = protected_instances
     return merged
 
 
@@ -185,6 +329,9 @@ def _manifest_to_dict(m: TextManifest) -> dict:
         ## values (`CandidateGraph.to_dict`), and re-shaping it here would
         ## give the append-only record a second, divergent schema.
         "candidate_lineage": getattr(m, "candidate_lineage", None),
+        "vision2_candidate_ledger": _typed_evidence_to_dict(
+            getattr(m, "vision2_candidate_ledger", None)
+        ),
         "asset_class": m.asset_class,
         "asset_classification": m.asset_classification,
         "asset_type": m.asset_type.value if hasattr(m.asset_type, "value") else str(m.asset_type),
@@ -317,6 +464,7 @@ def _region_to_dict(r: SceneRegion) -> dict:
         "material": r.material,
         "material_evidence": r.material_evidence,
         "garnish_profile": _garnish_to_dict(r.garnish_profile),
+        "surface_observation": r.surface_observation,
     }
 
 
@@ -336,6 +484,7 @@ def _dict_to_region(rdict: dict) -> SceneRegion:
         material=rdict.get("material"),
         material_evidence=rdict.get("material_evidence"),
         garnish_profile=_garnish_from_dict(rdict.get("garnish_profile")),
+        surface_observation=rdict.get("surface_observation"),
     )
 
 
@@ -383,6 +532,19 @@ def _inst_to_dict(inst: InstText) -> dict:
         "review_features": inst.review_features,
         "lineage_candidate_id": inst.lineage_candidate_id,
         "evidence_survival": getattr(inst, "evidence_survival", None),
+        ## Which measurement channel produced this reading. Persisted because
+        ## every NED, survival state and candidate distribution derived from
+        ## this region is a property of the image-channel pair; a manifest
+        ## that drops it puts the region back into the single-channel fiction.
+        "channel": getattr(inst, "channel", None),
+        "channel_id": getattr(inst, "channel_id", None),
+        "glyph_match_evidence": (
+            _typed_evidence_to_dict(inst.glyph_match_evidence)
+        ),
+        "fusion_evidence": (
+            _typed_evidence_to_dict(inst.fusion_evidence)
+        ),
+        "vision2_decision_history": inst.vision2_decision_history,
         ## Video identity. Dropping these silently un-tracked every instance
         ## on reload.
         "source_asset_id": inst.source_asset_id,
@@ -396,6 +558,7 @@ def _inst_to_dict(inst: InstText) -> dict:
             if inst.reconstruction_profile is not None else None
         ),
         "material_evidence": inst.material_evidence,
+        "surface_observation": inst.surface_observation,
         "font_match": inst.font_match,
         "resolved_font_family": inst.resolved_font_family,
         "resolved_synthetic_italic": inst.resolved_synthetic_italic,
@@ -578,6 +741,11 @@ def _dict_to_manifest(data: dict) -> TextManifest:
             review_features=idict.get("review_features"),
             lineage_candidate_id=idict.get("lineage_candidate_id"),
             evidence_survival=idict.get("evidence_survival"),
+            channel=idict.get("channel"),
+            channel_id=idict.get("channel_id"),
+            glyph_match_evidence=_glyph_match_from_dict(idict.get("glyph_match_evidence")),
+            fusion_evidence=_fusion_from_dict(idict.get("fusion_evidence")),
+            vision2_decision_history=list(idict.get("vision2_decision_history") or []),
             source_asset_id=idict.get("source_asset_id"),
             target_asset_id=idict.get("target_asset_id"),
             frame_index=idict.get("frame_index"),
@@ -591,6 +759,7 @@ def _dict_to_manifest(data: dict) -> TextManifest:
                 if isinstance(idict.get("reconstruction_profile"), dict) else None
             ),
             material_evidence=idict.get("material_evidence"),
+            surface_observation=idict.get("surface_observation"),
             garnish_override=_garnish_from_dict(idict.get("garnish_override")),
             garnish_enabled=idict.get("garnish_enabled"),
             garnish_scope=idict.get("garnish_scope", "whole_selection"),
@@ -622,6 +791,9 @@ def _dict_to_manifest(data: dict) -> TextManifest:
         semantic_units=[_dict_to_semantic_unit(u) for u in data.get("semantic_units", [])],
         guided_blocks=[_dict_to_guided_block(b) for b in data.get("guided_blocks", [])],
         candidate_lineage=data.get("candidate_lineage"),
+        vision2_candidate_ledger=_candidate_ledger_from_dict(
+            data.get("vision2_candidate_ledger")
+        ),
         asset_class=data.get("asset_class"),
         asset_classification=data.get("asset_classification"),
         asset_type=atype,

@@ -17,6 +17,11 @@ from enum import Enum
 from collections import defaultdict
 from pathlib import Path
 
+from tofu.core.vision2 import (
+    CandidateLedger, EvidenceSurvival, FusionEvidence, GlyphMatchEvidence,
+    SurfaceObservationRef, Vision2Config,
+)
+
 if TYPE_CHECKING:
     import numpy as np
     from PIL import Image as PILImage
@@ -157,6 +162,7 @@ class SceneRegion: ## candidate text-bearing surface from scene's pre-pass
     material: Optional[str] = None         ## user-facing descriptor: "brick / masonry" | "painted sign" | "textured surface"
     material_evidence: Optional[Dict[str, Any]] = None
     garnish_profile: Optional[GarnishProfile] = None
+    surface_observation: Optional[SurfaceObservationRef] = None
 
 @dataclass(frozen=True)
 class OCRAssessmentPolicy:
@@ -193,6 +199,10 @@ class OCRObservation:
     pass_tag: str
     text: str
     raw_confidence: float
+    ## `pass_tag` names the pass in this scorer's own vocabulary;
+    ## `channel_id` names it in the registered one (layers/flight.py), so two
+    ## observations can be compared across runs and across reports.
+    channel_id: Optional[str] = None
     calibrated_confidence: Optional[float] = None
     bbox: BBox = field(default_factory=lambda: BBox(0, 0, 0, 0))
     polygon: Optional[Polygon] = None
@@ -269,7 +279,18 @@ class InstText:
     ## {state, reasons, measured, schema}. Deliberately NOT a score --
     ## "which candidate wins" and "is there enough here to choose at all"
     ## are different questions, and a ranking cannot tell them apart.
-    evidence_survival: Optional[Dict[str, Any]] = None
+    evidence_survival: Optional[EvidenceSurvival] = None
+    ## Which measurement channel produced this region's reading
+    ## (layers/flight.py): {engine, route, view, transforms, merged, crop}.
+    ## Every number derived from `text` is a property of the image-channel
+    ## pair, not of the scene, and a NED reported without this field is the
+    ## defect that layer exists to fix. Descriptive only: naming a channel
+    ## does not rank it.
+    channel: Optional[Dict[str, Any]] = None
+    channel_id: Optional[str] = None
+    glyph_match_evidence: Optional[GlyphMatchEvidence] = None
+    fusion_evidence: Optional[FusionEvidence] = None
+    vision2_decision_history: List[Dict[str, Any]] = field(default_factory=list)
     source_override: Optional[Dict[str, Any]] = None  ## durable applied-source attribution: {kind, text, icon, color, resource}; independent of the correction scratch slot
     recognition_history: Optional[List[Dict[str, Any]]] = None  ## immutable audit trail of engine candidates and accepted/rejected corrections
     ## The okara candidate this region was built from. In-memory only (not
@@ -283,6 +304,7 @@ class InstText:
     repair_provenance: Optional[Dict[str, Any]] = None  ## cleanse provider, confidence gate, fallback and review evidence
     reconstruction_profile: Optional[ReconstructionProfile] = None
     material_evidence: Optional[Dict[str, Any]] = None
+    surface_observation: Optional[SurfaceObservationRef] = None
     font_match: Optional[Dict[str, Any]] = None  ## evidence-gated visual font identification + installed/commercial alternatives; never silently overrides a user font choice
     semantic_assignment: Optional[Dict[str, Any]] = None  ## Basil's explicit target-span-to-immutable-region assignment provenance
     garnish_override: Optional[GarnishProfile] = None
@@ -486,6 +508,7 @@ class TextManifest: ## loc task manifest via cicerone
     ## and ships at 0.215 inside a box 4.65x too large, and without lineage
     ## the only record of the good box is gone.
     candidate_lineage: Optional[Dict[str, Any]] = None
+    vision2_candidate_ledger: Optional[CandidateLedger] = None
     prcssng_time: Optional[float] = None
     asset_type: AssetType = AssetType.IMAGE
     frame_count: int = 1                  ## static image == 1; video == n frames
@@ -569,6 +592,7 @@ class PipelineCfg:
     scene_model_path: Optional[str] = None ## checkpoint path for model backends (e.g. SAM)
     ocr_assessment: OCRAssessmentPolicy = field(default_factory=OCRAssessmentPolicy)
     inpaint_assessment: InpaintAssessmentPolicy = field(default_factory=InpaintAssessmentPolicy)
+    vision2: Vision2Config = field(default_factory=Vision2Config)
 
 @dataclass
 class PipelineResult:

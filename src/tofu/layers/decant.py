@@ -48,7 +48,9 @@ that cost very different amounts:
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any
+
+from tofu.core.vision2 import EvidenceSurvival, SurvivalState
 
 ABSENT, WEAK, PARTIAL, PRESENT, UNKNOWN = (
     "absent", "weak", "partial", "present", "unknown",
@@ -81,9 +83,10 @@ LOW_CONFIDENCE = 0.3
 ## however the rest is tuned.
 NO_ACTIVATION = 0.10
 PROPOSAL_FLOOR = 0.20
+POLICY_REVISION = "decant-survival-v2"
 
 
-def _glyph_height(inst: Any) -> Optional[float]:
+def _glyph_height(inst: Any) -> float | None:
     """Best available estimate of glyph height, in source pixels.
 
     Prefers the recognizer's own estimate over the box height: a line box
@@ -92,13 +95,13 @@ def _glyph_height(inst: Any) -> Optional[float]:
     """
     quality = getattr(inst, "ocr_quality", None) or {}
     estimated = quality.get("estimated_glyph_height")
-    if isinstance(estimated, (int, float)) and estimated > 0:
+    if isinstance(estimated, int | float) and estimated > 0:
         return float(estimated)
     box = getattr(inst, "bounding_box", None)
     return float(box.height) if box is not None and box.height else None
 
 
-def _craft_peak(inst: Any) -> Optional[float]:
+def _craft_peak(inst: Any) -> float | None:
     """The detector's own response at this region, if a ticket recorded it.
 
     Opt-in (`TOFU_LOG_CRAFT_SCORES`), so it is usually absent -- and absent
@@ -106,10 +109,10 @@ def _craft_peak(inst: Any) -> Optional[float]:
     """
     ticket = getattr(inst, "review_features", None) or {}
     peak = ticket.get("craft_region")
-    return float(peak) if isinstance(peak, (int, float)) else None
+    return float(peak) if isinstance(peak, int | float) else None
 
 
-def _confidence_reason(inst: Any) -> Optional[str]:
+def _confidence_reason(inst: Any) -> str | None:
     """Low confidence as a REASON, never as a verdict.
 
     On CJK the recognizer's confidence sits near zero even on correct reads,
@@ -122,14 +125,56 @@ def _confidence_reason(inst: Any) -> Optional[str]:
     return "low_recognition_confidence" if confidence < LOW_CONFIDENCE else None
 
 
-def survival(inst: Any) -> Dict[str, Any]:
-    """What survives here, and which measurement says so.
+def _segmentation_measurements(inst: Any) -> dict[str, Any]:
+    mask = getattr(inst, "segmentation_mask", None)
+    quality = getattr(inst, "ocr_quality", None) or {}
+    ticket = getattr(inst, "review_features", None) or {}
+    raw_components = quality.get("raw_component_count")
+    base_components = quality.get("base_component_count")
+    component_stability = None
+    if isinstance(raw_components, int) and isinstance(base_components, int):
+        component_stability = 1.0 - abs(raw_components - base_components) / max(
+            1, raw_components, base_components,
+        )
+    return {
+        "segmentation_available": mask is not None,
+        "segmentation_confidence": (
+            round(float(mask.confidence), 4)
+            if mask is not None and isinstance(mask.confidence, int | float) else None
+        ),
+        "component_stability": (
+            round(component_stability, 4) if component_stability is not None else None
+        ),
+        "transformation_stability": ticket.get("transformation_stability"),
+        "orientation_confidence": ticket.get("orientation_confidence"),
+        "usable_glyph_coverage": quality.get("usable_glyph_coverage"),
+    }
+
+
+def survival(inst: Any, *, strict: bool = False) -> EvidenceSurvival:
+    """What survives here, which measurement says so, and through which channel.
+
+    The verdict carries the channel that produced the read (layers/flight.py)
+    because survival is a property of the image-channel pair: evidence that
+    does not survive a crop may survive the full pipeline, and a state
+    recorded without its channel cannot tell the two apart.
+
+    Stamped here rather than threaded through every return path below: the
+    channel describes the observation, not the branch that judged it.
+    """
+    verdict = _survival_state(inst, strict=strict)
+    verdict["channel_id"] = getattr(inst, "channel_id", None)
+    return verdict
+
+
+def _survival_state(inst: Any, *, strict: bool = False) -> EvidenceSurvival:
+    """The state itself.
 
     Order of decision is from the least recoverable failure to the most, so
     the state names the cheapest remedy that could still apply.
     """
-    reasons: List[str] = []
-    measured: Dict[str, Any] = {}
+    reasons: list[str] = []
+    measured: dict[str, Any] = {}
 
     peak = _craft_peak(inst)
     height = _glyph_height(inst)
@@ -140,6 +185,7 @@ def survival(inst: Any) -> Dict[str, Any]:
     measured["glyph_height_px"] = round(height, 1) if height is not None else None
     measured["ocr_quality_state"] = quality.get("state")
     measured["has_text"] = bool(text)
+    measured.update(_segmentation_measurements(inst))
 
     ## Detector evidence first, when it was recorded. It is the only signal
     ## that separates "blind to this" from "saw it and lost it downstream",
@@ -157,6 +203,10 @@ def survival(inst: Any) -> Dict[str, Any]:
     if not text:
         reasons.append("no_text_recovered")
         return _verdict(ABSENT if peak is None else WEAK, reasons, measured)
+
+    if strict and not measured["segmentation_available"]:
+        reasons.append("segmentation_not_measured")
+        return _verdict(UNKNOWN, reasons, measured)
 
     if height is not None and height < LEGIBLE_GLYPH_PX:
         reasons.append("glyph_height_below_legible")
@@ -188,7 +238,9 @@ def survival(inst: Any) -> Dict[str, Any]:
     return _verdict(PRESENT, reasons, measured)
 
 
-def _verdict(state: str, reasons: List[str], measured: Dict[str, Any]) -> Dict[str, Any]:
+def _verdict(
+    state: SurvivalState, reasons: list[str], measured: dict[str, Any],
+) -> EvidenceSurvival:
     return {
         "state": state,
         "reasons": reasons,
@@ -196,10 +248,15 @@ def _verdict(state: str, reasons: List[str], measured: Dict[str, Any]) -> Dict[s
         ## No scalar. See the module docstring: weighting these into a score
         ## is the ranker's job, and the ranker cannot be priced yet.
         "schema": 1,
+        "policy_revision": POLICY_REVISION,
+        "decision_eligible": False,
+        ## Filled by `survival`, which knows the observation this verdict
+        ## describes. Present here so the record is never shaped-incomplete.
+        "channel_id": None,
     }
 
 
-def assess_manifest(instances: Any) -> int:
+def assess_manifest(instances: Any, *, strict: bool = False) -> int:
     """Attach a survival verdict to every region. Changes nothing else.
 
     Returns the number written. Like `ticket.write_tickets`, this never
@@ -208,6 +265,6 @@ def assess_manifest(instances: Any) -> int:
     """
     written = 0
     for inst in instances or []:
-        inst.evidence_survival = survival(inst)
+        inst.evidence_survival = survival(inst, strict=strict)
         written += 1
     return written

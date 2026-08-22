@@ -45,29 +45,29 @@ import logging
 import os
 import re
 import time
-import uuid
 import unicodedata
+import uuid
 from abc import ABC, abstractmethod
-from pathlib import Path
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, FrozenSet, Iterator, List, Optional, Sequence, Tuple
+from pathlib import Path
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
 from tofu.core.types import (
-    ImageLike,
-    TextManifest,
-    InstText,
-    BBox,
-    Mask,
-    Polygon,
     AssetInfo,
-    SceneRegion,
-    infer_asset_info,
+    BBox,
+    ImageLike,
+    InstText,
+    Mask,
     OCRAssessmentPolicy,
+    Polygon,
+    SceneRegion,
+    TextManifest,
+    infer_asset_info,
 )
 from tofu.utils.locale_typography import apply_punctuation_spacing, resolve_locale
-
 
 _CONTEXT_CLASSES = {"sign", "poster", "billboard", "product_label", "ui_graphic"}
 _QUANTITY_PATTERN = re.compile(
@@ -76,7 +76,7 @@ _QUANTITY_PATTERN = re.compile(
 )
 
 
-def classify_asset_context(manifest: TextManifest) -> Dict[str, Any]:
+def classify_asset_context(manifest: TextManifest) -> dict[str, Any]:
     """Classify the communication format from Cicerone's text inventory.
 
     This is deliberately lightweight and evidence-bearing. It is a context
@@ -161,7 +161,7 @@ def classify_asset_context(manifest: TextManifest) -> Dict[str, Any]:
 
 # tofu language codes → easyocr language codes (identity where omitted).
 # keys are lowercase: lookups go through _engine_lang(), which lowercases.
-EASYOCR_LANG_MAP: Dict[str, str] = {
+EASYOCR_LANG_MAP: dict[str, str] = {
     "zh-cn": "ch_sim", "zh-sg": "ch_sim",
     "zh-tw": "ch_tra", "zh-hk": "ch_tra", "zh-mo": "ch_tra",
     "sr-latn": "rs_latin", "sr-cyrl": "rs_cyrillic",
@@ -171,7 +171,7 @@ EASYOCR_LANG_MAP: Dict[str, str] = {
 }
 
 # easyocr language codes → tofu language codes (identity where omitted)
-EASYOCR_TO_TOFU: Dict[str, str] = {
+EASYOCR_TO_TOFU: dict[str, str] = {
     "ch_sim": "zh-cn", "ch_tra": "zh-tw",
     "rs_latin": "sr-latn", "rs_cyrillic": "sr-cyrl",
 }
@@ -180,7 +180,7 @@ EASYOCR_TO_TOFU: Dict[str, str] = {
 EASYOCR_EXCLUSIVE = {"ja", "ch_sim", "ch_tra", "ko", "th"}
 
 
-def lang_tag_prefixes(lang: str) -> List[str]:
+def lang_tag_prefixes(lang: str) -> list[str]:
     """A language tag and its shorter forms, longest first, lowercased.
 
     'sr-Latn-RS' → ['sr-latn-rs', 'sr-latn', 'sr'];  'ja-JP' → ['ja-jp', 'ja'].
@@ -194,7 +194,7 @@ def base_lang(lang: str) -> str:
     return lang_tag_prefixes(lang)[-1] if lang else ""
 
 
-def _engine_lang(lang: str, table: Dict[str, str]) -> str:
+def _engine_lang(lang: str, table: dict[str, str]) -> str:
     """Resolve a language tag through an engine's code table.
 
     The wizard emits full BCP-47 locales ('ja-JP', 'zh-CN', 'sr-Latn-RS')
@@ -220,7 +220,7 @@ def _from_easyocr_lang(lang: str) -> str:
     return EASYOCR_TO_TOFU.get(lang, lang)
 
 
-def _det_lang_from_engine(det: "RawDetection", engine: "OCRBackend") -> Optional[str]:
+def _det_lang_from_engine(det: "RawDetection", engine: "OCRBackend") -> str | None:
     """map a detection's language field to a tofu language code,
     handling both EasyOCR and PaddleOCR backends."""
     if not det.language:
@@ -230,7 +230,7 @@ def _det_lang_from_engine(det: "RawDetection", engine: "OCRBackend") -> Optional
     return _from_easyocr_lang(det.language)
 
 
-def expand_langset(langs: Sequence[str]) -> Tuple[str, ...]:
+def expand_langset(langs: Sequence[str]) -> tuple[str, ...]:
     """build a valid easyocr language set from source-language hints.
 
     easyocr constraint: ja/ch_sim/ch_tra/ko/th each combine only with
@@ -251,8 +251,8 @@ class RawDetection:
     polygon: Polygon
     text: str
     confidence: float
-    language: Optional[str] = None
-    provenance: Optional[List[Dict[str, Any]]] = None
+    language: str | None = None
+    provenance: list[dict[str, Any]] | None = None
     ## The okara node this detection currently corresponds to, stamped when
     ## it is recorded. Carried on the detection rather than looked up by
     ## geometry because geometry is exactly what the transforms change: a
@@ -260,7 +260,7 @@ class RawDetection:
     ## lineage from final geometry has produced phantom defects here before.
     ## A transform that produces a NEW detection must record a node and
     ## re-stamp this, or the chain silently ends at its input.
-    candidate_id: Optional[str] = None
+    candidate_id: str | None = None
 
 
 def tag_detection_pass(
@@ -268,14 +268,14 @@ def tag_detection_pass(
     *,
     engine: "OCRBackend",
     pass_number: int,
-    text_threshold: Optional[float] = None,
-    low_text: Optional[float] = None,
-) -> List[RawDetection]:
+    text_threshold: float | None = None,
+    low_text: float | None = None,
+) -> list[RawDetection]:
     """Attach reproducible detector-pass evidence to raw OCR candidates."""
     engine_name = engine.__class__.__name__.removesuffix("Backend").lower()
     languages = list(getattr(engine, "languages", ()) or ())
     for det in detections:
-        entry: Dict[str, Any] = {
+        entry: dict[str, Any] = {
             "stage": "detection_pass",
             "engine": engine_name,
             "pass": pass_number,
@@ -292,7 +292,7 @@ def tag_detection_pass(
     return list(detections)
 
 
-def _reading_order_detections(detections: Sequence[RawDetection]) -> List[RawDetection]:
+def _reading_order_detections(detections: Sequence[RawDetection]) -> list[RawDetection]:
     """Order horizontal text by visual lines rather than raw top edges.
 
     Detection polygons vary by a few pixels even for words sharing one
@@ -323,7 +323,7 @@ def _reading_order_detections(detections: Sequence[RawDetection]) -> List[RawDet
     heights = sorted(r[4] for r in horizontal)
     median_height = heights[len(heights) // 2]
     tolerance = max(4.0, median_height * .42)
-    lines: List[Dict[str, Any]] = []
+    lines: list[dict[str, Any]] = []
     for record in sorted(horizontal, key=lambda r: (r[2] + r[4] / 2, r[1])):
         center_y = record[2] + record[4] / 2
         line = next((candidate for candidate in lines
@@ -336,7 +336,7 @@ def _reading_order_detections(detections: Sequence[RawDetection]) -> List[RawDet
         line["center_y"] += (center_y - line["center_y"]) / count
         line["height"] += (record[4] - line["height"]) / count
 
-    ordered: List[RawDetection] = []
+    ordered: list[RawDetection] = []
     for line in sorted(lines, key=lambda candidate: candidate["center_y"]):
         ordered.extend(item[0] for item in sorted(line["items"], key=lambda r: (r[1], r[2])))
     # Independent vertical reads retain their column position after the
@@ -357,7 +357,7 @@ class OCRBackend(ABC):
         return "en"
 
     @abstractmethod
-    def detect(self, asset: ImageLike) -> List[RawDetection]:
+    def detect(self, asset: ImageLike) -> list[RawDetection]:
         """run detection + recognition; return raw polygon/text results."""
 
 
@@ -366,7 +366,7 @@ class NullBackend(OCRBackend):
 
     name = "null"
 
-    def detect(self, asset: ImageLike) -> List[RawDetection]:
+    def detect(self, asset: ImageLike) -> list[RawDetection]:
         return []
 
 
@@ -384,7 +384,7 @@ class EasyOCRBackend(OCRBackend):
     """
 
     name = "easyocr"
-    _readers: Dict[Tuple[Tuple[str, ...], bool], Any] = {}  # singleton cache
+    _readers: dict[tuple[tuple[str, ...], bool], Any] = {}  # singleton cache
 
     @property
     def primary_language(self) -> str:
@@ -400,7 +400,7 @@ class EasyOCRBackend(OCRBackend):
         canvas_size: int = 2560,
         mag_ratio: float = 1.0,
         batch_size: int = 4,
-        max_dim: Optional[int] = 2560,
+        max_dim: int | None = 2560,
         # box granularity (easyocr grouping stage):
         #   min_size 20→8: keep small distant signage instead of discarding
         #   add_margin 0.1→0.04: easyocr pads every box by 10% of height on
@@ -488,7 +488,7 @@ class EasyOCRBackend(OCRBackend):
                 )
         return self._readers[key]
 
-    def _prepare(self, asset: ImageLike) -> Tuple[Any, Tuple[float, float]]:
+    def _prepare(self, asset: ImageLike) -> tuple[Any, tuple[float, float]]:
         """pre-resize oversized image files; upscale undersized ones;
         pass everything else through.
 
@@ -530,9 +530,9 @@ class EasyOCRBackend(OCRBackend):
     def detect(
         self,
         asset: ImageLike,
-        text_threshold: Optional[float] = None,
-        low_text: Optional[float] = None,
-    ) -> List[RawDetection]:
+        text_threshold: float | None = None,
+        low_text: float | None = None,
+    ) -> list[RawDetection]:
         """run detection + recognition; thresholds can be overridden per
         call (multi-pass detection reuses one reader across passes)."""
         reader = self._reader()
@@ -576,11 +576,11 @@ class EasyOCRBackend(OCRBackend):
     def detect_in_regions(
         self,
         asset: ImageLike,
-        regions: List[BBox],
+        regions: list[BBox],
         pad: int = 4,
-        polygons: Optional[List[Optional[Polygon]]] = None,
-        allowlist: Optional[str] = None,
-    ) -> List[List[RawDetection]]:
+        polygons: list[Polygon | None] | None = None,
+        allowlist: str | None = None,
+    ) -> list[list[RawDetection]]:
         """detect + recognize inside bbox crops of the asset.
 
         faster and more accurate than full-image detection for small or
@@ -605,9 +605,9 @@ class EasyOCRBackend(OCRBackend):
         reader = self._reader()
         h, w = img.shape[:2]
         primary_lang = self.languages[0] if self.languages else None
-        out: List[List[RawDetection]] = []
+        out: list[list[RawDetection]] = []
         polys = polygons or [None] * len(regions)
-        for bbox, poly in zip(regions, polys):
+        for bbox, poly in zip(regions, polys, strict=False):
             x0, y0 = max(0, bbox.x - pad), max(0, bbox.y - pad)
             x1 = min(w, bbox.x + bbox.width + pad)
             y1 = min(h, bbox.y + bbox.height + pad)
@@ -694,7 +694,7 @@ class PaddleOCRBackend(OCRBackend):
     # tofu code -> paddleocr lang code (use latin for all western european
     # latin-script languages; PaddleOCR has per-language rec models but
     # the 'latin' model is a practical catch-all for mixed western text)
-    PADDLE_LANG_MAP: Dict[str, str] = {
+    PADDLE_LANG_MAP: dict[str, str] = {
         "en": "en",
         "es": "es", "fr": "fr", "de": "de", "it": "it", "pt": "pt",
         "ko": "korean",
@@ -710,7 +710,7 @@ class PaddleOCRBackend(OCRBackend):
         "sr-latn": "latin", "sr-cyrl": "cyrillic", "sr": "cyrillic",
     }
 
-    PADDLE_TO_TOFU: Dict[str, str] = {
+    PADDLE_TO_TOFU: dict[str, str] = {
         "ch": "zh-cn",
         "ch_tra": "zh-tw",
         "korean": "ko",
@@ -746,8 +746,8 @@ class PaddleOCRBackend(OCRBackend):
         use_textline_orientation: bool = True,
         det_db_thresh: float = 0.3,
         drop_score: float = 0.3,
-        det_box_thresh: Optional[float] = None,
-        unclip_ratio: Optional[float] = None,
+        det_box_thresh: float | None = None,
+        unclip_ratio: float | None = None,
     ):
         self.languages = tuple(_engine_lang(l, self.PADDLE_LANG_MAP) for l in languages)
         # PaddleOCR readers are one-language; use the primary language.
@@ -795,7 +795,7 @@ class PaddleOCRBackend(OCRBackend):
         (which must never happen in the app process)."""
         return cls._venv_python().is_file() and cls._worker_path().is_file()
 
-    def _resolve_image_path(self, asset: ImageLike) -> Tuple[Optional[str], Optional[str]]:
+    def _resolve_image_path(self, asset: ImageLike) -> tuple[str | None, str | None]:
         """asset -> (path, temp_path_to_clean_up_or_None).
 
         a path/str is used directly (no cross-venv object serialization
@@ -806,6 +806,7 @@ class PaddleOCRBackend(OCRBackend):
             return str(asset), None
         try:
             import tempfile
+
             from tofu.utils.imaging import load_rgb
             img = load_rgb(asset)
             if img is None:
@@ -819,7 +820,7 @@ class PaddleOCRBackend(OCRBackend):
         except Exception:
             return None, None
 
-    def _run_worker(self, request: Dict[str, Any]) -> Dict[str, Any]:
+    def _run_worker(self, request: dict[str, Any]) -> dict[str, Any]:
         import json
         import os
         import subprocess
@@ -836,7 +837,7 @@ class PaddleOCRBackend(OCRBackend):
                 timeout=self.WORKER_TIMEOUT_S,
             )
             try:
-                with open(out_path, "r", encoding="utf-8") as f:
+                with open(out_path, encoding="utf-8") as f:
                     result = json.load(f)
             except Exception:
                 stderr_tail = (proc.stderr or "")[-500:]
@@ -854,20 +855,20 @@ class PaddleOCRBackend(OCRBackend):
             except OSError:
                 pass
 
-    def _det_to_raw(self, det: Dict[str, Any]) -> RawDetection:
+    def _det_to_raw(self, det: dict[str, Any]) -> RawDetection:
         pts = [(int(round(p[0])), int(round(p[1]))) for p in det["polygon"]]
         return RawDetection(
             polygon=pts, text=det["text"], confidence=float(det["confidence"]),
             language=self._to_tofu_lang(),
         )
 
-    def _det_params(self) -> Dict[str, Any]:
+    def _det_params(self) -> dict[str, Any]:
         """reader overrides to send the worker -- only the ones this
         instance actually set (det_db_thresh/drop_score/textline
         orientation always have a value; det_box_thresh/unclip_ratio are
         None unless explicitly requested, so the worker falls back to the
         model's own default rather than us silently re-guessing one)."""
-        params: Dict[str, Any] = {
+        params: dict[str, Any] = {
             "det_db_thresh": self.det_db_thresh,
             "drop_score": self.drop_score,
             "use_textline_orientation": self.use_textline_orientation,
@@ -881,9 +882,9 @@ class PaddleOCRBackend(OCRBackend):
     def detect(
         self,
         asset: ImageLike,
-        text_threshold: Optional[float] = None,
-        low_text: Optional[float] = None,
-    ) -> List[RawDetection]:
+        text_threshold: float | None = None,
+        low_text: float | None = None,
+    ) -> list[RawDetection]:
         # text_threshold / low_text: PaddleOCR exposes det_db_thresh, not
         # identical knobs; signature preserved to satisfy OCRBackend.
         image_path, tmp = self._resolve_image_path(asset)
@@ -908,10 +909,10 @@ class PaddleOCRBackend(OCRBackend):
     def detect_in_regions(
         self,
         asset: ImageLike,
-        regions: List[BBox],
+        regions: list[BBox],
         pad: int = 4,
-        polygons: Optional[List[Optional[Polygon]]] = None,
-    ) -> List[List[RawDetection]]:
+        polygons: list[Polygon | None] | None = None,
+    ) -> list[list[RawDetection]]:
         # polygons (perspective rectification) are not yet applied by the
         # worker — PaddleOCR's own detector/angle-classifier already
         # handles a meaningful amount of rotation natively; a v2 worker
@@ -953,7 +954,7 @@ class ScriptDetector:
     is handled by passing source-language hints into detect().
     """
 
-    RANGES: Tuple[Tuple[str, Tuple[Tuple[int, int], ...]], ...] = (
+    RANGES: tuple[tuple[str, tuple[tuple[int, int], ...]], ...] = (
         ("han", ((0x4E00, 0x9FFF), (0x3400, 0x4DBF), (0xF900, 0xFAFF))),
         ("hiragana", ((0x3040, 0x309F),)),
         ("katakana", ((0x30A0, 0x30FF), (0xFF66, 0xFF9D))),
@@ -967,13 +968,13 @@ class ScriptDetector:
         ("latin", ((0x0041, 0x005A), (0x0061, 0x007A), (0x00C0, 0x024F))),
     )
 
-    def detect_script(self, text: str) -> Optional[str]:
+    def detect_script(self, text: str) -> str | None:
         """dominant script of the text, or None if no script chars found.
 
         any kana at all classifies as "japanese" (ja text is a han+kana
         mix where kana are the discriminating signal vs. chinese).
         """
-        counts: Dict[str, int] = {}
+        counts: dict[str, int] = {}
         for ch in text or "":
             cp = ord(ch)
             for name, ranges in self.RANGES:
@@ -988,14 +989,14 @@ class ScriptDetector:
 
 
 # script family → representative tofu language code
-SCRIPT_TO_LANG: Dict[str, str] = {
+SCRIPT_TO_LANG: dict[str, str] = {
     "latin": "en", "cyrillic": "ru", "greek": "el", "arabic": "ar",
     "hebrew": "he", "devanagari": "hi", "thai": "th",
     "japanese": "ja", "hangul": "ko", "han": "zh-cn",
 }
 
 # script family → easyocr language set able to recognize it
-SCRIPT_TO_EASYOCR_SET: Dict[str, Tuple[str, ...]] = {
+SCRIPT_TO_EASYOCR_SET: dict[str, tuple[str, ...]] = {
     "latin": ("en",), "cyrillic": ("ru", "en"), "greek": ("el", "en"),
     "arabic": ("ar", "en"), "hebrew": ("he", "en"),
     "devanagari": ("hi", "en"), "thai": ("th", "en"),
@@ -1003,7 +1004,7 @@ SCRIPT_TO_EASYOCR_SET: Dict[str, Tuple[str, ...]] = {
 }
 
 # scripts each easyocr language's charset can emit (default: latin)
-EASYOCR_LANG_SCRIPTS: Dict[str, set] = {
+EASYOCR_LANG_SCRIPTS: dict[str, set] = {
     "en": {"latin"},
     "ja": {"japanese", "han", "hiragana", "katakana", "latin"},
     "ko": {"hangul", "latin"},
@@ -1024,7 +1025,7 @@ EASYOCR_LANG_SCRIPTS: Dict[str, set] = {
 # distinguish spanish from english — both are "latin". a compact
 # stopword + diacritic classifier over the recognized text does the
 # disambiguation. deliberately conservative: returns None on weak signal.
-LATIN_STOPWORDS: Dict[str, set] = {
+LATIN_STOPWORDS: dict[str, set] = {
     "en": {"the", "and", "of", "to", "in", "for", "on", "with", "at", "by",
            "street", "avenue", "exit", "open", "closed", "stop", "main",
            "no", "yes", "not", "this", "is", "are", "you", "all", "new"},
@@ -1070,7 +1071,7 @@ LATIN_STOPWORDS: Dict[str, set] = {
 # token by how FEW languages could have spelled it is what makes polish
 # (many exclusive marks) and spanish (marks on different letters than
 # french) separable from french with no per-word special-casing.
-LATIN_DIACRITICS: Dict[str, str] = {
+LATIN_DIACRITICS: dict[str, str] = {
     "fr": "àâæçèéêëîïôœùûüÿ",
     "es": "áéíñóúü¿¡",
     "it": "àèéìòù",
@@ -1111,7 +1112,7 @@ LATIN_POOL_MIN_CONFIDENCE = 0.5
 LATIN_POOL_RESCUE_MIN_CONFIDENCE = 0.35
 
 
-def _diacritic_candidates(word: str) -> List[str]:
+def _diacritic_candidates(word: str) -> list[str]:
     """languages whose orthography could have spelled this token's marks.
 
     EVERY mark in the token must belong to the language's inventory: a
@@ -1144,8 +1145,8 @@ DECLARED_LANGUAGE_MARGIN = 2.0
 
 
 def guess_latin_language(
-    texts: Sequence[str], declared: Optional[str] = None
-) -> Optional[str]:
+    texts: Sequence[str], declared: str | None = None
+) -> str | None:
     """guess the language of latin-script texts via stopwords + diacritics.
 
     ``declared`` is the project's source language, when it has one. The guess
@@ -1192,8 +1193,8 @@ def guess_latin_language(
     between the six languages that share an acute accent.
     """
     langs = sorted(set(LATIN_STOPWORDS) | set(LATIN_DIACRITICS))
-    scores: Dict[str, float] = {lang: 0.0 for lang in langs}
-    hits: Dict[str, int] = {lang: 0 for lang in langs}
+    scores: dict[str, float] = {lang: 0.0 for lang in langs}
+    hits: dict[str, int] = {lang: 0 for lang in langs}
     words = []
     joined = " ".join(t for t in texts if t)
     for token in joined.lower().split():
@@ -1263,7 +1264,7 @@ def _script_lang_for(script: str, reader_langs: Sequence[str]) -> str:
     return SCRIPT_TO_LANG.get(script, "en")
 
 
-def taste_the_room(instances: Sequence[InstText]) -> Optional[str]:
+def taste_the_room(instances: Sequence[InstText]) -> str | None:
     """What language is this scene actually IN? -- an area-weighted vote
     over the per-region languages detection already identified.
 
@@ -1279,7 +1280,7 @@ def taste_the_room(instances: Sequence[InstText]) -> Optional[str]:
     text-expansion prediction assume an English source no matter what
     the sign said, and left basil.pairing() with nothing to pair.
     """
-    votes: Dict[str, float] = {}
+    votes: dict[str, float] = {}
     for inst in instances:
         if not inst.detected_language:
             continue
@@ -1381,7 +1382,7 @@ SCENE_FILTER_VETOES = os.environ.get("TOFU_SCENE_FILTER_VETO", "").strip().lower
 
 
 def _scene_verdict(bbox: BBox, confidence: float,
-                   scene_regions: Optional[List[SceneRegion]]) -> Dict[str, Any]:
+                   scene_regions: list[SceneRegion] | None) -> dict[str, Any]:
     """What the scene filter WOULD decide about this candidate, and why.
 
     Computed whether or not the veto is enabled, so the decision is on the
@@ -1486,7 +1487,45 @@ def _rectify_crop(img: ImageLike, polygon: Polygon, target_height: int = 48) -> 
         return img
 
 
-def _record_raw(det: RawDetection, stage: str = "raw_craft") -> Optional[str]:
+def _tag_transform_read(
+    det: RawDetection, stage: str, engine: str | None = None,
+) -> None:
+    """Record that `stage` RE-RECOGNIZED this region, in its own provenance.
+
+    The mirror of `_record_derived` for recognition rather than geometry.
+    A transform that re-reads a crop mints a fresh `RawDetection`, and
+    `build_manifest` seeds `recognition_history` from `det.provenance` --
+    so a transform that records a lineage node but no provenance entry
+    leaves the shipped region unable to say which route produced its
+    reading, even though the whole read is that route's work.
+
+    Measured on japan-street 2026-08-16: of the detections reaching the
+    second `build_manifest` call, 9 of 21 arrived with no provenance after
+    the zoom pass and 22 of 26 after split/assembly. Downstream, 9 of 47
+    localized regions on the frozen corpus -- every one of them CJK or
+    Hangul -- could not name their measurement channel. See
+    `docs/channel-envelope-report.md` and `layers/flight.py`.
+
+    NO `candidate_text` HERE, deliberately. In this schema `candidate_text`
+    means "an alternative reading that was considered", and
+    `proof_runtime.candidate_pool` enrols it as a retrieval candidate. A
+    transform's adopted re-read is not an alternative to the region's
+    reading -- it IS the reading, already carried on `det.text`. Writing it
+    again would enrol the region's own answer as a candidate against itself.
+
+    `engine` is optional because most transforms re-read through whichever
+    backend the pipeline settled on and do not have its name to hand;
+    `flight.channel_for` inherits it from the nearest earlier entry that
+    does. It is passed where the transform knows better -- the Paddle rescue
+    is a different engine, and inheriting "easyocr" there names the wrong one.
+    """
+    entry: dict[str, Any] = {"stage": stage, "selected": True}
+    if engine:
+        entry["engine"] = engine
+    det.provenance = [*(det.provenance or []), entry]
+
+
+def _record_raw(det: RawDetection, stage: str = "raw_craft") -> str | None:
     """Put a detector proposal on the lineage graph, if one is recording.
 
     Every later transform is answerable to these nodes: they are the
@@ -1494,6 +1533,16 @@ def _record_raw(det: RawDetection, stage: str = "raw_craft") -> Optional[str]:
     absorb or reshape it. See layers/okara.py.
     """
     from tofu.layers import okara
+
+    ## Provenance first, and outside the graph check: whether a lineage
+    ## graph happens to be recording is not a reason for a region to lose
+    ## the name of the route that read it. `raw_craft` is excluded because
+    ## it is not a re-measurement -- it is the detector's own output, which
+    ## `tag_detection_pass` names with the pass and thresholds it used, and
+    ## where that tag is missing the backstop below says so rather than
+    ## inventing a route here.
+    if stage != "raw_craft":
+        _tag_transform_read(det, stage)
 
     graph = okara.active()
     if graph is None:
@@ -1533,7 +1582,7 @@ def _record_derived(
     parents: Sequence[RawDetection],
     stage: str,
     reason: str,
-) -> Optional[str]:
+) -> str | None:
     """Record a detection a transform produced, linked to what it came from.
 
     A transform that skips this does not merely omit a row: it terminates
@@ -1542,8 +1591,14 @@ def _record_derived(
     Two transforms were doing that (`_split_tall_detections`,
     `merge_baseline_runs`), which is most of why lineage reached only 0-22%
     of shipped regions.
+
+    It also records the read in the detection's own provenance, so the
+    shipped region can name the route that produced its text without having
+    to infer it back from the graph. See `_tag_transform_read`.
     """
     from tofu.layers import okara
+
+    _tag_transform_read(new, stage)
 
     graph = okara.active()
     if graph is None:
@@ -1562,8 +1617,8 @@ def _record_derived(
 
 
 def merge_detections(
-    base: List[RawDetection], extra: List[RawDetection]
-) -> List[RawDetection]:
+    base: list[RawDetection], extra: list[RawDetection]
+) -> list[RawDetection]:
     """NMS across passes, retaining both candidates as audit evidence."""
     from tofu.layers import okara
 
@@ -1673,7 +1728,7 @@ def _mean_rgb(img, b: BBox):
     return crop.reshape(-1, crop.shape[-1])[:, :3].mean(axis=0)
 
 
-def merge_vertical_columns(detections: List[RawDetection], asset: ImageLike = None) -> List[RawDetection]:
+def merge_vertical_columns(detections: list[RawDetection], asset: ImageLike = None) -> list[RawDetection]:
     """merge per-character fragments of stacked vertical CJK signage into
     single column detections.
 
@@ -1766,13 +1821,13 @@ def merge_vertical_columns(detections: List[RawDetection], asset: ImageLike = No
                 if ri != rj:
                     parent[rj] = ri
 
-    groups: Dict[int, List[int]] = {}
+    groups: dict[int, list[int]] = {}
     for i in range(n):
         groups.setdefault(find(i), []).append(i)
 
     from tofu.utils.textmatch import fuzzy_similarity
 
-    out: List[RawDetection] = []
+    out: list[RawDetection] = []
     for members in groups.values():
         if len(members) == 1:
             out.append(detections[members[0]])
@@ -1792,7 +1847,7 @@ def merge_vertical_columns(detections: List[RawDetection], asset: ImageLike = No
         # next character (measured live: china-street's 茂昌眼镜公司镜司,
         # a duplicated 镜司 tail from a leftover raw fragment surviving
         # alongside an already-complete read of the same sign).
-        parts: List[str] = []
+        parts: list[str] = []
         accumulated = ""
         for i in members:
             piece = (detections[i].text or "").strip()
@@ -1816,6 +1871,12 @@ def merge_vertical_columns(detections: List[RawDetection], asset: ImageLike = No
                  if detections[i].language), None
             ),
         )
+        ## This merge re-recognizes the column crop (see the module note
+        ## above), so the read is this transform's, not the members'. Said in
+        ## the detection's own provenance rather than left to be inferred
+        ## from the lineage graph: the graph is optional and this is not.
+        _tag_transform_read(merged, "merge_vertical_columns")
+
         ## Every member survives as a selectable node with its own geometry.
         ## Measured on la-bastille, this is the operation that turns CRAFT's
         ## correctly-sized LA (IoU 0.866) into a rectangle 7.5x too large --
@@ -1880,12 +1941,12 @@ MIN_BAND_HEIGHT_PX = 12          # a band shorter than this can't hold
                                   # one legible character
 
 
-def _ink_gap_bands(row_ink: Any, gap_floor: int) -> List[Tuple[int, int]]:
+def _ink_gap_bands(row_ink: Any, gap_floor: int) -> list[tuple[int, int]]:
     """contiguous non-gap runs in a row-ink profile, filtered to bands
     tall enough to hold a character. shared by _segment_vertical_bands's
     strict pass and its narrow-crop rescue pass so both use identical
     run-finding logic and differ only in gap_floor."""
-    bands: List[Tuple[int, int]] = []
+    bands: list[tuple[int, int]] = []
     start = None
     for y, ink in enumerate(row_ink):
         is_gap = ink <= gap_floor
@@ -1899,7 +1960,7 @@ def _ink_gap_bands(row_ink: Any, gap_floor: int) -> List[Tuple[int, int]]:
     return [(a, b) for a, b in bands if (b - a) >= MIN_BAND_HEIGHT_PX]
 
 
-def _segment_vertical_bands(asset: ImageLike, bbox: BBox) -> List[BBox]:
+def _segment_vertical_bands(asset: ImageLike, bbox: BBox) -> list[BBox]:
     """split a tall/narrow bbox into per-character horizontal bands.
 
     finds character gaps via a horizontal ink-density profile off the
@@ -1914,6 +1975,7 @@ def _segment_vertical_bands(asset: ImageLike, bbox: BBox) -> List[BBox]:
     (full-image) coordinate space, or [] when nothing usable resulted.
     """
     import numpy as np
+
     from tofu.utils.imaging import load_rgb, text_mask
     n_chars_guess = max(2, round(bbox.height / max(1, bbox.width)))
 
@@ -1962,8 +2024,8 @@ def _segment_vertical_bands(asset: ImageLike, bbox: BBox) -> List[BBox]:
 
 
 def _split_tall_detections(
-    asset: ImageLike, engine: "EasyOCRBackend", detections: List[RawDetection],
-) -> Optional[List[RawDetection]]:
+    asset: ImageLike, engine: "EasyOCRBackend", detections: list[RawDetection],
+) -> list[RawDetection] | None:
     """re-segment and re-recognize over-tall/narrow detections that are
     likely an over-merged vertical CJK stack (see module note above).
 
@@ -2009,7 +2071,7 @@ def _split_tall_detections(
     if engine.languages and engine.languages[0] == "ko":
         return None
     changed = False
-    out: List[RawDetection] = []
+    out: list[RawDetection] = []
     for det in detections:
         bbox = _polygon_bbox(det.polygon)
         if bbox.width <= 0 or bbox.height < VERTICAL_STACK_MIN_ASPECT * bbox.width:
@@ -2024,8 +2086,8 @@ def _split_tall_detections(
         except Exception:
             out.append(det)
             continue
-        composed_bands: List[Tuple[BBox, RawDetection]] = []
-        for band_bbox, band_dets in zip(bands, per_band):
+        composed_bands: list[tuple[BBox, RawDetection]] = []
+        for band_bbox, band_dets in zip(bands, per_band, strict=False):
             composed = _compose_crop_text(band_dets)
             if composed is None or not (composed.text or "").strip():
                 continue
@@ -2105,8 +2167,8 @@ ROW_EXCLUDED_LANGS = {"ja", "ch_sim", "ch_tra", "ko"}
 
 
 def merge_baseline_runs(
-    asset: ImageLike, engine: "EasyOCRBackend", detections: List[RawDetection],
-) -> Optional[List[RawDetection]]:
+    asset: ImageLike, engine: "EasyOCRBackend", detections: list[RawDetection],
+) -> list[RawDetection] | None:
     """Assemble same-baseline word fragments into one line, and re-read it.
 
     Two detections belong to the same line when their y-centers align,
@@ -2198,11 +2260,11 @@ def merge_baseline_runs(
                 if ri != rj:
                     parent[max(ri, rj)] = min(ri, rj)
 
-    groups: Dict[int, List[int]] = {}
+    groups: dict[int, list[int]] = {}
     for i in range(n):
         groups.setdefault(find(i), []).append(i)
 
-    out: List[RawDetection] = []
+    out: list[RawDetection] = []
     changed = False
     for root, members in sorted(groups.items()):
         if len(members) < ROW_MIN_MEMBERS:
@@ -2292,7 +2354,7 @@ def merge_baseline_runs(
             explained = any(
                 best_span_similarity(tok, mt) >= LOAF_SPAN_SIMILARITY
                 or tok_norm in mn
-                for mt, mn in zip(member_texts, member_norms)
+                for mt, mn in zip(member_texts, member_norms, strict=False)
             )
             if not explained:
                 unexplained = True
@@ -2325,8 +2387,8 @@ def merge_baseline_runs(
 
 
 def _compose_crop_text(
-    dets: List[RawDetection], min_conf: float = 0.2
-) -> Optional[RawDetection]:
+    dets: list[RawDetection], min_conf: float = 0.2
+) -> RawDetection | None:
     """compose a region's text from ALL detections found inside its crop.
 
     a vertical column crop yields one detection PER CHARACTER; taking only
@@ -2373,7 +2435,7 @@ def _compose_crop_text(
     return composed
 
 
-def _probe_dim(asset: ImageLike) -> Optional[Tuple[int, int]]:
+def _probe_dim(asset: ImageLike) -> tuple[int, int] | None:
     """resolve the original (width, height) of the asset, if determinable.
 
     this is the coordinate-space contract for the manifest: every bbox and
@@ -2400,8 +2462,8 @@ def _probe_dim(asset: ImageLike) -> Optional[Tuple[int, int]]:
 
 # -- module-level engine management ------------------------------------------
 
-_default_backend: Optional[OCRBackend] = None
-_default_engine_name: Optional[str] = None
+_default_backend: OCRBackend | None = None
+_default_engine_name: str | None = None
 
 
 def _engine_from_env() -> str:
@@ -2440,7 +2502,7 @@ def set_backend(backend: OCRBackend) -> None:
 # -- layer entry point --------------------------------------------------------
 
 # multi-pass CRAFT thresholds: standard → stylized/faint → hard text
-PASS_THRESHOLDS: Tuple[Tuple[float, float], ...] = (
+PASS_THRESHOLDS: tuple[tuple[float, float], ...] = (
     (0.7, 0.4), (0.5, 0.3), (0.3, 0.2),
 )
 
@@ -2450,7 +2512,7 @@ PASS_THRESHOLDS: Tuple[Tuple[float, float], ...] = (
 # CJK is the first tier because its charsets are the ones an English reader
 # fails most spectacularly on, and because probe_uncovered_surfaces (stacked
 # vertical signage) is a CJK-specific path that consumes this list directly.
-PROBE_LANGSETS: Tuple[Tuple[str, ...], ...] = (
+PROBE_LANGSETS: tuple[tuple[str, ...], ...] = (
     ("ja", "en"), ("ko", "en"), ("ch_sim", "en"),
 )
 
@@ -2467,7 +2529,7 @@ PROBE_LANGSETS: Tuple[Tuple[str, ...], ...] = (
 # Tried only when the CJK tier produces NO winner, so behaviour on CJK assets
 # is bit-identical and a scene that is genuinely Japanese never pays for six
 # more reader inits (~15-20s CPU each, cached per process).
-PROBE_LANGSETS_EXTENDED: Tuple[Tuple[str, ...], ...] = (
+PROBE_LANGSETS_EXTENDED: tuple[tuple[str, ...], ...] = (
     ("ru", "en"), ("ar", "en"), ("hi", "en"),
     ("el", "en"), ("he", "en"), ("th", "en"),
 )
@@ -2513,9 +2575,9 @@ def _script_bearing_conf(det: RawDetection, target_scripts: set) -> float:
 
 
 def _scripts_compatible(
-    primary_script: Optional[str], alternate_script: Optional[str],
-    language: Optional[str] = None,
-) -> Optional[bool]:
+    primary_script: str | None, alternate_script: str | None,
+    language: str | None = None,
+) -> bool | None:
     """Return declared-language-aware compatibility for two OCR readings.
 
     ``ScriptDetector`` labels a Japanese string containing kana as
@@ -2537,7 +2599,7 @@ def _scripts_compatible(
     return False
 
 
-def _affix_artifact_evidence(primary: str, alternate: str) -> Optional[Dict[str, Any]]:
+def _affix_artifact_evidence(primary: str, alternate: str) -> dict[str, Any] | None:
     """Describe a verifier-supported core obtained by dropping a short affix.
 
     This does not authorize a replacement—the calibrated arbitration gates do
@@ -2569,12 +2631,12 @@ def _affix_artifact_evidence(primary: str, alternate: str) -> Optional[Dict[str,
 
 def _auto_probe_language(
     asset: ImageLike,
-    instances: List[InstText],
+    instances: list[InstText],
     engine: "EasyOCRBackend",
     probe_regions: int = 8,
     min_evidence: float = 0.2,
     max_winners: int = 2,
-) -> List["EasyOCRBackend"]:
+) -> list["EasyOCRBackend"]:
     """rescue path for unhinted detection of non-latin assets.
 
     an english-charset reader recognizes korean/japanese/chinese signage
@@ -2640,7 +2702,7 @@ def _auto_probe_language(
         return []
     bboxes = [i.bounding_box for i in top]
 
-    winners: List[Tuple[int, float, EasyOCRBackend]] = []
+    winners: list[tuple[int, float, EasyOCRBackend]] = []
     for tier in (PROBE_LANGSETS, PROBE_LANGSETS_EXTENDED):
         # Only reach for the second tier when the first found nothing. Ranking
         # WITHIN a tier is untouched, so a mixed ja/ko street still compares
@@ -2691,11 +2753,11 @@ SURFACE_PROBE_MAX = 8
 
 def probe_uncovered_surfaces(
     asset: ImageLike,
-    scene_regions: List[SceneRegion],
-    instances: List[InstText],
+    scene_regions: list[SceneRegion],
+    instances: list[InstText],
     engine: "EasyOCRBackend",
     min_evidence: float = 0.3,
-) -> Tuple[Optional[Tuple[str, ...]], List[RawDetection]]:
+) -> tuple[tuple[str, ...] | None, list[RawDetection]]:
     """probe scene surfaces that contain no real detection with candidate
     CJK readers; returns (winning_langset, surface_detections) or (None, []).
 
@@ -2763,8 +2825,8 @@ def probe_uncovered_surfaces(
         except Exception:
             continue
         targets = EASYOCR_LANG_SCRIPTS.get(langset[0], set()) - {"latin"}
-        dets: List[RawDetection] = []
-        confs: List[float] = []
+        dets: list[RawDetection] = []
+        confs: list[float] = []
         for crop_dets in per_region:
             composed = _compose_crop_text(crop_dets)
             if composed is None:
@@ -2807,9 +2869,9 @@ PADDLE_OVERLAP_WIN_FLOOR = 0.5
 
 
 def _prefer_paddle_on_overlap(
-    base: List[RawDetection], paddle_dets: List[RawDetection],
+    base: list[RawDetection], paddle_dets: list[RawDetection],
     floor: float = PADDLE_OVERLAP_WIN_FLOOR,
-) -> List[RawDetection]:
+) -> list[RawDetection]:
     """merge PaddleOCR detections into `base`, letting Paddle win any
     overlap once its OWN confidence clears `floor` -- deliberately not
     a numeric confidence comparison against the EasyOCR side the way
@@ -2871,7 +2933,7 @@ def _prefer_paddle_on_overlap(
     base entry would each independently see "no remaining overlap" and
     both get accepted, duplicating the content."""
     consumed = [False] * len(base)
-    accepted: List[RawDetection] = []
+    accepted: list[RawDetection] = []
     for pd in paddle_dets:
         if (pd.confidence or 0) < floor:
             continue
@@ -2905,10 +2967,10 @@ def _prefer_paddle_on_overlap(
 
 
 def _uncovered_scene_surfaces(
-    scene_regions: List[SceneRegion],
-    refs: List[Tuple[BBox, float]],
+    scene_regions: list[SceneRegion],
+    refs: list[tuple[BBox, float]],
     min_confidence: float = 0.0,
-) -> List[SceneRegion]:
+) -> list[SceneRegion]:
     """scene surfaces with no >50%-contained, sufficiently-confident box
     among `refs` -- the same containment test probe_uncovered_surfaces
     uses, factored out so the paddle rescue pass can reuse it against
@@ -2932,9 +2994,9 @@ def _uncovered_scene_surfaces(
 
 
 def should_paddle_rescue(
-    instances: List[InstText],
-    scene_regions: Optional[List[SceneRegion]],
-) -> Tuple[bool, Optional[str]]:
+    instances: list[InstText],
+    scene_regions: list[SceneRegion] | None,
+) -> tuple[bool, str | None]:
     """whether a PaddleOCR rescue pass is worth its cost, and which
     language to run it in.
 
@@ -2948,8 +3010,8 @@ def should_paddle_rescue(
     dense/vertical CJK signage, not a general "try the other engine"
     policy.
     """
-    votes: Dict[str, float] = {}
-    confs: Dict[str, List[float]] = {}
+    votes: dict[str, float] = {}
+    confs: dict[str, list[float]] = {}
     for inst in instances:
         lang = inst.detected_language
         if lang not in PADDLE_RESCUE_LANGS or inst.bounding_box is None:
@@ -3002,7 +3064,7 @@ SUBDIVIDE_OVERLAP_PX = 10  # tile overlap so a sign spanning a tile edge isn't c
 SUBDIVIDE_SPLIT_TOLERANCE = 1.5
 
 
-def _subdivide_bbox(bbox: BBox, max_dim: int = SUBDIVIDE_MAX_DIM) -> List[BBox]:
+def _subdivide_bbox(bbox: BBox, max_dim: int = SUBDIVIDE_MAX_DIM) -> list[BBox]:
     """split a large bbox into a small overlapping grid of sub-regions no
     larger than `max_dim` on either side; returns [bbox] unchanged when
     it's already small enough.
@@ -3029,7 +3091,7 @@ def _subdivide_bbox(bbox: BBox, max_dim: int = SUBDIVIDE_MAX_DIM) -> List[BBox]:
     rows = max(1, -(-bbox.height // max_dim)) if split_h else 1
     cell_w = bbox.width / cols
     cell_h = bbox.height / rows
-    out: List[BBox] = []
+    out: list[BBox] = []
     for row in range(rows):
         for col in range(cols):
             x0 = bbox.x + col * cell_w - (SUBDIVIDE_OVERLAP_PX if col > 0 else 0)
@@ -3041,10 +3103,10 @@ def _subdivide_bbox(bbox: BBox, max_dim: int = SUBDIVIDE_MAX_DIM) -> List[BBox]:
 
 
 def _surfaces_needing_help(
-    scene_regions: List[SceneRegion],
-    refs: List[Tuple[BBox, float]],
+    scene_regions: list[SceneRegion],
+    refs: list[tuple[BBox, float]],
     min_confidence: float = PADDLE_OVERLAP_WIN_FLOOR,
-) -> List[SceneRegion]:
+) -> list[SceneRegion]:
     """scene surfaces that are either genuinely uncovered
     (_uncovered_scene_surfaces) or covered only by a detection that
     looks truncated relative to the surface's own extent -- both are
@@ -3066,11 +3128,11 @@ def _surfaces_needing_help(
 
 def run_paddle_rescue(
     asset: ImageLike,
-    detections: List[RawDetection],
-    scene_regions: Optional[List[SceneRegion]],
+    detections: list[RawDetection],
+    scene_regions: list[SceneRegion] | None,
     language: str,
     gpu: bool = False,
-) -> Optional[List[RawDetection]]:
+) -> list[RawDetection] | None:
     """one full-frame PaddleOCR pass, merged into `detections` via
     `_prefer_paddle_on_overlap` (Paddle wins overlaps once its own
     confidence clears a modest floor -- NOT a numeric confidence
@@ -3099,6 +3161,15 @@ def run_paddle_rescue(
         # no lineage at all, while the Latin ones reach 100%. That asymmetry
         # was not a property of the scripts; it was a property of which code
         # path each one takes.
+        #
+        # The lineage stage stays `raw_craft` -- Paddle's detector output IS
+        # a raw proposal, and inventing a stage okara does not know would be
+        # worse than an honest one. The RECOGNITION route is a different
+        # question with a different answer: these reads came from a second,
+        # differently-architected engine, and a region that shipped one is
+        # not measured through the same channel as an EasyOCR pass.
+        for det in full:
+            _tag_transform_read(det, "paddle_rescue", engine="paddleocr")
         _record_engine_output(full)
     except Exception:
         full = []
@@ -3108,7 +3179,7 @@ def run_paddle_rescue(
     if not scene_regions:
         return merged if changed else None
 
-    def refs_of(dets: List[RawDetection]) -> List[Tuple[BBox, float]]:
+    def refs_of(dets: list[RawDetection]) -> list[tuple[BBox, float]]:
         return [(_polygon_bbox(d.polygon), d.confidence or 0.0) for d in dets]
 
     needing_help = _surfaces_needing_help(scene_regions, refs_of(merged))
@@ -3140,7 +3211,7 @@ def run_paddle_rescue(
         # inferior overlapping tile read) gets both benefits at once.
         still_needing_help = _surfaces_needing_help(scene_regions, refs_of(merged))
         if still_needing_help:
-            probe_bboxes: List[BBox] = []
+            probe_bboxes: list[BBox] = []
             for r in still_needing_help:
                 probe_bboxes.append(r.bbox)
                 probe_bboxes.extend(_subdivide_bbox(r.bbox))
@@ -3165,8 +3236,8 @@ def run_paddle_rescue(
 
 
 def label_latin_languages(
-    instances: List[InstText], declared: Optional[str] = None
-) -> Optional[str]:
+    instances: list[InstText], declared: str | None = None
+) -> str | None:
     """name the language of the CONFIDENT latin-script reads and stamp the
     verdict on every one of them; returns that verdict, or None when the
     evidence was too weak to override the english default.
@@ -3245,10 +3316,10 @@ def label_latin_languages(
 
 def _identify_languages(
     asset: ImageLike,
-    instances: List[InstText],
+    instances: list[InstText],
     engine: "EasyOCRBackend",
     max_extra_readers: int = 2,
-    declared: Optional[str] = None,
+    declared: str | None = None,
 ) -> None:
     """set detected_language per instance from the recognized text's script;
     re-recognize crops whose script the primary reader could not cover.
@@ -3263,7 +3334,7 @@ def _identify_languages(
     for lang in reader_langs:
         covered |= EASYOCR_LANG_SCRIPTS.get(lang, {"latin"})
 
-    pending: Dict[Tuple[str, ...], List[InstText]] = {}
+    pending: dict[tuple[str, ...], list[InstText]] = {}
     for inst in instances:
         script = detector.detect_script(inst.text or "")
         if script is None:
@@ -3297,7 +3368,7 @@ def _identify_languages(
             )
         except Exception:
             continue
-        for inst, dets in zip(insts, per_region):
+        for inst, dets in zip(insts, per_region, strict=False):
             composed = _compose_crop_text(dets)
             if composed is None:
                 continue
@@ -3312,10 +3383,10 @@ def _identify_languages(
 
 def _identify_languages_paddle(
     asset: ImageLike,
-    instances: List[InstText],
+    instances: list[InstText],
     engine: "PaddleOCRBackend",
     max_extra_readers: int = 2,
-    declared: Optional[str] = None,
+    declared: str | None = None,
 ) -> None:
     """set detected_language per instance from recognized text script.
 
@@ -3345,8 +3416,8 @@ def _identify_languages_paddle(
 
 
 def refine_langset(
-    instances: List[InstText], engine: OCRBackend
-) -> Optional[Tuple[str, ...]]:
+    instances: list[InstText], engine: OCRBackend
+) -> tuple[str, ...] | None:
     """easyocr language set for a language-adaptive second detection pass,
     or None when the current engine's charset already covers the scene.
 
@@ -3373,8 +3444,8 @@ def refine_langset(
     """
     if not isinstance(engine, EasyOCRBackend):
         return None
-    votes: Dict[str, float] = {}
-    counts: Dict[str, int] = {}
+    votes: dict[str, float] = {}
+    counts: dict[str, int] = {}
     for inst in instances:
         if not inst.detected_language or inst.bounding_box is None:
             continue
@@ -3444,8 +3515,8 @@ LOAF_DUPLICATE_RESCUE_CEILING = 0.5
 def _crumbs_of_the_same_loaf(
     whole: RawDetection,
     pieces: Sequence[RawDetection],
-    skip: Optional[set] = None,
-) -> Optional[Tuple[List[int], float]]:
+    skip: set | None = None,
+) -> tuple[list[int], float] | None:
     """Indices of ``pieces`` that are fragments of ``whole``, or None.
 
     The zoom pass exists to break a coarse box that spans several signs
@@ -3510,7 +3581,7 @@ def _crumbs_of_the_same_loaf(
     skip = skip or set()
     whole_box = _polygon_bbox(whole.polygon)
     whole_conf = whole.confidence or 0.0
-    crumbs: List[int] = []
+    crumbs: list[int] = []
     for index, piece in enumerate(pieces):
         if index in skip:
             continue
@@ -3541,7 +3612,7 @@ def _crumbs_of_the_same_loaf(
 
 
 def _corroborated(
-    det: RawDetection, crumbs: List[int], corroboration: float
+    det: RawDetection, crumbs: list[int], corroboration: float
 ) -> RawDetection:
     """Raise a loaf's confidence to that of the crumbs that agreed with it.
 
@@ -3552,7 +3623,7 @@ def _corroborated(
     """
     if corroboration <= (det.confidence or 0.0):
         return det
-    entry: Dict[str, Any] = {
+    entry: dict[str, Any] = {
         "stage": "zoom_union",
         "rule": "keep_the_loaf",
         "raw_confidence": round(float(det.confidence or 0.0), 6),
@@ -3574,7 +3645,7 @@ def _corroborated(
     )
 
 
-def _union_bbox(boxes: List[BBox]) -> Optional[BBox]:
+def _union_bbox(boxes: list[BBox]) -> BBox | None:
     """Tightest box covering all of `boxes`, or None when empty."""
     if not boxes:
         return None
@@ -3586,11 +3657,11 @@ def _union_bbox(boxes: List[BBox]) -> Optional[BBox]:
 
 
 def union_prefer_primary(
-    primary: List[RawDetection],
-    secondary: List[RawDetection],
+    primary: list[RawDetection],
+    secondary: list[RawDetection],
     *,
     keep_the_loaf: bool = False,
-) -> List[RawDetection]:
+) -> list[RawDetection]:
     """union of two detection sets where PRIMARY is authoritative on
     overlaps regardless of confidence.
 
@@ -3612,7 +3683,7 @@ def union_prefer_primary(
     out = list(primary)
     kept_boxes = [_polygon_bbox(d.polygon) for d in out]
     dropped: set = set()
-    extra: List[RawDetection] = []
+    extra: list[RawDetection] = []
     for det in secondary:
         db = _polygon_bbox(det.polygon)
         loaf = (
@@ -3712,7 +3783,7 @@ def union_prefer_primary(
 def iter_multipass(
     engine: OCRBackend, asset: ImageLike
 ) -> Iterator[
-    Tuple[int, Optional[float], Optional[float], Optional[List[RawDetection]]]
+    tuple[int, float | None, float | None, list[RawDetection] | None]
 ]:
     """Yield canonical cumulative OCR results after each detection pass.
 
@@ -3727,7 +3798,7 @@ def iter_multipass(
         )
         yield 1, None, None, detected
         return
-    detections: List[RawDetection] = []
+    detections: list[RawDetection] = []
     for pass_number, (text_threshold, low_text) in enumerate(PASS_THRESHOLDS, 1):
         yield pass_number, text_threshold, low_text, None
         passed = engine.detect(
@@ -3746,9 +3817,9 @@ def iter_multipass(
 
 def run_multipass(
     engine: OCRBackend, asset: ImageLike
-) -> List[RawDetection]:
+) -> list[RawDetection]:
     """Run the canonical pass iterator and return its final cumulative set."""
-    detections: List[RawDetection] = []
+    detections: list[RawDetection] = []
     for _number, _text_threshold, _low_text, cumulative in iter_multipass(
         engine, asset
     ):
@@ -3769,8 +3840,8 @@ ZOOM_PAD = 8
 def zoom_detect(
     engine: OCRBackend,
     asset: ImageLike,
-    scene_regions: List[SceneRegion],
-) -> List[RawDetection]:
+    scene_regions: list[SceneRegion],
+) -> list[RawDetection]:
     """coarse-to-fine detection: re-detect inside each candidate scene
     surface at ZOOM_SCALE× resolution and map the boxes back.
 
@@ -3800,7 +3871,7 @@ def zoom_detect(
         if (r.bbox.width * r.bbox.height) / frame_area <= ZOOM_MAX_SURFACE_FRAC
     ]
     surfaces.sort(key=lambda r: (_ZOOM_PRIORITY.get(r.semantic_label, 3), -(r.bbox.width * r.bbox.height)))
-    fine: List[RawDetection] = []
+    fine: list[RawDetection] = []
     for region in surfaces[:ZOOM_MAX_SURFACES]:
         bbox = region.bbox
         x0, y0 = max(0, bbox.x - ZOOM_PAD), max(0, bbox.y - ZOOM_PAD)
@@ -3854,7 +3925,7 @@ def zoom_detect(
 ZOOM_FRAGMENT_CONTAINMENT = 0.9
 
 
-def _dedup_zoom_detections(fine: List[RawDetection]) -> List[RawDetection]:
+def _dedup_zoom_detections(fine: list[RawDetection]) -> list[RawDetection]:
     """collapse duplicate reads within zoom_detect's own output.
 
     bbox overlap alone isn't a safe dedup signal here: distinct nearby
@@ -3880,7 +3951,7 @@ def _dedup_zoom_detections(fine: List[RawDetection]) -> List[RawDetection]:
     weakening of that one.
     """
     from tofu.utils.textmatch import fuzzy_similarity
-    out: List[RawDetection] = []
+    out: list[RawDetection] = []
     for det in fine:
         db = _polygon_bbox(det.polygon)
         dup_idx = None
@@ -3901,7 +3972,7 @@ def _dedup_zoom_detections(fine: List[RawDetection]) -> List[RawDetection]:
     # how they overlap, and nothing can eliminate every member of a group.
     boxes = [_polygon_bbox(det.polygon) for det in out]
     texts = [(det.text or "").strip() for det in out]
-    survivors: List[RawDetection] = []
+    survivors: list[RawDetection] = []
     for i, det in enumerate(out):
         fragment = any(
             len(texts[j]) > len(texts[i])
@@ -3957,7 +4028,7 @@ EDGE_RESCUE_CONF_SLACK = 0.10
 
 def rescue_clipped_edge_glyphs(
     asset: ImageLike,
-    instances: List[InstText],
+    instances: list[InstText],
     engine: OCRBackend,
     max_regions: int = 24,
 ) -> int:
@@ -3991,7 +4062,7 @@ def rescue_clipped_edge_glyphs(
         return 0
 
     rescued = 0
-    for inst, dets in zip(targets, per_region):
+    for inst, dets in zip(targets, per_region, strict=False):
         composed = _compose_crop_text(dets)
         if composed is None:
             continue
@@ -4017,7 +4088,7 @@ def rescue_clipped_edge_glyphs(
 
 def second_look(
     asset: ImageLike,
-    instances: List[InstText],
+    instances: list[InstText],
     engine: OCRBackend,
     conf_threshold: float = 0.55,
     max_regions: int = 24,
@@ -4053,12 +4124,11 @@ def second_look(
         return 0
     try:
         import numpy as np
-        from PIL import Image
         img = load_rgb(asset)
     except Exception:
         img = None
 
-    def _rotated_text(crop: ImageLike) -> Optional[str]:
+    def _rotated_text(crop: ImageLike) -> str | None:
         try:
             rot = np.rot90(crop, 2) if crop is not None else None
             if rot is None:
@@ -4070,7 +4140,7 @@ def second_look(
             return None
 
     improved = 0
-    for inst, dets in zip(weak, per_region):
+    for inst, dets in zip(weak, per_region, strict=False):
         composed = _compose_crop_text(dets)
         if composed is None or not (composed.text or "").strip():
             continue
@@ -4115,10 +4185,10 @@ def second_look(
 
 def detect(
     asset: ImageLike,
-    asset_info: Optional[AssetInfo] = None,
-    backend: Optional[OCRBackend] = None,
-    languages: Optional[Sequence[str]] = None,
-    scene_regions: Optional[List[SceneRegion]] = None,
+    asset_info: AssetInfo | None = None,
+    backend: OCRBackend | None = None,
+    languages: Sequence[str] | None = None,
+    scene_regions: list[SceneRegion] | None = None,
     multipass: bool = True,
     scene_filter: bool = True,
     identify_languages: bool = True,
@@ -4130,14 +4200,15 @@ def detect(
     line_assembly: bool = True,
     paddle_rescue: bool = True,
     polish: bool = True,
-    ocr_assessment_policy: Optional[OCRAssessmentPolicy] = None,
+    ocr_assessment_policy: OCRAssessmentPolicy | None = None,
     savor: bool = True,
     wasabi: bool = True,
     menu: bool = True,
-    ground_truth_pool: Optional[List[tuple]] = None,
-    font_registry: Optional[Any] = None,
-    on_stage: Optional[Callable[[Dict[str, Any]], None]] = None,
-    seed_detections: Optional[Sequence[BBox]] = None,
+    ground_truth_pool: list[tuple] | None = None,
+    font_registry: Any | None = None,
+    on_stage: Callable[[dict[str, Any]], None] | None = None,
+    seed_detections: Sequence[BBox] | None = None,
+    vision2_config: Any | None = None,
 ) -> TextManifest:
     """detect and localize text instances in the asset.
 
@@ -4242,7 +4313,7 @@ def detect(
     start = time.time()
     asset_info = asset_info or infer_asset_info(asset)
 
-    def _stage(payload: Dict[str, Any]) -> None:
+    def _stage(payload: dict[str, Any]) -> None:
         """Report a stage boundary to a caller that wants progress.
 
         The SSE endpoint used to re-implement this whole function so it
@@ -4375,7 +4446,7 @@ def detect(
         # instance evidence found nothing to refine on — probe scene
         # surfaces the detector left uncovered (vertical CJK signage
         # fragments below the instance probe's resolving power)
-        surface_dets: List[RawDetection] = []
+        surface_dets: list[RawDetection] = []
         if target is None and scene_regions:
             target, surface_dets = probe_uncovered_surfaces(
                 asset, scene_regions, manifest.instances, engine
@@ -4585,6 +4656,13 @@ def detect(
                     text=inst.text, confidence=inst.confidence, salt=inst.id,
                 )
             manifest.candidate_lineage = graph.to_dict()
+        if graph is not None and vision2_config is not None and vision2_config.enabled:
+            lineage = graph.to_dict()
+            manifest.candidate_lineage = lineage
+            from tofu.layers.candidate_ledger import build_candidate_ledger
+            manifest.vision2_candidate_ledger = build_candidate_ledger(
+                lineage, vision2_config.state,
+            )
     except Exception as exc:
         logger.debug("lineage recording skipped: %s", exc)
 
@@ -4728,6 +4806,35 @@ def detect(
     # to a settled read without re-opening what the read SAYS.
     _apply_locale_typography(manifest)
 
+    # Which measurement channel produced each reading. Deliberately NOT
+    # gated on the Vision 2 state: the incumbent arm is the baseline every
+    # channel comparison is measured against, so a channel index that only
+    # exists when Vision 2 is on could never say what the shipped pipeline
+    # measured. Pure provenance -- it changes no text, geometry or decision,
+    # and failure leaves every instance exactly as it found it.
+    if manifest.instances:
+        try:
+            from tofu.layers.flight import assess_manifest as assess_channels
+            assess_channels(manifest.instances, manifest.candidate_lineage)
+        except Exception as exc:
+            logger.debug("channel provenance skipped: %s", exc)
+
+    if vision2_config is not None and vision2_config.enabled and manifest.instances:
+        try:
+            from tofu.layers.decant import assess_manifest
+            assess_manifest(manifest.instances, strict=True)
+        except Exception as exc:
+            logger.debug("Vision 2 evidence-survival assessment skipped: %s", exc)
+
+    if vision2_config is not None and vision2_config.enabled:
+        try:
+            from tofu.layers.proof_runtime import assess_manifest as assess_proof
+            assess_proof(
+                asset, manifest, ground_truth_pool, font_registry, vision2_config,
+            )
+        except Exception as exc:
+            logger.debug("Vision 2 proof retrieval skipped: %s", exc)
+
     return manifest
 
 
@@ -4768,7 +4875,7 @@ def _apply_locale_typography(manifest: TextManifest) -> int:
     return changed
 
 
-def _disambiguate_ja_zh(instances: List[InstText]) -> None:
+def _disambiguate_ja_zh(instances: list[InstText]) -> None:
     """Japanese vs Chinese disambiguation, in place:
     - if any instance contains kana, the scene is Japanese — kanji-only
       instances labeled "zh-cn"/"ko" are actually Japanese.
@@ -4867,8 +4974,8 @@ def _is_localizable_symbol(text: str) -> bool:
 
 
 def _prune_hallucinations(
-    instances: List[InstText], asset: ImageLike = None
-) -> List[InstText]:
+    instances: list[InstText], asset: ImageLike = None
+) -> list[InstText]:
     """drop symbol-noise regions and renumber the survivors.
 
     a region is a hallucination when its text is empty, or contains no
@@ -4895,7 +5002,7 @@ def _prune_hallucinations(
     why that floor is typography's own and not a new constant.
     """
     detector = ScriptDetector()
-    scum: Dict[int, str] = {}
+    scum: dict[int, str] = {}
     if asset is not None:
         try:
             from tofu.layers.skim import skim as _skim
@@ -4915,7 +5022,7 @@ def _prune_hallucinations(
             scum = {id(inst): reason for inst, reason in _skim(candidates, asset)}
         except Exception:
             scum = {}   # a failing precision pass must never cost recall
-    kept: List[InstText] = []
+    kept: list[InstText] = []
     for inst in instances:
         text = (inst.text or "").strip()
         if not text:
@@ -4990,7 +5097,7 @@ def _prune_hallucinations(
 FRAGMENT_OVERLAP = 0.5
 
 
-def _prune_contained_fragments(instances: List[InstText]) -> List[InstText]:
+def _prune_contained_fragments(instances: list[InstText]) -> list[InstText]:
     """Drop a region whose text is already inside a longer region's text.
 
     The zoom union's keep_the_loaf rule resolves a coarse read against the
@@ -5021,7 +5128,7 @@ def _prune_contained_fragments(instances: List[InstText]) -> List[InstText]:
     from tofu.layers import okara
 
     graph = okara.active()
-    survivors: List[InstText] = []
+    survivors: list[InstText] = []
     for inst, text, box in keyed:
         if not text or box is None:
             survivors.append(inst)
@@ -5068,7 +5175,7 @@ def _prune_contained_fragments(instances: List[InstText]) -> List[InstText]:
     return survivors
 
 
-def _fragment_reading_order(boxes: List[BBox]) -> List[int]:
+def _fragment_reading_order(boxes: list[BBox]) -> list[int]:
     """Indices of ``boxes`` in reading order: by line, then left to right.
 
     The line bucket is the same tolerant baseline test
@@ -5081,20 +5188,20 @@ def _fragment_reading_order(boxes: List[BBox]) -> List[int]:
     median_h = heights[len(heights) // 2] or 1
     tolerance = max(4.0, median_h * 0.42)
     order = sorted(range(len(boxes)), key=lambda i: boxes[i].y + boxes[i].height / 2)
-    lines: List[List[int]] = []
+    lines: list[list[int]] = []
     for i in order:
         centre = boxes[i].y + boxes[i].height / 2
         if lines and abs(centre - (boxes[lines[-1][0]].y + boxes[lines[-1][0]].height / 2)) <= tolerance:
             lines[-1].append(i)
         else:
             lines.append([i])
-    out: List[int] = []
+    out: list[int] = []
     for line in lines:
         out.extend(sorted(line, key=lambda i: boxes[i].x))
     return out
 
 
-def assemble_fragments(texts: Sequence[str], boxes: List[BBox]) -> str:
+def assemble_fragments(texts: Sequence[str], boxes: list[BBox]) -> str:
     """Join fragment texts in the order they should be read.
 
     Geometry decides, alone: fragments are ordered by line and then left
@@ -5121,9 +5228,9 @@ def assemble_fragments(texts: Sequence[str], boxes: List[BBox]) -> str:
 
 
 def reread_merged_region(
-    asset: ImageLike, box: BBox, pieces: Sequence[str], piece_boxes: List[BBox],
+    asset: ImageLike, box: BBox, pieces: Sequence[str], piece_boxes: list[BBox],
     engine: Optional["OCRBackend"] = None,
-) -> Tuple[str, Optional[float], str]:
+) -> tuple[str, float | None, str]:
     """Read a user-merged region whole, or fall back to joining its parts.
 
     Same trade merge_baseline_runs makes automatically, offered to a user
@@ -5178,7 +5285,7 @@ def reread_merged_region(
 _TRAILING_ARTIFACTS = "-‐‑‒–—―"
 
 
-def _history(inst: InstText, entry: Dict[str, Any]) -> None:
+def _history(inst: InstText, entry: dict[str, Any]) -> None:
     """Append an OCR decision without losing prior Savor/Menu audit data."""
     if inst.recognition_history is None:
         inst.recognition_history = []
@@ -5207,7 +5314,7 @@ def _needs_paddle_audit(inst: InstText) -> bool:
     return cjk and bool(text) and text[-1:] in _TRAILING_ARTIFACTS
 
 
-def _no_terminal_dash_ink(asset: ImageLike, bbox: Optional[BBox]) -> Optional[bool]:
+def _no_terminal_dash_ink(asset: ImageLike, bbox: BBox | None) -> bool | None:
     """Return True only when a crop supports removal of a trailing dash.
 
     ``None`` means the crop cannot be read reliably and deliberately blocks an
@@ -5247,7 +5354,7 @@ def _no_terminal_dash_ink(asset: ImageLike, bbox: Optional[BBox]) -> Optional[bo
         return None
 
 
-def skim_audit(asset: ImageLike, instances: List[InstText]) -> List[InstText]:
+def skim_audit(asset: ImageLike, instances: list[InstText]) -> list[InstText]:
     """Cross-engine second opinion on script-less reads skim could not judge.
 
     Skim removes a read on stroke evidence alone only when nothing
@@ -5298,7 +5405,7 @@ def skim_audit(asset: ImageLike, instances: List[InstText]) -> List[InstText]:
     except Exception:
         return instances   # a failing arbitration must never cost recall
     doomed = set()
-    for inst, detections in zip(candidates, per_region):
+    for inst, detections in zip(candidates, per_region, strict=False):
         seen = [d for d in detections if (d.text or "").strip()]
         if seen:
             _history(inst, {"stage": "skim_audit", "engine": "paddleocr",
@@ -5325,7 +5432,7 @@ def skim_audit(asset: ImageLike, instances: List[InstText]) -> List[InstText]:
     return survivors
 
 
-def hybrid_audit(asset: ImageLike, instances: List[InstText]) -> int:
+def hybrid_audit(asset: ImageLike, instances: list[InstText]) -> int:
     """Use Paddle only to adjudicate risky CJK EasyOCR reads.
 
     This is intentionally not a second full-scene detector: EasyOCR keeps
@@ -5336,7 +5443,7 @@ def hybrid_audit(asset: ImageLike, instances: List[InstText]) -> int:
     if not risky or not PaddleOCRBackend.is_available():
         return 0
     changed = 0
-    groups: Dict[str, List[InstText]] = {}
+    groups: dict[str, list[InstText]] = {}
     for inst in risky:
         groups.setdefault(inst.detected_language or inst.language or "ja", []).append(inst)
     for lang, group in groups.items():
@@ -5345,7 +5452,7 @@ def hybrid_audit(asset: ImageLike, instances: List[InstText]) -> int:
             per_region = reader.detect_in_regions(asset, [i.bounding_box for i in group])
         except Exception:
             continue
-        for inst, detections in zip(group, per_region):
+        for inst, detections in zip(group, per_region, strict=False):
             if not detections:
                 _history(inst, {"stage": "hybrid_audit", "engine": "paddleocr", "accepted": False, "reason": "no candidate"})
                 continue
@@ -5388,9 +5495,9 @@ def _score_region_hypothesis(
     primary: "OCRCandidate",
     alternate: Optional["OCRCandidate"] = None,
     verification_state: str = "unavailable",
-    primary_script: Optional[str] = None,
-    alternate_script: Optional[str] = None,
-) -> Optional[Dict[str, Any]]:
+    primary_script: str | None = None,
+    alternate_script: str | None = None,
+) -> dict[str, Any] | None:
     """Run the hypothesis scorer over every recorded reading of one region.
 
     The observations are assembled from `recognition_history` -- one per
@@ -5410,26 +5517,42 @@ def _score_region_hypothesis(
     detection that would otherwise have succeeded.
     """
     try:
-        from tofu.layers.ocr_arbitration import (
-            build_hypothesis_decision, form_region_hypotheses,
-        )
         from tofu.core.types import OCRObservation
+        from tofu.layers.ocr_arbitration import (
+            build_hypothesis_decision,
+            form_region_hypotheses,
+        )
 
         box = inst.bounding_box
         if box is None:
             return None
-        observations: List[OCRObservation] = []
+        from tofu.layers import flight
+
+        # The registered name for the route each observation came through.
+        # `pass_tag` stays as this scorer's own label; `channel_id` is what
+        # makes an observation comparable to one from another run or report.
+        crop = (int(box.x), int(box.y), int(box.width), int(box.height))
+
+        def _channel(route: str, engine: str) -> str:
+            return flight.Channel(engine=engine, route=route, crop=crop).channel_id
+
+        observations: list[OCRObservation] = []
         for index, item in enumerate(inst.recognition_history or []):
             if item.get("stage") != "detection_pass":
                 continue
             text = item.get("candidate_text")
             if not (text or "").strip():
                 continue
+            engine = str(item.get("engine") or "easyocr")
             observations.append(OCRObservation(
                 observation_id=f"{inst.id}-pass{item.get('pass', index)}-{index}",
-                backend=str(item.get("engine") or "easyocr"),
+                backend=engine,
                 backend_revision=str(item.get("engine_version") or "unknown"),
                 pass_tag=f"detection_pass_{item.get('pass', index)}",
+                channel_id=_channel(
+                    flight.route_for_stage("detection_pass", item.get("pass", index)),
+                    engine,
+                ),
                 text=text,
                 raw_confidence=max(0.0, min(1.0, float(item.get("candidate_confidence") or 0.0))),
                 bbox=box,
@@ -5439,6 +5562,14 @@ def _score_region_hypothesis(
             observation_id=f"{inst.id}-primary",
             backend=primary.engine, backend_revision=primary.engine_version,
             pass_tag="selected_existing_pipeline",
+            # Arbitration runs before the end-of-pipeline stamping pass, so
+            # the instance usually has no channel yet; deriving it from the
+            # history in hand gives the same answer the stamp will, and
+            # keeps one region from carrying two names for one measurement.
+            channel_id=(
+                getattr(inst, "channel_id", None)
+                or flight.channel_for(inst).channel_id
+            ),
             text=primary.text, raw_confidence=primary.raw_confidence,
             bbox=box, detected_script=primary_script,
         ))
@@ -5448,6 +5579,7 @@ def _score_region_hypothesis(
                 observation_id=f"{inst.id}-verifier",
                 backend=alternate.engine, backend_revision=alternate.engine_version,
                 pass_tag="independent_verifier",
+                channel_id=_channel("independent_verifier", alternate.engine),
                 text=alternate.text, raw_confidence=alternate.raw_confidence,
                 bbox=box, detected_script=alternate_script,
             ))
@@ -5498,11 +5630,11 @@ def _proposal_family(inst: InstText) -> str:
 
 def assess_multi_candidate_ocr(
     asset: ImageLike,
-    instances: List[InstText],
-    scene_regions: Optional[List[SceneRegion]] = None,
-    policy: Optional[OCRAssessmentPolicy] = None,
-    font_registry: Optional[Any] = None,
-    ground_truth_pool: Optional[List[tuple]] = None,
+    instances: list[InstText],
+    scene_regions: list[SceneRegion] | None = None,
+    policy: OCRAssessmentPolicy | None = None,
+    font_registry: Any | None = None,
+    ground_truth_pool: list[tuple] | None = None,
 ) -> int:
     """Arbitrate risky settled reads against a fresh independent OCR pass.
 
@@ -5517,8 +5649,8 @@ def assess_multi_candidate_ocr(
     if policy.mode == "off" or not instances:
         return 0
 
-    def risk_profile(inst: InstText) -> Tuple[int, List[str]]:
-        flags: List[str] = []
+    def risk_profile(inst: InstText) -> tuple[int, list[str]]:
+        flags: list[str] = []
         if policy.mode == "exhaustive":
             flags.append("exhaustive_policy")
         lang = (inst.detected_language or inst.language or "").lower()
@@ -5546,7 +5678,7 @@ def assess_multi_candidate_ocr(
             flags.append("trailing_artifact")
         return len(flags), flags
 
-    ranked: List[Tuple[int, float, InstText, List[str]]] = []
+    ranked: list[tuple[int, float, InstText, list[str]]] = []
     for inst in instances:
         count, flags = risk_profile(inst)
         if count:
@@ -5579,23 +5711,23 @@ def assess_multi_candidate_ocr(
         return 0
 
     risk_by_instance = {id(record[2]): record[3] for record in selected_records}
-    from tofu.layers.ocr_verification import PaddleRegionVerifier
     from tofu.layers.ocr_arbitration import (
         ArbitrationSignals,
         DecisionKind,
         OCRCandidate,
         arbitrate,
     )
+    from tofu.layers.ocr_verification import PaddleRegionVerifier
 
     # Paddle readers are language-specific.  Grouping avoids a subprocess per
     # region while preventing a dominant scene language from being used to
     # "verify" unrelated-script regions.
-    grouped: Dict[str, List[InstText]] = {}
+    grouped: dict[str, list[InstText]] = {}
     for inst in selected:
         lang = inst.detected_language or inst.language or "en"
         grouped.setdefault(lang, []).append(inst)
 
-    results_by_instance: Dict[int, Any] = {}
+    results_by_instance: dict[int, Any] = {}
     for lang, group in grouped.items():
         # Declare which family produced the text being checked. When the
         # primary read already came from Paddle, this verification is a
@@ -5617,7 +5749,7 @@ def assess_multi_candidate_ocr(
             [inst.text for inst in group],
             language=lang,
         )
-        for inst, result in zip(group, results):
+        for inst, result in zip(group, results, strict=False):
             results_by_instance[id(inst)] = result
 
     changed = 0
@@ -5632,7 +5764,7 @@ def assess_multi_candidate_ocr(
         primary_text = inst.text or ""
         primary_script = detector.detect_script(primary_text)
         alternate_script = detector.detect_script(result.text)
-        alternate_risks: List[str] = []
+        alternate_risks: list[str] = []
         primary_len = len(re.sub(r"\W+", "", primary_text, flags=re.UNICODE))
         alternate_len = len(re.sub(r"\W+", "", result.text, flags=re.UNICODE))
         if primary_len and alternate_len:
@@ -5645,7 +5777,7 @@ def assess_multi_candidate_ocr(
         if primary_text[-1:] in _TRAILING_ARTIFACTS and result.text != primary_text:
             alternate_risks.append("requires_terminal_artifact_audit")
 
-        candidate_geometry: Optional[BBox] = None
+        candidate_geometry: BBox | None = None
         polygons = [
             item.get("polygon") for item in (verification.get("detections") or [])
             if item.get("polygon")
@@ -5862,7 +5994,7 @@ def assess_multi_candidate_ocr(
 ## not include letter pairs that change a word ('rn'/'m', 'cl'/'d'): those
 ## alter the reading rather than one mark, and belong to Savor's courses,
 ## which have pixel evidence to spend on them.
-_GLYPH_CONFUSIONS: FrozenSet[FrozenSet[str]] = frozenset({
+_GLYPH_CONFUSIONS: frozenset[frozenset[str]] = frozenset({
     frozenset({"4", "!"}),   # decolonisons r2: "nos rues 4" for "nos rues !"
     frozenset({"1", "!"}),
     frozenset({"l", "!"}),
@@ -5913,6 +6045,7 @@ def _verifier_fits_the_ink(
         return False
     try:
         import numpy as np
+
         from tofu.layers import font_matching
         from tofu.layers.fonts import faces_of
         from tofu.utils.imaging import load_rgb
@@ -5975,9 +6108,9 @@ def _language_model_prefers(candidate: str, primary: str, inst: InstText) -> boo
 
 
 def _promote_verifier_confusion(
-    inst: InstText, record: Optional[Dict[str, Any]], primary_text: str,
+    inst: InstText, record: dict[str, Any] | None, primary_text: str,
     asset: ImageLike = None, registry: Any = None,
-    ground_truth_pool: Optional[List[tuple]] = None,
+    ground_truth_pool: list[tuple] | None = None,
 ) -> bool:
     """Apply the verifier's reading when it differs only by a confused glyph.
 
@@ -6036,7 +6169,7 @@ def _promote_verifier_confusion(
     if len(left) != len(right):
         return False
 
-    differences = [(a, b) for a, b in zip(left, right) if a != b]
+    differences = [(a, b) for a, b in zip(left, right, strict=False) if a != b]
     ground_truth_match = None
     if len(differences) > 1:
         return False
@@ -6139,7 +6272,7 @@ def _promote_verifier_confusion(
     return True
 
 
-def _grade_ungraded_regions(instances: List[InstText]) -> int:
+def _grade_ungraded_regions(instances: list[InstText]) -> int:
     """Score a hypothesis for every region the verification budget skipped.
 
     Two filters upstream keep regions away from the verifier, and both are
@@ -6185,17 +6318,17 @@ def _grade_ungraded_regions(instances: List[InstText]) -> int:
 
 def build_manifest(
     asset: ImageLike,
-    detections: List[RawDetection],
-    asset_info: Optional[AssetInfo] = None,
-    engine: Optional[OCRBackend] = None,
-    scene_regions: Optional[List[SceneRegion]] = None,
+    detections: list[RawDetection],
+    asset_info: AssetInfo | None = None,
+    engine: OCRBackend | None = None,
+    scene_regions: list[SceneRegion] | None = None,
     scene_filter: bool = True,
     identify_languages: bool = True,
     max_extra_readers: int = 2,
     prune_garbage: bool = True,
     merge_columns: bool = True,
-    start: Optional[float] = None,
-    declared: Optional[str] = None,
+    start: float | None = None,
+    declared: str | None = None,
 ) -> TextManifest:
     """assemble a TextManifest from raw detections.
 
@@ -6259,7 +6392,7 @@ def build_manifest(
             )
         ]
 
-    instances: List[InstText] = []
+    instances: list[InstText] = []
     for order, det in enumerate(_reading_order_detections(detections)):
         xs = [p[0] for p in det.polygon]
         ys = [p[1] for p in det.polygon]
@@ -6308,7 +6441,7 @@ def build_manifest(
                     targets = EASYOCR_LANG_SCRIPTS.get(
                         backend_w.languages[0], set()
                     ) - {"latin"}
-                    for inst, dets in zip(instances, per_region):
+                    for inst, dets in zip(instances, per_region, strict=False):
                         # compose ALL detections in the crop, not just the
                         # best one — a vertical column yields one detection
                         # per character and picking a single winner truncates
@@ -6347,7 +6480,7 @@ def build_manifest(
                             ja_regions = None
                         if ja_regions:
                             ja_targets = EASYOCR_LANG_SCRIPTS.get("ja", set()) - {"latin"}
-                            for inst, dets in zip(instances, ja_regions):
+                            for inst, dets in zip(instances, ja_regions, strict=False):
                                 composed = _compose_crop_text(dets)
                                 if composed is None:
                                     continue
@@ -6509,4 +6642,16 @@ def build_manifest(
         prcssng_time=time.time() - start,
     )
     classify_asset_context(manifest)
+    # Name the measurement channel behind every reading. Stamped here, at
+    # assembly, so that a manifest reaches its caller labelled however it
+    # was produced -- detect() and the streaming endpoint both bottom out
+    # here, and a manifest built directly by a harness must not be the one
+    # that goes back to pretending it came through a single channel.
+    # detect() re-stamps once its correction passes have settled, since a
+    # correction that re-measures the pixels changes the answer.
+    try:
+        from tofu.layers.flight import assess_manifest as assess_channels
+        assess_channels(manifest.instances, manifest.candidate_lineage)
+    except Exception as exc:
+        logger.debug("channel provenance skipped: %s", exc)
     return manifest
