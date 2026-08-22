@@ -1,0 +1,1510 @@
+{
+  "schema": "scene-conditioning-coverage-v1",
+  "corpus": "C:\\Users\\mvalc\\Desktop\\ToFU\\project-tofu\\evidence\\corpus-v1.json",
+  "corpus_id": "detection-corpus-v1",
+  "regions": 66,
+  "conditioned": 0,
+  "conditioned_rate": 0.0,
+  "unconditioned_family_size": 8,
+  "material_class": {
+    "unknown": 50,
+    "no_surface": 16
+  },
+  "substrate_trust": {
+    "unmeasured": 50,
+    "no_surface": 16
+  },
+  "calibration_status": {
+    "unfitted": 50,
+    "no_surface": 16
+  },
+  "declined_reasons": {
+    "calibration_unfitted": 50,
+    "material_not_conditionable:unknown": 16
+  },
+  "by_script": {
+    "latin": {
+      "regions": 31,
+      "conditioned": 0
+    },
+    "han": {
+      "regions": 8,
+      "conditioned": 0
+    },
+    "mixed": {
+      "regions": 2,
+      "conditioned": 0
+    },
+    "hangul": {
+      "regions": 13,
+      "conditioned": 0
+    },
+    "japanese_or_han": {
+      "regions": 4,
+      "conditioned": 0
+    },
+    "unscripted": {
+      "regions": 2,
+      "conditioned": 0
+    },
+    "cyrillic": {
+      "regions": 6,
+      "conditioned": 0
+    }
+  },
+  "note": "conditioned == 0 is the expected result while Scene reports calibration_status 'unfitted'; uncalibrated evidence is missing evidence and may not condition a corruption",
+  "rows": [
+    {
+      "fixture": "avenue-de-la-république",
+      "text": "AVENUE",
+      "stratum_script": "latin",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "avenue-de-la-république",
+      "text": "de la RÉPUBLIQUE",
+      "stratum_script": "latin",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "china-street",
+      "text": "美珠宝",
+      "stratum_script": "han",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "china-street",
+      "text": "华联店3F",
+      "stratum_script": "mixed",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "china-street",
+      "text": "茂昌眼镜公司",
+      "stratum_script": "han",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "china-street",
+      "text": "OPTICAL",
+      "stratum_script": "latin",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "china-street",
+      "text": "MING",
+      "stratum_script": "latin",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "china-street",
+      "text": "上海明牌",
+      "stratum_script": "han",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "china-street",
+      "text": "大娘水饺",
+      "stratum_script": "han",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "decolonisons-nos-rues",
+      "text": "Décolonisons",
+      "stratum_script": "latin",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "decolonisons-nos-rues",
+      "text": "nos rues !",
+      "stratum_script": "latin",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "decolonisons-nos-rues",
+      "text": "Pour une mémoire des luttes contre les",
+      "stratum_script": "latin",
+      "material_class": null,
+      "substrate_trust": null,
+      "calibration_status": null,
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "material_not_conditionable:unknown"
+      ]
+    },
+    {
+      "fixture": "decolonisons-nos-rues",
+      "text": "crimes coloniaux et esclavagistes",
+      "stratum_script": "latin",
+      "material_class": null,
+      "substrate_trust": null,
+      "calibration_status": null,
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "material_not_conditionable:unknown"
+      ]
+    },
+    {
+      "fixture": "decolonisons-nos-rues",
+      "text": "Texte : Naïké Desquesnes",
+      "stratum_script": "latin",
+      "material_class": null,
+      "substrate_trust": null,
+      "calibration_status": null,
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "material_not_conditionable:unknown"
+      ]
+    },
+    {
+      "fixture": "gemini-street",
+      "text": "감접",
+      "stratum_script": "hangul",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "gemini-street",
+      "text": "포차",
+      "stratum_script": "hangul",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "gemini-street",
+      "text": "고깃집",
+      "stratum_script": "hangul",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "gemini-street",
+      "text": "라면·국수",
+      "stratum_script": "hangul",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "gemini-street",
+      "text": "차",
+      "stratum_script": "hangul",
+      "material_class": null,
+      "substrate_trust": null,
+      "calibration_status": null,
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "material_not_conditionable:unknown"
+      ]
+    },
+    {
+      "fixture": "gemini-street",
+      "text": "대박식당",
+      "stratum_script": "hangul",
+      "material_class": null,
+      "substrate_trust": null,
+      "calibration_status": null,
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "material_not_conditionable:unknown"
+      ]
+    },
+    {
+      "fixture": "gemini-street",
+      "text": "대박식당",
+      "stratum_script": "hangul",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "gemini-street",
+      "text": "전주삼겹살",
+      "stratum_script": "hangul",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "gemini-street",
+      "text": "파식당",
+      "stratum_script": "hangul",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "gemini-street",
+      "text": "居酒屋",
+      "stratum_script": "han",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "gemini-street",
+      "text": "ラーメン",
+      "stratum_script": "japanese_or_han",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "gemini-street",
+      "text": "道頓堀",
+      "stratum_script": "han",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "gemini-street",
+      "text": "노래방",
+      "stratum_script": "hangul",
+      "material_class": null,
+      "substrate_trust": null,
+      "calibration_status": null,
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "material_not_conditionable:unknown"
+      ]
+    },
+    {
+      "fixture": "gemini-street",
+      "text": "피시개방",
+      "stratum_script": "hangul",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "gemini-street",
+      "text": "맥주",
+      "stratum_script": "hangul",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "gemini-street",
+      "text": "편의맥주",
+      "stratum_script": "hangul",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "japan-street",
+      "text": "歌舞伎町一番街",
+      "stratum_script": "han",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "japan-street",
+      "text": "劇場通り",
+      "stratum_script": "japanese_or_han",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "japan-street",
+      "text": "お好み焼本陣",
+      "stratum_script": "japanese_or_han",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "japan-street",
+      "text": "バンダイ",
+      "stratum_script": "japanese_or_han",
+      "material_class": null,
+      "substrate_trust": null,
+      "calibration_status": null,
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "material_not_conditionable:unknown"
+      ]
+    },
+    {
+      "fixture": "japan-street",
+      "text": "3F",
+      "stratum_script": "latin",
+      "material_class": null,
+      "substrate_trust": null,
+      "calibration_status": null,
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "material_not_conditionable:unknown"
+      ]
+    },
+    {
+      "fixture": "japan-street",
+      "text": "東南荘",
+      "stratum_script": "han",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "japan-street",
+      "text": "2F",
+      "stratum_script": "latin",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "la-bastille-1789",
+      "text": "LA",
+      "stratum_script": "latin",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "la-bastille-1789",
+      "text": "BASTILLE",
+      "stratum_script": "latin",
+      "material_class": null,
+      "substrate_trust": null,
+      "calibration_status": null,
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "material_not_conditionable:unknown"
+      ]
+    },
+    {
+      "fixture": "la-bastille-1789",
+      "text": "ET",
+      "stratum_script": "latin",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "la-bastille-1789",
+      "text": "LA",
+      "stratum_script": "latin",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "la-bastille-1789",
+      "text": "RUE",
+      "stratum_script": "latin",
+      "material_class": null,
+      "substrate_trust": null,
+      "calibration_status": null,
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "material_not_conditionable:unknown"
+      ]
+    },
+    {
+      "fixture": "la-bastille-1789",
+      "text": "St",
+      "stratum_script": "latin",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "la-bastille-1789",
+      "text": "ANTOINE",
+      "stratum_script": "latin",
+      "material_class": null,
+      "substrate_trust": null,
+      "calibration_status": null,
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "material_not_conditionable:unknown"
+      ]
+    },
+    {
+      "fixture": "la-bastille-1789",
+      "text": "EN",
+      "stratum_script": "latin",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "la-bastille-1789",
+      "text": "1789",
+      "stratum_script": "unscripted",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "la-rue-sans-nom-example",
+      "text": "La rue",
+      "stratum_script": "latin",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "la-rue-sans-nom-example",
+      "text": "SANS-NOM",
+      "stratum_script": "latin",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "quai-des-orfevres",
+      "text": "1er Arrᵗ",
+      "stratum_script": "mixed",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "quai-des-orfevres",
+      "text": "QUAI",
+      "stratum_script": "latin",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "quai-des-orfevres",
+      "text": "DES",
+      "stratum_script": "latin",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "quai-des-orfevres",
+      "text": "ORFÈVRES",
+      "stratum_script": "latin",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "rue-des-martyrs",
+      "text": "RUE",
+      "stratum_script": "latin",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "rue-des-martyrs",
+      "text": "DES",
+      "stratum_script": "latin",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "rue-des-martyrs",
+      "text": "MARTYRS",
+      "stratum_script": "latin",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "russian-billboard",
+      "text": "23",
+      "stratum_script": "unscripted",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "russian-billboard",
+      "text": "ФЕВРАЛЯ",
+      "stratum_script": "cyrillic",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "russian-billboard",
+      "text": "Za",
+      "stratum_script": "latin",
+      "material_class": null,
+      "substrate_trust": null,
+      "calibration_status": null,
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "material_not_conditionable:unknown"
+      ]
+    },
+    {
+      "fixture": "russian-billboard",
+      "text": "ПОБЕДУ!",
+      "stratum_script": "cyrillic",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "russian-billboard",
+      "text": "Za",
+      "stratum_script": "latin",
+      "material_class": null,
+      "substrate_trust": null,
+      "calibration_status": null,
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "material_not_conditionable:unknown"
+      ]
+    },
+    {
+      "fixture": "russian-billboard",
+      "text": "НАШИХ!",
+      "stratum_script": "cyrillic",
+      "material_class": null,
+      "substrate_trust": null,
+      "calibration_status": null,
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "material_not_conditionable:unknown"
+      ]
+    },
+    {
+      "fixture": "russian-billboard",
+      "text": "Za",
+      "stratum_script": "latin",
+      "material_class": null,
+      "substrate_trust": null,
+      "calibration_status": null,
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "material_not_conditionable:unknown"
+      ]
+    },
+    {
+      "fixture": "russian-billboard",
+      "text": "ПРАВДУ!",
+      "stratum_script": "cyrillic",
+      "material_class": null,
+      "substrate_trust": null,
+      "calibration_status": null,
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "material_not_conditionable:unknown"
+      ]
+    },
+    {
+      "fixture": "russian-billboard-2",
+      "text": "В БУДУЩЕЕ",
+      "stratum_script": "cyrillic",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "russian-billboard-2",
+      "text": "ВМЕСТЕ С РОССИЕЙ!",
+      "stratum_script": "cyrillic",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    },
+    {
+      "fixture": "russian-billboard-2",
+      "text": "Valentina Ursu (RFE/RL)",
+      "stratum_script": "latin",
+      "material_class": "unknown",
+      "substrate_trust": "unmeasured",
+      "calibration_status": "unfitted",
+      "conditioned": false,
+      "processes": [
+        "fade",
+        "bleed",
+        "abrasion",
+        "blur",
+        "resample",
+        "compression",
+        "occlusion",
+        "speckle"
+      ],
+      "reasons": [
+        "calibration_unfitted"
+      ]
+    }
+  ]
+}

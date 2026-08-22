@@ -24,6 +24,8 @@ scene has two jobs:
    overwritten.
 """
 
+import hashlib
+import json
 import statistics
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -34,6 +36,7 @@ from tofu.core.types import (
     ImageLike, TextManifest, StyleProfil, BgProfil, SceneRegion, BBox, CharactText, GarnishProfile,
     InstText,
 )
+from tofu.core.vision2 import SurfaceObservationRef
 from tofu.utils.imaging import load_rgb as _load_rgb, text_mask as _text_mask
 
 
@@ -782,6 +785,26 @@ def _describe_surface_material(crop, texture: Optional[str], semantic_label: Opt
     return unnamed
 
 
+## Which physical processes each material class plausibly produces.
+##
+## Hoisted to module scope so `layers/marinade.py` can consume the SAME
+## table rather than restating it. A training-time corruption family and the
+## observation that justifies it drifting apart would mean the encoder
+## learned a decay this layer never claimed to see.
+##
+## Every entry is `plausible_not_measured`. These are hypotheses about what
+## a surface class can do to ink, not posterior probabilities, and nothing
+## may treat them as calibrated.
+DEGRADATION_PRIORS = {
+    "painted_panel": ["fade", "abrasion", "bleed"],
+    "painted_surface": ["fade", "abrasion"],
+    "smooth_surface": ["fade", "blur"],
+    "masonry": ["abrasion", "speckle", "occlusion"],
+    "textured_unknown": ["abrasion", "speckle"],
+    "unknown": [],
+}
+
+
 def _material_evidence(
     crop,
     texture: Optional[str],
@@ -796,14 +819,7 @@ def _material_evidence(
         "textured surface": "textured_unknown",
     }
     material_class = taxonomy.get(material, "unknown")
-    priors = {
-        "painted_panel": ["fade", "abrasion", "bleed"],
-        "painted_surface": ["fade", "abrasion"],
-        "smooth_surface": ["fade", "blur"],
-        "masonry": ["abrasion", "speckle", "occlusion"],
-        "textured_unknown": ["abrasion", "speckle"],
-        "unknown": [],
-    }
+    priors = DEGRADATION_PRIORS
     descriptors: Dict[str, Any] = {
         "texture": texture,
         "semantic_label": semantic_label,
@@ -901,6 +917,74 @@ def _containing_region(
     if not hits:
         return None
     return min(hits, key=lambda r: r.bbox.width * r.bbox.height)
+
+
+def _normalize_surface_observation(region: SceneRegion) -> SurfaceObservationRef:
+    """Create a stable, explicitly non-decisional join to Scene evidence."""
+    evidence = region.material_evidence or {}
+    descriptors = evidence.get("descriptors") or {}
+    substrate = evidence.get("substrate") or {}
+    missing = []
+    if evidence.get("material_class", "unknown") == "unknown":
+        missing.append("material_class")
+    if descriptors.get("measurement_error") or not descriptors:
+        missing.append("surface_descriptors")
+    if not substrate:
+        substrate_trust = "unmeasured"
+        missing.append("glyph_excluded_substrate")
+    elif substrate.get("trustworthy"):
+        substrate_trust = "measured"
+    else:
+        substrate_trust = "insufficient"
+        missing.append("trustworthy_substrate")
+    revision = str(evidence.get("revision") or "scene-material-observation-v1")
+    identity = {
+        "bbox": [region.bbox.x, region.bbox.y, region.bbox.width, region.bbox.height],
+        "polygon": region.polygon,
+        "semantic_label": region.semantic_label,
+        "revision": revision,
+    }
+    digest = hashlib.sha256(
+        json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()[:16]
+    observation: SurfaceObservationRef = {
+        "surface_id": f"surface-{digest}",
+        "observation_revision": revision,
+        "material_class": str(evidence.get("material_class") or "unknown"),
+        "calibration_status": "unfitted",
+        "substrate_trust": substrate_trust,
+        "missing_features": missing,
+        "decision_weight": 0.0,
+    }
+    evidence.update({
+        "surface_id": observation["surface_id"],
+        "calibration_status": observation["calibration_status"],
+        "substrate_trust": observation["substrate_trust"],
+        "missing_features": list(missing),
+    })
+    evidence["decision_eligible"] = False
+    region.material_evidence = evidence
+    region.surface_observation = observation
+    return observation
+
+
+def _attach_surface_observations(text_manifest: TextManifest) -> None:
+    """Join instances to surfaces and log Scene at zero retrieval weight."""
+    for region in text_manifest.scene_regions:
+        _normalize_surface_observation(region)
+    for inst in text_manifest.instances:
+        region = _containing_region(text_manifest.scene_regions, inst.bounding_box)
+        if region is None:
+            continue
+        observation = region.surface_observation or _normalize_surface_observation(region)
+        inst.surface_observation = dict(observation)
+        if inst.material_evidence is None:
+            inst.material_evidence = region.material_evidence
+        if inst.glyph_match_evidence is not None:
+            inst.glyph_match_evidence.diagnostics["scene_observation"] = {
+                **observation,
+                "usage": "diagnostic_only",
+            }
 
 
 def analyze(asset: ImageLike, text_manifest: TextManifest) -> TextManifest:
@@ -1031,6 +1115,7 @@ def analyze(asset: ImageLike, text_manifest: TextManifest) -> TextManifest:
             pos.setdefault("slant_deg", typo.slant_deg)
             pos.setdefault("stroke_ratio", typo.stroke_ratio)
             ch.positioning = pos
+    _attach_surface_observations(text_manifest)
     # Basil runs after the source OCR has been corrected and after scene has
     # established the physical panel/sign context.  It only registers
     # semantic reading units; it never changes an rN, box, or translation.

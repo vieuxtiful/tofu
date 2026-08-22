@@ -100,6 +100,141 @@ No weights, and deliberately no scalar: `decant` returns a state plus the
 measurements behind it. Combining these into a score is the ranker's job, and
 `layers/ticket.py` records why the ranker cannot be priced yet.
 
+## Measurement — `src/tofu/utils/distance.py`
+
+Added 2026-08-16 with the supervised-objective work (stage S1 of
+`docs/vision-2-supervised-objective-plan.md`). The value is not new; its
+registration is. It had lived in a source comment in
+`scripts/eval_detector_evidence.py` and in the prose of
+`docs/vision-2-assessment.md`, which is precisely the situation this file
+exists to end.
+
+| Constant | Value | Provenance | Basis / note |
+|---|---:|---|---|
+| `TAU_UNREADABLE` | 0.8 | `preregistered` | The NED at or above which a region is scored unreadable **from a crop already known to be geometrically valid**. An evaluation convention, not a calibrated probability and **not an acceptance rule**: a production gate still requires surviving evidence and may abstain far below it. Never swept — it is a reporting cut, and moving it would silently restate every published unreadability count. |
+
+NED itself is a definition rather than a threshold, but two properties of it
+are load-bearing and belong on the record: it normalizes by the **longer**
+string (symmetric, so it can score candidate-against-candidate as readily as
+reading-against-truth), and both empty-string cases are explicit (a missed
+detection and an empty OCR output are the observations that would otherwise
+divide by zero). `verify.error_rates` keeps its own normalization — CER
+divides by the reference and clamps — and shares only the primitive.
+
+## Measurement channel — `src/tofu/layers/flight.py`
+
+Added 2026-08-16 with stage S0. No thresholds: the layer names routes and
+fingerprints them, and a vocabulary is not a cut point. One registered
+constant of judgement all the same.
+
+| Constant | Value | Provenance | Basis / note |
+|---|---:|---|---|
+| crop fingerprint granularity | 4 px | `reasoned` | Crop geometry is part of the channel — two reads through different boxes are different measurements — but boxes jitter by a pixel or two between runs, and fingerprinting them exactly would make every channel a singleton and every cross-run comparison empty. 4px is below the smallest box difference that changes what a recognizer sees and above the observed jitter. **Not swept.** |
+| `_lineage_transforms` max depth | 32 | `invented` | Runtime bound against a malformed parent cycle. Costs a truncated transform list, never a hang. |
+
+### Channel-equivalence criterion (stage S2)
+
+Fixed **before** the first envelope report was read, which is the only thing
+that makes them preregistered rather than fitted. They decide which channel
+pairs the S4 consistency regularizer may tie: a strict garbling must not be
+forced to agree with the richer channel, because its disagreement is evidence
+about channel quality rather than a violation.
+
+| Constant | Value | Provenance | Basis / note |
+|---|---:|---|---|
+| `EQUIV_MARGIN` | 0.05 NED | `preregistered` | Largest mean paired NED difference still called equivalent. Chosen as roughly one character in a twenty-character reading — below the granularity at which a difference could change a reviewer's decision. **Not swept**; a sweep would be fitting the criterion to the answer. |
+| `EQUIV_ALPHA` | 0.05 | `preregistered` | Two-sided exact sign test. Exact rather than normal-approximated because the strata here have single-digit region counts, where the approximation is anticonservative. |
+| `EQUIV_MIN_PAIRS` | 8 | `preregistered` | Below this the verdict is **`underpowered`**, which is a distinct verdict and *not* a synonym for `equivalent` — the same rule `decant` holds between `unknown` and `absent`. The floor sits above the n at which the exact sign test *can* reject: n=6 is the first (2/2⁶ = 0.031), so at n=6 or 7 the only reachable "not equivalent" verdict is a unanimous one, and anything short of unanimity would be reported as equivalence by arithmetic rather than by evidence. 8 gives the test one dissenting pair of headroom. **Not swept.** |
+| `MATCH_IOU` | 0.5 | `inherited` | IoU at which a shipped region is taken to *be* the annotated one, in `scripts/eval_channel_envelope.py`. Inherited from the detection harness's primary threshold so "the pipeline found this region" means the same thing in both reports. |
+
+Equivalence requires **both** a small effect and an undetectable direction. A
+channel reliably worse by less than the margin is still worse, and the sign
+test is what notices.
+
+`UNREGISTERED` is deliberately not a member of `REGISTERED_ROUTES`: a marker
+that reported itself as registered would let untraceable reads disappear into
+the coverage figure they exist to expose.
+
+## Candidate distribution — `src/tofu/layers/proof_distribution.py`
+
+Added 2026-08-16 with stage S3. The softmax head that gives the retrieval
+stack a probability object where it previously had only a ranking.
+
+| Constant | Value | Provenance | Basis / note |
+|---|---:|---|---|
+| `TEMPERATURE` (τ) | 0.07 | `invented` | Sets how sharply cosine similarity converts into belief. As τ→0 the distribution collapses onto the argmax and reproduces the ranking it sits beside; as τ→∞ it flattens to uniform and says nothing. Taken from the temperature the encoder's own supervised-contrastive loss uses over the same cosine geometry (`proof_encoder.supervised_contrastive_loss` defaults to 0.1), rounded toward the sharper end on the grounds that a retrieval distribution should be no flatter than the loss that shaped the embedding space. **Not swept.** It decides nothing yet: the distribution features enter fusion at zero weight, and the fitted value belongs to the supervised objective that will train against it. |
+
+The derived quantities carry no thresholds of their own. Entropy is normalized
+by `log K` so a larger pool does not read as a more uncertain one; `top_mass`
+defaults to k=3; `max_attempt_divergence` is `0.0` — not `None` — when a single
+attempt was scored, so "no disagreement measurable" cannot be confused with
+"measured, and none found".
+
+## Component alignment — `src/tofu/layers/proof_alignment.py`
+
+Registered 2026-08-17 with stage S5. Every one of these was hand-set when the
+layer was written and none has been swept. They are now loadable from an
+artifact (`load_cost_weights`) so a fitted set can replace them without a
+source edit; the default reproduces the original values bit for bit and stays
+that way until a fit is certified.
+
+| Constant | Value | Provenance | Basis / note |
+|---|---:|---|---|
+| `DEFAULT_COST_WEIGHTS` (η) | (0.55, 0.25, 0.20) | `invented` | Weights on centroid position, log-area and log-aspect. **Not fitted, and deliberately not fitted here**: the corpus that could fit them is the corpus they would be evaluated on, which is how `MAX_ZOOM_INFLATION` shipped and regressed. There is also a mechanical reason a fit would not help where it is most wanted — see the ablation note below. |
+| `ASPECT_CLIP` | 2.0 | `reasoned` | Log-aspect differences above this are already maximally unlike; without the clip one wildly elongated component dominates a whole plan. |
+| `ENTROPY_EPSILON` (ε) | 0.08 | `invented` | Sinkhorn smoothing. |
+| `DUSTBIN_MASS` (ρ) | 0.25 | `invented` | Mass reserved for unmatched components on both sides. |
+| `DUSTBIN_COST` | 0.35 | `invented` | Price of routing a component to the dustbin rather than matching it. |
+| `SINKHORN_ITERATIONS` | 50 | `invented` | Runtime bound. |
+| `MAX_COMPONENTS` | 64 | `invented` | Runtime bound — and, per the ablation, the point at which the whole method stops applying to CJK: a single Han glyph is many radical and stroke components, so the cap truncates the very structure it is trying to match. |
+
+**Measured 2026-08-17** (`evidence/alignment-ablation-frozen-v1.json`, 66
+regions): the truth transports more cheaply than the average wrong candidate on
+**48/66** regions, exact sign test **p = 0.00029** — the feature separates. But
+the effect is entirely alphabetic: Latin 26/31 (p = 0.0002) and Cyrillic 6/6
+(p = 0.031), against **0 top-1 across all 25 Han, Hangul and Japanese regions**.
+Re-weighting η cannot fix that, because the failure is in the component
+features themselves, not their weighting.
+
+## Scene-conditioned corruption — `src/tofu/layers/marinade.py`
+
+Added 2026-08-17 with stage S6. **Training-only, and inert**: across the 66
+annotated regions of the frozen corpus, zero inherit a conditionable material,
+so the conditioned branch is unreachable on the only corpus that exists.
+
+| Constant | Value | Provenance | Basis / note |
+|---|---:|---|---|
+| `DEGRADATION_PRIORS` | 6 classes | `invented` | Owned by `layers/scene.py` and imported, not restated — a corruption family drifting from the observation that justifies it would mean the encoder learned a decay Scene never claimed to see. Every entry is `plausible_not_measured`. |
+| `PROCESS_FAMILIES` | 6 processes | `reasoned` | What each inscription process physically does to a mark: a cut mark cannot bleed, an emissive one has no substrate chemistry at all. **Unreachable today** — Scene does not infer inscription process. |
+| `CONDITIONABLE` | 4 of 6 classes | `reasoned` | Excludes `unknown` and `textured_unknown`. A class whose name says it could not be identified is not a material, and conditioning on it would dress a failed classification as physical knowledge. |
+| `UNCONDITIONED` | 8 processes | `inherited` | The full `proof.PROCESSES` set — what training already samples. Conditioning may only ever narrow it. |
+
+**Measured 2026-08-17** (`evidence/scene-conditioning-coverage-v1.json`): 0/66
+regions conditioned. Three gates each close on their own — 16 regions land on
+no surface, 50 land on a surface classified `unknown`, and all 50 of those also
+carry `calibration_status: "unfitted"` and `substrate_trust: "unmeasured"`.
+The calibration gate alone would close every region even if material
+classification were perfect, which is correct behaviour and not a defect:
+uncalibrated Scene evidence is missing evidence.
+
+## Supervised objective — `src/tofu/layers/proof_objective.py`
+
+Added 2026-08-16 with stage S4. **Training-only, and not promoted**: the
+distributional arm lost its paired real-ink gate (2/9 against the incumbent's
+4/9), so the contrastive objective remains the default and these constants
+decide nothing that ships. They are registered because they were used to
+produce a measured result, not because anything depends on them.
+
+| Constant | Value | Provenance | Basis / note |
+|---|---:|---|---|
+| `SIGMA` (σ) | 0.15 | `invented` | Temperature of the NED-graded soft target. As σ→0 the target collapses onto the closest candidate and the loss becomes ordinary hard cross-entropy; as σ grows every candidate looks equally acceptable and the graded signal disappears. 0.15 sits just under one edit in a seven-character reading. **Not swept** — and on the only corpus available it was also **not exercised**: 98.7% of non-truth pool members sat at NED exactly 1.0, so the target was 98.9% one-hot regardless of σ. |
+| `MU_CONSISTENCY` (μ₁) | 0.1 | `invented` | Weight on the attempt-consistency regularizer, deliberately an order of magnitude below the cross-entropy it accompanies: agreement between views is evidence, not the objective, and a consistency term strong enough to dominate is satisfied perfectly by an encoder that ignores the ink and says the same thing every time. **Not swept.** |
+| `DISTRIBUTIONAL_POOL` | 8 | `reasoned` | Candidates per training instance, in `scripts/train_proof_encoder.py`. A cap rather than a fitted size: `proof.hard_negatives` returns every silhouette confusion of a string, and a long string has many, so an uncapped pool would make one long region cost what fifty short ones do. |
+
+μ₂ (the transport regularizer weight) is deliberately absent: it belongs with
+the fitted alignment cost in stage S5, and coupling an unfitted η to the
+candidate distribution would train against three frozen guesses.
+
 ## Glyph-margin calibration — `src/tofu/layers/proof_calibration.py`
 
 | Constant | Value | Provenance | Basis / note |
@@ -160,3 +295,33 @@ candidate.
 Which is exactly what `GET /api/manifest/{id}/detection-attribution` and
 `scripts/eval_detector_evidence.py` are for: instrument first, sweep only what
 the instrument implicates, and hold out evidence before shipping the change.
+
+## Vision 2 shadow-runtime budgets
+
+Added 2026-08-13. These are resource ceilings, not quality or acceptance
+thresholds; exceeding one records an explicit omission or abstention.
+
+| Constant / field | Value | Provenance | Basis / note |
+|---|---:|---|---|
+| `DEFAULT_MAX_CANDIDATES` | 256 | `reasoned` | Bounds the persisted recall ledger on dense scenes while retaining candidates round-robin across source stages. |
+| `DEFAULT_MAX_PER_SOURCE` | 64 | `reasoned` | Prevents one detector/pass from consuming the entire ledger. |
+| `Vision2Config.max_retrieval_candidates` | 64 | `reasoned` | Per-region encoder candidate ceiling; candidate generation is provenance-prioritized and never filtered by answer length. |
+| `Vision2Config.max_retrieval_fonts` | 5 | `reasoned` | Bounds cross-face rendering while retaining the highest candidate-coverage faces. |
+| `Vision2Config.max_retrieval_regions` | 24 | `reasoned` | Per-image encoder invocation ceiling. Remaining regions record `retrieval_budget_exhausted`; they are not silently omitted. |
+| proof-runtime views | 3 | `reasoned` | Original, mild blur, and morphological close. Variance is diagnostic only and cannot produce a recommendation. |
+| `Vision2Config.alignment_top_k` | 3 | `reasoned` | Component alignment is restricted to the leading retrieval hypotheses and cannot rerank them. |
+| `MAX_COMPONENTS` | 64 | `reasoned` | Bounds component-cost matrix growth; the largest components are retained deterministically. |
+| `SINKHORN_ITERATIONS` | 50 | `reasoned` | Fixed solver budget for deterministic shadow latency. Non-convergence yields missing diagnostic evidence. |
+| `ENTROPY_EPSILON` | 0.08 | `invented` | Initial entropy regularization for the diagnostic arm; not calibrated and not decision-eligible. |
+| `DUSTBIN_MASS` | 0.25 | `invented` | Initial partial-mass allowance for missing or spurious components; must be ablated before promotion. |
+| `DUSTBIN_COST` | 0.35 | `invented` | Initial unmatched-component cost; diagnostic only and excluded from production Fusion calibration. |
+| `Vision2Config.counterfactual_top_k` | 3 | `reasoned` | Synthetic Scene hypotheses are diagnostic-only and restricted to the leading retrieval candidates. |
+| `Vision2Config.counterfactual_beam` | 4 | `reasoned` | The explicit v1 operator set is identity, abrasion, bleed, and blur; callers cannot expand the beam beyond it. |
+
+## Vision 2 Fusion calibration
+
+Fusion has no source-coded recommendation, rejection, margin, or contradiction
+threshold. `recommendation_threshold`, `rejection_threshold`,
+`minimum_margin`, and `maximum_contradiction` must all be present in the
+revision-compatible calibration artifact. Missing, malformed, or mismatched
+artifacts fail closed to review (or remain shadow-only).
