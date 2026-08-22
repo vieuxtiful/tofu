@@ -1,0 +1,206 @@
+{
+  "schema": "alignment-ablation-v1",
+  "corpus": "evidence\\proof-real-ink-corpus-v1.json",
+  "checkpoint": "evidence\\proof-encoder-zh-hant-v1.pt",
+  "cost_weights": [
+    0.55,
+    0.25,
+    0.2
+  ],
+  "cost_weights_revision": "alignment-cost-default",
+  "fonts": [
+    "C:/Windows/Fonts/msjh.ttc",
+    "C:/Windows/Fonts/msgothic.ttc"
+  ],
+  "scored_regions": 9,
+  "alignment_top1": 2,
+  "encoder_top1": 4,
+  "alignment_top1_chance": 0.2222,
+  "truth_cheaper_than_wrong": 3,
+  "mean_truth_cost": 0.355809,
+  "mean_wrong_cost": 0.338967,
+  "alignment_rescues_encoder": 1,
+  "alignment_breaks_encoder": 3,
+  "limitations": [
+    "alignment may not independently recommend a candidate; this measures whether it deserves a fitted coefficient, not a vote",
+    "candidate pools are the other annotated readings of the same asset, which is the retrieval harness's convention and is smaller and easier than a production pool"
+  ],
+  "rows": [
+    {
+      "asset": "china-street",
+      "region_id": "gt-1",
+      "truth": "美珠宝",
+      "candidates": 5,
+      "alignment_best": "华联店3F",
+      "alignment_top1": false,
+      "encoder_best": "美珠宝",
+      "encoder_top1": true,
+      "truth_cost": 0.29438847,
+      "wrong_cost_mean": 0.2600168425,
+      "truth_matched_mass": 0.6916471,
+      "costs": {
+        "华联店3F": 0.214416,
+        "大娘水饺": 0.25834,
+        "上海明牌": 0.258813,
+        "美珠宝": 0.294388,
+        "茂昌眼镜公司": 0.308498
+      }
+    },
+    {
+      "asset": "china-street",
+      "region_id": "gt-2",
+      "truth": "华联店3F",
+      "candidates": 5,
+      "alignment_best": "美珠宝",
+      "alignment_top1": false,
+      "encoder_best": "美珠宝",
+      "encoder_top1": false,
+      "truth_cost": 0.45118815,
+      "wrong_cost_mean": 0.3891916275,
+      "truth_matched_mass": 0.63034617,
+      "costs": {
+        "美珠宝": 0.335106,
+        "茂昌眼镜公司": 0.383679,
+        "上海明牌": 0.405299,
+        "大娘水饺": 0.432682,
+        "华联店3F": 0.451188
+      }
+    },
+    {
+      "asset": "china-street",
+      "region_id": "gt-3",
+      "truth": "茂昌眼镜公司",
+      "candidates": 5,
+      "alignment_best": "茂昌眼镜公司",
+      "alignment_top1": true,
+      "encoder_best": "大娘水饺",
+      "encoder_top1": false,
+      "truth_cost": 0.44275363,
+      "wrong_cost_mean": 0.453786225,
+      "truth_matched_mass": 0.59785353,
+      "costs": {
+        "茂昌眼镜公司": 0.442754,
+        "上海明牌": 0.447198,
+        "大娘水饺": 0.449835,
+        "华联店3F": 0.457561,
+        "美珠宝": 0.46055
+      }
+    },
+    {
+      "asset": "china-street",
+      "region_id": "gt-6",
+      "truth": "上海明牌",
+      "candidates": 5,
+      "alignment_best": "华联店3F",
+      "alignment_top1": false,
+      "encoder_best": "美珠宝",
+      "encoder_top1": false,
+      "truth_cost": 0.39398169,
+      "wrong_cost_mean": 0.3934509925,
+      "truth_matched_mass": 0.65667324,
+      "costs": {
+        "华联店3F": 0.374645,
+        "茂昌眼镜公司": 0.383875,
+        "上海明牌": 0.393982,
+        "大娘水饺": 0.406788,
+        "美珠宝": 0.408496
+      }
+    },
+    {
+      "asset": "china-street",
+      "region_id": "gt-7",
+      "truth": "大娘水饺",
+      "candidates": 5,
+      "alignment_best": "茂昌眼镜公司",
+      "alignment_top1": false,
+      "encoder_best": "美珠宝",
+      "encoder_top1": false,
+      "truth_cost": 0.44332218,
+      "wrong_cost_mean": 0.425368695,
+      "truth_matched_mass": 0.57503843,
+      "costs": {
+        "茂昌眼镜公司": 0.397545,
+        "上海明牌": 0.419013,
+        "美珠宝": 0.431892,
+        "大娘水饺": 0.443322,
+        "华联店3F": 0.453024
+      }
+    },
+    {
+      "asset": "japan-street",
+      "region_id": "gt-1",
+      "truth": "歌舞伎町一番街",
+      "candidates": 4,
+      "alignment_best": "お好み焼本陣",
+      "alignment_top1": false,
+      "encoder_best": "劇場通り",
+      "encoder_top1": false,
+      "truth_cost": 0.29938173,
+      "wrong_cost_mean": 0.32616306666666667,
+      "truth_matched_mass": 0.68282591,
+      "costs": {
+        "お好み焼本陣": 0.292489,
+        "歌舞伎町一番街": 0.299382,
+        "劇場通り": 0.339848,
+        "東南荘": 0.346152
+      }
+    },
+    {
+      "asset": "japan-street",
+      "region_id": "gt-2",
+      "truth": "劇場通り",
+      "candidates": 4,
+      "alignment_best": "東南荘",
+      "alignment_top1": false,
+      "encoder_best": "劇場通り",
+      "encoder_top1": true,
+      "truth_cost": 0.29707576,
+      "wrong_cost_mean": 0.24625719666666668,
+      "truth_matched_mass": 0.6807103,
+      "costs": {
+        "東南荘": 0.228222,
+        "歌舞伎町一番街": 0.251158,
+        "お好み焼本陣": 0.259392,
+        "劇場通り": 0.297076
+      }
+    },
+    {
+      "asset": "japan-street",
+      "region_id": "gt-3",
+      "truth": "お好み焼本陣",
+      "candidates": 4,
+      "alignment_best": "お好み焼本陣",
+      "alignment_top1": true,
+      "encoder_best": "お好み焼本陣",
+      "encoder_top1": true,
+      "truth_cost": 0.24414957,
+      "wrong_cost_mean": 0.2531699733333333,
+      "truth_matched_mass": 0.69773408,
+      "costs": {
+        "お好み焼本陣": 0.24415,
+        "歌舞伎町一番街": 0.248217,
+        "東南荘": 0.254929,
+        "劇場通り": 0.256364
+      }
+    },
+    {
+      "asset": "japan-street",
+      "region_id": "gt-6",
+      "truth": "東南荘",
+      "candidates": 4,
+      "alignment_best": "歌舞伎町一番街",
+      "alignment_top1": false,
+      "encoder_best": "東南荘",
+      "encoder_top1": true,
+      "truth_cost": 0.33603661,
+      "wrong_cost_mean": 0.30330013333333333,
+      "truth_matched_mass": 0.66400225,
+      "costs": {
+        "歌舞伎町一番街": 0.285382,
+        "お好み焼本陣": 0.28922,
+        "劇場通り": 0.335298,
+        "東南荘": 0.336037
+      }
+    }
+  ]
+}
